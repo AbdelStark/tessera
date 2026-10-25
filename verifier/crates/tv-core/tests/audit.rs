@@ -387,7 +387,7 @@ fn the_verifiers_toss_commits_a_fresh_share_and_reveals_only_over_its_manifest()
     assert_eq!(a.manifest_digest(), &built[1].identity);
     let dir = scratch("reveal");
     let path = dir.join("ledger.tvl");
-    let mut file = LedgerFile::create(&path, &DecodeLimits::MESSAGE).unwrap();
+    let mut file = LedgerFile::create(&path).unwrap();
     // The reveal over the other period's window is the verifier's own inputs disagreeing, and
     // leaves the toss usable and the ledger as it was.
     assert_eq!(
@@ -412,7 +412,7 @@ fn the_verifiers_toss_commits_a_fresh_share_and_reveals_only_over_its_manifest()
     assert_eq!(a.reveal(&second, [9; 32], &mut file).unwrap(), sample);
     assert_eq!(fs::read(&path).unwrap(), bytes);
     drop(file);
-    let ledger = read_ledger(&path, &DecodeLimits::MESSAGE).unwrap();
+    let ledger = read_ledger(&path).unwrap();
     assert!(ledger.is_derived(&sample));
     let s = statement(*sample.manifest_digest(), vec![req(1, 2)]);
     assert_eq!(ledger.check_accounting(&sample, &s), Ok(vec![0]));
@@ -435,7 +435,7 @@ fn a_sample_the_prover_wrote_is_not_the_verifiers() {
     // The verifier's own sample of the same period, recorded by its reveal.
     let dir = scratch("forged");
     let path = dir.join("ledger.tvl");
-    let mut file = LedgerFile::create(&path, &DecodeLimits::MESSAGE).unwrap();
+    let mut file = LedgerFile::create(&path).unwrap();
     let mine = AuditToss::commit(scenario.period.manifest(), everything())
         .unwrap()
         .reveal(&window, [8; 32], &mut file)
@@ -926,11 +926,11 @@ fn the_ledger_file_is_held_by_one_writer_and_written_atomically() {
     let manifest = *scenario.period.manifest_digest();
     let sample;
     {
-        let mut file = LedgerFile::create(&path, &DecodeLimits::MESSAGE).unwrap();
+        let mut file = LedgerFile::create(&path).unwrap();
         assert_eq!(file.ledger(), &VerifierLedger::new());
         // A second writer is kept out while the first holds the file.
         assert_eq!(
-            LedgerFile::open(&path, &DecodeLimits::MESSAGE).err(),
+            LedgerFile::open(&path).err(),
             Some(VerifierError { code: Code::Io })
         );
         sample = AuditToss::commit(scenario.period.manifest(), everything())
@@ -956,42 +956,26 @@ fn the_ledger_file_is_held_by_one_writer_and_written_atomically() {
         assert_eq!(fs::read(&path).unwrap(), bytes);
     }
     // Dropped, the file is free again, and holds what was recorded.
-    let file = LedgerFile::open(&path, &DecodeLimits::MESSAGE).unwrap();
+    let file = LedgerFile::open(&path).unwrap();
     let record = file.ledger().proven(sample.identity()).unwrap();
     assert_eq!(record.iter().collect::<Vec<_>>(), [(2, FixedBits(9))]);
-    assert_eq!(
-        &read_ledger(&path, &DecodeLimits::MESSAGE).unwrap(),
-        file.ledger()
-    );
+    assert_eq!(&read_ledger(&path).unwrap(), file.ledger());
     drop(file);
     // A ledger is never created over an existing file.
     assert_eq!(
-        LedgerFile::create(&path, &DecodeLimits::MESSAGE).err(),
+        LedgerFile::create(&path).err(),
         Some(VerifierError { code: Code::Usage })
     );
-    // A file that does not decode, one too large, one missing.
+    // A file that does not decode, and one missing. A file past the limits is the unit tests'.
     fs::write(&path, b"TSRA").unwrap();
     assert_eq!(
-        read_ledger(&path, &DecodeLimits::MESSAGE),
+        read_ledger(&path),
         Err(VerifierError {
             code: Code::CodecTruncated
         })
     );
-    let small = DecodeLimits {
-        max_total_bytes: 3,
-        ..DecodeLimits::MESSAGE
-    };
-    assert_eq!(
-        read_ledger(&path, &small),
-        Err(VerifierError {
-            code: Code::CodecLimit
-        })
-    );
     fs::remove_file(&path).unwrap();
-    assert_eq!(
-        read_ledger(&path, &DecodeLimits::MESSAGE),
-        Err(VerifierError { code: Code::Io })
-    );
+    assert_eq!(read_ledger(&path), Err(VerifierError { code: Code::Io }));
     fs::remove_dir(&dir).unwrap();
 }
 
@@ -1627,7 +1611,7 @@ fn one_toss_reveals_one_sample_and_one_manifest_takes_one() {
     let rate = policy(&[(u32::MAX, 1 << 63)]);
     let dir = scratch("one-sample");
     let path = dir.join("ledger.tvl");
-    let mut file = LedgerFile::create(&path, &DecodeLimits::MESSAGE).unwrap();
+    let mut file = LedgerFile::create(&path).unwrap();
     let mut toss = AuditToss::commit(scenario.period.manifest(), rate.clone()).unwrap();
     // The prover's answer, and the sample it gives.
     let share = [1; 32];
@@ -1665,14 +1649,16 @@ fn one_toss_reveals_one_sample_and_one_manifest_takes_one() {
     assert_eq!(fs::read(&path).unwrap(), bytes);
     // The first share again gives the same sample.
     assert_eq!(toss.reveal(&window, share, &mut file).unwrap(), sample);
-    // The toss's own rule, apart from the ledger's: into a second, empty ledger the ground share
-    // is still refused.
+    // One ledger per verifier: the toss records in no second ledger, even its first share's
+    // sample (RFC-0067 'One ledger per verifier').
     let other_path = dir.join("other.tvl");
-    let mut other_file = LedgerFile::create(&other_path, &DecodeLimits::MESSAGE).unwrap();
-    assert_eq!(
-        toss.reveal(&window, ground, &mut other_file).err(),
-        Some(order.clone())
-    );
+    let mut other_file = LedgerFile::create(&other_path).unwrap();
+    for s_p in [share, ground] {
+        assert_eq!(
+            toss.reveal(&window, s_p, &mut other_file).err(),
+            Some(inconclusive(Code::Usage))
+        );
+    }
     assert!(other_file.ledger().derived().is_empty());
     drop(other_file);
     fs::remove_file(&other_path).unwrap();
@@ -1762,4 +1748,38 @@ fn a_report_from_supplied_outcomes_must_agree_with_the_ledger() {
             Some(inconclusive(Code::Usage))
         );
     }
+}
+
+/// The toss's share rule apart from the ledger's: a first reveal whose ledger write fails binds
+/// the share without recording a sample, and a second share, which the ledger alone would take,
+/// is refused by the toss.
+#[cfg(unix)]
+#[test]
+fn a_toss_binds_its_first_share_even_when_its_write_fails() {
+    let scenario = five_requests();
+    let window = scenario.window();
+    let dir = scratch("first-share");
+    let path = dir.join("ledger.tvl");
+    let mut file = LedgerFile::create(&path).unwrap();
+    let mut toss = AuditToss::commit(scenario.period.manifest(), everything()).unwrap();
+    // A second name makes the first reveal's write fail, the share bound, nothing recorded.
+    let second = dir.join("second.tvl");
+    fs::hard_link(&path, &second).unwrap();
+    assert_eq!(
+        toss.reveal(&window, [1; 32], &mut file).err(),
+        Some(inconclusive(Code::Usage))
+    );
+    fs::remove_file(&second).unwrap();
+    assert!(file.ledger().derived().is_empty());
+    // Another share: the ledger holds nothing for the manifest, and the toss refuses it.
+    assert_eq!(
+        toss.reveal(&window, [2; 32], &mut file).err(),
+        Some(inconclusive(Code::ProtocolOrder))
+    );
+    // The first share, once the ledger can be written.
+    let sample = toss.reveal(&window, [1; 32], &mut file).unwrap();
+    assert!(file.ledger().is_derived(&sample));
+    drop(file);
+    fs::remove_file(&path).unwrap();
+    fs::remove_dir(&dir).unwrap();
 }

@@ -94,7 +94,8 @@ impl AuditReport {
     /// `Inconclusive(ERR-USAGE)` for a sample the verifier did not derive, another number of
     /// outcomes than of selected requests, outcomes that disagree with the ledger, or a record
     /// that names an index past `selected`; and `Inconclusive(ERR-PROTO-COINTOSS)` for a coin
-    /// toss that does not open.
+    /// toss that does not open, which only a hand-edited ledger can name as derived, since a
+    /// reveal derives from a toss that opens.
     pub fn new(
         sample: &AuditSample,
         ledger: &VerifierLedger,

@@ -4,6 +4,8 @@
 //! a fresh share committed once the policy is fixed, revealed only once both periods' logs are
 //! verified.
 
+use std::path::PathBuf;
+
 use tv_hash::{Digest, Domain, hash};
 use zeroize::Zeroizing;
 
@@ -26,6 +28,8 @@ pub struct AuditToss {
     commitment: Digest,
     /// The prover's share the toss was first revealed against, the only one it takes.
     answer: Option<[u8; 32]>,
+    /// The ledger the toss was first revealed into, the only one it records in.
+    ledger: Option<PathBuf>,
 }
 
 impl AuditToss {
@@ -53,6 +57,7 @@ impl AuditToss {
             share,
             commitment,
             answer: None,
+            ledger: None,
         })
     }
 
@@ -88,13 +93,18 @@ impl AuditToss {
     /// holds, `Inconclusive(ERR-PROTO-ORDER)`, which also refuses a second toss over one
     /// manifest. The same share again gives the same sample, which changes nothing.
     ///
+    /// The toss belongs to one ledger, the one it is first revealed into, by its canonical path:
+    /// a reveal into another is `Inconclusive(ERR-USAGE)` (RFC-0067 'One ledger per verifier').
+    ///
     /// The toss stays usable after a failure, so that a verifier whose inputs disagreed can
-    /// reveal once they agree, against the same share: the prover answers one commitment per
-    /// manifest, and a share lost would leave the period without a sample.
+    /// reveal once they agree, into the same ledger and against the same share: the prover
+    /// answers one commitment per manifest, and a share lost would leave the period without a
+    /// sample.
     ///
     /// # Errors
     ///
-    /// `Inconclusive(ERR-USAGE)` for a window over another manifest; `Inconclusive(ERR-PROTO-ORDER)`
+    /// `Inconclusive(ERR-USAGE)` for a window over another manifest or another ledger than the
+    /// first; `Inconclusive(ERR-PROTO-ORDER)`
     /// for a share other than the first, or a manifest the ledger holds another sample for; the
     /// errors of [`AuditSample::derive`]; and those of the ledger's write, after which the sample
     /// is not returned.
@@ -106,6 +116,14 @@ impl AuditToss {
     ) -> Result<AuditSample, Failure> {
         if window.period().manifest_digest() != &self.manifest_digest {
             return Err(usage());
+        }
+        // One ledger per verifier (RFC-0067): a second ledger would hold its own `derived` and
+        // `proven`, and could accept a request the first holds.
+        let at = ledger.path();
+        match &self.ledger {
+            Some(first) if first != &at => return Err(usage()),
+            Some(_) => {}
+            None => self.ledger = Some(at),
         }
         match self.answer {
             Some(first) if first != prover_share => return Err(fail(ErrorCode::ProtocolOrder)),

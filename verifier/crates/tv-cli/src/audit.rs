@@ -38,7 +38,8 @@ report  The tessera.audit-report/1 report of a sample at its deadline, from the 
 /// The most bytes a JSON input of `audit plan` may hold: a policy, a profile and a cost model
 /// take kilobytes, and the parsed tree takes a small multiple of its text.
 const JSON_LIMIT: u64 = 1 << 20;
-/// The most bytes the sample, and the ledger, may each hold.
+/// The most bytes the sample may hold. The ledger is read under `tv_core::audit::LEDGER_LIMITS`,
+/// as its writers keep it.
 const ARTIFACT_LIMIT: u64 = 1 << 30;
 
 pub(crate) fn run(args: &[String], json_flag: bool) -> CommandOutput {
@@ -309,8 +310,9 @@ fn report(args: &[String], json_flag: bool) -> CommandOutput {
         Err(code) => return fail(COMMAND, "cannot open the sample", json_flag, code),
     };
     // The ledger's own reader: a regular file of one name, refused before it is opened
-    // otherwise (RFC-0067 'The path').
-    let ledger = match read_ledger(Path::new(ledger), &limits) {
+    // otherwise (RFC-0067 'The path'), under the limits every writer keeps it within (RFC-0067
+    // 'One limit').
+    let ledger = match read_ledger(Path::new(ledger)) {
         Ok(ledger) => ledger,
         Err(e) => return fail(COMMAND, "cannot open the ledger", json_flag, e.code),
     };

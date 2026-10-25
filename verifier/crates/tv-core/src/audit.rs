@@ -121,9 +121,13 @@
 //! hard link, else `ERR-USAGE`, checked without opening it, so a FIFO never blocks; its
 //! directory is resolved once at open. A write goes to a synced temporary file renamed over the
 //! old one, then syncs the directory, a failure of which is `ERR-RES-IO`, under a lock file that
-//! keeps a second writer out and that its writer removes only while it still holds its token. A
-//! ledger that does not change is not written, and one that would not reopen under the ledger's
-//! limits is refused, `ERR-CODEC-LIMIT`, before anything is written.
+//! keeps a second writer out and that its writer removes only while it still holds its token.
+//! Before each rename the lock must still hold the writer's token and the ledger must still be
+//! the file it last read or wrote, by device and inode, else `ERR-RES-IO` and nothing is written.
+//! A ledger that does not change is not written, and one that would not reopen under
+//! [`LEDGER_LIMITS`], `tv-codec`'s message limits, which every reader uses too, is refused,
+//! `ERR-CODEC-LIMIT`, before anything is written. A toss records in one ledger, the first it is
+//! revealed into (RFC-0067 'One ledger per verifier').
 //!
 //! ## The report
 //!
@@ -131,7 +135,8 @@
 //! `Accepted` exactly for the requests it records accepted, with their `Û`, else
 //! `Inconclusive(ERR-USAGE)`. [`AuditReport::from_ledger`], at the deadline: the sample is the
 //! one the ledger's `derived` holds for its manifest, else `Inconclusive(ERR-USAGE)`; its coin
-//! toss opens, else `Inconclusive(ERR-PROTO-COINTOSS)`; each selected request, in order, is `Accepted { uhat }`
+//! toss opens, else `Inconclusive(ERR-PROTO-COINTOSS)`, which only a hand-edited ledger can
+//! reach, since a reveal derives from a toss that opens; each selected request, in order, is `Accepted { uhat }`
 //! when the ledger records it for the sample's identity, else `Unproven(DeadlineMissed)`; a
 //! record naming an index past `selected` is `Inconclusive(ERR-USAGE)`. `sample` is the seed,
 //! and the summary counts the outcomes, `max_uhat` the largest accepted `Û`.
@@ -145,7 +150,7 @@ mod sample;
 mod toss;
 
 pub use batch::{Batch, BatchRequest, pack};
-pub use file::{LedgerFile, read_ledger};
+pub use file::{LEDGER_LIMITS, LedgerFile, read_ledger};
 pub use ledger::{BitSet, BlindingRows, ProvenSample, VerifierLedger, WeightRoots};
 pub use policy::{AuditPolicy, PolicyError, RateBucket};
 pub use report::{AuditReport, AuditSummary, RequestOutcome, UnprovenReason};

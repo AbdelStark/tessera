@@ -176,9 +176,11 @@ records accepted for the sample is `accepted` with its `Û`, and every other one
 `derived` records for its manifest when the verifier reveals its toss; any other sample exits 64
 with `ERR-USAGE`, however its coin toss opens
 ([RFC-0067](../rfcs/RFC-0067-verifier-ledger-encoding.md#the-verifiers-own-sample)). A reveal
-derives only from a toss that opens, so this check also covers a sample whose toss does not. The
-ledger must be a regular file of one name, else exit 64. It exits 0 when every selected request
-is accepted and 10 otherwise.
+derives only from a toss that opens, so a sample whose toss does not open can be the ledger's only
+if the ledger was edited by hand; such a sample exits 20 with `ERR-PROTO-COINTOSS`. The ledger
+must be a regular file of one name, else exit 64, and is read under `tv-codec`'s message limits,
+which its writers keep it within. It exits 0 when every selected request is accepted and 10
+otherwise.
 
 ### 2.4 Exit codes
 
