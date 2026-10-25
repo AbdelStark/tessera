@@ -60,6 +60,7 @@ Steps 11 and 12 are judged only in the recorded live session: there, Round2's la
 
 - Anchors, the manifest signature, the ledger and the weight reservation (steps 4 and 5): v0.4. The manifest digest stands for the anchor here.
 - The LogUp identity sumcheck of `tessera-protocol/2` (`REJ-LOGUP-IDENTITY`).
+- The masks' batching of `tessera-protocol/2` (`REJ-MASK-BATCH`, RFC-0070).
 - The LogUp leaf checks of step 7.3 and gadget final checks (`REJ-GADGET`): a single change fails an earlier check first. The alternative-witness tests reach them with a consistent cheating prover.
 
 ```sh

@@ -13,11 +13,11 @@
 - **The weight linking proof** revealed `W̃_T(ρ_T)` (§6.4, R3). [RFC-0064](../rfcs/RFC-0064-weight-linking-proof.md) opens the difference instead.
 - **The epilogue's claim on the last checkpoint** sat at the Boolean layer `L − 1` (§4.3, R8). [RFC-0069](../rfcs/RFC-0069-one-layer-claims.md) masks a claim at one layer with the layer tensor's own mask row.
 
-The protocol is still not shown zero-knowledge: the theorems below need the requirements of §9 that are open, R2, R10 and R11 among them.
+The protocol is still not shown zero-knowledge: the theorems below need the requirements of §9 that are open, R2 and R10 among them.
 
 Further gaps are missing pieces of the protocol, not leaks:
 - **Masked weights across an epoch.** Under the tensor proximity generator, they have no usable joint bound (§6.3, R2).
-- **The masking polynomials' openings.** Their `G(r)`, and the tree levels' mask claims, have no opening scheme the budget counts (§4.2, R11).
+- **The masking polynomials' openings.** Their `G(r)`, and the tree levels' mask claims, had no opening scheme the budget counts (§4.2, R11). [RFC-0070](../rfcs/RFC-0070-mask-batching.md) opens them all in one masked batching sumcheck, which Lemma 4a covers (§4.3a).
 - **Structured points.** Some masked points need a rank check on the compiled schedule (§3, R10).
 
 The theorems below hold once the requirements of §9 are met.
@@ -93,10 +93,10 @@ In transcript order (RFC-0014 'Transcript schedule', with RFC-0032's rows 4 and 
 ### 4.2 The LogUp identity sumcheck and the tree levels (RFC-0032)
 
 **Lemma 4 (masked sumchecks).**
-- **The setting.** A stage or level proves `H = Σ_x f(x)` over `n` variables with round degrees `d_j`.
-  - The prover commits `G(x) = a_0 + Σ_j g_j(x_j)`, each `g_j` uniform of degree `d_j` over `Fp2`.
+- **The setting.** A stage or level proves `H = Σ_x f(x)` over `n` variables, its round messages of RFC-0010's one degree `d`.
+  - The prover commits `G(x) = a_0 + Σ_j g_j(x_j)`, each `g_j` uniform of degree `d` over `Fp2`.
   - It sends `Γ = Σ_x G(x)`, and `ρ` is squeezed.
-  - The rounds run on `f + ρ·G` from the claim `H + ρ·Γ`, and `G(r)` is opened.
+  - The rounds run on `f + ρ·G` from the claim `H + ρ·Γ`, and the prover sends `G(r)`, which RFC-0070's batching opens (§4.3a).
 - **Claim.** Given `ρ ≠ 0`, the view `(Γ, p_1, …, p_n, G(r))` is simulatable from `H` and the final value `f(r)`.
 - **Proof.**
   - Round `j`'s polynomial is `F_j(X) + ρ·2^{n−j}·g_j(X) + c_j`, with `F_j` the unmasked round polynomial and `c_j` constant in `X`. Its non-constant coefficients are masked by `g_j`'s, which enter no other round, so they are uniform. Its constant is fixed by the round's check.
@@ -104,13 +104,10 @@ In transcript order (RFC-0014 'Transcript schedule', with RFC-0032's rows 4 and 
   - `G(r)` is fixed by the final check, `p_n(r_n) = f(r) + ρ·G(r)`.
   - The pair reveals nothing beyond the checks. `G(r) − Γ/2^n = Σ_{j, m ≥ 1} g_{j,m}·(r_j^m − 1/2)`. Substituting the revealed coefficients, this equals `ρ^{-1}·(public − (f(r) − H/2^n))`, since `Σ_j (F_j(r_j) − F_{j−1}(r_{j−1})/2)/2^{n−j}` telescopes, with `F_0(r_0) = H`.
 - **Other inputs to `f`.** Batched instances, zero-checks and layer points change only `f`'s public factors.
-- **Opening `G(r)` (R11).** `G(r)` is also an advice claim, but its column functional is `(r_j^m)` over the coefficient positions, not an `eq` vector. So RFC-0011 cannot open it as an ordinary claim, as RFC-0013 step 4 assumes.
-  - **The cost.** Each masked sumcheck's `G(r)`, and each tree level's mask claim `R̃_t(r'_t)`, needs its own opening group: a blinding pair, a blinding claim and one combined row of `k` `Fp2` values, about 64 MB at `k = 2^{22}`. That is far beyond RFC-0011's target of 16 groups and RFC-0013's 34 blinding rows.
-  - **The alternative.** A batching sumcheck that reduces these claims to shared column points.
-  - **What hiding needs.**
-    - **One group per claim.** Lemma 5 covers it, group by group.
-    - **A batching sumcheck.** It reveals new functionals of the masking polynomials' rows: its round messages and its final evaluation. Those rows keep only `n` spare directions each, so the batching sumcheck needs its own masking polynomial (Lemma 4) or a rank argument of its own.
-- **Requirement R4.** Each `g_j` has round `j`'s degree, the round whose degree the masked extensions raise included, up to 7: the last round, or at a LogUp leaf level the round before it (RFC-0032, RFC-0068).
+- **Opening `G(r)` (R11).** `G(r)` is also an advice claim, but its column functional is `(r_j^m)` over the coefficient positions, not an `eq` vector, so RFC-0011 cannot open it alone. Each tree level's mask claim `R̃_t(r'_t)` sits at its own level's point.
+  - **The cost of one group each.** A blinding pair, a blinding claim and a combined row of `k` `Fp2` values, about 64 MB at `k = 2^{22}`, per claim. At 405B that is 2,668 claims, and EXP-0027's 2,667 would take 612 groups even one per column point: 38.25 GiB.
+  - **What [RFC-0070](../rfcs/RFC-0070-mask-batching.md) does.** The prover sends `G(r)` with the sumcheck's evaluations, so the final check above keeps its rejection. One masked batching sumcheck then opens every `G(r)`, every tree-level mask claim and the `SoftmaxRow` leaf mask's, with one more group (§4.3a, Lemma 4a).
+- **Requirement R4.** Each `g_j` has the degree `d` that the sumcheck's round messages hold in every round (RFC-0010), which is at least every round's degree, the round whose degree the masked extensions raise included, up to 7: the last round, or at a LogUp leaf level the round before it (RFC-0032, RFC-0068, RFC-0070).
 - **Degenerate event.** `ρ = 0`: `1/q` per masked sumcheck.
 
 **The identity sumcheck.** Its final evaluations `N'_L(r_L), D'_L(r_L), N'_T(r_T), D'_T(r_T)` are values of masked root levels, `Ṽ(y) + y(1 − y)·R̃(y)`.
@@ -172,22 +169,50 @@ Each stage is Lemma 4's masked sumcheck. Its final evaluations and its split val
 - `Z(p) = 0`: `≤ 2(n_V − 1)/q` per point (this R8 rules out structurally, beyond the probabilistic case);
 - dependent `eq` vectors: `e_V^2/q` per mask row.
 
+### 4.3a The masks' batching (RFC-0070)
+
+After the last stage, [RFC-0070](../rfcs/RFC-0070-mask-batching.md) opens the mask claims, every masked sumcheck's `G(r)`, every tree level's `R̃_t(p_t)` and the `SoftmaxRow` leaf's `R̃_h(p_h)`, in one sumcheck.
+- **The block.** The claims are linear functionals `⟨c_i, M⟩` of the masks' block `M`, which holds every masking polynomial's coefficients, the tree levels' masks whose values `tree/{ℓ}/evals` carries, and the `SoftmaxRow` forest's leaf mask, packed in aligned blocks, and nothing else.
+- **The combination.** A challenge `α` combines them into `v = ⟨C, M⟩`, `C = Σ_i α^i·c_i`.
+- **The pad.** `S`, laid out like `M` and committed in Round 1, masks the sumcheck: the prover sends `Γ_S = ⟨C, S⟩`, `ρ` is squeezed, and the rounds prove `Σ_x C̃·z̃ = v + ρ·Γ_S` with `z = M + ρ·S`.
+- **The end.** `y = z̃(r*)` is one advice claim, in one more group.
+
+**Lemma 4a (the masks' batching).** Let `T` be `M`'s non-public positions, `S` uniform over `Fp2^T` and zero off `T`, independent of everything sent before `Γ_S`. Given the earlier view and `ρ ≠ 0`, the batching's view `(Γ_S, the rounds, y)` depends on the secrets only through `v`, which the earlier view fixes.
+- **Proof.**
+  - `C_T ≠ 0`, since claim 0, the LogUp identity's `G(r)`, puts 1 on its `a_0` slot. So `Γ_S` is uniform, and given it, `S_T` is uniform on the hyperplane `⟨C_T, ·⟩ = Γ_S`.
+  - So `z_T` is uniform on `{⟨C_T, z_T⟩ = v + ρ·Γ_S}`, which public values fix, and `z` is zero off `T`.
+  - Every later message of the batching is a function of `z`, `C` and the challenges.
+- **What the simulator does.** It samples `Γ_S` uniformly, then `z_T` on that hyperplane, then runs the honest prover. That is exact for every `C` and every adaptive choice of the challenges.
+- **No rank condition.** Coverage replaces it: `S` must be uniform wherever `M` holds a mask value, claimed or not. A dependence among the rounds' functionals is shared by `M`'s side, a public relation. EXP-0027 measured the revealed functionals at `2m`, the most the sumcheck's shape allows, on protocol-like `C`.
+- **What the lemma needs, each shown necessary by EXP-0027 on a toy protocol over F65537:**
+  - a pad, since the bare batching leaks through a root level's pinned two-entry row;
+  - `S` on `M`'s layout, not on `C`'s support, which depends on challenges, and leaks through a block no claim reads;
+  - `M̃(r*)` and `S̃(r*)` never sent apart.
+- **Two design rules beside it.** `S` is drawn over `Fp2`, as every mask is: the proof as written needs its two `Fp` blocks independent, and EXP-0027's prime fields do not test it. `M` holds only claimed masks, which keeps `S` no larger than needed: the lemma does not need it.
+- **After the batching.** `S_T = ρ^{-1}·(z_T − M_T)`, so `M` and `S` enter nothing revealed later except under fresh randomness of its own:
+  - `y`'s group, under its blinding pair (§4.4);
+  - the proximity row, under `Q_ξ` and the free rows Lemma 5 names, which are not `S`'s;
+  - the columns, under each row's encoding mask (Lemma 6).
+- **Degenerate event.** `ρ = 0`: `1/q`.
+
 ### 4.4 Advice openings
 
 **What is revealed** (RFC-0011 'Opening protocol', RFC-0013 'Hiding openings'):
 - **Per group `g`:** the blinding claim `q_g = ⟨Q_g, eq(col_g)⟩`, then the combined row `u'_g = Σ_row c_g(row)·A_row + Q_g` and its mask `M_g`.
 - **Once:** the proximity row `u_ξ` and its mask `M_ξ`.
-- **The advice's rows.** Data rows; every mask row `R_V` and `R_t`; every masking polynomial's coefficient rows; and the blinding pairs `Q_g` and `Q_ξ`.
+- **The advice's rows.** Data rows; every mask row `R_V` and `R_t`; every masking polynomial's coefficient rows; the masks' pad `S` (RFC-0070); and the blinding pairs `Q_g` and `Q_ξ`.
+- **The masks' batching group.** `y`'s group is one group like the others, with its own blinding pair `Q_y`: Lemma 5 covers it.
 
 **Lemma 5 (advice combinations).** The joint view `(q_g, u'_g, M_g)_g`, with `u_ξ` and `M_ξ`, is uniform subject to the group checks `Σ_t γ^{t+1}·v_t + q_g = ⟨u'_g, eq(col_g)⟩`.
 - **Under RFC-0011's tensor generator**, this holds except with probability about `p^{-2}`.
   - **The groups.** Each `u'_g` takes `(1, X)` on `Q_g` and no other blinding pair, so the groups' rows are triangular.
   - **The proximity row.** `u_ξ` takes generator coefficients on every non-zero row. After the groups' rows are eliminated, the rows still free for it are:
     - `Q_ξ`;
-    - each mask row `R_V` on its support, minus its `e_V` scalar functionals. A row read at as many points as its support is fully used: a root level's two-entry row at two points, for one.
+    - each tensor's mask row `R_V` on its support, minus its `e_V` scalar functionals. A row read at as many points as its support is fully used. The tree levels' masks are `M`'s, which the batching leaves no free direction (below).
 
     The groups' use of the mask rows is absorbed by the `Q_g`.
   - **Mostly not free: the masking polynomials' rows.** Each non-constant coefficient `g_{j,m}` is pinned by its revealed round coefficient `F_{j,m} + ρ·2^{n−j}·g_{j,m}`. Of the constants, only `a_0 + Σ_j g_{j,0}` is pinned, so each masking polynomial keeps `n` spare directions.
+  - **Not counted free: `M`'s and `S`'s rows.** After the batching, `S_T` is a function of `z_T` and `M_T` (§4.3a), so neither block is free for `u_ξ` beyond the batching's span. The argument below needs neither: its second free row is a large activation mask row.
   - **When it fails.** It fails only if every free row's coefficient lies on one `Fp`-line (Lemma 2.2).
     - **`Q_ξ`'s pair.** It is in no group, so the elimination leaves its coefficients unchanged. Its ratio forces some `ξ*_i` into `Fp`: about `1/p`.
     - **One more row.** Take any free row whose index differs from the pair's in a bit `j ≠ i`. Its coefficient, after the `Q_g` are eliminated, lies on the pair's line only when a non-constant Möbius function of `ξ*_j` lands in `Fp`: about `1/p`, independently.
@@ -331,8 +356,9 @@ So `ε_W ≤ 10·C(N, 2)·p^{-4} ≤ 2^{-230}` over the ten matrices at `N = 681
 Packing several masks in one row, each in its own aligned sub-block at a public offset `o`, behaves differently by mask kind:
 - **Tree levels' masks: admissible.** These are the virtual masks OQ-0013-1 asks about. Their only scalar claim is `R̃_t(r'_t)`, which stands alone.
   - **Independence.** Each block's functionals are supported on its own block. Within a block, Lemma 2 applies to its own points.
-  - **The cost.** The opening functional is `eq(offset ‖ p_col)`, a column sub-point of its own, so it needs its own opening group. A tree level's mask claim `R̃_t(r'_t)` needs one anyway, even unpacked, since each level's `r'_t` is distinct (R11), so packing adds no group. It saves mask rows where they would be mostly empty.
-- **Reduction stages' virtual masks: not admissible.** A reduction stage's fold reads its mask's whole row (RFC-0013 'Virtual tensors', #538), every block of a packed row included, and the row must be random in all its entries, so these masks are not packed.
+  - **The cost.** The opening functional is `eq(offset ‖ p_col)`, a column sub-point of its own, which no RFC-0011 group would share. [RFC-0070](../rfcs/RFC-0070-mask-batching.md) packs them in the masks' block `M` and opens their claims with the masking polynomials' in one batching sumcheck (§4.3a), so packing costs no group. It saves mask rows: at 405B, 2,621 tree-level masks, the leaf mask and the coefficients fit in 780 rows.
+- **The `SoftmaxRow` leaf mask: admissible.** RFC-0030's fold reads only `R_h[x_col]` over its `c_h` column variables (RFC-0013 'Virtual tensors' exempts it from #538's rule), so its functionals lie on its own block. At 405B `c_h = 22`, a whole row of `M`.
+- **Reduction stages' #538 fold masks: not admissible.** Such a fold reads its mask's whole row (RFC-0013 'Virtual tensors', #538), every block of a packed row included, and the row must be random in all its entries, so these masks are not packed.
 - **Committed tensors' masks: not admissible, unless the tensor's data sits at the mask's column offset.**
   - **Why.** `V'(p)` can be opened as one claim only because both terms have column part `eq(p_col)` (RFC-0013 'Masked extensions', committed tensors; RFC-0011 step 1 requires a combination's pieces to share one column sub-point). A mask packed at `o ≠ 0` has column part `eq(o ‖ p_col)`.
   - **The leak.** The claim then splits across two groups, and the two revealed values give `Ṽ(p)`.
@@ -341,16 +367,21 @@ Packing several masks in one row, each in its own aligned sub-block at a public 
 ## 8. Error bound
 
 `ε_1` sums, in units of `1/q`:
-- **Masked sumchecks.** One term per stage, tree level and identity sumcheck: `ρ = 0`.
+- **Masked sumchecks.** One term per stage, tree level, identity sumcheck and the masks' batching: `ρ = 0`.
 - **Revealed masked points.** `2(n − 1)` per point: `Z = 0`.
-- **Mask rows.** `e_V^2` per tensor mask row, and 9 per tree-level mask row: dependent `eq` vectors.
+- **Mask rows.** `e_V^2` per tensor mask row, and 9 per tree-level mask: dependent `eq` vectors.
 - **Proximity rows.** About `p^{-2}` each, under the tensor generator (Lemma 5).
 
-**At the 405B default.** This comes to about 5,000 masked points, about 2,000 mask rows with `e_V ≤ 4`, and about 200 masked sumchecks.
-- The `Z` terms give `≈ 450,000/q ≈ 2^{-109}`.
-- The `eq` terms give `≈ 32,000/q ≈ 2^{-113}`.
+**At the 405B default.** EXP-0027 counts the tree levels and the masked sumchecks from the compiler's schedule; the tensors' figures are still RFC-0013's projections.
+- **The counts.**
+  - 2,622 masks of `M`, the 2,621 tree levels' and the `SoftmaxRow` leaf's, each revealed at its masked points and by its claim;
+  - 46 masked sumchecks, and the masks' batching;
+  - about 5,000 masked points of the tensors, and about 2,000 tensor mask rows with `e_V ≤ 4`.
+- **The `Z` terms.** These masks are revealed at 5,144 masked points: two per level below a root and two for the leaf mask, at most `2(n − 1) = 82` each, and one per root level, 2 each. They sum to 149,236. With the tensors' `≈ 450,000`, that gives `≈ 6.0·10^5/q ≈ 2^{-108.8}`.
+- **The `eq` terms.** `9 × 2,622` and the tensors' `≈ 32,000` give `≈ 5.6·10^4/q ≈ 2^{-112.2}`.
+- **The masked sumchecks.** 47 terms, negligible beside these.
 
-So `ε_1 < 2^{-105}`, given R10's rank checks. These counts are projections from RFC-0013's cost table. They must be recomputed from the compiler's schedule once `tessera-protocol/2`'s layout is compiled, RFC-0068's column masks and layer sumcheck included.
+So `ε_1 ≈ 6.5·10^5/q ≈ 2^{-108.7} < 2^{-105}`, given R10's rank checks. The tensors' counts must still be recomputed from the compiler's schedule once `tessera-protocol/2`'s layout is compiled, RFC-0068's column masks and layer sumcheck included.
 
 **Outside `ε_1`.** `ε_PRG` and `ε_H` are separate. Per epoch, `ε_W ≤ 2^{-230}` adds to the proofs' terms.
 
@@ -361,19 +392,20 @@ So `ε_1 < 2^{-105}`, given R10's rank checks. These counts are projections from
 | R1 | The proximity row's blinding pair is the fixed word, with coefficients `1` and `X` and no generator coefficient. This is soundness's choice, not zero knowledge's, which holds either way (§4.4) | RFC-0011 step 3, RFC-0012, RFC-0049 for `tessera-protocol/2`, against RFC-0013 'The proximity row' | Conflicting text; #394 |
 | R2 | For masked weights, the proximity generator's coefficients on blinding rows are independent uniform `Fp2`, or those rows are excluded with their own soundness argument | RFC-0012, RFC-0049; Draft RFC-0021's free-row stream meets it | Not met by the tensor generator; #394 |
 | R3 | The linking proof opens the difference of the two commitments, with the public claim 0, each keeping its own proximity row | [RFC-0064](../rfcs/RFC-0064-weight-linking-proof.md), superseding RFC-0012 'Refresh and linking proof' | Met in the specification by RFC-0064 ([#485](https://github.com/AbdelStark/tessera/issues/485)); [#153](https://github.com/AbdelStark/tessera/issues/153) implements it, with R3's test |
-| R4 | Each masking polynomial's `g_j` has its round's degree, a raised round's included | RFC-0013 'Masked sumcheck' | Stated by this change |
-| R5 | INV-ZK-2 reads as a rank condition. Each mask, blinding row and masking polynomial has a designated revealed combination where it enters with an invertible block, and the joint coefficient matrix over the masks has full rank. Further uses are allowed where Lemmas 5 and 7 cover them | RFC-0013 'Invariants' | Literal one-use conflicts with the proximity row; #394 |
+| R4 | Each masking polynomial's `g_j` has its sumcheck's message degree `d`, at least every round's, a raised round's included | RFC-0013 'Masked sumcheck' | Stated by this change |
+| R5 | INV-ZK-2 reads as a rank condition. Each mask, blinding row and masking polynomial has a designated revealed combination where it enters with an invertible block, and the joint coefficient matrix over the masks has full rank. Further uses are allowed where Lemmas 4a, 5 and 7 cover them. The masks' batching is such a use: the masking polynomials, the tree levels' masks and the `SoftmaxRow` leaf mask enter it only through `M + ρ·S`, which the pad `S` covers, so its functionals need not have full rank (Lemma 4a) | RFC-0013 'Invariants' | Literal one-use conflicts with the proximity row; #394 |
 | R6 | The weight budget never rolls back, and an aborted session burns what it reserved | RFC-0012 'Budget state machine' | Met by RFC-0012; #156 must preserve it |
 | R7 | A scoring message that carries a secret evaluation has a masked extension | RFC-0017 | To check when its masked messages land |
 | R8 | No masked tensor is revealed at a point where its own `Z` vanishes, nor alone in a sum all of whose terms are such points. RFC-0045's per-layer split values violated it, and so did the LogUp columns, sums of such terms | RFC-0045, RFC-0037 'Splits' and 'The claim pool', RFC-0013 'Masked extensions', [RFC-0068](../rfcs/RFC-0068-leaf-stage-zero-knowledge.md), [RFC-0069](../rfcs/RFC-0069-one-layer-claims.md) | Met in the specification for the leaf stage by RFC-0068 ([#486](https://github.com/AbdelStark/tessera/issues/486)): column masks and a layer sumcheck. Met for claims at one layer, the epilogue's on the last checkpoint, by [RFC-0069](../rfcs/RFC-0069-one-layer-claims.md) ([#535](https://github.com/AbdelStark/tessera/issues/535)). [#148](https://github.com/AbdelStark/tessera/issues/148) and [#154](https://github.com/AbdelStark/tessera/issues/154) implement it, and [#162](https://github.com/AbdelStark/tessera/issues/162) tests it |
 | R9 | `ChannelParams` claims take masks over the type tensor's own coordinates, a mask row per claim, which is its evaluation row's designated block, and one pair per matrix for the blinding claims: `2e + 4` rows per proof. `ChannelParams`' own blinding rows `B_CP` keep its epoch as long as the others' | [RFC-0065](../rfcs/RFC-0065-masked-channel-params.md), superseding RFC-0052's `tessera-protocol/2` gap and RFC-0012's six-row `reserve` | Met in the specification by RFC-0065 ([#487](https://github.com/AbdelStark/tessera/issues/487)), for sites of two classes or more with RFC-0068's leaf stage ([#486](https://github.com/AbdelStark/tessera/issues/486)). [#147](https://github.com/AbdelStark/tessera/issues/147) implements it, and [#162](https://github.com/AbdelStark/tessera/issues/162) tests it |
-| R10 | Every mask row's revealed points, as the compiled schedule places them, have linearly independent `eq` vectors, apart from dependencies implied by public relations among the revealed values, such as `e'(λ ‖ r')`'s. For a weight matrix whose evaluation rows share a pair `β_T` ([RFC-0065](../rfcs/RFC-0065-masked-channel-params.md)), the check runs per matrix, over every functional of `β_T` together. A value that carries a secret term (`S ≢ 0`) must lie outside the span of the others. One that carries none (`S ≡ 0`, decided symbolically) adds its functional to the span but is not refused: two claims at one column point, such as O's and Down's at stage 1's final point, give `q_O = q_Down` and are valid. The points depend on challenges, so the compiler checks the generic (symbolic) rank and Schwartz–Zippel bounds the rest. Softmax row sums at `1/2` and shared column sub-points are included | the compiler's schedule (RFC-0006, RFC-0037) and the verifier's derivation | Not checked; [#488](https://github.com/AbdelStark/tessera/issues/488) |
-| R11 | Each masked sumcheck's `G(r)` and each tree level's mask claim is opened. Either way, the budget counts it: through its own group, with a blinding pair and a combined row, or through a batching sumcheck that reduces them to shared column points | RFC-0013 'Masked sumcheck', RFC-0011 'Opening protocol', RFC-0032 | Not specified: RFC-0011 opens `eq` functionals only; [#489](https://github.com/AbdelStark/tessera/issues/489) |
+| R10 | Every mask row's revealed points, as the compiled schedule places them, have linearly independent `eq` vectors, apart from dependencies implied by public relations among the revealed values, such as `e'(λ ‖ r')`'s. For a weight matrix whose evaluation rows share a pair `β_T` ([RFC-0065](../rfcs/RFC-0065-masked-channel-params.md)), the check runs per matrix, over every functional of `β_T` together. A value that carries a secret term (`S ≢ 0`) must lie outside the span of the others. One that carries none (`S ≡ 0`, decided symbolically) adds its functional to the span but is not refused: two claims at one column point, such as O's and Down's at stage 1's final point, give `q_O = q_Down` and are valid. The points depend on challenges, so the compiler checks the generic (symbolic) rank and Schwartz–Zippel bounds the rest. Softmax row sums at `1/2` and shared column sub-points are included. The masks' batching's final point `r*` is not a revealed point of any mask in `M`: `y` reveals `z̃(r*)`, which `S` masks ([RFC-0070](../rfcs/RFC-0070-mask-batching.md)) | the compiler's schedule (RFC-0006, RFC-0037) and the verifier's derivation | Not checked; [#488](https://github.com/AbdelStark/tessera/issues/488) |
+| R11 | Each masked sumcheck's `G(r)`, each tree level's mask claim and the `SoftmaxRow` leaf mask's is opened. Either way, the budget counts it: through its own group, with a blinding pair and a combined row, or through a batching sumcheck that reduces them to shared column points | RFC-0013 'Masked sumcheck', RFC-0011 'Opening protocol', RFC-0032 | Met in the specification by [RFC-0070](../rfcs/RFC-0070-mask-batching.md) ([#489](https://github.com/AbdelStark/tessera/issues/489)): one masked batching sumcheck, Lemma 4a, one group. [#148](https://github.com/AbdelStark/tessera/issues/148), [#149](https://github.com/AbdelStark/tessera/issues/149) and [#159](https://github.com/AbdelStark/tessera/issues/159) implement it, and [#162](https://github.com/AbdelStark/tessera/issues/162) tests it |
 
 ## 10. Testing
 
 These tests check the implementation of the masks, not this argument (07 §7). Each mechanism maps to one in #162's distinguisher suite:
 - **Lemma 4.** Round messages' non-constant coefficients, and `Γ`, are uniform for two witnesses.
+- **Lemma 4a.** The masks' batching's view is identical for two witnesses whose earlier views agree. Its negative controls, each told apart: no pad; `M̃(r*)` sent alone on a layout with no spare direction; `S` on `C`'s support with a block no claim reads; and `S` drawn over `Fp`, on a layout of fewer than `4m` non-public positions, beyond which an `Fp` pad leaves no direction uncovered.
 - **Lemma 2.** Each revealed masked value is uniform for two witnesses. With an `Fp` mask, a distinguisher on the value's line wins.
 - **R8 and R9.** For two witnesses, every revealed evaluation has the same distribution. As the negative control, `tessera-protocol/1`'s per-layer split values and `ChannelParams` claims are told apart, and so are RFC-0068's column values with the column masks set to zero, and RFC-0069's claims at one layer with their rows set to zero.
 - **Lemma 5.** Combined rows are uniform for two witnesses, under the tensor generator and under the fixed word.

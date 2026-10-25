@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.3
-- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('The claim pool' and 'Invariants': `ChannelParams` claims in the pool), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The layer point', `ρ_1` is the leaf stage's layer sumcheck point; 'Splits' and 'Messages and transcript', the leaf stage's values and labels), [RFC-0069](RFC-0069-one-layer-claims.md) ('Layers and kinds' and 'Stages and their instances': the one read at one layer, and no relation proving such a claim; 'The claim pool', in `tessera-protocol/2`: a piece at one layer takes its layer tensor's own mask row)
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('The claim pool' and 'Invariants': `ChannelParams` claims in the pool), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The layer point', `ρ_1` is the leaf stage's layer sumcheck point; 'Splits' and 'Messages and transcript', the leaf stage's values and labels), [RFC-0069](RFC-0069-one-layer-claims.md) ('Layers and kinds' and 'Stages and their instances': the one read at one layer, and no relation proving such a claim; 'The claim pool', in `tessera-protocol/2`: a piece at one layer takes its layer tensor's own mask row), [RFC-0070](RFC-0070-mask-batching.md) (INV-SCH-3, in `tessera-protocol/2`: the mask claims reach the masks' batching)
 - Supersedes, on acceptance:
   - [RFC-0010](RFC-0010-proof-schedule.md#relations) 'Relations': `Rotate`'s identity and its one claim on its input, and the claims of the linear maps added here;
   - [RFC-0010](RFC-0010-proof-schedule.md#stages) 'Stages' and 'Batching within a stage': how a stage stacks layers, splits claims and orders its instances, and the layer point;
@@ -189,7 +189,7 @@ A claim ready for the pool is a combination `Σ_t a_t·P̃_t(r) = v` at one poin
 
 - **Advice.** RFC-0011's grouping takes the combination as one claim. Its row coefficients add `γ_claim·a_t·w_t(ℓ)·eq(row part of (r ‖ base_{t,ℓ}), row)` for each piece, and its column sub-point is `r`'s. In `tessera-protocol/2`, a `Layers::One(ℓ)` piece, the read of `c_L`, adds its layer tensor's own mask row with `γ_claim·a_t·Z(r)` when `λ ≥ 1`, and the kind's own row takes nothing. When `λ = 0` it is an ordinary claim on the kind, whose row takes `γ_claim·a_t·Z(r)` ([RFC-0069](RFC-0069-one-layer-claims.md#the-pool)). The rule follows the schedule's `Layers::One` atoms, never the shape of a weight.
 - **Weights.** A weight type's claim is `W̃_T(r_i ‖ r_o ‖ ρ)` with `eq(ρ, ·)` its layer weights: RFC-0012's one claim per type. Each site that reads channel classes or affine multipliers leaves one claim on `ChannelParams` in the pool, opened together in one pass ([RFC-0052](RFC-0052-channel-params-claims.md)).
-- **INV-SCH-3.** Every claim on a committed tensor reaches the pool.
+- **INV-SCH-3.** Every claim on a committed tensor reaches the pool. In `tessera-protocol/2`, the mask claims reach [RFC-0070](RFC-0070-mask-batching.md)'s batching instead, whose claim `y` reaches the pool.
 
 The complete current-model advice opening orders original combinations before
 assigning the per-group powers of `gamma`: graph pool claims first in pool

@@ -9,7 +9,7 @@
   - [RFC-0008](RFC-0008-logup-and-tables.md#fraction-tree) 'Fraction tree': the roots and the leaf checks;
   - [RFC-0010](RFC-0010-proof-schedule.md#tree-levels) 'Tree levels': forests of one tree, and the levels' sumchecks;
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule) 'Transcript schedule', rows 4 and 5.
-- Amended by: [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Leaf checks': each LogUp instance's key and value columns take a mask row of their own, and the leaf level's raised degree falls in the round before the last)
+- Amended by: [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Leaf checks': each LogUp instance's key and value columns take a mask row of their own, and the leaf level's raised degree falls in the round before the last), [RFC-0070](RFC-0070-mask-batching.md) ('Masked tree levels', 'Masked extensions that spare the pair bit', 'Leaf checks', 'Labels' and 'Cost': `G_ℓ(r)` is sent with the level's evaluations, and it, the mask values `R̃_t` and the `SoftmaxRow` leaf's `R̃_h` are claims on the masks' block, which RFC-0070's batching opens)
 - Origin: [#224](https://github.com/AbdelStark/tessera/issues/224)
 
 ## Summary
@@ -50,7 +50,7 @@ Each batched tree level `ℓ` runs RFC-0013's masked sumcheck ([RFC-0013](RFC-00
 
 - the prover commits a masking polynomial `G_ℓ` in Round 1;
 - at the level, it sends `Γ_ℓ = Σ_x G_ℓ(x)` under `tree/{ℓ}/zk-sum`, and `ρ_ℓ` is squeezed under `tree/{ℓ}/zk-rho`, before `γ_ℓ`;
-- the level's sumcheck runs on its combination plus `ρ_ℓ·G_ℓ`, and `G_ℓ` is opened at the level's final point.
+- the level's sumcheck runs on its combination plus `ρ_ℓ·G_ℓ`; the prover sends `G_ℓ(r)` at the level's final point, last under `tree/{ℓ}/evals`, and [RFC-0070](RFC-0070-mask-batching.md)'s batching sumcheck opens it with every other mask claim.
 
 The LogUp identity sumcheck below is masked the same way.
 
@@ -73,7 +73,7 @@ Level `t ≥ 1` of a forest has the pair bit `b`, its lowest variable, and the o
 V'_t(b ‖ x) = Ṽ_t(b ‖ x) + Z_t(x)·R̃_t((b ‖ x)_col),        Z_t(x) = Π_j x_j·(1 − x_j)
 ```
 
-- **The mask.** `R_t` is a fresh `Fp2` mask row over the level's column variables, the pair bit among them, as in [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) 'Masked extensions'.
+- **The mask.** `R_t` is a fresh `Fp2` mask over the level's column variables, the pair bit among them, as in [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) 'Masked extensions'. Its `2^{c_t}` values are a block of [RFC-0070](RFC-0070-mask-batching.md)'s masks' block `M`, aligned to its size.
 - **Agreement.** `Z_t` vanishes when `x` is Boolean, whatever `b`, so `V'_t = Ṽ_t` on the level's hypercube, and every level identity holds with `V'` in place of `Ṽ`.
 - **What a level reveals.** At its final point `r'`, it sends `V'_{t+1}(0 ‖ r')` and `V'_{t+1}(1 ‖ r')`. `r'` holds at least one random coordinate, so `Z_{t+1}(r') ≠ 0`, and `R̃_{t+1}` at the two points masks them, independently, since the pair bit is a variable of the row.
 - **Folding.** A level that proves the claim `V'_t(p) = v`, at `p = ρ ‖ q` with `q` its coordinates besides the pair bit's, proves
@@ -83,11 +83,11 @@ V'_t(b ‖ x) = Ṽ_t(b ‖ x) + Z_t(x)·R̃_t((b ‖ x)_col),        Z_t(x) = �
   ```
 
   - `g(x)` is the level's combination of the next level, `V'_{t+1}(0 ‖ x)·V'_{t+1}(1 ‖ x)`, or the fraction combination of RFC-0010.
-  - The prover sends `R̃_t` at the level's final point `r'` beside the next level's evaluations. That value is a claim on the advice.
+  - The prover sends `R̃_t` at the level's final point `r'` beside the next level's evaluations. That value is a claim on the masks' block, which [RFC-0070](RFC-0070-mask-batching.md)'s batching sumcheck opens: each level's point is its own, so no RFC-0011 group could share it.
   - The verifier never sees `R̃_t(p)` (RFC-0013 'Masked extensions', virtual tensors).
-- **Degree.** `Z_{t+1}` vanishes at every summation point but the last round's, so only the last round's degree rises, to 7 for a product or fraction combination. RFC-0014's bound already allows `d ≤ 7`.
-- **Masks per level.** One mask row per level of a product forest, and two per level of a fraction forest, for `N` and `D`, its leaf level excepted ('Leaf checks'). The leaf level's key and value columns take column masks of their own ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#column-masks)).
-- **The root level** of a LogUp forest has one variable, the tree index `y`, and no pair bit. Its polynomials take `Z_0(y) = y·(1 − y)` and their own mask rows. The first level folds them like any other, at the identity's point `p = r_L` or `r_T`, with the factor `Z_0(p)`. A product forest's root values are public, and its root claim is computed by the verifier, as before.
+- **Degree.** `Z_{t+1}` vanishes at every summation point but the last round's, so only the last round's degree rises, to 7 for a product or fraction combination. RFC-0014's bound already allows `d ≤ 7`. The level's round messages hold RFC-0010's one degree for every round, 7, and its masking polynomial's `g_j` have that degree ([RFC-0070](RFC-0070-mask-batching.md)).
+- **Masks per level.** One mask per level of a product forest, and two per level of a fraction forest, for `N` and `D`, its leaf level excepted ('Leaf checks'). Each is a block of [RFC-0070](RFC-0070-mask-batching.md)'s masks' block. The leaf level's key and value columns take column masks of their own ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#column-masks)).
+- **The root level** of a LogUp forest has one variable, the tree index `y`, and no pair bit. Its polynomials take `Z_0(y) = y·(1 − y)` and masks of their own. The first level folds them like any other, at the identity's point `p = r_L` or `r_T`, with the factor `Z_0(p)`. A product forest's root values are public, and its root claim is computed by the verifier, as before.
 
 ### The LogUp identity sumcheck
 
@@ -142,7 +142,7 @@ over every variable but the lowest.
 - **Where the claims go.** The claims on `κ'` and `e'` enter the leaf stage's layer sumcheck, which reduces them to claims on the tensors the columns read and on the column masks ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#the-layer-sumcheck)). Those on `m'` go to the openings, as RFC-0013 says.
 - **Degree.** The tree index is the leaf level's highest variable, so it takes the last level's last round. The `Z` of `κ'`, `e'` and `m'` spares it, and does not vanish at that level's summation points from the round before the last on. The fraction forests' leaves therefore raise that round's degree, to at most 7, and not the last round's (RFC-0068).
 
-**Product forests.** `C̃·k'` would raise the leaf level's degree past 7, so a `SoftmaxRow` forest's leaf level takes its own mask row, like a level above it. RFC-0030's reduction folds it: `Σ_x eq(p, x)·(C(x)·k(x) + Z_h(q)·R_h[x_col]) = L'_h(p) − 1 + C̃(p)`. The instance exists already, so no stage is added.
+**Product forests.** `C̃·k'` would raise the leaf level's degree past 7, so a `SoftmaxRow` forest's leaf level takes its own mask row, like a level above it. RFC-0030's reduction folds it: `Σ_x eq(p, x)·(C(x)·k(x) + Z_h(q)·R_h[x_col]) = L'_h(p) − 1 + C̃(p)`. The instance exists already, so no stage is added. Its stage sends `R̃_h` at the instance's point last among that instance's final evaluations, and [RFC-0070](RFC-0070-mask-batching.md) makes `R_h` a block of the masks' block, its value a mask claim.
 
 ### What the verifier sees
 
@@ -151,8 +151,8 @@ These rows replace RFC-0013's row for LogUp roots and add the tree levels:
 | Revealed item | Mechanism | Randomness |
 |---|---|---|
 | Tree-level and identity round messages | Masked sumcheck | `G_ℓ`, and the identity's `G`, per level |
-| Tree-level evaluations `V'_{t+1}(b ‖ r')` and the mask values `R̃_t` | Masked extensions that spare the pair bit; at a LogUp leaf level, those of its keys, values and multiplicities | One `Fp2` mask row per level and polynomial, LogUp leaf levels excepted; there, each instance's key and value columns' own mask rows ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#column-masks)) |
-| LogUp roots | Not sent: the identity sumcheck's final evaluations, masked | The root levels' mask rows |
+| Tree-level evaluations `V'_{t+1}(b ‖ r')` and the mask values `R̃_t` | Masked extensions that spare the pair bit; at a LogUp leaf level, those of its keys, values and multiplicities | One `Fp2` mask per level and polynomial, a block of RFC-0070's masks' block, LogUp leaf levels excepted; there, each instance's key and value columns' own mask rows ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#column-masks)) |
+| LogUp roots | Not sent: the identity sumcheck's final evaluations, masked | The root levels' masks |
 
 ### Labels
 
@@ -163,7 +163,7 @@ These rows replace RFC-0013's row for LogUp roots and add the tree levels:
 | 4 | squeeze `α`, `β`; then the identity sumcheck: absorb masked sum, squeeze `ρ`, squeeze `γ`, rounds, final evaluations | `logup/alpha`, `logup/beta`, `logup/identity/zk-sum`, `logup/identity/zk-rho`, `logup/identity/gamma`, `logup/identity/round/{j}`, `logup/identity/r/{j}`, `logup/identity/evals` |
 | 5 | per tree level `ℓ`: squeeze the root point of the product forests that join at `ℓ`, absorb masked sum, squeeze `ρ_ℓ`, `γ_ℓ`, and `λ_ℓ` at a level with fraction forests, rounds, evaluations, line | `tree/{ℓ}/root/{c}`, `tree/{ℓ}/zk-sum`, `tree/{ℓ}/zk-rho`, `tree/{ℓ}/gamma`, `tree/{ℓ}/lambda`, `tree/{ℓ}/round/{j}`, `tree/{ℓ}/r/{j}`, `tree/{ℓ}/evals`, `tree/{ℓ}/line` |
 
-`logup/roots` has no use in `tessera-protocol/2`. `logup/values` stays, after the last level, as in row 5 of `tessera-protocol/1`. `tree/{ℓ}/evals` carries each instance's evaluations, then the mask values `R̃_t`.
+`logup/roots` has no use in `tessera-protocol/2`. `logup/values` stays, after the last level, as in row 5 of `tessera-protocol/1`. `tree/{ℓ}/evals` carries each instance's evaluations, then the mask values `R̃_t` in instance order, a fraction forest's numerators' before its denominators', then `G_ℓ(r)` ([RFC-0070](RFC-0070-mask-batching.md)).
 
 ### Soundness
 
@@ -177,7 +177,7 @@ These rows replace RFC-0013's row for LogUp roots and add the tree levels:
 | Item | Cost |
 |---|---|
 | Masked sumcheck | `2(n(d + 1) + 1)` committed elements per level: about 700 at `n = 45`, `d = 7`, so a few times 10^4 per proof |
-| Mask rows | One `Fp2` row per level of a product forest, two per level of a fraction forest. RFC-0013's cost table counts tree levels among its mask rows; OQ-0013-1's packing applies. |
+| Mask rows | One `Fp2` mask per level of a product forest, two per level of a fraction forest, packed as blocks of [RFC-0070](RFC-0070-mask-batching.md)'s masks' block `M`: at 405B, 2,621 masks, the `SoftmaxRow` leaf mask and the masking polynomials' coefficients fit in 780 `Fp2` rows |
 | Padding trees | Constant, computed in closed form; one more round per level |
 | Identity sumcheck | Two rounds |
 
@@ -209,7 +209,7 @@ RFC-0013's simulator ([#145](https://github.com/AbdelStark/tessera/issues/145)) 
 
 - `tessera-protocol/2`'s leaf stage differs from `tessera-protocol/1`'s: no roots, an identity sumcheck, padding trees, masked levels. The non-hiding mode under `test-params` keeps `tessera-protocol/1`'s.
 - Every LogUp tree doubles its leaf count with a constant padding tree. A prover that materializes it pays twice.
-- Fraction forests need two mask rows per level.
+- Fraction forests need two masks per level.
 
 ## Migration / Rollout
 
@@ -237,7 +237,7 @@ The design and its labels are settled now, before `tessera-protocol/1` freezes t
 
 ## Open Questions
 
-None. The mask-row packing of OQ-0013-1 applies to tree levels unchanged.
+None. The mask-row packing of OQ-0013-1 applies to tree levels unchanged, and [RFC-0070](RFC-0070-mask-batching.md) packs them in its masks' block.
 
 ## References
 

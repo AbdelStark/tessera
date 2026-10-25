@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-25
 - Target milestone: v0.4
-- Amended by: [RFC-0069](RFC-0069-one-layer-claims.md) ('The layer sumcheck' step 1 and 'Zero knowledge': an outside value at one layer; 'Non-Goals': the epilogue's claim)
+- Amended by: [RFC-0069](RFC-0069-one-layer-claims.md) ('The layer sumcheck' step 1 and 'Zero knowledge': an outside value at one layer; 'Non-Goals': the epilogue's claim), [RFC-0070](RFC-0070-mask-batching.md) ('The layer sumcheck' step 6: `G(ρ')` is sent last under `stage/0/layer/evals` and opened by RFC-0070's batching; the proof-size figures)
 - Amends, in `tessera-protocol/2`:
   - [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#leaf-checks) 'Leaf checks': each LogUp instance's key and value columns take a mask row of their own;
   - [RFC-0045](RFC-0045-leaf-layout.md#the-leaf-point) 'The leaf point' and 'The split': `P` without the tree index's coordinate, and the values of sites in the layers sent once per site and tensor, at a random layer point, after a layer sumcheck;
@@ -31,7 +31,7 @@ This RFC changes three things:
 At 405B this costs:
 - 36 column mask rows, 72 committed rows, against 953,580 committed advice rows;
 - one masked sumcheck of 22 rounds;
-- one more advice opening group, about 64 MiB. The proof, about 2.67 GB in `tessera-protocol/2`, which has no token groups, becomes about 2.74 GB, before #489 opens the masking polynomials. RFC-0013's fold groups (#538) add two more, about 2.87 GB in all.
+- one more advice opening group, about 64 MiB. The proof, about 2.67 GB in `tessera-protocol/2`, which has no token groups, becomes about 2.74 GB, before #489 opens the masking polynomials. RFC-0013's fold groups (#538) add two more, about 2.87 GB, and [RFC-0070](RFC-0070-mask-batching.md)'s batching of the mask claims one more, about 2.94 GB in all.
 
 The split shrinks from 53,489 lookup-tensor values to 614. `tessera-protocol/1` is unchanged.
 
@@ -56,7 +56,7 @@ The split shrinks from 53,489 lookup-tensor values to 614. `tessera-protocol/1` 
 
 ## Non-Goals
 
-- **The masking polynomials' openings** (#489). The layer sumcheck adds one.
+- **The masking polynomials' openings** (#489), which [RFC-0070](RFC-0070-mask-batching.md) specifies. The layer sumcheck adds one more claim to its batching.
 - **Grouped leaf stages** (RFC-0054). `tessera-protocol/2` accepts none.
 - **Claims at Boolean layers outside the leaf stage.** The epilogue's claim on the last checkpoint, `Layers::One(L − 1)` (RFC-0037), sits at a Boolean layer where the stacked kind's mask vanishes. [RFC-0069](RFC-0069-one-layer-claims.md) masks it (#535).
 
@@ -133,7 +133,8 @@ In `tessera-protocol/2` the leaf stage ends as follows, after `logup/values`.
 5. **The final values.** The prover sends, under `stage/0/layer/evals`, in this order:
    1. `v_{s,t} = X'_t(π_t(r_s) ‖ ρ'_y)` for every layered site and tensor, in RFC-0045's order of sites and tensors. `ρ'_y` is the layer instance's point, the last `λ` challenges.
    2. `u_i = R̃_{·,I(i)}(ρ'_{w_i})` for every column mask, in claim order. `ρ'_{w_i}` is fold `i`'s point, the last `c_i` challenges.
-6. **The check.** The verifier computes each `W̃_{s,t}(ρ'_y)`, in `O(L)` per pair, and each fold's public factor. It then checks the last round against the batched final value plus `ρ_zk·G(ρ')`. `G(ρ')` is opened as RFC-0013 opens masking polynomials (#489).
+   3. `G(ρ')`, the masking polynomial's value, which [RFC-0070](RFC-0070-mask-batching.md)'s batching opens.
+6. **The check.** The verifier computes each `W̃_{s,t}(ρ'_y)`, in `O(L)` per pair, and each fold's public factor. It then checks the last round against the batched final value plus `ρ_zk·G(ρ')`. `G(ρ')` is sent last under `stage/0/layer/evals`, and [RFC-0070](RFC-0070-mask-batching.md)'s batching sumcheck opens it with every other mask claim.
    - A final mismatch is `Reject(Sumcheck { stage: 0, round: n })`. RFC-0010's format derives `p_j(1)` from the claim, so no earlier round can mismatch.
    - The outside claims' atom splits of step 1 are checked before the sumcheck, a mismatch being `Reject(Sumcheck { stage: 0, round: 0 })`.
 7. **The result.**
@@ -160,7 +161,7 @@ In `tessera-protocol/2` the leaf stage ends as follows, after `logup/values`.
 | | `Γ`, then `ρ_zk` | `stage/0/layer/zk-sum`, `stage/0/layer/zk-rho` |
 | | `γ` | `stage/0/layer/gamma` |
 | per round `j < n` | its polynomial, then `ρ'_j` | `stage/0/layer/round/{j}`, `stage/0/layer/r/{j}` |
-| | the `v_{s,t}`, then the `u_i` | `stage/0/layer/evals` |
+| | the `v_{s,t}`, then the `u_i`, then `G(ρ')` (RFC-0070) | `stage/0/layer/evals` |
 | | the atom values of split stacked claims | `stage/0/layer/split` |
 | stage 1 | as RFC-0014 row 6, with no `stage/1/layer/{c}` | |
 
@@ -221,9 +222,9 @@ Atom split values come in addition, in both protocols.
 
 ## Drawbacks
 
-- One more masked sumcheck, of 22 rounds at 405B, with one more masking polynomial whose opening #489 must cover.
+- One more masked sumcheck, of 22 rounds at 405B, with one more masking polynomial, opened by [RFC-0070](RFC-0070-mask-batching.md)'s batching.
 - One more advice opening group, about 64 MiB of proof, and a blinding pair. Reducing the `u_i` once more, inside stage 1 to a column sub-point stage 1 already opens, would remove it. That is left to the implementation's cost measurements.
-- #489's openings of the masking polynomials decide whether the proof stays inside 08's gate in `tessera-protocol/2`: an opening group per masked sumcheck would add about 64 MiB each.
+- #489's openings of the masking polynomials decided whether the proof stays inside 08's gate in `tessera-protocol/2`: a group per mask claim would have added 166.7 GiB. [RFC-0070](RFC-0070-mask-batching.md)'s batching adds one group, and the proof stays inside the gate, at about 2.94 GB.
 - `tessera-protocol/2`'s leaf stage differs from `tessera-protocol/1`'s, so both workspaces implement both.
 
 ## Migration / Rollout

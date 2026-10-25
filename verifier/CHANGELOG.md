@@ -6,6 +6,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Added
 
+- `RejectReason::MaskBatch { round }`, `REJ-MASK-BATCH`, exit 10: a failure of `tessera-protocol/2`'s batching of the mask claims, `masks/round/{j}`, at round `j` from 0, or at `m` for the end (04 §2, RFC-0070 'Rejections', [#489](https://github.com/AbdelStark/tessera/issues/489)). Only the verdict type: no check produces it yet. The JSON payload is `round`, and `verdict-v1.schema.json` lists the code. The verdict test now compares the codes it serializes, in order, and every payload member with the schema's lists.
+
 - The verifier's pending coin toss, kept across restarts between its commitment and its reveal, written from RFC-0067 'The pending toss', 02 §2.3, 03 §5 and 05 §3 ([#529](https://github.com/AbdelStark/tessera/issues/529)):
   - **Why.** The share `s_V` lived in memory only, and the prover answers one commitment per manifest, so a verifier that stopped between the commitment and the reveal lost the period's audit.
   - **The artifact.** `tv_core::audit::VerifierToss`, schema `0x0702` version 1, `.tvt`: TCE `manifest_digest`, `policy`, `commitment`, then the 32-byte `share`, in RFC-0003's envelope. `open` and `decode_payload` check the envelope (`ERR-CODEC-*`, `ERR-CODEC-DIGEST` for a digest that does not match), then refuse a commitment that is not `H("coin-commit", share)` with `ERR-PROTO-COINTOSS`. The share is secret-class: it stays on the heap, read straight into a buffer cleared on drop, its encodings come back in `Zeroizing` buffers, and no `Debug` of `VerifierToss`, `AuditToss` or `TossFile` shows it. `AuditToss` now holds a `VerifierToss`, and `AuditToss::from(VerifierToss)` resumes a toss read back from its file.

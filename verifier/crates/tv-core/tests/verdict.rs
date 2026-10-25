@@ -42,6 +42,7 @@ fn every_rejection_serializes_public_payloads_and_escapes_parameter_names() {
         },
         R::LeafMerge { round: 12 },
         R::LogUpIdentity { round: 11 },
+        R::MaskBatch { round: 10 },
         R::Lookup {
             table: tv_tables::TableId(5),
         },
@@ -88,13 +89,47 @@ fn every_rejection_serializes_public_payloads_and_escapes_parameter_names() {
             name: ParamSetId::new("bad\\\"/1").unwrap(),
         },
     ];
+    // `verdict-v1.schema.json` lists exactly these codes, in 04 §2's order, and every member of
+    // a reason's payload among its properties (`additionalProperties` is false).
+    let schema = tv_testkit::Json::parse(
+        &std::fs::read_to_string(
+            tv_testkit::vectors_dir().join("../schemas/verdict-v1.schema.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let properties = schema
+        .get("properties")
+        .and_then(|p| p.get("verdict"))
+        .and_then(|v| v.get("properties"))
+        .and_then(|p| p.get("reason"))
+        .and_then(|r| r.get("properties"))
+        .expect("the schema lists a reason's properties");
+    let listed: Vec<&str> = properties
+        .get("code")
+        .and_then(|c| c.get("enum"))
+        .and_then(tv_testkit::Json::as_array)
+        .expect("the schema lists the codes")
+        .iter()
+        .map(|c| c.as_str().unwrap())
+        .collect();
+    let mut serialized: Vec<&str> = Vec::new();
     for reason in cases {
         let code = reason.code();
+        if serialized.last() != Some(&code) {
+            serialized.push(code);
+        }
         let verdict = Verdict::Reject(reason);
         let text = verdict.to_json().unwrap();
         let parsed = tv_testkit::Json::parse(&text).unwrap();
         let v = parsed.get("verdict").unwrap();
         assert_eq!(v.get("status").unwrap().as_str(), Some("reject"));
+        let tv_testkit::Json::Object(members) = v.get("reason").unwrap() else {
+            panic!("{code}: the reason is an object");
+        };
+        for (name, _) in members {
+            assert!(properties.get(name).is_some(), "{code}: {name}");
+        }
         assert_eq!(
             v.get("reason").unwrap().get("code").unwrap().as_str(),
             Some(code)
@@ -104,7 +139,9 @@ fn every_rejection_serializes_public_payloads_and_escapes_parameter_names() {
             assert_eq!(verdict.to_json().unwrap(), text);
         }
     }
-    // RFC-0054 'Messages': a tree level names its group, and the merge its round.
+    assert_eq!(serialized, listed);
+    // RFC-0054 'Messages': a tree level names its group, and the merge its round; RFC-0070
+    // 'Rejections': the mask batching names its round.
     for (reason, fields) in [
         (
             R::TreeLevel {
@@ -115,6 +152,7 @@ fn every_rejection_serializes_public_payloads_and_escapes_parameter_names() {
             &[("group", 4), ("level", 3), ("round", 9)][..],
         ),
         (R::LeafMerge { round: 12 }, &[("round", 12)][..]),
+        (R::MaskBatch { round: 10 }, &[("round", 10)][..]),
     ] {
         let code = reason.code();
         let text = Verdict::Reject(reason).to_json().unwrap();
@@ -129,6 +167,7 @@ fn every_rejection_serializes_public_payloads_and_escapes_parameter_names() {
         }
     }
     assert_eq!(R::LeafMerge { round: 0 }.code(), "REJ-LEAF-MERGE");
+    assert_eq!(R::MaskBatch { round: 0 }.code(), "REJ-MASK-BATCH");
     let error = Verdict::Inconclusive(tv_core::VerifierError {
         code: ErrorCode::Memory,
     });
