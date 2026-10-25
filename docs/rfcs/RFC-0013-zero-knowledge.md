@@ -4,9 +4,8 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.4
-- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('What the verifier sees': tree levels and LogUp roots; 'Masked extensions': `Z` spares the lowest variable; 'LogUp and product-tree roots'; OQ-0013-2)
+- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('What the verifier sees': tree levels and LogUp roots; 'Masked extensions': `Z` spares the lowest variable; 'LogUp and product-tree roots'; OQ-0013-2), [RFC-0065](RFC-0065-masked-channel-params.md) ('Masked extensions': each `ChannelParams` claim's own mask row, with `Z` over its type tensor's coordinates; 'Hiding openings', 'Simulator argument' step 4 and INV-ZK-2: the pair a matrix's evaluation rows share)
 - Superseded in part by: [RFC-0065](RFC-0065-masked-channel-params.md) ('Cost': the weight budget per proof, `2e + 4` rows for a matrix of `e` claims)
-- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('Masked extensions': each `ChannelParams` claim's own mask row, with `Z` over its type tensor's coordinates; 'Hiding openings', 'Simulator argument' step 4 and INV-ZK-2: the pair a matrix's evaluation rows share)
 
 ## Summary
 

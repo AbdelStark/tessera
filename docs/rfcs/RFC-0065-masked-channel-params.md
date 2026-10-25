@@ -15,7 +15,7 @@
   - [RFC-0014](RFC-0014-interaction-and-soundness.md) 'Messages' and 'Soundness calculator': each matrix's blinding claims, and the field term's `B_T`;
   - [RFC-0019](RFC-0019-verifier.md#check-order) 'Check order' step 5: the reservation's range;
   - [RFC-0036](RFC-0036-protocol-messages.md) 'Versions and envelopes': schema version 2's `WeightReservation` and `weight_blinding`;
-  - [RFC-0039](RFC-0039-statement-fields.md): in `tessera-protocol/2`, a site with a `ChannelParams` is affine until #486;
+  - [RFC-0007](RFC-0007-claim-list.md#verifier-validation) 'Verifier validation' and [RFC-0039](RFC-0039-statement-fields.md): in `tessera-protocol/2`, a site with a `ChannelParams` is affine until #486;
   - [RFC-0026](RFC-0026-claim-list-layout.md) and [RFC-0031](RFC-0031-commitment-id.md): `blinding_rows` is a single-claim matrix's `B_W`, and a matrix's `rows` count its `B_T`;
   - [RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-matrices) 'The matrices' and 'Encoding, leaves and roots': `B_CP`, and the leaves over the blinding rows;
   - [RFC-0049](RFC-0049-weight-proximity.md#the-calculator) 'The calculator' and [RFC-0064](RFC-0064-weight-linking-proof.md): each matrix's own `B_T`.
@@ -27,7 +27,7 @@ In `tessera-protocol/2` a weight matrix's claim is a masked evaluation `W'(p) = 
 
 This RFC gives each claim its own mask row, under a `Z` over the type tensor's own coordinates, and makes that row the designated block of the claim's evaluation row. The matrix's one blinding pair carries the blinding claims. A proof then reserves `2e + 4` rows of each opened matrix: six for a single-claim matrix, as today, and 18 for `ChannelParams` at `e = 7`. `ChannelParams` gets enough blinding rows, `B_CP`, that it never ends an epoch before the other matrices: 12,280 at 405B against `B_W = 4096`.
 
-The claims of the reduction stages are then hidden. A site of two classes or more reads its class tensor in the leaf stage, which sends it once per layer at Boolean layer points, so its claims are not. Until [#486](https://github.com/AbdelStark/tessera/issues/486)'s leaf layout reads the type tensors only at points whose coordinates other than the lowest are challenges (R8), `tessera-protocol/2` refuses such sites. At 405B every site has two classes, so `tessera-protocol/2` waits for #486 there.
+The claims of the reduction stages are then hidden. A site of two classes or more reads its class tensor in the leaf stage, which sends it once per layer at Boolean layer points, so its claims are not. Until [#486](https://github.com/AbdelStark/tessera/issues/486)'s leaf layout reads the type tensors only at points whose coordinates other than the lowest are challenges (R8), `tessera-protocol/2` refuses such sites. In the two-class reference quantization of 405B, every site after a weight has two classes, so `tessera-protocol/2` waits for #486 there.
 
 ## Motivation
 
@@ -93,7 +93,7 @@ A masked extension hides its tensor only where it is revealed at points whose co
 - **The leaf stage does not, as specified.** RFC-0045 'The split' sends one value of each class tensor per real layer, at Boolean layer coordinates, and RFC-0037 stacks them at `ρ_1`. Each per-layer value has `Z = 0`, so it is the secret's own, and their stack is `Ã_CP(point_i)` with no mask term.
   - 126 such values per site and proof reveal `⟨eq(r_c), class_{t,ℓ}⟩` for each layer. Classes survive a refresh, so the proofs of every epoch add up.
   - `tessera-protocol/2`'s leaf layout ([#486](https://github.com/AbdelStark/tessera/issues/486), R8) must read each class tensor's `P'` only at points whose coordinates other than the lowest are challenges, with no per-layer value. One example is a layer point per site in place of the shared `ρ_1`.
-  - **Until it does, such sites are refused.** In `tessera-protocol/2`, every site with a `ChannelParams` must be affine. A site of two classes or more is refused: the compiler emits no such claim list, and the verifier rejects one at claim-list validation, `Reject(StatementMismatch { field: Rescaling { site } })` (RFC-0039 step 2.4). The honest prover's `v_i`, the stack, would fail step 9 anyway.
+  - **Until it does, such sites are refused.** In `tessera-protocol/2`, every site with a `ChannelParams` must be affine. A site of two classes or more is refused. The compiler refuses to emit such a claim list, with `ERR-USAGE`. The verifier rejects one at claim-list validation, `Reject(StatementMismatch { field: Rescaling { site } })` (RFC-0007 step 2.4, RFC-0039 step 2.4). The honest prover's `v_i`, the stack, would fail step 9 anyway.
   - **At 405B** all seven claims come from two-class sites, so its `tessera-protocol/2` proofs wait for #486.
 
 ### The evaluation rows
@@ -212,7 +212,7 @@ B_CP = B_W + 2·(e_CP − 1)·⌊(B_W − 4)/6⌋   when e_CP ≥ 1, and 0 when 
   w = public + S_{i,y} − (Z(y) / (θ_T·Z(x_i)))·⟨β_T, e_y⟩,    S_{i,y} = P̃_{t_i}(y) − (Z(y)/Z(x_i))·⟨F_i, e_y⟩.
   ```
 
-  - **When `S_{i,y} = 0`** it is a public relation. That happens at the leaf level's pair-bit points around `x_i`, which differ from it in the lowest coordinate only.
+  - **When `S_{i,y} = 0`** the value carries no secret. That happens at the leaf level's pair-bit points around `x_i`, which differ from it in the lowest coordinate only. Its functional of `β_T` still joins the span the other values must avoid. #488 decides `S ≡ 0` symbolically: it holds exactly when `y` has `x_i`'s row point and `Z(y) ≡ Z(x_i)`.
   - **Otherwise** `e_y` must lie outside the span of every other functional of `β_T` the matrix reveals, the `q_j` and every other claim's values included, apart from public relations.
 
   This is R10 per matrix, with `β_T`'s functionals together (#488).
@@ -223,7 +223,7 @@ B_CP = B_W + 2·(e_CP − 1)·⌊(B_W − 4)/6⌋   when e_CP ≥ 1, and 0 when 
 - **What is revealed.** `N` proofs reveal `e_T` evaluation rows and one proximity row each, per matrix.
 - **The elimination.** Clearing the evaluation rows with their designated `R_i` leaves the proximity rows' block `I + R` on the fixed words. A uniform block sits on the `β_T` columns, `2N` of them.
 - **The bound.** The count is Lemma 7's, `C(N, 2)·p^{−4}` per matrix.
-- **The singular case.** `β_T` carries `e_T` functionals, where `R_W` carried one. A scalar falls in the vectors' row span only if `(w_1/w_0)^2 = 7` for two of its coefficients. That is impossible, since 7 is a non-residue modulo `p`, given that `{eq(col_i), eq(σ(col_i))}` are independent over the distinct column points, with `σ` the conjugation of `Fp2`.
+- **The singular case.** `β_T` carries `e_T` functionals, where `R_W` carried one. A scalar falls in the vectors' row span only if `(w_1/w_0)^2 = 7` for two of its coefficients. That is impossible, since 7 is a non-residue modulo `p`, given that `{eq(c), eq(σ(c))}` are independent over the distinct column points `c` of every functional of `β_T`, the stages' included, with `σ` the conjugation of `Fp2`.
 - **What that costs.** The independence fails with probability about `2e_T·log2 k/p ≈ 2^{−55}`, within the singular event's `1/p`.
 - **For `ChannelParams` only.** The one-claim matrices keep §6.2's reading, with `β` designated and `U` on `R_W`; it is equally valid for them.
 
@@ -249,7 +249,10 @@ R9 is met for every matrix all of whose claims meet 'What the stages owe': today
 
 - `ChannelParams` holds three times as many blinding rows as the other matrices. Its 8,184 extra rows add 1.8% to the store and to every column answer.
 - `B_CP` depends on the claim list as well as the layout, so a model's `ChannelParams` row count follows from both.
-- Until #486, `tessera-protocol/2` admits only affine `ChannelParams` sites, so 405B's two-class sites wait for it.
+- Until #486, `tessera-protocol/2` admits only affine `ChannelParams` sites, so 405B's two-class sites wait for it. The refusal reaches further:
+  - The Silu site can never be affine: an affine site follows the Q, K, V, O, up or down projection (RFC-0007 step 2.2, RFC-0025). So every `tessera-protocol/2` model needs a one-class Silu, one scale for all of Gate's channels.
+  - The `minimal` profile's O and Down refuse `affine` (RFC-0025 'The quantizer'), so those two need one class too.
+  - `tessera-quant` will need a `tessera-protocol/2` mode.
 
 ## Migration / Rollout
 

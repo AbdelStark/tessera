@@ -53,7 +53,7 @@ pub struct Round1 {
     pub session_id: [u8; 16],
     pub statement: PublicStatement,             // 03 §4
     pub advice: AdviceCommitment,               // RFC-0011
-    pub weights: WeightReservation,             // the epoch, then (matrix, b_T) per opened matrix in id order (RFC-0012, RFC-0065)
+    pub weights: WeightReservation,             // (matrix, b_T) per opened matrix in id order; its epoch is statement.weights_epoch (RFC-0012, RFC-0065)
 }
 pub struct Round2Response {
     pub logup: LogUpProof, pub product_trees: TreeProof,   // leaf stage, RFC-0008/0010
