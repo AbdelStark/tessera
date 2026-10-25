@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.4
-- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('What the verifier sees': tree levels and LogUp roots; 'Masked extensions': `Z` spares the lowest variable; 'LogUp and product-tree roots'; OQ-0013-2), [RFC-0065](RFC-0065-masked-channel-params.md) ('Masked extensions': each `ChannelParams` claim's own mask row, with `Z` over its type tensor's coordinates; 'Hiding openings', 'Simulator argument' step 4 and INV-ZK-2: the pair a matrix's evaluation rows share)
+- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('What the verifier sees': tree levels and LogUp roots; 'Masked extensions': `Z` spares the lowest variable; 'LogUp and product-tree roots'; OQ-0013-2), [RFC-0065](RFC-0065-masked-channel-params.md) ('Masked extensions': each `ChannelParams` claim's own mask row, with `Z` over its type tensor's coordinates; 'Hiding openings', 'Simulator argument' step 4 and INV-ZK-2: the pair a matrix's evaluation rows share), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('Masked extensions': `Z` vanishes until the round that binds the last of its variables; 'Masked sumcheck': the raised round's `g_j`; 'Cost': the column masks' opening group)
 - Superseded in part by: [RFC-0065](RFC-0065-masked-channel-params.md) ('Cost': the weight budget per proof, `2e + 4` rows for a matrix of `e` claims)
 
 ## Summary
@@ -59,7 +59,7 @@ Each stage treats per-layer instances of the same tensor kind as one stacked ten
 
 For a stage proving `H = Σ_x f(x)` over `n` variables with round degree `d`:
 
-1. In Round 1, the prover commits `G_k(x) = a_0 + Σ_{j=1}^{n} g_j(x_j)` with each `g_j` a random univariate polynomial over `Fp2` of round `j`'s degree `d_j`, the last round's included, which masked extensions raise to 7 ('Masked extensions'). Each coefficient, and `a_0`, is two values of the advice mask block. A lower degree would leave a coefficient of that round's message unmasked ([`docs/zk/simulator.md`](../zk/simulator.md) Lemma 4, R4).
+1. In Round 1, the prover commits `G_k(x) = a_0 + Σ_{j=1}^{n} g_j(x_j)` with each `g_j` a random univariate polynomial over `Fp2` of round `j`'s degree `d_j`, the round whose degree masked extensions raise included, up to 7 ('Masked extensions'). Each coefficient, and `a_0`, is two values of the advice mask block. A lower degree would leave a coefficient of that round's message unmasked ([`docs/zk/simulator.md`](../zk/simulator.md) Lemma 4, R4).
 2. In the stage, the prover sends `Γ = Σ_x G_k(x)`; the transcript yields `ρ_k ∈ Fp2` (label `stage/{k}/zk-rho`).
 3. The parties run the sumcheck on `f + ρ_k G_k` with claim `H + ρ_k Γ`.
 4. At the end, `G_k(r)` is opened from the advice commitment as an ordinary claim.
@@ -78,7 +78,7 @@ where `R_V` is a random `Fp2` advice row, two committed rows, over `V`'s column 
 
 - **`Z` spares the lowest variable `x_1`** ([RFC-0032](RFC-0032-zero-knowledge-tree-levels.md)). It therefore also masks a point whose lowest coordinate is Boolean: a LogUp leaf level reads its keys, values and multiplicities there, at its pair bit. A masked tensor has two variables at least.
 - `V' = Ṽ` on the Boolean hypercube, so every sumcheck identity over the hypercube holds unchanged with `V'` in place of `Ṽ`.
-- `Z` vanishes at every summation point of every round except the last, so the prover's round computations change only in the last round.
+- `Z` vanishes at every summation point of every round before the one that binds the last of its variables, so the prover's round computations change only from that round on. In a sumcheck over `V`'s variables that is the last round. A LogUp leaf level's last round binds the tree index, which no `Z` of its keys, values or multiplicities holds, so there it is the round before the last ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md), RFC-0032).
 - `V'(p) = Ṽ(p) + Z(p) · R̃_V(p_col)`. For `p` whose coordinates other than the lowest are off `{0, 1}`, `Z(p) ≠ 0`, and the values `R̃_V(p_col^{(i)})` at the at most `e_V` revealed points are jointly uniform whenever the vectors `eq(p_col^{(i)}, ·)` are linearly independent over `Fp2`, which fails with probability at most `e_V^2 / |Fp2|`. An `Fp` row would need the `2e_V` real and imaginary parts of those vectors independent over `Fp`, which Schwartz–Zippel bounds only by about `2e_V·log2(k)/|Fp|`, near `2^-55`: hence the `Fp2` row.
 - **Committed tensors.** `V'(p)` is a linear functional of the advice vector (data positions plus `R_V`'s row) whose column part is `eq(p_col)` in both terms, so it falls in the same opening group as the data claim ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol)).
 - **Virtual tensors.** The producing relation proves `V'(p) = Σ_x rel(p, x)·inputs(x) + Z(p) Σ_{x_col} eq(p_col, x_col) R_V[x_col]`; the second sum is added to the stage's sumcheck over the column variables, so the verifier never learns `R̃_V(p_col)` itself, only `R̃_V` at the stage's final point (as in Libra's treatment of layer masks).
@@ -132,7 +132,7 @@ Before any v0.4 implementation work merges, [`docs/zk/simulator.md`](../zk/simul
 |---|---|
 | Mask rows `R_V` (about 2,000 stacked tensors and tree levels, two rows each) | about 1.6×10^10 elements, 0.6% of advice |
 | Stage masking polynomials | < 2×10^4 elements |
-| Blinding rows for advice combined rows (`G + 1 ≤ 17`, two rows each) | 34 rows |
+| Blinding rows for advice combined rows (`G + 1 ≤ 17`, two rows each; `G + 1 ≤ 18` with RFC-0068's column masks' group) | 34 rows; 36 |
 | Weight budget per proof | 6 blinding rows per weight matrix (two each for evaluation, proximity and mask), and `2e + 4` for `ChannelParams`' `e` claims, 18 at `e = 7`: one evaluation pair for the matrix and a mask row per claim ([RFC-0065](RFC-0065-masked-channel-params.md)) |
 | Extra sumcheck work | last round only |
 

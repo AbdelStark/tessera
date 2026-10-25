@@ -150,7 +150,7 @@ The verifier computes a claim's public atoms and moves them to its value. The cl
   - **The order of claims.** A reduction stage's claims come by instance, then by evaluation. The leaf stage's come by site, then by layer, as 'The layer point' orders them.
   - **The leaf stage** is stage 0, and its values follow `logup/values` in one `Vec<Fp2>` under `stage/0/split` (`TreeProof.splits`): first the lookup tensor values—one per tensor, site and real layer ([RFC-0045](RFC-0045-leaf-layout.md#the-split))—and then the atom split values of any leaf claim that splits into virtual and committed parts.
   - **In `tessera-protocol/2`**, `stage/0/split` holds the sites outside the layers only. The sites in the layers send one value per site and tensor after the leaf stage's layer sumcheck, and their atom values follow under `stage/0/layer/split` ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#the-layer-sumcheck) 'The layer sumcheck').
-- **The check.** The verifier checks that the values, weighted by their coefficients, give the claim's value. A mismatch is `Reject(Sumcheck { stage: k, round: n_k })`, with `n_k` the stage's number of rounds (0 for the leaf stage).
+- **The check.** The verifier checks that the values, weighted by their coefficients, give the claim's value. A mismatch is `Reject(Sumcheck { stage: k, round: n_k })`, with `n_k` the stage's number of rounds (0 for the leaf stage in `tessera-protocol/1`; in `tessera-protocol/2`, RFC-0068 'The layer sumcheck' step 6 gives the leaf stage's checks their rounds).
 - **The result.** Each value becomes one claim: a virtual atom's for the next stage, a committed group's for the pool.
 - **Example.** The residual key's claim `acc + 2^r·X_in` at `(r ‖ ρ)` splits into `acc`'s virtual atom and `X_in`'s committed group: two values.
 - **Soundness.** The values are fixed before any later challenge. If the claim is false, any split leaves a false claim, which its own check rejects except with the probability that check allows.
@@ -174,7 +174,7 @@ The leaf stage leaves its gadgets' claims one layer at a time. Each lookup site'
   - Its sites come in node order, a template position once for all its layers, and the logits last.
   - The gadgets' own committed values and relations are RFC-0009's (#118).
 - **Drawing it.** Stage 1 draws the layer point `ρ_1`: `λ` coordinates under `stage/1/layer/{c}`, after the leaf stage's splits and before the zero-check point and `γ_1`.
-  - **In `tessera-protocol/2`**, `ρ_1` is the leaf stage's layer sumcheck point `ρ'_y`, and stage 1 draws none. The leaf stage leaves its stacked claims at `(r_s ‖ ρ'_y)` directly, with no per-layer `v_ℓ` ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) 'The layer sumcheck', step 7).
+  - **In `tessera-protocol/2`**, `ρ_1` is the leaf stage's layer sumcheck point `ρ'_y`, and stage 1 draws none. The leaf stage leaves its stacked claims at `(π_t(r_s) ‖ ρ'_y)` directly, with no per-layer `v_ℓ` ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) 'The layer sumcheck', step 7).
 - **Stacking.** A site's claims `v_ℓ` become the stacked claim `X̃(r_s ‖ ρ_1) = Σ_ℓ eq(ρ_1, ℓ)·v_ℓ`. A padded layer's `v_ℓ` is 0.
 - **Soundness.** A false `v_ℓ` survives with probability at most `λ/|Fp2|` over `ρ_1`.
 - **Native gadget targets.** First apply each real layer's affine checks and move its public terms into the native target; then stack those fixed targets. For example, a Softmax lookup leaves `κ̃_ℓ(r) − K_{0,ℓ}·(1 − C̃_local(r))`, whose stacked target is the zero-padded `C·(c−x)` relation. This retains each layer's original Exp lookup and value claim, even when its table and `K_{0,ℓ}` differ. A forest leaf already has its own layer coordinates: its target is `L̃(r) − 1 + C̃(r)`, at that full point. Every final source claim keeps its original source family and the final layer coordinates; no later per-layer values replace a fixed stacked claim.
@@ -215,7 +215,7 @@ Schema version 1 changes in place: no release has written it ([09](../spec/09-re
 
 [RFC-0014](RFC-0014-interaction-and-soundness.md#transcript-schedule)'s row 6 gains two labels:
 - `stage/1/layer/{c}`, squeezed before `stage/1/zero/{c}`, in `tessera-protocol/1` only: `tessera-protocol/2` takes RFC-0068's layer point;
-- `stage/{k}/split`, absorbed after `stage/{k}/evals`. Stage 0's comes after `logup/values`.
+- `stage/{k}/split`, absorbed after `stage/{k}/evals`. Stage 0's comes after `logup/values`. In `tessera-protocol/2` the leaf stage's layered atom values come after its layer sumcheck, under `stage/0/layer/split` (RFC-0068).
 
 Stage 1 runs, in order:
 1. `zk-sum` and `zk-rho`, in `tessera-protocol/2`;

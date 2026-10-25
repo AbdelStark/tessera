@@ -147,7 +147,7 @@ The verifier derives the sites, the blocks, their offsets and the instances' hei
 ## Drawbacks
 
 - The prover writes each lookup tree's leaves in the permuted order: one index computation per lookup.
-- The leaf stage sends one value per tensor, site and layer. At 405B that is a few thousand `Fp2` elements, against the openings' megabytes.
+- The leaf stage sends one value per tensor, site and layer. At 405B that is 53,489 `Fp2` elements, 856 KB, against the openings' gigabytes. In `tessera-protocol/2`, RFC-0068 sends 614.
 
 ## Migration / Rollout
 

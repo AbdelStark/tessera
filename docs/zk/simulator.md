@@ -7,12 +7,10 @@
 
 ## 1. Result
 
-**As first specified, `tessera-protocol/2` was not zero-knowledge.** Three of its messages revealed secret values outright, and the specification now masks each:
+**As specified, `tessera-protocol/2` is not yet zero-knowledge.** One message still reveals a secret value outright: the epilogue's claim on the last checkpoint, at a Boolean layer ([#535](https://github.com/AbdelStark/tessera/issues/535), R8). Three others did, and the specification now masks each:
 - **The leaf stage's per-layer split values** sat at Boolean layer coordinates, where the masked extension equals the tensor (§4.3, R8). [RFC-0068](../rfcs/RFC-0068-leaf-stage-zero-knowledge.md) sends none, and gives each LogUp instance's columns mask rows of their own.
 - **`ChannelParams`' claims** sat at Boolean coordinates too (§4.5, R9). [RFC-0065](../rfcs/RFC-0065-masked-channel-params.md) masks them. With RFC-0068's leaf stage, `tessera-protocol/2` admits every site, those of two classes or more included.
 - **The weight linking proof** revealed `W̃_T(ρ_T)` (§6.4, R3). [RFC-0064](../rfcs/RFC-0064-weight-linking-proof.md) opens the difference instead.
-
-One claim at a Boolean layer outside the leaf stage remains: the epilogue's, on the last checkpoint ([#535](https://github.com/AbdelStark/tessera/issues/535), R8).
 
 Further gaps are missing pieces of the protocol, not leaks:
 - **Masked weights across an epoch.** Under the tensor proximity generator, they have no usable joint bound (§6.3, R2).
@@ -109,7 +107,7 @@ In transcript order (RFC-0014 'Transcript schedule', with RFC-0032's rows 4 and 
   - **What hiding needs.**
     - **One group per claim.** Lemma 5 covers it, group by group.
     - **A batching sumcheck.** It reveals new functionals of the masking polynomials' rows: its round messages and its final evaluation. Those rows keep only `n` spare directions each, so the batching sumcheck needs its own masking polynomial (Lemma 4) or a rank argument of its own.
-- **Requirement R4.** Each `g_j` has round `j`'s degree, the last round's included, which the masked extensions raise to 7.
+- **Requirement R4.** Each `g_j` has round `j`'s degree, the round whose degree the masked extensions raise included, up to 7: the last round, or at a LogUp leaf level the round before it (RFC-0032, RFC-0068).
 - **Degenerate event.** `ρ = 0`: `1/q` per masked sumcheck.
 
 **The identity sumcheck.** Its final evaluations `N'_L(r_L), D'_L(r_L), N'_T(r_T), D'_T(r_T)` are values of masked root levels, `Ṽ(y) + y(1 − y)·R̃(y)`.
@@ -221,7 +219,7 @@ Each stage is Lemma 4's masked sumcheck. Its final evaluations and its split val
 
   A first count gave each evaluation row its own pair as well: `4m + 2` rows per proof, 30 at `m = 7`, and 136 proofs per epoch at `B_W = 4096`. The design below needs `2m + 4`.
 
-**Met for affine sites.** [RFC-0065](../rfcs/RFC-0065-masked-channel-params.md) gives each claim its own mask row `R_i`, with `Z` over the type tensor's `c_i + λ` coordinates, and each matrix one pair `β_T` for its evaluation rows.
+**Met by RFC-0065, with RFC-0068's leaf stage for sites of two classes or more.** [RFC-0065](../rfcs/RFC-0065-masked-channel-params.md) gives each claim its own mask row `R_i`, with `Z` over the type tensor's `c_i + λ` coordinates, and each matrix one pair `β_T` for its evaluation rows.
 - **The cost.** A proof reserves `2e + 4` rows of a matrix with `e` claims: six for `Embed`..`LmHead`, as before, and 18 for `ChannelParams` at `e = 7`.
 - **The epoch.** `ChannelParams` has `B_CP = B_W + 2·(e_CP − 1)·⌊(B_W − 4)/6⌋` blinding rows, 12,280 at 405B, so it serves as many proofs per epoch as the other matrices.
 - **The argument.** It is Lemma 5's, with `R_i` designated for evaluation row `i`.
@@ -358,7 +356,7 @@ So `ε_1 < 2^{-105}`, given R10's rank checks. These counts are projections from
 | R1 | The proximity row's blinding pair is the fixed word, with coefficients `1` and `X` and no generator coefficient. This is soundness's choice, not zero knowledge's, which holds either way (§4.4) | RFC-0011 step 3, RFC-0012, RFC-0049 for `tessera-protocol/2`, against RFC-0013 'The proximity row' | Conflicting text; #394 |
 | R2 | For masked weights, the proximity generator's coefficients on blinding rows are independent uniform `Fp2`, or those rows are excluded with their own soundness argument | RFC-0012, RFC-0049; Draft RFC-0021's free-row stream meets it | Not met by the tensor generator; #394 |
 | R3 | The linking proof opens the difference of the two commitments, with the public claim 0, each keeping its own proximity row | [RFC-0064](../rfcs/RFC-0064-weight-linking-proof.md), superseding RFC-0012 'Refresh and linking proof' | Met in the specification by RFC-0064 ([#485](https://github.com/AbdelStark/tessera/issues/485)); [#153](https://github.com/AbdelStark/tessera/issues/153) implements it, with R3's test |
-| R4 | Each masking polynomial's `g_j` has its round's degree, the last round's raised degree included | RFC-0013 'Masked sumcheck' | Stated by this change |
+| R4 | Each masking polynomial's `g_j` has its round's degree, a raised round's included | RFC-0013 'Masked sumcheck' | Stated by this change |
 | R5 | INV-ZK-2 reads as a rank condition. Each mask, blinding row and masking polynomial has a designated revealed combination where it enters with an invertible block, and the joint coefficient matrix over the masks has full rank. Further uses are allowed where Lemmas 5 and 7 cover them | RFC-0013 'Invariants' | Literal one-use conflicts with the proximity row; #394 |
 | R6 | The weight budget never rolls back, and an aborted session burns what it reserved | RFC-0012 'Budget state machine' | Met by RFC-0012; #156 must preserve it |
 | R7 | A scoring message that carries a secret evaluation has a masked extension | RFC-0017 | To check when its masked messages land |

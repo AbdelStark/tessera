@@ -86,7 +86,7 @@ V'_t(b ‖ x) = Ṽ_t(b ‖ x) + Z_t(x)·R̃_t((b ‖ x)_col),        Z_t(x) = �
   - The prover sends `R̃_t` at the level's final point `r'` beside the next level's evaluations. That value is a claim on the advice.
   - The verifier never sees `R̃_t(p)` (RFC-0013 'Masked extensions', virtual tensors).
 - **Degree.** `Z_{t+1}` vanishes at every summation point but the last round's, so only the last round's degree rises, to 7 for a product or fraction combination. RFC-0014's bound already allows `d ≤ 7`.
-- **Masks per level.** One mask row per level of a product forest, and two per level of a fraction forest, for `N` and `D`, its leaf level excepted ('Leaf checks').
+- **Masks per level.** One mask row per level of a product forest, and two per level of a fraction forest, for `N` and `D`, its leaf level excepted ('Leaf checks'). The leaf level's key and value columns take column masks of their own ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#column-masks)).
 - **The root level** of a LogUp forest has one variable, the tree index `y`, and no pair bit. Its polynomials take `Z_0(y) = y·(1 − y)` and their own mask rows. The first level folds them like any other, at the identity's point `p = r_L` or `r_T`, with the factor `Z_0(p)`. A product forest's root values are public, and its root claim is computed by the verifier, as before.
 
 ### The LogUp identity sumcheck
@@ -139,7 +139,7 @@ over every variable but the lowest.
   - it checks the table denominators' claim against `(1 − p_top)·(α − t̃(p_low)) + p_top`;
   - the prover sends `e'(p_low)` under `logup/values`, from which the verifier derives the claim on `κ'(p_low)`;
   - the table numerators' claim gives `m'(p_low)`.
-- **Where the claims go.** The claims on `κ'` go to the stage that produces the keys, and those on `e'` and `m'` to the openings, as RFC-0013 says.
+- **Where the claims go.** The claims on `κ'` and `e'` enter the leaf stage's layer sumcheck, which reduces them to claims on the tensors the columns read and on the column masks ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#the-layer-sumcheck)). Those on `m'` go to the openings, as RFC-0013 says.
 - **Degree.** The tree index is the leaf level's highest variable, so it takes the last level's last round. The `Z` of `κ'`, `e'` and `m'` spares it, and does not vanish at that level's summation points from the round before the last on. The fraction forests' leaves therefore raise that round's degree, to at most 7, and not the last round's (RFC-0068).
 
 **Product forests.** `C̃·k'` would raise the leaf level's degree past 7, so a `SoftmaxRow` forest's leaf level takes its own mask row, like a level above it. RFC-0030's reduction folds it: `Σ_x eq(p, x)·(C(x)·k(x) + Z_h(q)·R_h[x_col]) = L'_h(p) − 1 + C̃(p)`. The instance exists already, so no stage is added.
@@ -187,7 +187,7 @@ RFC-0013's simulator ([#145](https://github.com/AbdelStark/tessera/issues/145)) 
 
 - **The identity sumcheck.** The simulator samples its final evaluations uniformly, subject to its final equation, and simulates its rounds with the masked-sumcheck simulator.
 - **Each tree level, in order.** It samples the evaluations `V'_{t+1}(b ‖ r')` and the mask value `R̃_t` uniformly, subject to the level's final equation, then simulates its rounds. They are uniform when the `eq` vectors of the points at which each mask row is revealed are linearly independent: `(0 ‖ r')`, `(1 ‖ r')` and the next level's final point. That fails with probability at most `3^2/|Fp2|` per row.
-- **The value messages** `e'(p_low)` are evaluations of committed tensors' masked extensions, which RFC-0013's simulator already samples.
+- **The value messages** `e'(p_low)` are evaluations of the value columns, which their column masks mask ([RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#zero-knowledge)). They are in the span of the last level's pair-point values.
 
 ## Alternatives Considered
 
