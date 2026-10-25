@@ -113,7 +113,9 @@ jobs:
     needs: scope
     if: needs.scope.outputs.code == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    # The prover job, with the sampled audit's end to end (#157), takes 5½ minutes alone and
+    # up to 8 beside a pull request's other runs: 12 leaves headroom.
+    timeout-minutes: 12
     strategy:
       matrix:
         workspace: [prover, verifier]
