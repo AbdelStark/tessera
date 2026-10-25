@@ -7,7 +7,8 @@
 //! - every crafted case of `spec/vectors/ed25519/strict.json`, from an independent oracle;
 //! - random keys, messages and signatures, and each with one bit changed;
 //! - each honest signature with `S + k·L` for every `k` that keeps it below `2^256`;
-//! - random bytes as keys and signatures.
+//! - random bytes as keys and signatures, most with `S` below `2^252` so that both
+//!   implementations reach decoding.
 
 use std::fs;
 use std::path::PathBuf;
@@ -153,7 +154,12 @@ fn random_bytes_as_keys_and_signatures() {
     let mut accepted = 0;
     for i in 0..5_000 {
         let key: [u8; 32] = rng.bytes();
-        let signature: [u8; 64] = rng.bytes();
+        let mut signature: [u8; 64] = rng.bytes();
+        // Random bytes are at least L fifteen times in sixteen. Masking S's top byte below 2^252
+        // keeps it below L, so seven cases in eight reach decoding.
+        if i % 8 != 0 {
+            signature[63] &= 0x0f;
+        }
         let message: [u8; 16] = rng.bytes();
         accepted += usize::from(agree(&key, &message, &signature, &format!("random {i}")));
     }

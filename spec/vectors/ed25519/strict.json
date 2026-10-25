@@ -1549,6 +1549,16 @@
    "expected": "equation",
    "cofactored": false,
    "comment": "The honest 128-byte signature of seed 2 verified under seed 3's key."
+  },
+  {
+   "name": "field-carry-r-second-fold",
+   "group": "field-carry",
+   "public_key": "0794fae760e4d6f5a98924524b6f290a48abc43103c354f0a8ecc3e57fc1154f",
+   "message": "7465737365726120656432353531392073747269637420766563746f72733a206669656c64206361727279",
+   "signature": "572441143b81ab10b9a8e324154701debf0ae7d95bddcd3cc9bae8afbc954932facca4402fb05e5ef4010353812b54bd9932c4c68d760976b5f8904b8fb34d05",
+   "expected": "equation",
+   "cofactored": false,
+   "comment": "R's y makes d*y^2 = hi*2^256 + lo fold to lo + 38*hi = 2*2^256 + r with r + 38*2 >= 2^256, so the fold of the fifth limb carries again (draw 54), and without that carry R would not decode; S = k*a makes [S]B - [k]A the identity."
   }
  ]
 }

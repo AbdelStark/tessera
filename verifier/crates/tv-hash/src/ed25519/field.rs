@@ -330,6 +330,198 @@ mod tests {
         assert_eq!(Fe::ZERO.invert(), Fe::ZERO);
     }
 
+    /// Operands `a` and `b`, as limbs, and the value modulo `p` of their product (or sum) that the
+    /// reduction reaches through one of its rare carries.
+    type KnownAnswer = ([u64; 4], [u64; 4], [u64; 4]);
+
+    /// The second fold carries out of `2^256` (`r + 38·r4 ≥ 2^256`), and the first out of limb 0.
+    const FOLD_2: [KnownAnswer; 2] = [
+        (
+            [
+                0xc509_df61_7060_50d3,
+                0x0d1a_9540_14e1_e1cf,
+                0xdf82_b45f_4523_a8c6,
+                0x5973_4b17_b8b6_3865,
+            ],
+            [
+                0xc434_388f_abf9_a75f,
+                0x25fa_90d0_0be4_26a7,
+                0x92cc_2086_4180_3686,
+                0x4dc3_7cdf_e5f7_8374,
+            ],
+            [0x53, 0, 0, 0],
+        ),
+        (
+            [
+                0xd520_7b80_4e15_da6d,
+                0x31cf_f0da_65c9_8991,
+                0xeb12_a7a1_a295_e206,
+                0x7ead_93ac_1a69_62b4,
+            ],
+            [
+                0x1e5e_70db_f3b5_d7f8,
+                0x20e5_75bb_e4c4_1429,
+                0x138d_6773_c6b6_4043,
+                0x35af_abd4_6c9f_c5fe,
+            ],
+            [0x68, 0, 0, 0],
+        ),
+    ];
+
+    /// The first fold carries out of limb 0 (`r0 + 38·r4 ≥ 2^64`), and the second does not carry.
+    const FOLD_1: [KnownAnswer; 2] = [
+        (
+            [
+                0x461e_6e5d_c44b_7891,
+                0x321b_cf2f_cb10_fc7b,
+                0xd59c_588d_11eb_9840,
+                0x242a_5412_a14b_648a,
+            ],
+            [
+                0x0945_7640_7b76_f954,
+                0xd7ee_455d_1189_0da1,
+                0xb206_9e6f_0ce5_4513,
+                0x207c_6b6d_1cb3_db35,
+            ],
+            [
+                0x35,
+                0x505a_58a2_0c9f_553e,
+                0x5185_a623_fe02_d715,
+                0x0faf_ada7_a48d_3e14,
+            ],
+        ),
+        (
+            [
+                0x70a5_386f_2356_78c7,
+                0x7216_396d_c97a_a7a2,
+                0xda52_b0b8_a47b_073e,
+                0x5432_5030_f204_6521,
+            ],
+            [
+                0x5c82_547c_7db0_8f53,
+                0x25ea_da62_eec1_b780,
+                0xb438_0c2b_e9fe_9e91,
+                0x40fa_a3ce_df26_2bb3,
+            ],
+            [
+                0x54,
+                0x48be_8cdd_2569_f9b6,
+                0x81a7_5383_6b47_bc47,
+                0x7343_2f3c_ea08_8b2d,
+            ],
+        ),
+    ];
+
+    /// `reduce`, after the folds, takes bit 255 as 19 and carries out of limb 0.
+    const REDUCE_LIMB_0: [KnownAnswer; 2] = [
+        (
+            [
+                0x3d0e_6f3a_2db5_1443,
+                0x8171_7dc5_d615_8963,
+                0x5240_c23b_0721_5372,
+                0x231a_4be3_8658_a56b,
+            ],
+            [
+                0xac6b_9ca3_aa40_c31f,
+                0xba81_cbda_1d78_e270,
+                0xa49b_faf7_13bf_7a86,
+                0x051e_8b66_f8e5_bb5b,
+            ],
+            [
+                0x0e,
+                0x6a92_d0c2_fed5_84d6,
+                0x183a_5db7_0809_abfd,
+                0x6a63_e836_58aa_61d7,
+            ],
+        ),
+        (
+            [
+                0xb147_47d4_7f99_cb99,
+                0xf903_a090_b80c_24a2,
+                0xf9ac_cccf_b93a_a199,
+                0x69aa_6320_4fc2_bf31,
+            ],
+            [
+                0xcbff_c7e3_f31b_adaf,
+                0x5ea1_9aea_99ab_9d7b,
+                0x45e0_dd0a_97bb_41b0,
+                0x04dc_d2e2_f2b1_c793,
+            ],
+            [
+                0x12,
+                0xfd9a_b9bf_de91_4127,
+                0xcdef_811b_5f91_4fb2,
+                0x6371_c88b_59dc_b5af,
+            ],
+        ),
+    ];
+
+    /// Sums of `a` and `b` at or above `2^255` whose limb 0 is at least `2^64 − 19`: `reduce`'s
+    /// fold of bit 255 as 19 carries out of limb 0.
+    const SUM_LIMB_0: [KnownAnswer; 2] = [
+        (
+            [
+                0x4f4f_306c_9da5_b926,
+                0x8564_5643_6247_d6f4,
+                0xc0cc_dba7_3e88_3667,
+                0x5353_7885_15e7_869d,
+            ],
+            [
+                0xb0b0_cf93_625a_46d7,
+                0xfca4_d78a_07c8_45b4,
+                0xe22e_4d48_85c2_b7fd,
+                0x3d3c_f60e_c263_4828,
+            ],
+            [
+                0x10,
+                0x8209_2dcd_6a10_1ca9,
+                0xa2fb_28ef_c44a_ee65,
+                0x1090_6e93_d84a_cec6,
+            ],
+        ),
+        (
+            [
+                0xf3f9_64b0_b96e_8a07,
+                0xbaf8_1a24_e509_b16a,
+                0x1b6d_7df2_8742_162a,
+                0x5a89_a066_a375_bd8c,
+            ],
+            [
+                0x0c06_9b4f_4691_75ef,
+                0xfb38_782d_df9e_1560,
+                0x416d_66de_6139_2c5d,
+                0x436c_abba_4ad5_53f7,
+            ],
+            [
+                0x09,
+                0xb630_9252_c4a7_c6cb,
+                0x5cda_e4d0_e87b_4288,
+                0x1df6_4c20_ee4b_1183,
+            ],
+        ),
+    ];
+
+    /// Every carry of the reduction, against values modulo `p` from a big-integer model (Python's
+    /// `a * b % p` and `(a + b) % p`). The operands are crafted, not drawn: with
+    /// `a·b = hi·2^256 + lo`, `hi` is solved for so that `lo + 38·hi` lands where the carry
+    /// happens. Random operands meet these carries with probability below `2^-55` (the first
+    /// fold), `2^-247` (the second) and `2^-60` (`reduce`'s limb 0): no random test reaches them.
+    #[test]
+    fn every_carry_of_the_reduction_against_known_answers() {
+        for (a, b, expected) in FOLD_2.into_iter().chain(FOLD_1).chain(REDUCE_LIMB_0) {
+            assert_eq!(Fe(a).times(Fe(b)), Fe(expected), "{a:x?} · {b:x?}");
+            assert_eq!(Fe(b).times(Fe(a)), Fe(expected), "{b:x?} · {a:x?}");
+        }
+        for (a, b, expected) in SUM_LIMB_0 {
+            assert_eq!(Fe(a).plus(Fe(b)), Fe(expected), "{a:x?} + {b:x?}");
+            assert_eq!(Fe(b).plus(Fe(a)), Fe(expected), "{b:x?} + {a:x?}");
+        }
+        // The top of each function's domain: 2^256 − 1 = 2p + 37 carries through every limb of
+        // `reduce`, and 2^512 − 1 ≡ 38^2 − 1 = 1443 takes both folds' carries in `reduce_wide`.
+        assert_eq!(reduce([u64::MAX; 4]), [37, 0, 0, 0]);
+        assert_eq!(reduce_wide([u64::MAX; 8]), [1443, 0, 0, 0]);
+    }
+
     #[test]
     fn encodings_round_trip() {
         let a = Fe([

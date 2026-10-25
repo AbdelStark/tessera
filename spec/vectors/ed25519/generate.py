@@ -890,6 +890,64 @@ def swap_group(signed):
     )
 
 
+def field_carry_group():
+    """R whose y sends d * y^2 through the rarest carry of the usual reduction of a product.
+
+    Elements of four 64-bit limbs multiply into eight, T = hi * 2^256 + lo, which reduces through
+    2^256 = 2p + 38: first W = lo + 38 * hi = r4 * 2^256 + r with r4 < 39, then r + 38 * r4, which
+    carries out of 2^256 only when r >= 2^256 - 38 * r4, for fewer than one random product in
+    2^247. Decoding R multiplies d by y^2 mod p. Here W is chosen just below a multiple of 2^256,
+    hi is solved for so that d divides T = hi * (2^256 - 38) + W and hi is T's top half, and
+    y^2 = T / d must be a square whose y decodes to a point of large order. A reduction that
+    dropped this carry would compute d * y^2 - 38 instead; the draw is kept only if that value
+    leaves (y^2 - 1) / (d * y^2 + 1) without a square root, so such a reduction refuses R as not a
+    point where strict verification reaches the equation.
+    """
+    two_p = 2**256 - 38
+    seed = 2
+    a = SCALARS[seed]
+    message = b"tessera ed25519 strict vectors: field carry"
+    for counter in range(1024):
+        draw = le(prf("field-carry", counter))
+        r4 = 1 + draw % 5
+        w = (r4 + 1) * 2**256 - 1 - (draw >> 8) % (38 * r4)
+        # T = hi * 2^256 + lo = hi * two_p + W, with 0 <= W - 38 * hi = lo < 2^256.
+        hi = -w * pow(two_p, -1, D) % D
+        lowest = -(-(w - 2**256 + 1) // 38)
+        hi += -(-(lowest - hi) // D) * D
+        if hi > w // 38:
+            continue
+        t = hi * two_p + w
+        yy = t // D
+        if yy >= P:
+            continue
+        y = sqrt_ratio(yy, 1)
+        if y is None or classify(le32(y)) != "large":
+            continue
+        dropped_v = (t - 38 + 1) % P
+        if dropped_v != 0 and pow((yy - 1) * inv(dropped_v) % P, (P - 1) // 2, P) == P - 1:
+            break
+    else:
+        raise AssertionError("no y within the bounded search")
+    lo = t % 2**256
+    assert D * (y * y % P) == t and t >> 256 == hi and lo + 38 * hi == w
+    assert (w % 2**256) + 38 * (w >> 256) >= 2**256, "the second fold carries"
+    data = le32(y)
+    k = challenge(data, KEYS[seed], message)
+    case(
+        "field-carry-r-second-fold",
+        "field-carry",
+        KEYS[seed],
+        message,
+        data + le32(k * a % L),
+        "equation",
+        False,
+        f"R's y makes d*y^2 = hi*2^256 + lo fold to lo + 38*hi = {w >> 256}*2^256 + r with "
+        f"r + 38*{w >> 256} >= 2^256, so the fold of the fifth limb carries again (draw {counter}), "
+        "and without that carry R would not decode; S = k*a makes [S]B - [k]A the identity.",
+    )
+
+
 def main():
     check_rfc8032()
     signed = honest()
@@ -903,6 +961,7 @@ def main():
     mixed_order_r_group()
     wrong_r_group(signed)
     swap_group(signed)
+    field_carry_group()
     assert {c["expected"] for c in CASES} == set(OUTCOMES), "every outcome has a case"
     doc = {
         "version": 1,

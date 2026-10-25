@@ -497,7 +497,7 @@ fn strict_cases() -> Vec<Json> {
 #[test]
 fn every_oracle_case_meets_its_rule() {
     let cases = strict_cases();
-    assert_eq!(cases.len(), 154);
+    assert_eq!(cases.len(), 155);
     let mut by_outcome = std::collections::BTreeMap::new();
     for case in &cases {
         let name = text(case, "name");

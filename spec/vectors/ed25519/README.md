@@ -41,7 +41,7 @@ Every pseudo-random value (seeds, messages, nonces, ground scalars, random bytes
 
 ## Cases
 
-154 cases, by group:
+155 cases, by group:
 
 | Group | Cases | Expected | Construction |
 |---|---|---|---|
@@ -56,6 +56,9 @@ Every pseudo-random value (seeds, messages, nonces, ground scalars, random bytes
 | `mixed-order-r` | 6 | `equation` 3, `accept` 3 | `R = [r]B + T` under an honest key (equation); and `R = [r]B + T_R`, of torsion order 2, 4 and 8, under `A = [a]B + T_A` with `T_A` of order 8, ground so that `T_R = −[k]T_A` (accept) |
 | `wrong-r` | 2 | `equation` 2 | an honest signature with `R` replaced by `[r+1]B`, or with its sign bit flipped (`−[r]B`) |
 | `swap` | 1 | `equation` 1 | an honest signature checked under another honest key |
+| `field-carry` | 1 | `equation` 1 | `R` whose decoding meets the rarest carry of a product's reduction (below), with `S = k·a mod L` under an honest key |
+
+The `field-carry` case targets an implementation, not a rule. A field element held in four 64-bit limbs multiplies into eight, `T = hi·2^256 + lo`, which reduces through `2^256 = 2p + 38`: `W = lo + 38·hi = r4·2^256 + r`, then `r + 38·r4`, which carries out of `2^256` again only when `r ≥ 2^256 − 38·r4`, for fewer than one random product in `2^247`. Decoding `R` multiplies `d` by `y² mod p`. The oracle picks `W` just below a multiple of `2^256`, solves for `hi` so that `d` divides `T = hi·(2^256 − 38) + W` and `hi` is `T`'s top half, and keeps the first draw whose `y² = T/d` has a root `y` that decodes to a point of large order, and for which a reduction that dropped that carry, computing `d·y² − 38`, would find no `x`: such a reduction refuses `R` as `r-not-a-point` where the case expects `equation`.
 
 The 14 small-order encodings are the eight canonical ones and six non-canonical ones:
 - the canonical ones: the identity, `(0, −1)`, the two points of order 4 and the four of order 8;
