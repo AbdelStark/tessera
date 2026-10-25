@@ -46,6 +46,16 @@
 //! `G > 1` in `tessera-protocol/2`, and a `G = 1` with any grouped size. A statement's report
 //! takes the largest `G` the verifier accepts ([`StatementSizes::default_405b`]); a proof's budget
 //! its own ([`runtime`](crate::runtime)).
+//!
+//! # The layer point
+//!
+//! [`StatementSizes::layer_vars`] is `λ`, the coordinates of stage 1's layer point `ρ_1`
+//! (RFC-0014 'Statement sizes' `layer_vars`, RFC-0037 'The layer point', #537). A false
+//! per-layer value survives its stacking at `ρ_1` with probability at most `λ/q`, so the rounds
+//! row's `D` takes `λ` as an item, counted only when `λ > 0`, and the union row's `U` adds it.
+//! A calculator refuses, with `ERR-USAGE` and in this order, a `λ ≠ 0` in `tessera-protocol/2`,
+//! whose leaf stage's layer sumcheck, a stage, replaces the layer point (RFC-0068), and a
+//! `λ` above [`MAX_LAYER_VARS`].
 
 use core::fmt::{self, Write as _};
 
@@ -90,6 +100,10 @@ pub const DEFAULT_EXP_ROWS: u64 = 1u64 << 22;
 /// The most leaf groups a calculator accepts, `G = 2^{14}` (RFC-0014 'Statement sizes',
 /// RFC-0054 'Messages': `g_T + g_L ≤ 14`).
 pub const MAX_GROUPS: u64 = 1u64 << MAX_LEAF_GROUP_BITS;
+
+/// The most coordinates of stage 1's layer point a calculator accepts, `λ ≤ 32` (RFC-0014
+/// 'Statement sizes' `layer_vars`, #537).
+pub const MAX_LAYER_VARS: u64 = 32;
 
 /// A tree level's round degree, 3: `eq(r, x)` times two evaluations (RFC-0010 'Tree levels').
 pub const LEVEL_DEGREE: u64 = 3;
@@ -402,6 +416,11 @@ pub struct StatementSizes {
     pub tree_levels: Vec<u64>,
     /// Variables `n_i` of each `ZeroCheck`.
     pub zero_checks: Vec<u64>,
+    /// `λ`, the coordinates of stage 1's layer point (RFC-0014 'Statement sizes' `layer_vars`,
+    /// RFC-0037 'The layer point', #537), 0 when the schedule has none. `tessera-protocol/2` has
+    /// none: the leaf stage's layer sumcheck, a stage, replaces it (RFC-0068). At most
+    /// [`MAX_LAYER_VARS`].
+    pub layer_vars: u64,
     /// Logarithm `s` of the tree count `2^s` in each product forest.
     pub forests: Vec<u64>,
     /// Lookup and table row counts `(N, T)` of each LogUp instance.
@@ -494,7 +513,9 @@ impl StatementSizes {
     ///
     /// Each matrix has one claim and `ChannelParams` [`DEFAULT_CHANNEL_PARAMS_CLAIMS`], so that
     /// under `tessera-protocol/2` its `B_CP` is 12,280 at `B_W = 4096` and its `ϑ` 14
-    /// (RFC-0065 '`ChannelParams`' blinding rows').
+    /// (RFC-0065 '`ChannelParams`' blinding rows'). Stage 1's layer point has
+    /// `λ = ⌈log2 126⌉ = 7` coordinates ([`StatementSizes::layer_vars`]), which a statement
+    /// under `tessera-protocol/2` sets to 0.
     pub fn default_405b() -> Self {
         const TOKENS: u64 = 16_384;
         const CONTEXT: u64 = 16_384;
@@ -588,6 +609,9 @@ impl StatementSizes {
             stages: vec![64, 64],
             tree_levels: vec![instances_per_level; level_count],
             zero_checks: vec![42; 8],
+            // Stage 1's layer point under tessera-protocol/1: λ = ⌈log2 126⌉ = 7 coordinates
+            // (RFC-0037 'Layers and kinds', 'The layer point'; #537).
+            layer_vars: u64::from(ceil_log2_u64(LAYERS)),
             forests,
             lookups,
             claim_groups: vec![64; 16],
@@ -876,6 +900,11 @@ pub enum SoundnessError {
     GroupCount(u64),
     /// `groups.count` is above 1 in `tessera-protocol/2`, which accepts no grouping.
     GroupedProtocol,
+    /// `layer_vars` is not 0 in `tessera-protocol/2`, whose leaf stage's layer sumcheck, a
+    /// stage, replaces stage 1's layer point (RFC-0014 'Statement sizes', RFC-0068, #537).
+    LayerPointProtocol,
+    /// `layer_vars` is above [`MAX_LAYER_VARS`] (RFC-0014 'Statement sizes', #537).
+    LayerVars(u64),
     /// `groups.count` is 1 with a `level_rounds` entry, or a nonzero `merge_rounds` or
     /// `merge_claims`.
     UngroupedSizes,
@@ -928,6 +957,12 @@ impl fmt::Display for SoundnessError {
             ),
             Self::GroupedProtocol => {
                 f.write_str("tessera-protocol/2 accepts no grouping: groups.count must be 1")
+            }
+            Self::LayerPointProtocol => f.write_str(
+                "tessera-protocol/2 has no layer point at stage 1: layer_vars must be 0",
+            ),
+            Self::LayerVars(vars) => {
+                write!(f, "layer_vars must be at most {MAX_LAYER_VARS}, got {vars}")
             }
             Self::UngroupedSizes => f.write_str(
                 "groups.count 1 takes no level_rounds and zero merge_rounds and merge_claims",
@@ -1006,6 +1041,9 @@ impl SoundnessReport {
             .map(u128::from)
             .max()
             .unwrap_or(0);
+        // Stage 1's layer point, λ coordinates: an item only when λ > 0, as a maximum with 0
+        // leaves `D` unchanged (RFC-0014 'Rows', RFC-0037 'The layer point', #537).
+        let layer_term = u128::from(statement.layer_vars);
         let line_term = u128::from(!statement.tree_levels.is_empty());
         let mask_term =
             u128::from(v2 && (!statement.stages.is_empty() || !statement.tree_levels.is_empty()));
@@ -1035,6 +1073,7 @@ impl SoundnessReport {
             .max(max_stage)
             .max(max_level)
             .max(max_zc)
+            .max(layer_term)
             .max(line_term)
             .max(mask_term)
             .max(grouped_term);
@@ -1063,6 +1102,7 @@ impl SoundnessReport {
         for &n_i in &statement.zero_checks {
             union_num = union_num.saturating_add(u128::from(n_i));
         }
+        union_num = union_num.saturating_add(layer_term);
         if v2 {
             let masks = u128::try_from(statement.stages.len())
                 .unwrap_or(u128::MAX)
@@ -1458,6 +1498,14 @@ fn validate(params: &SoundnessParams, statement: &StatementSizes) -> Result<(), 
     }
     if groups.grouped() && statement.protocol == 2 {
         return Err(SoundnessError::GroupedProtocol);
+    }
+    // RFC-0014 'Statement sizes', `layer_vars`, in this order: tessera-protocol/2 has no layer
+    // point at stage 1 (RFC-0068), and λ ≤ 32 (#537).
+    if statement.protocol == 2 && statement.layer_vars != 0 {
+        return Err(SoundnessError::LayerPointProtocol);
+    }
+    if statement.layer_vars > MAX_LAYER_VARS {
+        return Err(SoundnessError::LayerVars(statement.layer_vars));
     }
     if !groups.grouped()
         && (!groups.level_rounds.is_empty() || groups.merge_rounds != 0 || groups.merge_claims != 0)
@@ -2031,6 +2079,7 @@ fn write_statement_json(out: &mut String, s: &StatementSizes) {
     write_u64_array_json(out, "claim_groups", &s.claim_groups, true);
     write_u64_array_json(out, "forests", &s.forests, true);
     write_groups_json(out, &s.groups);
+    let _ = writeln!(out, "    \"layer_vars\": {},", s.layer_vars);
 
     if s.lookups.is_empty() {
         out.push_str("    \"lookups\": [],\n");
@@ -2237,6 +2286,7 @@ mod tests {
             stages: parse_u64_vec(j, "stages"),
             tree_levels: parse_u64_vec(j, "tree_levels"),
             zero_checks: parse_u64_vec(j, "zero_checks"),
+            layer_vars: j.get("layer_vars").unwrap().as_u64().unwrap(),
             forests: parse_u64_vec(j, "forests"),
             lookups,
             claim_groups: parse_u64_vec(j, "claim_groups"),
@@ -2273,7 +2323,13 @@ mod tests {
         }
 
         let cases = vectors.get("cases").unwrap().as_array().unwrap();
-        assert_eq!(cases.len(), 92);
+        assert_eq!(cases.len(), 93);
+        // Stage 1's layer point alone, 7/q in the rounds and union rows (#537).
+        assert!(
+            cases
+                .iter()
+                .any(|c| c.get("name").unwrap().as_str() == Some("edge/layer-point"))
+        );
         for case in cases {
             let name = case.get("name").unwrap().as_str().unwrap();
             let expected_report = case.get("report").unwrap();
@@ -2341,6 +2397,7 @@ mod tests {
             stages: Vec::new(),
             tree_levels: Vec::new(),
             zero_checks: Vec::new(),
+            layer_vars: 0,
             forests: Vec::new(),
             lookups: Vec::new(),
             claim_groups: Vec::new(),
@@ -2511,6 +2568,7 @@ mod tests {
         let mut s = base_s;
         s.protocol = 2;
         s.groups = GroupSizes::NONE;
+        s.layer_vars = 0;
         s.matrices[9].rows = 0;
         assert_eq!(
             SoundnessReport::evaluate(p, s),
@@ -2527,6 +2585,7 @@ mod tests {
         s.protocol = protocol;
         if protocol == 2 {
             s.groups = GroupSizes::NONE;
+            s.layer_vars = 0;
         }
         let cp = s.matrices.last_mut().unwrap();
         assert_eq!(cp.matrix, Matrix::ChannelParams);
@@ -2677,6 +2736,7 @@ mod tests {
             assert!(s.matrices[..9].iter().all(|m| m.claims == 1));
             s.protocol = 2;
             s.groups = GroupSizes::NONE;
+            s.layer_vars = 0;
             let report = SoundnessReport::evaluate(params, s).unwrap();
             assert_eq!(field_term(&report, Matrix::ChannelParams).0, 14);
             let field = report
@@ -2899,6 +2959,9 @@ mod tests {
         let mut s = StatementSizes::default_405b();
         s.protocol = protocol;
         s.groups = groups;
+        if protocol == 2 {
+            s.layer_vars = 0;
+        }
         SoundnessReport::evaluate(SoundnessParams::live_64(), s)
     }
 
@@ -3010,13 +3073,15 @@ mod tests {
         // The rounds row's largest error is the merge's batching, P + G = 69,874.
         assert_eq!(rounds, (69_874, String::from("111.90")));
         assert_eq!(plain_rounds, (64, String::from("121.99")));
+        // The ungrouped union counts stage 1's layer point, λ = 7 (#537): 72,732 + 7.
+        assert_eq!(base.layer_vars, 7);
+        assert_eq!(plain_union, (72_739, String::from("111.84")));
         // G more copies of the 42 levels, 861·3 + 42·(53 + 1), and the merge, 2·42 + P + G.
-        assert_eq!(plain_union, (72_732, String::from("111.84")));
         assert_eq!(
             union.0,
-            72_732 + 16_384 * (861 * 3 + 42 * 54) + 2 * 42 + 53_490 + 16_384
+            72_739 + 16_384 * (861 * 3 + 42 * 54) + 2 * 42 + 53_490 + 16_384
         );
-        assert_eq!(union, (79_621_474, String::from("101.75")));
+        assert_eq!(union, (79_621_481, String::from("101.75")));
     }
 
     fn only_groups(tree_levels: Vec<u64>, groups: GroupSizes) -> [u128; 2] {
@@ -3026,6 +3091,7 @@ mod tests {
             stages: Vec::new(),
             tree_levels,
             zero_checks: Vec::new(),
+            layer_vars: 0,
             forests: Vec::new(),
             lookups: Vec::new(),
             claim_groups: Vec::new(),
@@ -3135,6 +3201,170 @@ mod tests {
                 base
             );
             assert!(SoundnessReport::evaluate(SoundnessParams::live_64(), s).is_ok());
+        }
+    }
+
+    /// The default statement with stage 1's layer point of `layer_vars` coordinates, under
+    /// `protocol` and without groups, which `tessera-protocol/2` refuses.
+    fn with_layer_point(protocol: u8, layer_vars: u64) -> StatementSizes {
+        let mut s = StatementSizes::default_405b();
+        s.protocol = protocol;
+        s.groups = GroupSizes::NONE;
+        s.layer_vars = layer_vars;
+        s
+    }
+
+    /// RFC-0014 'Statement sizes': a calculator refuses, with `ERR-USAGE`, a `layer_vars` other
+    /// than 0 in `tessera-protocol/2` and one above 32 (#537). Each refusal alone beside its
+    /// passing neighbour, then the order RFC-0014 lists: after the grouping's count and protocol,
+    /// the protocol before the bound, and both before the ungrouped sizes.
+    #[test]
+    fn refuses_every_layer_point_rfc_0014_names_with_err_usage() {
+        let evaluate = |s| SoundnessReport::evaluate(SoundnessParams::live_64(), s);
+        // tessera-protocol/2 has no layer point: one coordinate already refuses, none passes.
+        for vars in [1, 7, MAX_LAYER_VARS] {
+            let err = evaluate(with_layer_point(2, vars)).unwrap_err();
+            assert_eq!(err, SoundnessError::LayerPointProtocol, "λ = {vars}");
+            assert_eq!(err.code(), "ERR-USAGE");
+            assert!(err.to_string().contains("layer_vars"), "{err}");
+        }
+        assert!(evaluate(with_layer_point(2, 0)).is_ok());
+        // λ ≤ 32 in tessera-protocol/1: 32 passes, 33 refuses.
+        for vars in [0, 1, 7, MAX_LAYER_VARS] {
+            assert!(evaluate(with_layer_point(1, vars)).is_ok(), "λ = {vars}");
+        }
+        for vars in [MAX_LAYER_VARS + 1, 64, u64::MAX] {
+            let err = evaluate(with_layer_point(1, vars)).unwrap_err();
+            assert_eq!(err, SoundnessError::LayerVars(vars), "λ = {vars}");
+            assert_eq!(err.code(), "ERR-USAGE");
+            assert!(err.to_string().contains(&vars.to_string()), "{err}");
+        }
+        // The default statement's λ = 7 at the largest grouping passes under protocol/1.
+        assert!(evaluate(StatementSizes::default_405b()).is_ok());
+
+        // In RFC-0014's order: the protocol before the bound.
+        assert_eq!(
+            evaluate(with_layer_point(2, MAX_LAYER_VARS + 1)),
+            Err(SoundnessError::LayerPointProtocol)
+        );
+        // The grouping's count and protocol before either.
+        let mut s = with_layer_point(2, MAX_LAYER_VARS + 1);
+        s.groups = StatementSizes::default_405b().groups;
+        assert_eq!(evaluate(s.clone()), Err(SoundnessError::GroupedProtocol));
+        s.groups.count = 3;
+        assert_eq!(evaluate(s), Err(SoundnessError::GroupCount(3)));
+        // Either before a grouped size without groups.
+        for protocol in [1, 2] {
+            let mut s = with_layer_point(protocol, MAX_LAYER_VARS + 1);
+            s.groups.merge_rounds = 1;
+            let expected = if protocol == 2 {
+                SoundnessError::LayerPointProtocol
+            } else {
+                SoundnessError::LayerVars(MAX_LAYER_VARS + 1)
+            };
+            assert_eq!(evaluate(s.clone()), Err(expected));
+            s.layer_vars = 0;
+            assert_eq!(evaluate(s), Err(SoundnessError::UngroupedSizes));
+        }
+    }
+
+    /// The rounds and union rows of a statement whose only item is stage 1's layer point.
+    fn only_layer_point(protocol: u8, layer_vars: u64, zero_checks: Vec<u64>) -> [SoundnessRow; 2] {
+        let s = StatementSizes {
+            protocol,
+            rounds: Vec::new(),
+            stages: Vec::new(),
+            tree_levels: Vec::new(),
+            zero_checks,
+            layer_vars,
+            forests: Vec::new(),
+            lookups: Vec::new(),
+            claim_groups: Vec::new(),
+            advice_rows: 1,
+            matrices: Vec::new(),
+            groups: GroupSizes::NONE,
+        };
+        let report = SoundnessReport::evaluate(SoundnessParams::ni_100(), s).unwrap();
+        assert_eq!(report.rows[0].row, RowKind::Rounds);
+        assert_eq!(report.rows[1].row, RowKind::Union);
+        [report.rows[0].clone(), report.rows[1].clone()]
+    }
+
+    /// RFC-0014 'Rows': `λ`, the layer point's, is an item of the rounds row's `D` and a term of
+    /// the union row's `U` (RFC-0037 'The layer point': `λ/|Fp2|`, #537). Alone, both rows are
+    /// `λ/q`; with no layer point, neither has a term; beside a larger item `D` keeps that item
+    /// and `U` still adds `λ`.
+    #[test]
+    fn the_layer_point_is_an_item_of_the_rounds_row_and_a_term_of_the_union() {
+        for vars in [1u64, 7, 31, MAX_LAYER_VARS] {
+            for row in only_layer_point(1, vars, Vec::new()) {
+                assert_eq!(
+                    row.numerator,
+                    Some(u128::from(vars)),
+                    "{:?} λ = {vars}",
+                    row.row
+                );
+                assert_eq!(row.bits, field_bits(u128::from(vars), 0));
+                assert_eq!(row.pass, Some(true));
+            }
+        }
+        // `edge/layer-point`: 7/q, 125.19 bits, in both rows.
+        let [rounds, union] = only_layer_point(1, 7, Vec::new());
+        assert_eq!(rounds.bits, Some(32_049));
+        assert_eq!(union.bits, Some(32_049));
+        assert_eq!(format_fixed_bits(32_049), "125.19");
+        // No layer point, no term: a maximum over no item is 0, in either protocol.
+        for protocol in [1, 2] {
+            for row in only_layer_point(protocol, 0, Vec::new()) {
+                assert_eq!(row.numerator, Some(0), "{:?}", row.row);
+                assert_eq!(row.bits, None);
+                assert_eq!(row.pass, Some(true));
+            }
+        }
+        // Beside a zero-check of 42 variables: D is the largest, U the sum.
+        let [rounds, union] = only_layer_point(1, 7, vec![42]);
+        assert_eq!((rounds.numerator, union.numerator), (Some(42), Some(49)));
+        let [rounds, union] = only_layer_point(1, 7, vec![3]);
+        assert_eq!((rounds.numerator, union.numerator), (Some(7), Some(10)));
+        // The default statement counts its λ = 7 in the union, beside every other term.
+        let base = StatementSizes::default_405b();
+        for params in [SoundnessParams::live_64(), SoundnessParams::ni_100()] {
+            let with = SoundnessReport::evaluate(params.clone(), base.clone()).unwrap();
+            let without = SoundnessReport::evaluate(
+                params,
+                StatementSizes {
+                    layer_vars: 0,
+                    ..base.clone()
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                with.rows[1].numerator,
+                without.rows[1].numerator.map(|u| u + 7)
+            );
+            assert_eq!(with.rows[0].numerator, without.rows[0].numerator);
+        }
+    }
+
+    /// The report states `layer_vars` in its statement (`soundness-v1.schema.json`), its keys
+    /// sorted as every object's of the report: after `groups`, before `lookups`.
+    #[test]
+    fn the_report_states_the_layer_point() {
+        for (s, vars) in [
+            (StatementSizes::default_405b(), 7u64),
+            (with_layer_point(2, 0), 0),
+        ] {
+            let report = SoundnessReport::evaluate(SoundnessParams::live_64(), s).unwrap();
+            let json = report.to_json();
+            assert!(
+                json.contains(&format!(
+                    "\n    }},\n    \"layer_vars\": {vars},\n    \"lookups\": ["
+                )),
+                "{json}"
+            );
+            let parsed = Json::parse(&json).unwrap();
+            let statement = parsed.get("statement").unwrap();
+            assert_eq!(statement.get("layer_vars").unwrap().as_u64(), Some(vars));
         }
     }
 }

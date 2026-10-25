@@ -278,6 +278,8 @@ def statement_405b():
         # Each level batches every instance's two trees and every forest at most.
         "tree_levels": [2 * len(lookups) + len(forests)] * levels,
         "zero_checks": [42] * 8,
+        # Stage 1's layer point: λ = ⌈log2 126⌉ (RFC-0037 'The layer point').
+        "layer_vars": 7,
         "forests": forests,
         "lookups": lookups,
         "claim_groups": [64] * 16,
@@ -445,6 +447,9 @@ def validate(params, statement):
             require(m["matrix"] == "ChannelParams" or m["claims"] == 1,
                     "a matrix other than ChannelParams has one claim (RFC-0065 'The count')")
             require(m["rows"] + blinding_rows(m, wts["blinding_rows"]) >= 1, "a matrix holds a row")
+    require(statement["layer_vars"] <= 32, "a layer point of at most 32 coordinates")
+    require(statement["layer_vars"] == 0 or statement["protocol"] == 1,
+            "tessera-protocol/2 has no layer point: RFC-0068's layer sumcheck is a stage")
     groups = statement["groups"]
     g = groups["count"]
     require(g >= 1 and g & (g - 1) == 0 and g <= 2**MAX_GROUP_BITS, "G a power of two in 1..=2^14")
@@ -504,6 +509,9 @@ def report(params, statement, name, why):
     challenges = rounds + statement["stages"] + statement["tree_levels"] + statement["zero_checks"]
     if statement["tree_levels"]:
         challenges.append(1)
+    # Stage 1's layer point: a false per-layer value survives its stacking with λ/q (#537).
+    if statement["layer_vars"] > 0:
+        challenges.append(statement["layer_vars"])
     if v2 and (statement["stages"] or statement["tree_levels"]):
         challenges.append(1)
     # RFC-0054 'Soundness': the groups' and the table batch's levels are levels of the same
@@ -522,6 +530,7 @@ def report(params, statement, name, why):
              + sum(statement["stages"])
              + sum(m + 1 for m in statement["tree_levels"])
              + sum(statement["zero_checks"])
+             + statement["layer_vars"]
              + (len(statement["stages"]) + len(statement["tree_levels"]) if v2 else 0))
     if grouped:
         # G more copies of the leaf stage's levels, each group's and the table batch's being no
@@ -652,7 +661,7 @@ def adversarial(base):
             ("queries/advice", params_changed(params, " (τ_A − 1)", advice_queries=tau_a - 1), base,
              "one advice query fewer than the set's τ_A"),
             ("queries/Down", params,
-             with_changes(matrix_changed(base, "Down", width=2**19), protocol=2,
+             with_changes(matrix_changed(base, "Down", width=2**19), protocol=2, layer_vars=0,
                           groups=NO_GROUPS),
              "Down at half the message width under tessera-protocol/2, whose P_W mask "
              "coefficients count: ρ' = 0.281, 97 or 122 queries fall short"),
@@ -679,8 +688,8 @@ def edges(base):
     """The exact comparisons at their boundaries, where rounded bits would decide wrongly."""
     below = Q // 2**100  # 2^28 − 1: c·2^100 ≤ q holds, and fails for c + 1
     empty = {"protocol": 1, "rounds": [], "stages": [], "tree_levels": [], "zero_checks": [],
-             "forests": [], "lookups": [], "claim_groups": [], "advice_rows": 1, "matrices": [],
-             "groups": NO_GROUPS}
+             "layer_vars": 0, "forests": [], "lookups": [], "claim_groups": [], "advice_rows": 1,
+             "matrices": [], "groups": NO_GROUPS}
     cases = [
         ("edge/numerator-pass", NI_100, with_changes(base, claim_groups=[below]),
          "T_g = ⌊q/2^100⌋: 100 + 4.7·10^-9 bits, which passes"),
@@ -689,13 +698,14 @@ def edges(base):
         ("edge/logup-2^50-live", LIVE_64, with_changes(base, lookups=base["lookups"] + [
             {"lookups": 2**50 - 2**22, "rows": 2**22}]),
          "N + T = 2^50 at live-64: 78 − ε one-shot bits pass its 64-bit target"),
-        ("edge/protocol-2", NI_100, with_changes(base, protocol=2, groups=NO_GROUPS,
+        ("edge/protocol-2", NI_100, with_changes(base, protocol=2, groups=NO_GROUPS, layer_vars=0,
                                                  rounds=base["rounds"] + [{"count": 2, "degree": 4}],
                                                  stages=base["stages"] + [len(base["lookups"])]),
          "tessera-protocol/2: 2(N + T)/q, a mask per batched sumcheck, the identity sumcheck"),
         ("edge/empty", NI_100, {"protocol": 1, "rounds": [], "stages": [], "tree_levels": [],
-                                "zero_checks": [], "forests": [], "lookups": [], "claim_groups": [],
-                                "advice_rows": 1, "matrices": [], "groups": NO_GROUPS},
+                                "zero_checks": [], "layer_vars": 0, "forests": [], "lookups": [],
+                                "claim_groups": [], "advice_rows": 1, "matrices": [],
+                                "groups": NO_GROUPS},
          "nothing but the advice and the hash: every other row has no term, and ϑ = 0"),
         ("edge/rate-one", params_changed(LIVE_64, " (rate 1)", weights={**LIVE_64["weights"], "log2_inv_rate": 0}),
          base, "weights at rate 1: ρ' ≥ 1, so their queries give no bit"),
@@ -703,6 +713,8 @@ def edges(base):
          "a tree level that batches nothing: its line challenge alone, 1/q"),
         ("edge/mask-only", NI_100, with_changes(empty, protocol=2, stages=[0]),
          "a stage that batches nothing in tessera-protocol/2: its mask's ρ alone, 1/q"),
+        ("edge/layer-point", NI_100, with_changes(empty, layer_vars=7),
+         "stage 1's layer point alone, of 126 layers: λ/q = 7/q, in rounds and union (#537)"),
         ("edge/zero-count", NI_100, with_changes(empty, rounds=[{"count": 0, "degree": 2**30},
                                                               {"count": 1, "degree": 3}]),
          "no round of degree 2^30 counts: the rounds row is 3/q"),
@@ -715,16 +727,16 @@ def edges(base):
         # RFC-0065 '`ChannelParams`' blinding rows': B_CP pinned exactly, at test-small's B_W = 32
         # and e_CP = 7, B_CP = 80: 944 data rows reach 2^10, and 945 pass it.
         ("edge/channel-params-at-a-power", TEST_SMALL,
-         with_changes(matrix_changed(base, "ChannelParams", rows=944), protocol=2, groups=NO_GROUPS),
+         with_changes(matrix_changed(base, "ChannelParams", rows=944), protocol=2, layer_vars=0, groups=NO_GROUPS),
          "tessera-protocol/2, ChannelParams' 944 data rows and B_CP = 80: 1,024 rows, ϑ = 10; one "
          "blinding row more would give 11"),
         ("edge/channel-params-past-a-power", TEST_SMALL,
-         with_changes(matrix_changed(base, "ChannelParams", rows=945), protocol=2, groups=NO_GROUPS),
+         with_changes(matrix_changed(base, "ChannelParams", rows=945), protocol=2, layer_vars=0, groups=NO_GROUPS),
          "tessera-protocol/2, ChannelParams' 945 data rows and B_CP = 80: 1,025 rows, ϑ = 11; one "
          "blinding row fewer would give 10"),
         ("edge/blinding-below-4",
          params_changed(LIVE_64, " (B_W = 3)", weights={**LIVE_64["weights"], "blinding_rows": 3}),
-         with_changes(matrix_changed(base, "ChannelParams", rows=2, claims=2), protocol=2,
+         with_changes(matrix_changed(base, "ChannelParams", rows=2, claims=2), protocol=2, layer_vars=0,
                       groups=NO_GROUPS),
          "B_W = 3 < 4: N_0 = ⌊max(B_W − 4, 0)/6⌋ = 0, so B_CP = B_W and ChannelParams' 2 + 3 rows "
          "give ϑ = 3"),
@@ -785,6 +797,7 @@ def random_statement(rng, params):
         "stages": [rng.bits(20) for _ in range(rng.below(4))],
         "tree_levels": [rng.bits(16) for _ in range(rng.below(6))],
         "zero_checks": [rng.bits(7) for _ in range(rng.below(4))],
+        "layer_vars": 0,
         "forests": [rng.bits(8) for _ in range(rng.below(3))],
         "lookups": [{"lookups": rng.bits(64), "rows": rng.bits(64)} for _ in range(rng.below(4))],
         "claim_groups": [rng.bits(32) for _ in range(rng.below(4))],
@@ -794,6 +807,8 @@ def random_statement(rng, params):
     }
     if statement["protocol"] == 2:  # RFC-0054 'Messages': no grouping in tessera-protocol/2
         statement["groups"] = dict(NO_GROUPS)
+    else:  # drawn last, so the other draws are those before #537; protocol/2 has no layer point
+        statement["layer_vars"] = rng.below(33)
     return statement
 
 
@@ -854,7 +869,7 @@ def main():
         cases.append(report(params, base, f"405b/{params['id']}",
                             "the 405B 16K-token, 16K-context statement"))
     for params in PARAM_SETS:
-        cases.append(report(params, with_changes(base, protocol=2, groups=NO_GROUPS),
+        cases.append(report(params, with_changes(base, protocol=2, layer_vars=0, groups=NO_GROUPS),
                             f"405b-protocol-2/{params['id']}",
                             "the 405B statement under tessera-protocol/2: the weights count "
                             "their P_W mask coefficients and B_W blinding rows"))
@@ -926,7 +941,8 @@ def main():
         openings = [row for row in by_name[name]["rows"] if row["row"] == "openings"][0]
         require(openings["pass"] is verdict, f"{name}: the decision")
     require(by_name["edge/logup-2^50-live"]["meets_targets"], "2^50 passes live-64's one-shot target")
-    for name, numerator in [("edge/line-only", "1"), ("edge/mask-only", "1"), ("edge/zero-count", "3")]:
+    for name, numerator in [("edge/line-only", "1"), ("edge/mask-only", "1"), ("edge/zero-count", "3"),
+                            ("edge/layer-point", "7")]:
         rounds = by_name[name]["rows"][0]
         require(rounds["row"] == "rounds" and rounds["numerator"] == numerator, f"{name}: rounds")
     # RFC-0054 'Soundness': the 405B statement's rounds row is the merge's batching, P + G; the

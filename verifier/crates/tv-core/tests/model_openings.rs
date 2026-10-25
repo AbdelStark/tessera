@@ -612,6 +612,26 @@ fn complete_runtime_budget_keeps_original_groups_and_checks_preset_name_mode_and
         let report = budget.report();
         assert_eq!(report.meets_targets, Some(true));
         assert_eq!(report.params.id, params.name());
+        // Stage 1's layer point, the λ = ⌈log2 3⌉ = 2 coordinates the proof squeezes, and the
+        // union counts them (RFC-0014 'Statement sizes' `layer_vars`, #537).
+        let model = tv_core::gadgets::model::Plan::derive_runtime(&runtime).unwrap();
+        let stages = model.schedule().stages();
+        assert_eq!(stages[0].index, 1);
+        assert_eq!(stages[0].layer_vars, model.schedule().layer_vars());
+        assert!(stages[1..].iter().all(|s| s.layer_vars == 0));
+        assert_eq!(report.statement.layer_vars, 2);
+        let without = tv_core::soundness::SoundnessReport::evaluate(
+            report.params.clone(),
+            tv_core::soundness::StatementSizes {
+                layer_vars: 0,
+                ..report.statement.clone()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            report.rows[1].numerator,
+            without.rows[1].numerator.map(|u| u + 2)
+        );
         assert_eq!(
             report.statement.claim_groups.iter().sum::<u64>(),
             views.len() as u64

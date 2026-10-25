@@ -200,6 +200,7 @@ fn report_json(report: &SoundnessReport) -> Value {
             "stages": s.stages,
             "tree_levels": s.tree_levels,
             "zero_checks": s.zero_checks,
+            "layer_vars": s.layer_vars,
             "forests": s.forests,
             "lookups": s.lookups.iter()
                 .map(|l| json!({"lookups": l.lookups, "rows": l.rows}))

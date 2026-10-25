@@ -125,7 +125,8 @@ fn lookups_and_table_rows_replace_the_logup_instances() {
     assert_eq!(report["meets_targets"], false);
     // RFC-0014: the leaf stage's levels follow the tallest tree, 50 for N = 2^50, with their
     // Σ_{ℓ<50} ℓ = 1,225 rounds and the merge's 50 (RFC-0054 'Soundness'). The union is the
-    // ungrouped 72,732 + 8·54, plus 2^14·(1,225·3 + 50·54) + 2·50 + 53,490 + 2^14.
+    // ungrouped 72,739, the layer point's λ = 7 included (#537), + 8·54, plus
+    // 2^14·(1,225·3 + 50·54) + 2·50 + 53,490 + 2^14.
     let statement = &report["statement"];
     assert_eq!(
         statement["tree_levels"].as_array().expect("levels").len(),
@@ -138,7 +139,7 @@ fn lookups_and_table_rows_replace_the_logup_instances() {
     assert_eq!(statement["groups"]["merge_rounds"], 50);
     let union = &rows(&report)[1];
     assert_eq!(union["row"], "union");
-    assert_eq!(union["numerator"], "104591138");
+    assert_eq!(union["numerator"], "104591145");
     assert_eq!(union["pass"], true);
     let table_out = tessera(&[
         "params",

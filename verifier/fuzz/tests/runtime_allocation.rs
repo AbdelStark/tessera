@@ -196,6 +196,7 @@ fn runtime_catalog_layout_leaf_and_mixed_metadata_preserve_memory_errors() {
                     stages: Vec::new(),
                     tree_levels: Vec::new(),
                     zero_checks: Vec::new(),
+                    layer_vars: 0,
                     forests: Vec::new(),
                     lookups: Vec::new(),
                     claim_groups: Vec::new(),
