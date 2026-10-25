@@ -13,7 +13,9 @@
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#grinding) 'Grinding' and 'Transcript schedule': the link's proof of work and labels;
   - [RFC-0043](RFC-0043-rejection-payloads.md): `WeightLinkProof` among the prover's artifacts, and its nonce under `PowPhase::Queries`;
   - [RFC-0013](RFC-0013-zero-knowledge.md) 'Cost': the column budget after epoch 0;
-  - [RFC-0004](RFC-0004-hashing-and-transcript.md#hash-function-and-domains)'s domain table: `weights-link`;
+  - [RFC-0004](RFC-0004-hashing-and-transcript.md#hash-function-and-domains)'s domain table: `weights-link` and `weights-refresh`;
+  - [RFC-0040](RFC-0040-weight-commitment-artifacts.md) 'masks_seed': a later epoch's seed is derived from the one before;
+  - [RFC-0019](RFC-0019-verifier.md#ledger) 'Ledger': one successor per root, and `weights link`'s claim list;
   - [03 §5](../spec/03-data-model.md#5-artifact-catalog): `WeightLinkProof` is defined here.
 - Origin: [#485](https://github.com/AbdelStark/tessera/issues/485), from the simulator argument ([`docs/zk/simulator.md`](../zk/simulator.md) §6.4, requirement R3)
 
@@ -48,7 +50,9 @@ The RFC also gives what RFC-0012 left undefined: the transcript, the query count
 
 ### The inputs
 
-- **Two states.** Epoch `e`'s `WeightCommitmentState` and epoch `e + 1`'s, committed from the same weights with a fresh `masks_seed`, with equal `WeightLayoutParams` (RFC-0040). Their public parts are `old` and `new`, with roots `R_W = H("weights-root", TCE(old))` and `R_W'` (RFC-0012 'Layout').
+- **Two states.** Epoch `e`'s `WeightCommitmentState` and epoch `e + 1`'s, committed from the same weights with equal `WeightLayoutParams` (RFC-0040). Their public parts are `old` and `new`, with roots `R_W = H("weights-root", TCE(old))` and `R_W'` (RFC-0012 'Layout').
+- **The next seed is derived.** `masks_seed_{e+1} = H("weights-refresh", masks_seed_e ‖ u32(e + 1))`, a new domain of RFC-0004, and it is secret-class like the seed it comes from ('One link per epoch' says why). Epoch 0's seed alone is drawn from the operating system's CSPRNG (RFC-0040).
+- **The claim list.** The matrices' shapes, which matrices have committed rows, and each matrix's `commitment_id_T` (its row block `B` included, RFC-0031) come from a claim list whose weights the commitment holds. The prover has it, and the verifier takes it as an input.
 - **The matrices.** Every `WeightMatrix` `T` with committed rows, `m_T > 0`, in RFC-0040's order. A matrix with no committed rows is not linked, as it has no proximity row in a proof either ([RFC-0049](RFC-0049-weight-proximity.md#the-schedule)).
 - **Positions.** Committed row `j < m_T` is the `j`-th committed data row in RFC-0040's order, the index RFC-0049's proximity row uses. Both epochs share the layout, so row `j` holds the same weights in both. The blinding rows follow the data rows, `m_T + i` for blinding row `i < B_W`.
 
@@ -68,15 +72,15 @@ SessionContext {
 
 `weights-link` is a new domain of RFC-0004, over `old_root: Digest ‖ new_root: Digest`, 64 bytes.
 
-- **No parameter set.** The link is bound to the weight commitment, not to a claim list. `live-64` and `ni-100` share their weights' layout (RFC-0014 'Parameter sets'), and the commitment holds no parameter set, so one commitment can serve claim lists of both. A claim list's parameter set in the transcript would give it two links. `weights-link/1` names this transcript and nothing else.
-- **Its parameters** come from the layout:
+- **No parameter set.** The link is bound to the weight commitment, not to a claim list. `live-64` and `ni-100` share their weights' layout (RFC-0014 'Parameter sets'), and the commitment holds no parameter set, so one commitment can serve claim lists of both. A claim list's parameter set in the transcript would give it two links. `weights-link/1` is a `ParamSetId` that names this transcript and no parameter set.
+- **Its parameters** come from the whole `WeightLayoutParams`:
 
-  | Layout | `τ_link` | `g_link` |
+  | `log2 k_W`, inverse rate, `P_W`, `B_W` | `τ_link` | `g_link` |
   |---|---|---|
-  | `log2 k_W = 20`, rate 1/4, `P_W = 2^16` (`live-64`, `ni-100`) | 122 | 20 |
-  | `log2 k_W = 8`, rate 1/4, `P_W = 64` (`test-small`) | 8 | 0 |
+  | 20, 4, `2^16`, 4096 (`live-64`, `ni-100`) | 122 | 20 |
+  | 8, 4, 64, 32 (`test-small`) | 8 | 0 |
 
-  A layout with no row here has no linking proof. `τ_link` is also the headroom `reserve` keeps (RFC-0012).
+  A layout with no row here has no linking proof: both rows have `B_W ≥ 8`, so an epoch's four rows at each end never overlap. `τ_link` is also the headroom `reserve` keeps (RFC-0012).
 
 For each linked matrix `T` in order, the transcript runs:
 
@@ -156,12 +160,13 @@ pub struct MatrixLink {
 
 ### The verifier's checks
 
-`tessera-verify weights link` checks a `WeightLinkProof` in this order. The first failure is the verdict:
+`tessera-verify weights link` takes the ledger, the `WeightLinkProof` and the claim list of the ledger entry it extends, which the verifier has validated as for a proof (RFC-0007). It checks, in this order, and the first failure is the verdict:
 1. **Decoding.** The proof decodes under `ResourceLimits`, else `Reject(Malformed { artifact: WeightLinkProof, code })` with the decoder's code.
 2. **The statement.**
-   - `H("weights-root", TCE(old))` is the current root of the ledger entry being extended, else `StatementMismatch { field: WeightsRoot }`.
+   - `H("weights-root", TCE(old))` is the current root of the claim list's ledger entry, else `StatementMismatch { field: WeightsRoot }`.
+   - The ledger records no successor of `R_W`, or records this proof's `R_W'`, else `{ field: WeightsRoot }`: a root takes one successor.
    - `old.epoch < 2^32 − 1` and `new.epoch = old.epoch + 1`, else `{ field: WeightsEpoch }`.
-   - `new.layout = old.layout`, and `matrices` lists exactly the matrices with committed rows, else `{ field: Layout }`.
+   - `new.layout = old.layout`, the layout has a row in 'The transcript''s table, and `matrices` lists exactly the matrices the claim list commits rows of, else `{ field: Layout }`. Each matrix's shape and `commitment_id_T`, for both epochs, are the claim list's (RFC-0040, RFC-0031).
 3. **The transcript.** The verifier rebuilds it, absorbing each matrix's `q_T` and combined rows at their places.
 4. **Shapes and evaluation.** Each combined row has `k_T` values and `P_W` mask coefficients, and each `q_T = ⟨u_T, eq(ρ_T^{col})⟩`. A failure is `Reject(Evaluation { commitment: Weight })`, at the first matrix.
 5. **The proof of work.** `query_nonce` meets `g_link`, else `Reject(ProofOfWork { phase: Queries })`.
@@ -169,8 +174,9 @@ pub struct MatrixLink {
 7. **Columns,** per matrix in order, epoch `e`'s answer before `e + 1`'s:
    - one column per distinct index, with `m_T + B_W` symbols each, and the multiproof against that commitment's matrix root, else `Reject(MerklePath { commitment: Weight, column })` at the smallest queried index;
    - then, at each distinct index in increasing order, the difference row's column check, then the old proximity row's, then the new one's, else `Reject(Proximity { commitment: Weight, column })` at the first failing `c`.
-8. **Accept.** The ledger appends `(epoch e + 1, R_W')` as `R_W`'s successor, for every entry whose current root is `R_W`: one link serves every claim list of the commitment.
-9. **One link per epoch.** A ledger that holds a successor of `R_W` already refuses another link from it with `StatementMismatch { field: WeightsRoot }`, since `R_W` is then no entry's current root.
+8. **Accept.** The ledger records `R_W'` as `R_W`'s successor, appends `(epoch e + 1, R_W')` to the claim list's entry, and records the link's rows in each epoch's used blinding rows ([RFC-0019](RFC-0019-verifier.md#ledger)).
+   - **Other claim lists.** Another entry at `R_W`, of a claim list with the same commitment, is extended by checking the same link with that claim list. The successor is the one recorded, so the check accepts.
+   - **The same link again** is accepted and extends nothing new. The prover may resend it.
 
 ### The budget
 
@@ -190,16 +196,27 @@ A second link from epoch `e` would reveal what one hides:
 - **Columns.** It could open `τ_link` more columns of epoch `e`, past `P_W`: up to `(P_W − τ_link) + 2τ_link = 65,658` at the production layout. Past `P_W`, a row's symbols determine linear functionals of its weights that no mask covers (Lemma 3).
 - **The proximity pair.** Both links' old proximity rows would carry the same designated pair. Their difference would reveal a combination of the weights alone, if #394 keeps the blinding rows out of the proximity combination.
 
-So the prover makes at most one link from each epoch, and RFC-0012's state machine gains a transition:
+So every link from epoch `e` is one link: the same bytes, however many times it is made.
+- **A function of epoch `e`'s state.** Epoch `e + 1`'s seed is derived from epoch `e`'s ('The inputs'), so its commitment, its rows and `R_W'` are fixed. The transcript is then a function of the two roots and the rows, and `query_nonce` is the least nonce that meets `g_link`. So the link is a function of epoch `e`'s seed and the weights alone.
+- **What it closes.** A remade link opens the same columns with the same pairs, and reveals nothing a first one did not. That holds for each way a second link could otherwise arise:
+  - a resend after a crash, before or after the first was sent;
+  - a lost or a restored budget record;
+  - two nodes that hold copies of epoch `e`'s state;
+  - a verifier that claims to hold no link.
+- **The cost** is forward secrecy among epochs: whoever learns an epoch's seed derives every later one. Whoever can read a prover's `masks_seed` can read its weights too, in the same state, so this adds little.
+
+RFC-0012's state machine gains a transition, for the budget's bookkeeping:
 
 | Event | Precondition | Effect |
 |---|---|---|
-| `link` (before the `WeightLinkProof` is sent) | Epoch `e` has no link, and `\|opened_columns\| + τ_link ≤ P_W` | Burns rows `B_W − 4` to `B_W − 1` of epoch `e`, records the link's columns, and closes epoch `e` to `reserve`. Writes epoch `e + 1`'s state, with `next_blinding_row = 4` and the link's columns opened |
+| `link` (before the `WeightLinkProof` is sent) | Every reservation of epoch `e` has recorded its queries or aborted | Writes epoch `e + 1`'s state, from row 4 with the link's columns opened, and the `WeightLinkProof` beside it. Then burns rows `B_W − 4` to `B_W − 1` of epoch `e`, records the link's columns there, and closes epoch `e` to `reserve` |
 
-- **Persisted first.** Both states are persisted (fsync, atomic rename) before the link is sent, as RFC-0012's other transitions are. A `link` whose precondition fails is `ERR-WITNESS-BUDGET`, as a failed `reserve` is.
-- **Sent again, never remade.** A prover that must resend a link sends the same `WeightLinkProof`, which it keeps beside epoch `e + 1`'s state. A link is not deterministic: epoch `e + 1`'s seed is fresh, so a remade link is a second one.
-- **A lost record.** A prover that has lost epoch `e`'s budget but kept its seed may link only if no link from `R_W` exists. Its state says so, or, with the state lost, no ledger it publishes to holds a successor of `R_W`. `reserve` always leaves the four rows and `τ_link` columns free, so that one link stays within the hiding budget whatever the lost record held.
-- **The verifier** accepts one successor of each root (check 9). The rule protects the prover's secret, so it binds the prover, and the verifier's refusal is a second line.
+- **The order.** Epoch `e + 1`'s state and the link are persisted first (fsync, atomic rename), and closing epoch `e` is the commit point.
+  - A crash before it leaves epoch `e` open with nothing sent. A later `link` remakes the same files.
+  - A crash after it leaves both epochs and the link in place.
+- **Its errors.** A `link` whose precondition fails is `ERR-WITNESS-BUDGET`, as a failed `reserve` is.
+- **The column budget.** `reserve` keeps `τ_link` columns free in every epoch, so the link fits whatever the epoch's record held, a lost record included: the deterministic link opens the same columns however often it is made.
+- **The verifier** records one successor of each root (check 2). The rule that protects the prover's secret is the link's determinism, and the verifier's record is a second line.
 
 ### Soundness
 
@@ -253,18 +270,19 @@ RFC-0012's two openings carried four combined rows per matrix, 713.0 MB: the dif
 ## Drawbacks
 
 - The link depends on #394 for its proximity rows' coefficients on the blinding rows, as every `tessera-protocol/2` proof does.
+- Epochs' seeds are chained, so an epoch's seed gives every later one ('One link per epoch').
 - A link is about 1.4 GB at 405B, against about 0.35 GB of column answers for a live proof. It is made once per epoch.
 
 ## Migration / Rollout
 
 - **#153** implements the refresh and the linking proof, with R3's test.
-- **#158** implements `tessera-verify weights link` and the ledger's epochs: one link extends every entry whose current root is `R_W`, and a root takes one successor.
+- **#158** implements `tessera-verify weights link`, with the claim list as an input, and the ledger's epochs and successors.
 - **`tessera-protocol/1`** has no refresh and is unaffected.
 - **`docs/zk/simulator.md`** marks R3 met by this RFC.
 
 ## Testing Strategy
 
-- **One link.** A second link from an epoch is refused by the prover's state machine, before any byte is sent, and by a verifier that holds the first.
+- **One link.** A link made twice from one epoch's state, before and after a crash, from a restored record and on a second node, is the same bytes each time. A verifier that holds a successor of `R_W` refuses another `R_W'` from it, and accepts the same link again.
 - **Soundness.**
   - Equal weights link.
   - Weights that differ in one entry, of any matrix, are refused with `Reject(Proximity)` or `Reject(Evaluation)`, the commitments being honest.
@@ -276,7 +294,7 @@ RFC-0012's two openings carried four combined rows per matrix, 713.0 MB: the dif
   - a nonce short of `g_link`;
   - a column missing or extra, and a multiproof sibling changed;
   - one symbol of either commitment changed, which the difference row's or a proximity row's column check refuses.
-- **Zero knowledge.** Two weight sets that agree at `ρ_T`, over `F65537` with the test layout, give linking views no distinguisher of #162 tells apart. RFC-0012's openings, which reveal `W̃_T(ρ_T)`, are the negative control.
+- **Zero knowledge.** Two weight sets that differ at `ρ_T`, over `F65537` with the test layout and the random oracle programmed to give both the same `ρ_T`, give linking views no distinguisher of #162 tells apart. RFC-0012's openings, which reveal the two different `W̃_T(ρ_T)`, are the negative control.
 - **The budget.**
   - The link uses rows `B_W − 4` to `B_W − 1` of epoch `e` and 0 to 3 of `e + 1`.
   - Epoch `e + 1`'s first `reserve` starts at row 4, with the link's columns opened.
