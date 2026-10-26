@@ -107,7 +107,7 @@ and `ciphertext = TCE(TokenFrame) ⊕ (K_0 ‖ K_1 ‖ …)[0..length]`.
 u64_le(request_id) ‖ u16_le(direction tag: 0 = In, 1 = Out) ‖ u32_le(frame_index) ‖ u64_le(n) ‖ u32_le(token_0) ‖ … ‖ u32_le(token_{n−1})
 ```
 
-- **Shape.** Its length is `22 + 4n` bytes, and `n ≥ 0`. Under draft [RFC-0074](RFC-0074-anchor-binding.md#the-anchors-inputs), in effect when it is accepted, a request has at most two frames of `n = 0`, and the reference cipher refuses a third.
+- **Shape.** Its length is `22 + 4n` bytes, and `n ≥ 0`. Under draft [RFC-0074](RFC-0074-anchor-binding.md#the-anchors-inputs), in effect when it is accepted, the serving stack sends at most two frames of `n = 0` per request, and the reference cipher refuses a third. This duty is not an empty-frame count check by the verifier: the verifier enforces RFC-0074's aggregate block bound.
 - **Agreement with the header.** The plaintext's `request_id`, direction and `frame_index` equal the header's, and its count is `(length − 22)/4`. A decrypted frame that disagrees is refused. The circuits fix the plaintext's whole 22-byte prefix to these public values ('The circuits').
 - **Secrecy.** The plaintext and the tokens are secret-class (05 §3). The ciphertext, the header and their digest are public.
 

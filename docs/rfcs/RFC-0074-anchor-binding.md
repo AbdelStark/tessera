@@ -32,7 +32,7 @@ RFC-0072 proves AES-128-CTR and SHA-256 as graphs of their own. #146 puts them i
 - **One graph.** The model's lowering, then, per session of the batch, its key commitment, its AES-128-CTR, its plaintext's binding and each frame's SHA-256. Model node, gadget and table ids do not move. AES-128-CTR's graph is fixed to the node, as RFC-0066 fixes SHA-256's.
 - **The token-byte binding.** Each session's plaintext is one committed tensor, the bytes AES encrypts. `BitDecompose { 8, 0 }` proves each byte. Two `AssertEqual`s bind it: its public bytes to their values from the log, and its token bytes, recomposed as `Σ_b 2^{8b}·byte_b` by one combined selection, to the token axis's rows, which `OneHot` reads.
 - **Inputs from the log.** The graph's shapes and public inputs are a function of the statement's batch and the two verified logs of its window. No claim-list or statement field is added.
-- **Size.** A request's frames hold at most `2·n_r + 4` SHA-256 blocks, a public bound past which the request is refused. Until OQ-0074-1 and OQ-0072-3 land, an interim cap of 4,096 blocks at that bound per batch keeps every proof within the decode limit.
+- **Size.** A request's frames hold at most `2·n_r + 4` SHA-256 blocks, a public bound past which the request is refused. Until OQ-0074-1 and OQ-0072-3 land, a proposed interim cap of 4,096 blocks at that bound per batch limits graph expansion. It is not a proof-size guarantee; production rollout also requires the composed proof to meet the unchanged total-proof gate.
 - **Batches, token groups and the layout.** The anchor reads the token axis only through a gather of real rows, which lifts RFC-0072's batch refusal for it. Its operations have no token axis, so token groups apply. A tensor non-zero at padding has every row committed.
 
 For a tiny model, a request of 2 prompt and 2 output tokens in two frames takes 14 stages and 17,555 instances. The model alone takes 4 stages and 221 instances. The binding itself, the two `AssertEqual`s and their gathers, is 2 zero-checks, 3 selections and 3 pool claims per session; the plaintext's range check is counted with AES.
@@ -87,7 +87,7 @@ Every frame takes two blocks at least, since `ℓ ≥ 22`. Every session holds a
   ```
 
   - **Why these numbers.** Frame `f` hashes `41 + ℓ_f` bytes, which FIPS 180-4 pads to `⌈(ℓ_f + 50)/64⌉` blocks. A frame of `n ≥ 1` tokens takes `⌈(72 + 4n)/64⌉ ≤ 2n` blocks, so one token per frame, the most a token can cost, takes `2·n_r`. The 4 admit two frames of no token.
-  - **The stack's duty.** A request has at most two frames of no token ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#the-plaintext) 'The plaintext', as amended); the reference cipher refuses a third. The bound refuses no log that keeps it.
+  - **The stack's duty.** A request has at most two frames of no token ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#the-plaintext) 'The plaintext', as amended); the reference cipher refuses a third. This is the serving stack's duty, not a separate verifier acceptance check. The verifier and pre-check enforce the aggregate block bound: a log with more than two empty frames may pass if it fits that bound. The bound refuses no log that keeps the duty.
   - **Its rule.** It is a rule of RFC-0015's check 2, checked after the lengths, from the entries alone and before anything of the anchor is derived. A request past it is `Reject(Anchor { request_id: Some(r), kind: Frames })`; the prover's pre-check refuses it first, `ERR-WITNESS-ANCHOR`.
   - **Why it is needed.** Without it, frames of no token, which change no token count and no length bucket, would grow a request's anchor at the serving stack's choice, past any verifier's resources.
   - **What follows.** A frame's AES blocks, `⌈ℓ_f/16⌉ ≤ 4·⌈(ℓ_f + 50)/64⌉`, are then at most `8·n_r + 16` per request. Each anchor session adds one key-commitment block and one key schedule, and there are at most `R` sessions. So a batch's anchor is at most
@@ -100,7 +100,7 @@ Every frame takes two blocks at least, since `ℓ ≥ 22`. Every session holds a
 - **The interim cap.** Until OQ-0074-1 and OQ-0072-3 are resolved, a batch's `A_b` is at most `A_max = 4,096`.
   - **Its check.** The verifier checks it with the batch's other checks at RFC-0019 step 4, from the statement alone and before it reads any entry: past it is `Reject(StatementMismatch { field: Batch })`.
   - **The packer.** It splits a batch past the cap as RFC-0071 splits one past the maximum layout. A request with `2·n_r + 5 > 4,096`, more than 2,045 tokens, is unprovable meanwhile: it is left out of its batch and named as unproven (RFC-0071 'An unprovable request').
-  - **Why this number.** At the cap an anchor costs at most about 1.5 M advice rows, 2.3 GB of opened columns at `τ_A = 193`, 0.36 GB of evaluations and 1.6 GB of extra opening groups ('Drawbacks'). That keeps a 405B proof under RFC-0003's 8 GiB decode limit for either production parameter set, whatever the framing.
+  - **What this number bounds.** It bounds SHA-256 blocks, and with them graph expansion. It does not bound the number of column sub-points by the 24 additional groups measured on the tiny examples below: different frame and session shapes must be counted in the composed schedule. No uniform proof-byte bound has been established at this cap. The cap alone authorizes no production rollout ('Migration / Rollout').
 
 ### The composed graph
 
@@ -262,14 +262,14 @@ RFC-0072 'Real positions' refuses a `ConstAdd` or `AssertEqual` downstream of th
 - **No statement field.** The anchor's sizes are the frames' lengths and counts, which the verified logs give. The statement's `prompt_len` and `output_len` must equal their token counts (check 2).
 - **The verifier's order** (RFC-0019 step 4):
   1. the batch's checks, the interim cap and the resource decision among them, from the statement;
-  2. the log and the session rules;
-  3. per request, its own frames, the size bound after its lengths, then its sampler key, in RFC-0043's order;
+  2. the verified log's binding to the manifest and statement;
+  3. per request in `statement.batch` order: its session rules in the previous period, then the current one, then the key across both (RFC-0063 rule 4); its own frame rules and lengths, the size bound after its lengths, and the window's counters at the session's first request; then its sampler key (RFC-0043). Finish one request before checking the next request's session;
   4. the anchor's part of the graph, then the composed layout against the maximum layout (`StatementMismatch { field: Batch }`) and `layout_digest` against it.
 - **Its preconditions.** The anchor's part passes range analysis, RFC-0006 'Committed graph inputs' and every gadget precondition for any statement and logs that pass RFC-0015's checks 1 and 2: its ranges do not depend on them. A failure is the verifier's own, `Inconclusive(ERR-INTERNAL)` at step 4.
 - **Its resources.** The verifier provisions the anchor from `A_b` ('The size bound'), never from the prover's frames.
   - **The cost of a block.** A block of `A_b` stands for at most 6,100 nodes, 370 committed tensors and 3,440 stage instances: a SHA-256 block's 6,032 nodes and 368 tensors with its share of its frame's other nodes, or a key commitment's 6,066 nodes and 370 tensors. A session adds at most 450 nodes and 130 tensors: AES's 285 nodes and 129 tensors, the key's two moves, the plaintext's `BitDecompose`, the binding and the flattened ciphertext.
   - **The decision.** `ResourceLimits.max_anchor_blocks` (02 §3.2), 4,096 by default, bounds it. A batch whose `A_b` exceeds it is `Inconclusive(ERR-RES-MEMORY)` at step 4, right after the interim cap and before any entry is read.
-  - **Consequences.** Two verifiers with the same limits decide alike. With the default, no batch within the cap is refused.
+  - **Consequences.** Two verifiers with the same limits decide alike. With the default, this block-count check refuses no batch within the cap. Existing memory, artifact-byte and time limits still apply; `max_anchor_blocks` is not a substitute for them.
   - **The proof's own fault.** A request past its size bound is `Reject(Anchor { kind: Frames })`.
 - **Rollout.** An unanchored proof checked by a verifier that derives the anchor, or the converse, fails at step 4: its `layout_digest` is another layout's (`Reject(StatementMismatch { field: LayoutDigest })`). No field marks a proof anchored, since no verifier accepts both.
 
@@ -344,17 +344,17 @@ From the compiler's schedule on `tiny-2-minimal` (2 layers, `d_model` 64, vocabu
 
 - **Stages.** A batch takes 14 stages, against Llama's 3 or 4. Stages 4 to 13 hold the anchor alone; in stages 1 to 3 each instance is front-padded to its stage's widest, as any is.
 - **Streamed outputs.** A frame per token costs two SHA-256 blocks per token: 12,100 nodes (the compiler's 12,098 for its SHA-256, plus its `Slice` and `Reshape`) and 6,869 instances per one-token frame. A batch of 16K tokens streamed one per frame holds 32,768 blocks, about `2.0·10^8` nodes and `1.1·10^8` instances, and spends the soundness budget ('Soundness', OQ-0074-2).
-- **Proof size.** The binding cost is rows and bytes. Each SHA-256 block commits 368 tensors, one advice row each (RFC-0072), and a row opens `τ_A × 8` bytes, 1,240 at `τ_A = 155` (RFC-0072's 228 MB per 184,000 rows). The anchor's opening points add about 24 groups of `2^{22} × 16` bytes ('Sizes'), 1.6 GB. For a batch of 16K tokens, against 405B's own 953,580 rows and about 2.8 GB (RFC-0011, 08 §5):
+- **Proof size.** The binding cost is rows and bytes. Each SHA-256 block commits 368 tensors, one advice row each (RFC-0072), and a row opens `τ_A × 8` bytes, 1,240 at `τ_A = 155` (RFC-0072's 228 MB per 184,000 rows). The tiny examples' anchor opening points add about 24 groups ('Sizes'), 1.6 GB at `2^{22} × 16` bytes per group. This is a measurement of those shapes, not an upper bound over all framings or sessions. For a batch of 16K tokens, the following estimates count columns, evaluations and splits only, against 405B's own 953,580 rows and about 2.8 GB (RFC-0011, 08 §5):
 
-  | Framing | SHA-256 blocks | Advice rows | Opened columns, `τ_A` = 155 / 193 | Evaluations and splits | With the groups |
-  |---|---|---|---|---|---|
-  | One token per frame | 32,768 | 12.08 M | 15.0 / 18.6 GB | 2.85 GB | about 19.5 GB |
-  | Frames of 64 tokens | 1,536 | 0.57 M | 0.70 / 0.87 GB | 0.13 GB | about 2.4 GB |
-  | Frames of 1,024 tokens | 1,056 | 0.39 M | 0.48 / 0.60 GB | 0.09 GB | about 2.2 GB |
+  | Framing | SHA-256 blocks | Advice rows | Opened columns, `τ_A` = 155 / 193 | Evaluations and splits |
+  |---|---|---|---|---|
+  | One token per frame | 32,768 | 12.08 M | 15.0 / 18.6 GB | 2.85 GB |
+  | Frames of 64 tokens | 1,536 | 0.57 M | 0.70 / 0.87 GB | 0.13 GB |
+  | Frames of 1,024 tokens | 1,056 | 0.39 M | 0.48 / 0.60 GB | 0.09 GB |
 
-  - **What breaks.** Every framing breaks 08's gate of 4 GiB for the total proof: the groups alone take a 405B proof past it. One token per frame also breaks RFC-0003's 8 GiB decode limit, so its honest proof would be `Reject(Malformed { ERR-CODEC-LIMIT })` at a default verifier.
-  - **Why the cap.** A verifier must provision for `A_b`, the bound, whatever the actual framing. So OQ-0074-1 and OQ-0072-3 are needed before production verifies any batch of the largest size, not only before it proves streamed outputs. The interim cap ('The size bound') keeps every admissible proof under the decode limit meanwhile, at the price of batches of at most about 2,000 tokens and of requests of at most 2,045.
-- **The 4 GiB gate.** It stays the model's until OQ-0072-3. An anchored 405B proof exceeds it by its opening groups even within the cap.
+  - **What breaks.** Adding even the tiny examples' 24 groups to the projected 405B proof exceeds 08's gate of 4 GiB for the total proof. One token per frame also exceeds RFC-0003's 8 GiB decode limit from its opened columns alone, so its honest proof would be `Reject(Malformed { ERR-CODEC-LIMIT })` at a default verifier. Larger or mixed shapes require their own group count before a total is claimed.
+  - **Why the cap.** A verifier must provision for `A_b`, the bound, whatever the actual framing. The interim cap limits that expansion, at the price of batches of at most about 2,000 tokens and requests of at most 2,045. Meeting the cap does not establish either the total-proof gate or the decode limit.
+- **The 4 GiB gate.** 08 §5 continues to gate the complete proof, including the anchor. This RFC grants no exception. Compliant production rollout remains blocked until composed proofs meet it, with their groups counted over all admitted frame and session shapes (OQ-0072-3).
 - **A gather per session over the token axis.** The verifier evaluates its kernel in `O(T_s·(log T_s + log N))`.
 - **Graph size.** A SHA-256 block is 6,032 nodes (RFC-0066). A batch of 16K tokens holds about 1,000 blocks in long frames, 1,536 in frames of 64 tokens and 32,768 streamed one per frame: 6 million, 9 million and `2.0·10^8` nodes. Within the interim cap, an anchor holds at most about 25 million nodes, which the verifier provisions for ('Its resources', [RFC-0019](RFC-0019-verifier.md#robustness)).
 
@@ -363,15 +363,12 @@ From the compiler's schedule on `tiny-2-minimal` (2 layers, `d_model` 64, vocabu
 1. **This RFC.**
 2. **#146, in slices.** The prover workspace builds the composed graph, its leaf stage, its layout and openings, and the CPU prover's anchored proof. Its tests verify the stages through the in-test verifier written from RFC-0072 and this RFC, as #526's did.
 3. **#150 and #159** mirror the derivation and the relations in `tv-core`.
-4. **#163** runs the anchor end to end. `prove --sample` then emits anchored proofs and `tessera-verify` requires them. Until both workspaces hold the anchor, `tessera-protocol/1` acceptance makes no anchor claim (02 §3).
+4. **#163** runs the anchor end to end. Once the production prerequisites in item 6 hold, `prove --sample` emits anchored proofs and `tessera-verify` requires them. Until both workspaces hold the anchor, `tessera-protocol/1` acceptance makes no anchor claim (02 §3).
    - **`prove --reference-tokens`** (02 §2.2) has no transcripts and no logs, so it cannot anchor its statement, and no verifier that derives the anchor accepts its proofs (step 4, `layout_digest`). From #163 on it is a test path only, under the `test-params` feature, for unanchored proofs of `test-small/1`, whose acceptance certifies nothing (02 §3). #163 amends 02 §2.2.
 5. **#551** builds batches of several requests, whose cut and refusal ('Batches of several requests') land with it.
-6. **The interim cap** ('The size bound') holds until OQ-0074-1 and OQ-0072-3 bring a batch at its bound within RFC-0003's decode limit and 08's gate. Until then:
-   - every verifier provisions for `A_max = 4,096` blocks;
-   - production audits prove requests of at most 2,045 tokens, in batches the packer splits by the cap;
-   - longer sampled requests are reported unproven (RFC-0016).
+6. **Production prerequisites.** Before a production parameter set accepts composed anchors, establish the complete proof's 4 GiB gate (08 §5), artifact decode limits (RFC-0003), verifier memory/time limits and composed soundness budget (OQ-0074-2), across all admitted session and framing shapes. The tiny measurements and the block cap do not discharge these prerequisites. Tiny conformance implementation and tests can proceed before production qualification.
 
-   Lifting the cap is a change of this RFC, or of its successor, with the figures recomputed.
+   The proposed interim cap ('The size bound') limits `A_b` to 4,096; raising it requires a change of this RFC, or its successor, with these bounds recomputed. Even after qualification, the packer splits batches at the cap and reports longer requests unproven (RFC-0016).
 
 ## Testing Strategy
 
@@ -390,11 +387,14 @@ From the compiler's schedule on `tiny-2-minimal` (2 layers, `d_model` 64, vocabu
 - **Derivations.** An oracle written from this RFC gives the anchor's inputs, block offsets, `P_s`, `D_b` and `R_s` for windows across two periods, sessions shared by two requests, a `session_id` reopened under another key, and frames of no token. The derivation matches it. The oracle also asserts, over every case it enumerates (soundness-review 'Anchors'):
   - `P_s` and the four `D_b` partition the real bytes of the session's plaintext, `[0, 16·B_s)`, exactly;
   - `R_s`, over the batch's sessions, lists each real row of each request exactly once.
+
+  The draft's [public mapping model](../testing/anchor-binding-model.py), run with `python3 -I docs/testing/anchor-binding-model.py`, checks these two partitions, little-endian byte order and the frame block inequality. It enumerates small frame sequences with shared sessions, distinct sessions and a reopened id under another key. Six negative controls remove or duplicate bytes, substitute a padded row, duplicate a token row, exchange limb byte orders, or change the canonical slot stride. It assumes canonical frames from verified logs; it does not replace the two-period log oracle, composed circuit tests, mask-rank checks or production sizing.
 - **The size bound.** A request of `2·n_r + 4` SHA-256 blocks is admitted and one of `2·n_r + 5` is `Reject(Anchor { request_id: Some(r), kind: Frames })`, by frames of no token added to an honest log; every log of one token per frame passes, with two frames of no token.
 - **The cap and the resources.**
-  - A batch with `A_b = 4,096` is admitted, and one with `4,097` is `Reject(StatementMismatch { field: Batch })` before any entry is read.
+  - A batch with `A_b = 4,096` passes the block-count check, and one with `4,097` is `Reject(StatementMismatch { field: Batch })` before any entry is read.
   - A verifier whose `max_anchor_blocks` is below a batch's `A_b` returns `Inconclusive(ERR-RES-MEMORY)` before it builds the anchor. In the same batch, a request past its own size bound is `Reject` once the limit allows the batch.
   - A batch whose requests each take their own session (`S = R`) stays within the `+ 5` per request.
+  - Request 0 with bad frame lengths precedes request 1 with a bad session: the verdict names request 0 and `Frames`, not request 1 and `Session`.
 - **Degenerate shapes.** Each proves and verifies through the in-test verifier:
   - a session of one token, whose token `AssertEqual` has 0 variables;
   - a session whose token count is not a power of two;

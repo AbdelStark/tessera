@@ -61,7 +61,7 @@ RequestEnd { seq: u64, t_ns: u64, session_id: [u8; 16], request_id: u64 }      D
 - **Request ids.** A session never reuses a `request_id`. A reuse within one window breaks rule 1 or 5. A reuse two periods apart makes two candidates with disjoint frames, each its own ledger entry.
 - **A session's close** goes on the outbound path after the session's last request end.
 - **Why a frame of its own.**
-  - **Not an empty frame.** An empty outbound frame could have marked the end, but RFC-0059 allows empty frames anywhere, and a stack that sent one mid-stream would end its request early. Under draft [RFC-0074](RFC-0074-anchor-binding.md#the-anchors-inputs), in effect when it is accepted, a request holds at most two of them.
+  - **Not an empty frame.** An empty outbound frame could have marked the end, but RFC-0059 allows empty frames anywhere, and a stack that sent one mid-stream would end its request early. Under draft [RFC-0074](RFC-0074-anchor-binding.md#the-anchors-inputs), in effect when it is accepted, the serving stack sends at most two of them per request; the verifier enforces the aggregate block bound, not this count.
   - **Not a header flag.** A flag in the frame header would change RFC-0059's header and entry for every frame.
 
 ### The periods
