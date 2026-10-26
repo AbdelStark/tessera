@@ -24,13 +24,14 @@
 //! The tables and their multiplicities follow the complete selected request lists. A table
 //! without a lookup has no multiplicities; RoPE is a public kernel, not a lookup.
 //!
-//! The stage count is RFC-0010's: the leaf stage, then one stage per sumcheck relation on the
-//! longest chain from a gadget's input down to committed tensors. `MatMulWeight`, `MatMulAct`,
-//! `Mul`, `Rotate`, `SumSquares` and a `ConstMul` by per-channel constants are proved by
-//! sumchecks; adds, a `Sum` over an axis, a `ConstMul` by one constant, `ConstAdd`, `Reshape`,
-//! `Slice` and `GatherPublic` map a claim onto their inputs at no stage. The opening groups `G`
-//! and the masks of RFC-0011 and RFC-0013 follow from the stage schedule's claim points (#113,
-//! #149, #154).
+//! The stage count is RFC-0072's ([`stage_count`]): the leaf stage, then one stage per sumcheck
+//! relation on the longest chain from a leaf site's input, or from a zero-check, which counts
+//! itself, down to committed or public tensors. `MatMulWeight`, `MatMulAct`, `Mul`, `Rotate`,
+//! `SumSquares`, a `ConstMul` by per-channel constants, the selections `Slice` and `GatherPublic`,
+//! and `BitFn` are proved by sumchecks; adds, a `Sum` over an axis, a `ConstMul` by one constant,
+//! `ConstAdd`, `Reshape`, `Transpose` and `Expand` map a claim onto their inputs at no stage. The
+//! opening groups `G` and the masks of RFC-0011 and RFC-0013 follow from the stage schedule's claim
+//! points (#113, #149, #154).
 
 use serde_json::{Map, Value, json};
 use tessera_ir::{
@@ -869,73 +870,82 @@ fn producer(graph: &Graph, tensor: TensorId) -> Result<NodeId, CompileError> {
     })
 }
 
-/// RFC-0010's stage count of `graph`: the leaf stage, then one per sumcheck relation on the
-/// longest chain from a gadget's input, or from a linear output committed as advice, down to
-/// committed tensors. Stage 1 proves such an output equal to its relation by a zero-check, whose
-/// claims on the node's inputs go on (RFC-0037).
+/// The stage count of `graph`, the leaf stage included (RFC-0072 'Messages, rejections and
+/// stages', RFC-0037 'Stages and their instances'): one more than the longest chain of sumcheck
+/// relations down to committed or public tensors.
+///
+/// - **Where a chain starts.** At a leaf site's input, every gadget's but `BitDecompose`'s and
+///   `AssertEqual`'s ([`has_leaf_site`](crate::schedule::has_leaf_site)); or at one of stage 1's
+///   zero-checks, which counts itself: the equality zero-check of a committed output of a node
+///   that is not gadget-backed, `OneHot`'s, which read its token input, and `BitDecompose`'s and
+///   `AssertEqual`'s, which read their inputs.
+/// - **What a link costs.** One for each sumcheck relation: `MatMulWeight`, `MatMulAct`, `Mul`,
+///   `Rotate`, `SumSquares`, a `ConstMul` by a constant per channel, the selections `Slice` and
+///   `GatherPublic`, and `BitFn`. None for `Add`, `Sub`, a scalar `ConstMul`, `ConstAdd`,
+///   `Reshape`, `Transpose`, `Expand` and `Sum`, which map a claim onto their inputs.
+/// - **Where it ends.** A committed tensor is opened and a public one evaluated by the verifier
+///   ([`public_tensors`](crate::schedule::public_tensors)): a claim on either needs no relation,
+///   even through `Mul`, `BitFn` or a selection.
+///
+/// AES-128-CTR takes 3 stages, and SHA-256 10 per block of public bytes and 14 with committed
+/// bytes, whatever its block count (INV-SCH-4).
 pub fn stage_count(graph: &Graph) -> u32 {
-    // The sumcheck relations a claim on each tensor still needs: none on a committed one, which
-    // is opened.
+    let public = crate::schedule::public_tensors(graph);
+    // The sumcheck relations a claim on each tensor still needs: none on a committed or public one.
     let mut depth = vec![0u32; graph.tensors.len()];
-    for node in &graph.nodes {
-        let below = node
-            .inputs
+    let below = |depth: &[u32], inputs: &[TensorId]| {
+        inputs
             .iter()
-            .map(|&t| depth[t.0 as usize])
+            .map(|&t| depth.get(t.0 as usize).copied().unwrap_or(0))
             .max()
-            .unwrap_or(0);
-        let own = u32::from(sumcheck(graph, &node.op));
+            .unwrap_or(0)
+    };
+    for node in &graph.nodes {
+        let own = below(&depth, &node.inputs) + u32::from(relation(graph, &node.op));
         for &t in &node.outputs {
-            if matches!(graph.tensors[t.0 as usize].kind, NodeKind::Virtual) {
-                depth[t.0 as usize] = below + own;
+            let virtual_tensor = matches!(graph.tensors[t.0 as usize].kind, NodeKind::Virtual);
+            if virtual_tensor && !public.get(t.0 as usize).copied().unwrap_or(false) {
+                depth[t.0 as usize] = own;
             }
         }
     }
-    let deepest = graph
-        .nodes
-        .iter()
-        .filter(|n| matches!(n.op.class(), OpClass::Gadget))
-        .flat_map(|n| n.inputs.iter())
-        .map(|&t| depth[t.0 as usize])
-        .max()
-        .unwrap_or(0);
-    let committed_linear = graph
-        .nodes
-        .iter()
-        .filter(|n| n.op.class() != OpClass::Gadget)
-        .filter(|n| {
-            n.outputs.iter().any(|&t| {
-                matches!(
-                    graph.tensors[t.0 as usize].kind,
-                    NodeKind::Committed {
-                        commitment: CommitmentClass::Advice
-                    }
-                )
-            })
-        })
-        .map(|n| {
-            1 + n
-                .inputs
+    let mut longest = 0;
+    for node in &graph.nodes {
+        if crate::schedule::has_leaf_site(&node.op) {
+            longest = longest.max(below(&depth, &node.inputs));
+        }
+        let committed = node.op.class() != OpClass::Gadget
+            && node
+                .outputs
                 .iter()
-                .map(|&t| depth[t.0 as usize])
-                .max()
-                .unwrap_or(0)
-        })
-        .max()
-        .unwrap_or(0);
-    1 + deepest.max(committed_linear)
+                .any(|&t| matches!(graph.tensors[t.0 as usize].kind, NodeKind::Committed { .. }));
+        let zero_check = committed
+            || matches!(
+                node.op,
+                Op::OneHot { .. } | Op::BitDecompose { .. } | Op::AssertEqual
+            );
+        if zero_check {
+            longest = longest.max(1 + below(&depth, &node.inputs));
+        }
+    }
+    1 + longest
 }
 
-/// Whether RFC-0010 proves `op` by a sumcheck rather than mapping a claim onto its inputs. A
-/// sum over an axis maps its claim to `(½, …, ½)` on the axis, a `Linear` relation.
-fn sumcheck(graph: &Graph, op: &Op) -> bool {
+/// Whether the schedule proves `op`'s output by a sumcheck relation rather than mapping a claim
+/// onto its inputs (RFC-0010 'Relations', RFC-0072): the matmuls, `Mul`, `Rotate`, `SumSquares`, a
+/// `ConstMul` by a constant per channel, the selections `Slice` and `GatherPublic`, and `BitFn`. A
+/// sum over an axis maps its claim to `(½, …, ½)` on the axis, and a constant of one value is a
+/// scalar whatever the last axis's length.
+fn relation(graph: &Graph, op: &Op) -> bool {
     match op {
         Op::MatMulWeight { .. }
         | Op::MatMulAct { .. }
         | Op::Mul { .. }
         | Op::Rotate { .. }
-        | Op::SumSquares { .. } => true,
-        // A product by one constant scales a claim; by one per channel it does not.
+        | Op::SumSquares { .. }
+        | Op::Slice { .. }
+        | Op::GatherPublic { .. }
+        | Op::BitFn { .. } => true,
         Op::ConstMul { c } => graph
             .constants
             .get(c.0 as usize)
