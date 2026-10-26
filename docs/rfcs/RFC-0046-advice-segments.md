@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Short query blocks': in a batch, `Q' = min(Q, S)` and the keys are a slot's)
+- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Short query blocks': in a batch, `Q' = min(Q, S)` and the keys are a slot's), [RFC-0072](RFC-0072-anchor-relations.md) ('Segments': a graph with no layers has every tile in segment 0)
 - Supersedes, on acceptance:
   - [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) 'Canonical advice layout' rule 5: which tiles and rows each segment holds;
   - [RFC-0034](RFC-0034-causal-blocks.md#causal-layout) 'Causal layout': an attention tile's query count;

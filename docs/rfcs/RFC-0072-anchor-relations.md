@@ -11,6 +11,7 @@
   - [RFC-0035](RFC-0035-padded-rows.md#zero-check-points) 'Zero-check points': a recomposition's `eq` takes the highest of its instance's coordinates;
   - [RFC-0045](RFC-0045-leaf-layout.md#the-split) 'Sites' (none for `BitDecompose` and `AssertEqual`) and 'The split' (a public tensor's value is not sent);
   - [RFC-0006](RFC-0006-compiler-ir.md#gadget-selection) 'Gadget selection': `BitDecompose` and `AssertEqual` take gadgets;
+  - [RFC-0046](RFC-0046-advice-segments.md#segments) 'Segments': a graph with no layers;
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#soundness-calculator) 'Soundness calculator': a recomposition's `zero_checks` entry.
 - Origin: [#526](https://github.com/AbdelStark/tessera/issues/526)
 
@@ -70,6 +71,7 @@ A SHA-256 block of a message with committed bytes holds 680 zero-checks, 2,528 s
   - Every node is outside the layers, and every tensor is a kind without a layer index, like a prologue's or an epilogue's.
   - Stage 1's layer point has no coordinate, so `stage/1/layer/{c}` squeezes nothing.
 - **No logits.** A graph with no logits leaves no claim on them and has no scoring site.
+- **Advice segments.** With `L = 0`, every tile is in segment 0, and any further segments are empty ([RFC-0046](RFC-0046-advice-segments.md#segments) 'An empty segment').
 - **In a model's graph.** #146 adds the circuits to a batch's graph after the model's nodes. Their nodes are then epilogue nodes, outside the layers, under the same rules. They read no checkpoint.
 
 ### Public tensors
@@ -105,7 +107,8 @@ A committed graph input's padded positions are computed by nothing. RFC-0006 'Co
   - At padded positions the operation computes `x + c` ('Padded positions'), which is what this extension gives.
 - **`ConstMul` by a constant per channel** is RFC-0010's `Elementwise`: `Ỹ(r) = Σ_x eq(r, x)·c̃(x_c)·X̃(x)`, degree 3, the constant a public operand broadcast over the other axes. It leaves one claim on `X`. A scalar `ConstMul` stays a coefficient.
 - **`Slice` and `GatherPublic`** are selections, below.
-- **`Sum`.** RFC-0010 maps a `Sum` claim to `2^j·x̃(½, …, ½ ‖ r)`, a sum over the whole padded cube of the summed axes, which is the operation's only when its input is 0 there. Padded positions need not be 0 ('Padded positions'), so a `Sum` over an axis whose length is not a power of two is refused when the schedule is derived (`ERR-INTERNAL`). No circuit or Llama graph has one.
+- **A committed output.** A `ConstAdd`, a per-channel `ConstMul` or a `BitFn` whose output is declared committed is proven as RFC-0037's committed outputs are, by an equality zero-check in stage 1. A selection whose output is declared committed is refused (`ERR-INTERNAL`). Neither circuit declares one.
+- **`Sum`.** RFC-0010 maps a `Sum` claim to `2^j·x̃(½, …, ½ ‖ r)`, a sum over the whole padded cube of the summed axes, which is the operation's only when its input is 0 there. Padded positions need not be 0 ('Padded positions'): only a `ConstAdd` and a gadget can make them non-zero from zero inputs, as `OneHot`'s `[1, 0, …]` or a lookup's `AesSbox(0)` does, and every other operation keeps them 0. So a `Sum` over an axis whose length is not a power of two is refused when the schedule is derived (`ERR-INTERNAL`) when a `ConstAdd` or a gadget-backed node's output lies upstream of its input. No circuit or Llama graph has a `Sum`. The compiler's schedule tests sum an `Expand` and a committed input, which pass.
 
 ### The selection relation
 
@@ -162,7 +165,7 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
 - **Its claims.** At the instance's final point `r' = r'_i ‖ r'_y`:
   - `x̃(r'_y)`, a claim on `x` at `y`'s coordinates. It goes to the next stage when `x` is virtual, as a SHA-256 sum's value is, and to the pool when it is committed, as the key commitment's bytes are. When `x` is public the verifier evaluates it and the proof sends nothing.
   - `b̃(r'_{i, ≥ k − k_b} ‖ r'_y)` and `h̃(r'_{i, ≥ k − k_h} ‖ r'_y)`, claims on committed outputs, for the pool, at their booleanity checks' points.
-- **The verifier's check** computes the public factors itself: `eq(z_y, r'_y)`, the zero-extensions' products, and the weights on `k` variables, `W̃_b(r) = Π_{t < k − k_b}(1 − r_t)·Σ_{j < low} 2^j·eq(r_{≥ k − k_b}, j)` in `O(low·k)`, its sum `Π_{t < k_b}(1 − r_t + r_t·2^{2^t})` over `r_{≥ k − k_b}` when `low = 2^{k_b}`, and `W̃_h` likewise with `high` and `k_h`.
+- **The verifier's check** computes the public factors itself: `eq(z_y, r'_y)`, the zero-extensions' products, and the weights on `k` variables. With `s = (r_{k − k_b}, …, r_{k − 1})`, the high `k_b` coordinates, low first, `W̃_b(r) = Π_{t < k − k_b}(1 − r_t)·Σ_{j < low} 2^j·eq(s, j)`, in `O(low·k)`. When `low = 2^{k_b}` the sum is `Π_{t < k_b}(1 − s_t + s_t·2^{2^t})`. `W̃_h` is the same with `high` and `k_h`.
 - **Why one instance.** Stage 1 batches its instances with `γ`, after each instance's claim is fixed (RFC-0010 'Batching within a stage'). RFC-0066 wrote recomposition as `x̃(z)` minus two sums of `n_y + k_b` and `n_y + k_h` variables. As three instances, the two sums' values, unknown to the verifier, would have to be sent before `γ`, a new message. Summed over the bit axis, the instance's claim is 0, and `x`'s claim moves from `z` to `r'_y`.
 - **Degree.** Each variable is of degree at most 2: `eq·x̃` in the `y` variables, and `W·b̂` in the bit variables. Stage 1's degree is 3 either way, from booleanity.
 
@@ -250,8 +253,8 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
   - **The verifier** stays linear, each distinct kernel and public operand evaluated once per stage.
   - **Per-block tensors.** OQ-0072-2 asks for them.
 - **Opening groups.** Every anchor tensor is smaller than an advice row, so a claim on it has column sub-point `r ‖ 0^{log2 k − n_X}` (RFC-0011 rule 3). Each distinct claim point is therefore an RFC-0011 group of its own.
-  - **The count.** About 8 to 14 per SHA-256 circuit shape and 5 to 10 for AES. A graph with the key commitment, two frames' hashes and AES holds 35 to 40, counted from the schedules under these rules. The high-coordinate extension of recomposition's outputs saves six of them.
-  - **The cost at `k = 2^{22}`.** Each group is a combined row of about 64 MiB, so 40 groups are about 2.5 GB of proof, against 1.14 GB for 405B's own (RFC-0011's `G ≤ 16` counts Llama's). The verifier runs about 40 more coset NTTs of `2^{23}`, and `tessera-protocol/2` adds about 80 blinding rows.
+  - **The count.** About 8 to 14 per SHA-256 circuit shape, and 7 to 12 for AES with its multiplicities' table-tree points. A graph with the key commitment, two frames' hashes and AES holds 37 to 42, counted from the schedules under these rules. The high-coordinate extension of recomposition's outputs saves four to six of them.
+  - **The cost at `k = 2^{22}`.** Each group is a combined row of about 64 MiB, so 40 groups are about 2.7 GB of proof, against 1.14 GB for 405B's own (RFC-0011's `G ≤ 16` counts Llama's). The verifier runs about 40 more coset NTTs of `2^{23}`, and `tessera-protocol/2` adds about 80 blinding rows.
   - **Rows.** RFC-0011 rule 2 also gives every committed tensor a row of its own: 368 a SHA-256 block, a word's bits and its carry. At 500 blocks that is 184,000 rows, 19% of 405B's, and about 228 MB of opened columns at `τ_A = 155`.
   - **Not small.** RFC-0015's estimate counts committed elements, not groups or rows. OQ-0072-3 asks how to bring the anchor's claims to fewer points and pack its tensors.
 - **Deeper schedules.** A batch that carries a frame's SHA-256 has 14 stages, against the Llama templates' 3 or 4, both counting the leaf stage. Every stage has its own rounds and messages.

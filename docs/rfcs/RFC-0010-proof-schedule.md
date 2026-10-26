@@ -58,7 +58,7 @@ Every constraint in the derived constraint system is one of these relation kinds
 | `ZeroCheck` (`OneHot` booleanity) | `0 = Σ_x eq(z, x) h̃(x)(1 − h̃(x))` | 3 |
 | `ZeroCheck` (padding, [RFC-0035](RFC-0035-padded-rows.md#the-padding-zero-check)) | `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·w̃(x)`, `ψ` the public row selector | 3 |
 | `ZeroCheck` (`BitDecompose` booleanity, [RFC-0066](RFC-0066-bits-and-sha256.md#bitdecompose--low-high-)) | `0 = Σ_x eq(z, x) b̃(x)(1 − b̃(x))`, for each of its outputs | 3 |
-| `ZeroCheck` (`BitDecompose` recomposition, [RFC-0072](RFC-0072-anchor-relations.md#the-bit-zero-checks-oq-0066-1)) | `0 = Σ_{(i,y)} eq(z_y, y)·[2^{−k}·x̃(y) − W_b(i)·b̂(i ‖ y) − 2^{low}·W_h(i)·ĥ(i ‖ y)]`, summed over the `k` bit variables, `W(i) = 2^i` on real bits and 0 on padded ones, `b̂` and `ĥ` the outputs zero-extended to `k` bit variables | 2 |
+| `ZeroCheck` (`BitDecompose` recomposition, [RFC-0072](RFC-0072-anchor-relations.md#the-bit-zero-checks-oq-0066-1)) | `0 = Σ_{(i,y)} eq(z_y, y)·[2^{−k}·x̃(y) − W_b(i)·b̂(i ‖ y) − 2^{low}·W_h(i)·ĥ(i ‖ y)]`, summed over `k = max(k_b, k_h)` bit variables, `b̂` and `ĥ` the outputs zero-extended to `k` bit variables on their high coordinates, `W_b(i) = 2^j` at `i = j·2^{k − k_b}` for `j < low` and 0 elsewhere, `W_h` likewise with `k_h` and `high` | 2 |
 | `ZeroCheck` (`BitDecompose` bit padding) | `0 = Σ_x eq(z, x)·(1 − LT(x_bit, n))·b̃(x)`, for each output whose `n` bits are not a power of two | 3 |
 | `ZeroCheck` (`BitDecompose` of a committed input, its padding) | `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·x̃(x)`, `ψ` 1 on the input's real positions | 3 |
 | `ZeroCheck` (`AssertEqual`) | `0 = Σ_x eq(z, x)·ψ̃(x)·(ã(x) − b̃(x))`, `ψ` 1 on the shape's real positions | 3 |
