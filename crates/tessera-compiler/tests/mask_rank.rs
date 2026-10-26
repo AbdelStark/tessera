@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use tessera_codec::{Ascii, DecodeLimits, Rational, envelope, schema};
 use tessera_compiler::schedule::masks::{
-    ColumnRule, CommittedColumns, Finding, Functional, MaskReport, MaskRow, MaskSystem,
-    PairFunctional, PairRole, PairSystem, Role, RowSystem, SEED, Src, Var, check, check_at,
-    check_claim_list, extract, protocol2_length, weight_layout,
+    ColumnRule, CommittedColumns, Finding, Functional, MaskReport, MaskRow, MaskSystem, Origin,
+    PairFunctional, PairRole, PairSystem, Role, RowSystem, SEED, ScaledWeight, Src, Var, check,
+    check_at, check_claim_list, extract, protocol2_length, weight_layout,
 };
 use tessera_compiler::schedule::{
     Coord, Factor, Kind, Layers, NodeRef, Request, Source, StageSchedule, derive_composed_schedule,
@@ -253,6 +253,78 @@ fn an_unscaled_twin_of_a_per_layer_scaled_read_is_refused() {
     );
 }
 
+/// The second review's N1: a twin of a stacked weight claim whose coefficient carries
+/// tiny-4-servable's per-layer constants (position 34: 8, 8, 16, 2) weighs the matrix's layers by
+/// `eq(ρ, ℓ)·c_ℓ`, another value than `W'(r ‖ ρ)` read through the same functional of `R_W`, and
+/// one the pair would drop as the first claim's. No RFC masks it (#556), so it is refused by name.
+/// A twin scaled by a public scalar uniform over the layers is the first claim's value up to that
+/// scalar, and is accepted.
+#[test]
+fn a_per_layer_scaled_weight_claim_is_refused() {
+    let (c, scaled) = scaled_layer_input();
+    let layers = &c.schedule.layers;
+    let position = c.schedule.pool[scaled]
+        .atoms
+        .iter()
+        .flat_map(|a| a.coefficient.iter().flatten())
+        .find_map(|f| match f {
+            Factor::Constant(NodeRef::Position(p)) if !layers.uniform(*p) => Some(*p),
+            _ => None,
+        })
+        .expect("the non-uniform position");
+    let index = c
+        .schedule
+        .pool
+        .iter()
+        .position(|p| {
+            p.commitment == CommitmentClass::Weight
+                && p.atoms.len() == 1
+                && matches!(&p.atoms[0].layers, Layers::Eq(rho) if !rho.is_empty())
+        })
+        .expect("a stacked weight claim");
+    let claim = &c.schedule.pool[index];
+    let matrix = c
+        .schedule
+        .weight_type(&c.lowering.graph, claim.atoms[0].kind)
+        .map_or(WeightMatrix::ChannelParams, |w| w.matrix());
+    let tensor = c
+        .schedule
+        .layers
+        .tensor(&c.lowering.graph, claim.atoms[0].kind, 0);
+    let twin = |coefficient| {
+        let mut twin = claim.clone();
+        twin.atoms[0].coefficient = coefficient;
+        let mut schedule = c.schedule.clone();
+        schedule.pool.push(twin);
+        check(&c.system(&schedule, ColumnRule::BelowRow), SEED)
+    };
+    let findings = twin(vec![vec![Factor::Constant(NodeRef::Position(position))]]);
+    assert_eq!(
+        findings,
+        vec![Finding::ScaledWeight(ScaledWeight {
+            matrix,
+            tensor,
+            position,
+            origin: Origin::Pool {
+                stage: claim.stage,
+                claim: c.schedule.pool.len(),
+                atom: 0,
+            },
+        })]
+    );
+    let text = findings[0].to_string();
+    assert!(
+        text.contains("#556") && text.contains(&format!("{matrix:?}")),
+        "{text}"
+    );
+    // A public scalar uniform over the layers: the first claim's value, negated.
+    assert_eq!(twin(vec![vec![Factor::Minus]]), Vec::new());
+    assert_eq!(
+        check(&c.system(&c.schedule, ColumnRule::BelowRow), SEED),
+        Vec::new()
+    );
+}
+
 /// A row part that differs in the tensor's own variables: the one-hot tokens `[n, vocab]` at
 /// 4 positions have 11 variables, the highest in the row part.
 #[test]
@@ -466,6 +538,7 @@ fn a_value_without_a_secret_term_joins_the_span_unrefused() {
                 functional(PairRole::Value { secret }, eq_point(&[Src::One, var(1)])),
             ],
         }],
+        scaled_weights: Vec::new(),
     };
     assert_eq!(check(&system(false), SEED), Vec::new());
     let findings = check(&system(true), SEED);
@@ -769,6 +842,7 @@ fn a_functional_off_its_row_width_is_refused() {
             ],
         }],
         pairs: Vec::new(),
+        scaled_weights: Vec::new(),
     };
     assert_eq!(
         check(&row, SEED),
@@ -792,6 +866,7 @@ fn a_functional_off_its_row_width_is_refused() {
                 origins: Vec::new(),
             }],
         }],
+        scaled_weights: Vec::new(),
     };
     assert_eq!(
         check(&pair, SEED),

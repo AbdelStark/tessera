@@ -332,12 +332,20 @@ pub(crate) struct Outcome {
     pub(crate) violations: Vec<String>,
 }
 
-/// What one check finds: its system's counts, each reading's count of findings, and each finding
-/// with its reading and the tensors it names.
+/// One reading's system counts (mask rows, functionals, folds, pair functionals) and its count
+/// of findings.
+#[derive(Clone, Copy)]
+struct Reading {
+    committed: CommittedColumns,
+    counts: (usize, usize, usize, usize),
+    findings: usize,
+}
+
+/// What one check finds: each reading's counts, and each finding with its reading and the tensors
+/// it names.
 #[derive(Clone)]
 struct Checked {
-    counts: (usize, usize, usize, usize),
-    per_reading: Vec<(CommittedColumns, usize)>,
+    per_reading: Vec<Reading>,
     findings: Vec<String>,
 }
 
@@ -366,14 +374,17 @@ fn check_one(case: &Case, rule: ColumnRule) -> Result<Checked, String> {
         &CommittedColumns::BOTH,
     )
     .map_err(|e| format!("{}: the schedule's functionals: {e}", at(case)))?;
-    let counts = reports
-        .first()
-        .map(MaskReport::counts)
-        .ok_or_else(|| format!("{}: no reading was checked", at(case)))?;
+    if reports.is_empty() {
+        return Err(format!("{}: no reading was checked", at(case)));
+    }
     let mut findings = Vec::new();
     let mut per_reading = Vec::new();
     for report in &reports {
-        per_reading.push((report.committed, report.findings.len()));
+        per_reading.push(Reading {
+            committed: report.committed,
+            counts: report.counts(),
+            findings: report.findings.len(),
+        });
         for finding in &report.findings {
             let text = finding.to_string();
             findings.push(format!(
@@ -384,7 +395,6 @@ fn check_one(case: &Case, rule: ColumnRule) -> Result<Checked, String> {
         }
     }
     Ok(Checked {
-        counts,
         per_reading,
         findings,
     })
@@ -392,18 +402,21 @@ fn check_one(case: &Case, rule: ColumnRule) -> Result<Checked, String> {
 
 fn outcome(case: &Case, checked: &Checked) -> Outcome {
     let at = at(case);
-    let (rows, functionals, folds, pairs) = checked.counts;
     let readings: Vec<String> = checked
         .per_reading
         .iter()
-        .map(|&(committed, count)| format!("{count} under {}", reading(committed)))
+        .map(|r| {
+            let (rows, functionals, folds, pairs) = r.counts;
+            format!(
+                "{}: {rows} mask rows, {functionals} functionals ({folds} folds), {pairs} pair \
+                 functionals, {} findings",
+                reading(r.committed),
+                r.findings
+            )
+        })
         .collect();
     Outcome {
-        summary: format!(
-            "{at}: {rows} mask rows, {functionals} functionals ({folds} folds), {pairs} pair \
-             functionals; findings {}",
-            readings.join(", ")
-        ),
+        summary: format!("{at}: {}", readings.join("; ")),
         violations: checked
             .findings
             .iter()
@@ -630,13 +643,19 @@ mod tests {
                 case.request
             );
             assert!(outcome.summary.contains(&shown), "{}", outcome.summary);
-            assert!(
-                outcome
+            // Each reading's own counts, and its findings: none.
+            for label in ["tensor-order columns: ", "data-column columns: "] {
+                let part = outcome
                     .summary
-                    .contains("findings 0 under tensor-order columns, 0 under data-column columns"),
-                "{}",
-                outcome.summary
-            );
+                    .split(label)
+                    .nth(1)
+                    .and_then(|rest| rest.split(';').next())
+                    .unwrap_or_else(|| panic!("{label}: {}", outcome.summary));
+                assert!(
+                    part.contains(" mask rows, ") && part.ends_with(", 0 findings"),
+                    "{label}{part}"
+                );
+            }
         }
     }
 

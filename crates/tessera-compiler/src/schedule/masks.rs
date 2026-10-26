@@ -103,9 +103,10 @@
 //!   tokens at their carry points, whose `tessera-protocol/2` form RFC-0053 disclaims;
 //! - batches of several requests (RFC-0071, `R ≥ 2`): a claim list is checked for one request;
 //! - the masked value of a committed group whose layer weights carry per-layer constants
-//!   (RFC-0037 'Claims and atoms'), which no RFC specifies in `tessera-protocol/2` yet: the check
-//!   keeps such a value apart from every other ([`Functional::scale`]) and reads it through the
-//!   stacked kind's mask row;
+//!   (RFC-0037 'Claims and atoms'), which no RFC specifies in `tessera-protocol/2` yet (#556): on
+//!   the advice the check keeps such a value apart from every other ([`Functional::scale`]) and
+//!   reads it through the stacked kind's mask row; on a weight matrix it refuses it
+//!   ([`Finding::ScaledWeight`]), since a matrix's pair would drop it as its first claim's value;
 //! - the tree levels' masks, the identity sumcheck's root levels (RFC-0032), the `SoftmaxRow`
 //!   leaf mask, the masking polynomials' `G(r)` and RFC-0070's batching (`M`, `S`, `r*`);
 //! - combined rows, blinding rows of advice groups and the proximity rows (Lemmas 5 to 7).
@@ -341,6 +342,24 @@ pub struct MaskSystem {
     pub rows: Vec<RowSystem>,
     /// The weight matrices' pairs, in the order the pool first reaches them.
     pub pairs: Vec<PairSystem>,
+    /// The weight claims whose coefficient is not a public scalar uniform over the layers, which
+    /// the check refuses ([`Finding::ScaledWeight`]) and leaves out of the rows and pairs.
+    pub scaled_weights: Vec<ScaledWeight>,
+}
+
+/// A weight claim whose coefficient carries a per-layer constant that differs between layers
+/// (`Factor::Constant` of a template position that is not uniform): its layers weigh
+/// `eq(ρ, ℓ)·c_ℓ`, a value no RFC masks in `tessera-protocol/2` (#556).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ScaledWeight {
+    /// The matrix.
+    pub matrix: WeightMatrix,
+    /// The weight or type tensor, layer 0's.
+    pub tensor: Option<TensorId>,
+    /// The template position whose constants differ between layers.
+    pub position: u32,
+    /// The claim.
+    pub origin: Origin,
 }
 
 /// A refusal of R10.
@@ -366,6 +385,8 @@ pub enum Finding {
         /// The functionals whose span holds it.
         span: Vec<PairFunctional>,
     },
+    /// A weight claim whose coefficient is not a public scalar uniform over the layers (#556).
+    ScaledWeight(ScaledWeight),
     /// A functional whose point has another length than its row's width: a malformed system,
     /// which the check refuses rather than sketch a truncated functional.
     Width {
@@ -507,6 +528,18 @@ impl fmt::Display for Finding {
                 }
                 Ok(())
             }
+            Self::ScaledWeight(ScaledWeight {
+                matrix,
+                tensor: t,
+                position,
+                origin,
+            }) => write!(
+                f,
+                "weight matrix {matrix:?}{}: {origin} weighs its layers by the constants of \
+                 position {position}, which differ between layers; no RFC masks such a weight \
+                 value in tessera-protocol/2 (R10, #556)",
+                tensor(*t)
+            ),
             Self::Width {
                 row,
                 matrix,
@@ -859,6 +892,32 @@ impl<'a> Builder<'a> {
 
     fn weight_atom(&mut self, atom: &Atom, origin: Origin) -> Result<(), CompileError> {
         let data = self.tensor(atom.kind, 0)?;
+        // A coefficient must be a public scalar uniform over the layers: a per-layer constant
+        // that differs between layers makes another value than the matrix's at the point, which
+        // the pair would drop as the first claim's (#556). Fail closed.
+        let scaled = atom
+            .coefficient
+            .iter()
+            .flatten()
+            .find_map(|factor| match factor {
+                Factor::Constant(NodeRef::Position(p)) if !self.schedule.layers.uniform(*p) => {
+                    Some(*p)
+                }
+                _ => None,
+            });
+        if let Some(position) = scaled {
+            let matrix = self
+                .schedule
+                .weight_type(&self.lowering.graph, atom.kind)
+                .map_or(WeightMatrix::ChannelParams, |w| w.matrix());
+            self.system.scaled_weights.push(ScaledWeight {
+                matrix,
+                tensor: Some(data),
+                position,
+                origin,
+            });
+            return Ok(());
+        }
         let r = self.rounds.point(&atom.point)?;
         let rho = match &atom.layers {
             Layers::Eq(rho) => self.rounds.point(rho)?,
@@ -1279,7 +1338,12 @@ pub fn check(system: &MaskSystem, seed: u64) -> Vec<Finding> {
     let mut stream = Stream::new(seed, u64::MAX);
     let numeric =
         |p: &[Src]| -> Vec<Fp2> { p.iter().map(|&s| assignment.value(s)).collect::<Vec<_>>() };
-    let mut findings = Vec::new();
+    let mut findings: Vec<Finding> = system
+        .scaled_weights
+        .iter()
+        .cloned()
+        .map(Finding::ScaledWeight)
+        .collect();
     for row in &system.rows {
         if let Some(bad) = row
             .functionals
