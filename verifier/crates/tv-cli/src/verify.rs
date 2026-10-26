@@ -472,7 +472,9 @@ impl Manifest<'_> {
 
 /// Writes the report, then the run manifest when asked, then ends the `verify` span with
 /// `verified`: each write that fails makes the verdict `Inconclusive` with its error, and the
-/// manifest and the log record the final one. A report already written stays (05 §6).
+/// manifest and the log record the final one. A manifest path that now resolves to the report
+/// just written is not written, `Inconclusive(ERR-USAGE)`. A report already written stays
+/// (05 §6).
 pub(crate) fn finish(
     mut verdict: Verdict,
     execution: Execution,
@@ -501,8 +503,17 @@ pub(crate) fn finish(
         }
     }
     if let (Ok(()), Some(m)) = (checked_output, &manifest) {
-        let text = m.render(&verdict, written, (&execution, &trail));
-        if let Err(code) = files::write(Path::new(m.path), text.as_bytes()) {
+        // An alias only the filesystem can see, such as a link or its own case folding, shows
+        // once the report exists: the manifest may not replace it (05 §6 'Where').
+        let aliased =
+            written.is_some_and(|out| files::same_file(Path::new(m.path), Path::new(out)));
+        let written = if aliased {
+            Err(ErrorCode::Usage)
+        } else {
+            let text = m.render(&verdict, written, (&execution, &trail));
+            files::write(Path::new(m.path), text.as_bytes())
+        };
+        if let Err(code) = written {
             verdict = inconclusive(code);
             report = match json(&verdict, &execution) {
                 Ok(report) => report,

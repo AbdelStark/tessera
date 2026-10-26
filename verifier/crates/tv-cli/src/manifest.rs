@@ -10,8 +10,8 @@
 //! The build is described with what the compiler gives a crate that has no build script, which
 //! `cargo xtask check-isolation` refuses in the verifier (build-time code can read any file,
 //! RFC-0001 'Enforcement'). The commit and the compiler's version are the build-time variables
-//! `TESSERA_GIT_COMMIT` (40 hexadecimal digits) and `TESSERA_RUSTC_VERSION`, set by CI or the
-//! operator, else null. The profile is `release` when debug assertions are off, the test-only
+//! `TESSERA_GIT_COMMIT` (40 hexadecimal digits) and `TESSERA_RUSTC_VERSION`, which a release
+//! build sets (`docs/release/checklist.md`), else null. The profile is `release` when debug assertions are off, the test-only
 //! features' own criterion, and the features are the test features the build enables,
 //! `tv-core/test-params` when it accepts test parameters (RFC-0001 'Cargo features', OBS-5).
 

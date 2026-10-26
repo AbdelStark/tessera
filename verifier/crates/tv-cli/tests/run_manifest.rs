@@ -514,16 +514,26 @@ fn an_artifact_that_fails_to_open_is_named_without_a_digest() {
     }
 }
 
-/// On a case-insensitive filesystem two names that differ only in ASCII case are one file, so
-/// the outputs may not differ from each other, or from an input, only so in one directory (05 §6).
+/// Whether names that differ only in case are one file in `dir`'s filesystem.
+fn folds_case(dir: &Path) -> bool {
+    let probe = dir.join("case-probe");
+    fs::write(&probe, b"").unwrap();
+    let folds = fs::metadata(dir.join("CASE-PROBE")).is_ok();
+    fs::remove_file(&probe).unwrap();
+    folds
+}
+
+/// On a case-insensitive filesystem two names that differ only in ASCII case are one file, and
+/// before verification neither output exists for canonicalization to see it, so the manifest's
+/// path may not differ from the report's, or from an input's, only so in one directory (05 §6).
 #[test]
-fn outputs_that_differ_only_in_case_are_refused() {
+fn a_manifest_path_that_differs_from_another_only_in_case_is_refused() {
     let f = Fixture::new();
     let dir = |name: &str| f.dir.join(name).display().to_string();
     for (out, manifest) in [
         (dir("r.json"), dir("R.json")),
         (dir("Report.JSON"), dir("report.json")),
-        (dir("CLAIMS.TCL"), dir("run-manifest.json")),
+        (dir("verdict.json"), dir("CLAIMS.TCL")),
         (dir("verdict.json"), dir("Ni.Tnp")),
         (dir("verdict.json"), dir("WEIGHTS.twr")),
     ] {
@@ -538,9 +548,6 @@ fn outputs_that_differ_only_in_case_are_refused() {
             "nothing is written"
         );
     }
-    // `--out` alone against an input, as before, and now in another case.
-    let result = run(f.with(&["--out", &dir("Claims.tcl")]));
-    assert_eq!(result.exit_code, 64);
     // The same names in two directories are two files.
     let other = f.dir.join("other");
     fs::create_dir(&other).unwrap();
@@ -549,6 +556,34 @@ fn outputs_that_differ_only_in_case_are_refused() {
     let result = run(f.with(&["--out", &out, "--run-manifest", &manifest]));
     assert_ne!(result.exit_code, 64, "{}", result.stdout);
     assert!(Path::new(&out).is_file() && Path::new(&manifest).is_file());
+}
+
+/// `--out` keeps the rule it had before #446: it is refused when it resolves to an input, which
+/// a case variant of an input's name does only on a filesystem that folds case. Elsewhere the
+/// two names are two files, and the report is written beside the input.
+#[test]
+fn an_out_that_differs_from_an_input_only_in_case_is_judged_as_before() {
+    let f = Fixture::new();
+    let original = fs::read(&f.claims).unwrap();
+    let out = f.dir.join("Claims.tcl");
+    let result = run(f.with(&["--out", &out.display().to_string(), "--json"]));
+    if folds_case(&f.dir) {
+        assert_eq!(result.exit_code, 64, "{}", result.stdout);
+        let stdout = Json::parse(&result.stdout).unwrap();
+        assert_eq!(
+            text(get(get(&stdout, "verdict"), "error"), "code"),
+            "ERR-USAGE"
+        );
+    } else {
+        assert_ne!(result.exit_code, 64, "{}", result.stdout);
+        let report = read(&out);
+        assert_eq!(text(&report, "schema"), "tessera.verdict/1");
+    }
+    assert_eq!(
+        fs::read(&f.claims).unwrap(),
+        original,
+        "the input is untouched"
+    );
 }
 
 /// Paths and arguments reach the manifest escaped, whatever they hold.
@@ -578,4 +613,87 @@ fn the_manifest_escapes_paths_and_arguments() {
     let outputs = get(&m, "outputs").as_array().unwrap();
     assert_eq!(text(&outputs[0], "path"), out.to_str().unwrap());
     assert!(out.is_file());
+}
+
+/// A manifest path that resolves to the report only once the report exists, an alias no name
+/// comparison sees before verification, is refused after the report and before the manifest:
+/// stdout's verdict is `Inconclusive(ERR-USAGE)`, as for any manifest that cannot be written, and
+/// the report stays (05 §6 'Where').
+///
+/// A dangling symbolic link to the report is such a path on every Unix filesystem, so it is the
+/// case this test always checks. Names the filesystem itself folds, Unicode case (`é`, `É`) and
+/// normalization (NFC, NFD), are checked where the test's filesystem folds them, which a probe
+/// decides; elsewhere they are two files and both are written.
+#[cfg(unix)]
+#[test]
+fn a_manifest_that_aliases_the_report_once_written_is_refused() {
+    let f = Fixture::new();
+    let out = f.dir.join("verdict.json");
+    let link = f.dir.join("alias.json");
+    std::os::unix::fs::symlink("verdict.json", &link).unwrap();
+    let result = run(f.with(&[
+        "--out",
+        &out.display().to_string(),
+        "--run-manifest",
+        &link.display().to_string(),
+        "--json",
+        "--log-format",
+        "json",
+    ]));
+    assert_eq!(result.exit_code, 64, "{}", result.stdout);
+    let stdout = Json::parse(&result.stdout).unwrap();
+    let verdict = get(&stdout, "verdict");
+    assert_eq!(text(verdict, "status"), "inconclusive");
+    assert_eq!(text(get(verdict, "error"), "code"), "ERR-USAGE");
+    // The report holds the verification's verdict, not the manifest.
+    let report = read(&out);
+    assert_eq!(text(&report, "schema"), "tessera.verdict/1");
+    let status = if accepts_test_small() {
+        "accept"
+    } else {
+        "reject"
+    };
+    assert_eq!(text(get(&report, "verdict"), "status"), status);
+    assert!(
+        fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(fs::read_dir(&f.dir).unwrap().count(), 5);
+    let last = lines(&result.stderr).pop().unwrap();
+    assert_eq!(last.field("code").unwrap().text(), "ERR-USAGE");
+    assert_eq!(last.field("exit_code").unwrap().int(), 64);
+
+    for (report_name, manifest_name) in [
+        ("\u{e9}.json", "\u{c9}.json"),
+        ("\u{e9}.json", "e\u{301}.json"),
+    ] {
+        let f = Fixture::new();
+        let probe = f.dir.join(report_name);
+        fs::write(&probe, b"").unwrap();
+        let folded = fs::metadata(f.dir.join(manifest_name)).is_ok();
+        fs::remove_file(&probe).unwrap();
+        let out = f.dir.join(report_name);
+        let manifest = f.dir.join(manifest_name);
+        let result = run(f.with(&[
+            "--out",
+            &out.display().to_string(),
+            "--run-manifest",
+            &manifest.display().to_string(),
+        ]));
+        assert_eq!(
+            text(&read(&out), "schema"),
+            "tessera.verdict/1",
+            "{manifest_name:?}"
+        );
+        if folded {
+            assert_eq!(result.exit_code, 64, "{manifest_name:?}");
+            assert_eq!(fs::read_dir(&f.dir).unwrap().count(), 4);
+        } else {
+            assert_ne!(result.exit_code, 64, "{manifest_name:?}");
+            assert_eq!(text(&read(&manifest), "schema"), "tessera.run-manifest/1");
+            assert_eq!(fs::read_dir(&f.dir).unwrap().count(), 5);
+        }
+    }
 }
