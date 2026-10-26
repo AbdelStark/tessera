@@ -344,8 +344,9 @@ impl GraphOpenings {
     ///
     /// # Errors
     ///
-    /// `Internal` for an incomplete pool, an atom of a pool claim at another point, a tensor the
-    /// schedule's kinds do not name, a read that is neither a lookup's input nor its output, a
+    /// `Internal` for a leaf stage with a product forest, whose leaf claims a graph's targets do
+    /// not take; then for an incomplete pool, an atom of a pool claim at another point, a tensor
+    /// the schedule's kinds do not name, a read that is neither a lookup's input nor its output, a
     /// leaf point the proof does not hold, or a multiplicity claim per instance missing.
     pub fn derive<W: WitnessSource + ?Sized>(
         graph: &tessera_ir::Graph,
@@ -354,6 +355,13 @@ impl GraphOpenings {
         leaf: &dyn LeafClaims,
         stages: &StageProver<'_, W>,
     ) -> Result<Self, StageError> {
+        // A graph's leaf sites are lookups (`LeafLayout::graph`): a product forest's leaf claims
+        // would have no target here, so a leaf stage with one is refused, not dropped (INV-SCH-3).
+        if leaf.forest_claim(0).is_some() {
+            return Err(StageError::Internal {
+                rule: "a graph's leaf stage proves no product forest, whose claims it does not open",
+            });
+        }
         if stages.pool().len() != schedule.pool.len() || stages.pool().iter().any(Option::is_none) {
             return Err(bad());
         }

@@ -140,20 +140,156 @@ fn table_of(
     }
 }
 
-/// The verifier's public data: the public tensors of the honest witness, functions of the public
-/// inputs alone, which it computes itself (RFC-0072 'Public tensors'); no other tensor.
-pub(super) struct PublicOf<'a> {
-    pub(super) witness: &'a Witness,
-    pub(super) public: Vec<bool>,
+/// The verifier's public data (RFC-0072 'Public tensors'): the public graph inputs it holds, and
+/// every other public tensor computed from them alone, through the nodes that are not
+/// gadget-backed, by this test's own evaluator over the real shapes: never from a prover's
+/// witness, nor by the CPU engine, which the prover shares. It holds no other tensor.
+pub(super) struct PublicOf {
+    tensors: Vec<Option<Vec<i64>>>,
 }
 
-impl WitnessSource for PublicOf<'_> {
-    fn values(&self, tensor: TensorId) -> Option<&[i64]> {
-        match self.public.get(tensor.0 as usize) {
-            Some(true) => self.witness.values(tensor),
-            _ => None,
+impl PublicOf {
+    /// The public tensors of `graph` from the values `inputs` gives its public inputs; the values
+    /// of any other input among `inputs` are not read.
+    pub(super) fn new(graph: &Graph, inputs: &[(TensorId, Vec<i64>)]) -> Self {
+        let public = public_tensors(graph);
+        let mut tensors: Vec<Option<Vec<i64>>> = vec![None; graph.tensors.len()];
+        for (t, values) in inputs {
+            if public[t.0 as usize] {
+                tensors[t.0 as usize] = Some(values.clone());
+            }
         }
+        for node in &graph.nodes {
+            if !node.outputs.iter().all(|t| public[t.0 as usize]) || node.outputs.is_empty() {
+                continue;
+            }
+            let shape = |t: TensorId| graph.tensors[t.0 as usize].shape.clone();
+            let ins: Vec<&[i64]> = node
+                .inputs
+                .iter()
+                .map(|t| tensors[t.0 as usize].as_deref().expect("a public input"))
+                .collect();
+            let y = public_node(
+                graph,
+                node,
+                &ins,
+                &shape(node.inputs[0]),
+                &shape(node.outputs[0]),
+            );
+            tensors[node.outputs[0].0 as usize] = Some(y);
+        }
+        Self { tensors }
     }
+}
+
+impl WitnessSource for PublicOf {
+    fn values(&self, tensor: TensorId) -> Option<&[i64]> {
+        self.tensors.get(tensor.0 as usize)?.as_deref()
+    }
+}
+
+/// The coordinates of row-major index `flat` of `shape`.
+fn coordinates(shape: &[u32], flat: usize) -> Vec<usize> {
+    let mut rest = flat;
+    let mut out = vec![0; shape.len()];
+    for axis in (0..shape.len()).rev() {
+        out[axis] = rest % shape[axis] as usize;
+        rest /= shape[axis] as usize;
+    }
+    out
+}
+
+/// The row-major index of `coords` in `shape`.
+fn flat_of(shape: &[u32], coords: &[usize]) -> usize {
+    coords
+        .iter()
+        .zip(shape)
+        .fold(0, |index, (&c, &len)| index * len as usize + c)
+}
+
+/// A public node's output over its real shape `y`, from its inputs' values, the first of shape
+/// `x`: RFC-0006's semantics of the nodes that are not gadget-backed, written here.
+fn public_node(
+    graph: &Graph,
+    node: &tessera_ir::Node,
+    ins: &[&[i64]],
+    x: &[u32],
+    y: &[u32],
+) -> Vec<i64> {
+    let count: usize = y.iter().map(|&d| d as usize).product();
+    let constant = |c: tessera_ir::ConstRef| graph.constants[c.0 as usize].clone();
+    (0..count)
+        .map(|i| {
+            let at = coordinates(y, i);
+            match &node.op {
+                Op::Reshape => ins[0][i],
+                Op::Add => ins[0][i] + ins[1][i],
+                Op::Sub => ins[0][i] - ins[1][i],
+                Op::Mul { broadcast } => {
+                    let b = ins[1];
+                    ins[0][i]
+                        * match broadcast {
+                            Broadcast::Trailing => b[i / (count / b.len())],
+                            Broadcast::Leading => b[i % b.len()],
+                        }
+                }
+                Op::ConstMul { c } | Op::ConstAdd { c } => {
+                    let c = constant(*c);
+                    let k = if c.len() == 1 {
+                        c[0]
+                    } else {
+                        c[at[at.len() - 1]]
+                    };
+                    match node.op {
+                        Op::ConstMul { .. } => ins[0][i] * k,
+                        _ => ins[0][i] + k,
+                    }
+                }
+                Op::Transpose { perm } => {
+                    let mut from = vec![0; x.len()];
+                    for (k, &axis) in perm.iter().enumerate() {
+                        from[usize::from(axis)] = at[k];
+                    }
+                    ins[0][flat_of(x, &from)]
+                }
+                Op::Slice { axis, start, .. } => {
+                    let mut from = at.clone();
+                    from[usize::from(*axis)] += *start as usize;
+                    ins[0][flat_of(x, &from)]
+                }
+                Op::GatherPublic { index } => {
+                    let mut from = at.clone();
+                    from[0] = usize::try_from(constant(*index)[at[0]]).expect("a row");
+                    ins[0][flat_of(x, &from)]
+                }
+                Op::Expand { axis, .. } => {
+                    let mut from = at.clone();
+                    from.remove(usize::from(*axis));
+                    ins[0][flat_of(x, &from)]
+                }
+                Op::Sum { axis } | Op::SumSquares { axis } => {
+                    let axis = usize::from(*axis);
+                    (0..x[axis] as usize)
+                        .map(|k| {
+                            let mut from = at.clone();
+                            from.insert(axis, k);
+                            let v = ins[0][flat_of(x, &from)];
+                            if matches!(node.op, Op::SumSquares { .. }) {
+                                v * v
+                            } else {
+                                v
+                            }
+                        })
+                        .sum()
+                }
+                Op::BitFn { f } => {
+                    let bits: Vec<i64> = ins.iter().map(|v| v[i]).collect();
+                    f.eval(&bits)
+                }
+                op => panic!("this test's public evaluator knows no {}", op.name()),
+            }
+        })
+        .collect()
 }
 
 /// The verifier's verdict on a case's honest proof over the padded witness, and whether its pool
@@ -190,10 +326,7 @@ fn proves(
     );
     let points = leaf_points(&schedule, seed);
     let (proof, prover_pool) = prove_graph(graph, &tables, &schedule, &padded, &points);
-    let statement = PublicOf {
-        witness: &witness,
-        public: public_tensors(graph),
-    };
+    let statement = PublicOf::new(graph, given);
     let publics = Publics {
         values: &statement,
         shift: Shift::Extension,
@@ -217,10 +350,11 @@ fn proves(
 /// RFC-0072 'Padded positions': each operation downstream of the S-box holds what it computes
 /// at its padded positions, and proves and verifies over the padded witness: `Add`, `Sub`, `Mul`
 /// broadcast both ways, `ConstMul` and `ConstAdd` by a scalar and per channel, `Reshape`,
-/// `Transpose`, `Slice` on both axes and from the first row, `GatherPublic`, `Expand`, `Sum` and
-/// `SumSquares` over the axis of 4, both matmuls, `Rotate`, a `BitDecompose` and a `BitFn` of
-/// its bits, an `AssertEqual` whose sides differ at padded positions alone, and the lookups
-/// `TableMap`, `Bitwise` and `Requant`, of one class and of two, below it.
+/// `Transpose` of two axes and of three by a cycle, `Slice` on both axes and from the first row,
+/// `GatherPublic`, `Expand`, `Sum` and `SumSquares` over the axis of 4, both matmuls, `Rotate`, a
+/// `BitDecompose` and a `BitFn` of its bits, an `AssertEqual` whose sides differ at padded
+/// positions alone, and the lookups `TableMap`, `Bitwise` and `Requant`, of one class and of
+/// two, below it.
 #[test]
 fn every_operation_holds_what_it_computes_at_padded_positions() {
     let shape = |s: &[u32]| s.to_vec();
@@ -275,6 +409,14 @@ fn every_operation_holds_what_it_computes_at_padded_positions() {
         ("Transpose", |g, s, _| {
             let op = Op::Transpose { perm: vec![1, 0] };
             (one(g, op, &[s], virt(&[3, 4])), vec![3, 4])
+        }),
+        ("Transpose of three axes", |g, s, _| {
+            // A 3-cycle, not its own inverse: `y[i, j, k] = x[k, i, j]`, `x` padded on two axes.
+            let wide = one(g, Op::Expand { axis: 0, len: 3 }, &[s], virt(&[3, 4, 3]));
+            let op = Op::Transpose {
+                perm: vec![1, 2, 0],
+            };
+            (one(g, op, &[wide], virt(&[4, 3, 3])), vec![4, 3, 3])
         }),
         ("Slice of rows", |g, s, _| {
             let op = Op::Slice {

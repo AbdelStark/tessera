@@ -11,17 +11,19 @@
 //! production shared-tree driver (`tv_core::leaf`) with the verifier's tables (`tv-tables`) on its
 //! own transcript (`tv-hash`); checks every instance's key and value claims against the split by
 //! RFC-0045's identity, evaluating each public read itself at its point, its table padded with
-//! zeros; derives each leaf claim's value from the split or from public data; and continues with
-//! the stage verifier of [`super`] on the same transcript. The openings' part, which no message
-//! here carries, is the test's: the pool, the lookup outputs' claims and the multiplicities'
-//! claims must be the committed tables' extensions, and the prover's opening targets
-//! (`GraphOpenings`) must be exactly those claims.
+//! zeros and computed from the public inputs alone (`PublicOf`); derives each leaf claim's value
+//! from the split or from public data; and continues with the stage verifier of [`super`] on the
+//! same transcript. The openings' part, which no message here carries, is the test's
+//! ([`unopened`]): the pool, the lookup outputs' claims and the multiplicities' claims must be the
+//! committed tables' extensions, else `Reject(Evaluation { commitment })`, and the prover's
+//! opening targets (`GraphOpenings`) must be exactly those claims.
 //!
 //! - **Rejections.** A lookup off its table, and a padded block whose S-box output is taken as 0,
 //!   fail LogUp's roots, `Reject(Lookup { table })` (RFC-0008); a changed split value, and a
 //!   public input changed on the verifier's side, fail the split's identity, `Reject(Sumcheck {
 //!   stage: 0, round: 0 })` (RFC-0045 'The check'); multiplicities that miss a block's padded
-//!   positions fail LogUp's roots.
+//!   positions fail LogUp's roots. A committed lookup output, multiplicity column or input other
+//!   than the one LogUp and the stages read fails exactly its own opening targets.
 //! - **Multiplicities.** Each instance's multiplicities sum to its column's `2^h` entries: every
 //!   block's padded positions are counted, beside the column's row-0 tail.
 
@@ -483,13 +485,15 @@ pub(super) struct Honest<'w> {
 // ----- The verifier ----------------------------------------------------------------------------
 
 /// Why the verifier rejects (04 §2): LogUp's roots or leaf checks, naming the instance's table
-/// (`Reject(Lookup { table })`), a tree level, or a stage's check, the split's at stage 0 round 0
-/// (`Reject(Sumcheck { stage, round })`).
+/// (`Reject(Lookup { table })`), a tree level, a stage's check, the split's at stage 0 round 0
+/// (`Reject(Sumcheck { stage, round })`), or an opening (`Reject(Evaluation { commitment })`,
+/// RFC-0019 step 9), which the test plays ([`opened_except`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Rejection {
     Lookup { table: TableId },
     Level(u32),
     Sumcheck { stage: u16, round: u32 },
+    Evaluation { commitment: CommitmentClass },
 }
 
 impl From<Reject> for Rejection {
@@ -745,16 +749,90 @@ pub(super) fn committed(graph: &Graph, source: &dyn WitnessSource, tensor: Tenso
     }
 }
 
-/// The openings' part (RFC-0011, RFC-0012), which the test plays: the verifier's pool, its lookup
-/// outputs' claims and its multiplicities' claims are the extensions of the tables `source`
-/// commits and of the multiplicities `multiplicities` holds, in table order.
+/// One of the verifier's opening targets, by its place in [`GraphOpenings`]' order: the pool's
+/// claim, a lookup output's split claim, an instance's multiplicities' claim, each by its index
+/// in [`Verdict`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Target {
+    Pool(usize),
+    Output(usize),
+    Multiplicity(usize),
+}
+
+/// The openings' part (RFC-0011, RFC-0012), which the test plays: the targets whose claimed value
+/// is not the extension of what the prover commits, the tables `source` gives and the
+/// multiplicities `multiplicities` holds, in table order. The openings reject each of them,
+/// `Reject(Evaluation { commitment })`.
+pub(super) fn unopened(
+    setup: &Setup,
+    schedule: &StageSchedule,
+    verdict: &Verdict,
+    source: &dyn WitnessSource,
+    multiplicities: &[Vec<Goldilocks>],
+) -> Vec<Target> {
+    let graph = &setup.graph;
+    let pool = pool_of_tables(&verdict.coords, graph, schedule, &|t| {
+        committed(graph, source, t)
+            .into_iter()
+            .map(Goldilocks::from_i64)
+            .collect()
+    });
+    let mut failed = Vec::new();
+    for (k, (claimed, opened)) in verdict.pool.iter().zip(&pool).enumerate() {
+        if claimed != opened {
+            failed.push(Target::Pool(k));
+        }
+    }
+    for (k, (tensor, point, value)) in verdict.outputs.iter().enumerate() {
+        if *value != mle(&committed(graph, source, *tensor), point) {
+            failed.push(Target::Output(k));
+        }
+    }
+    for (k, ((_, point, value), m)) in verdict
+        .multiplicities
+        .iter()
+        .zip(multiplicities)
+        .enumerate()
+    {
+        let m: Vec<i64> = m.iter().map(|x| x.to_canonical_u64() as i64).collect();
+        if *value != mle(&m, point) {
+            failed.push(Target::Multiplicity(k));
+        }
+    }
+    failed
+}
+
+/// The openings' verdict on every target but those of `skip`: accepted, or `Reject(Evaluation
+/// { commitment })` of the first that fails ([`unopened`]), the pool's on its commitment and the
+/// leaf stage's on the advice.
+pub(super) fn opened_except(
+    setup: &Setup,
+    schedule: &StageSchedule,
+    verdict: &Verdict,
+    source: &dyn WitnessSource,
+    multiplicities: &[Vec<Goldilocks>],
+    skip: &[Target],
+) -> Result<(), Rejection> {
+    let failed = unopened(setup, schedule, verdict, source, multiplicities);
+    match failed.into_iter().find(|t| !skip.contains(t)) {
+        None => Ok(()),
+        Some(Target::Pool(k)) => Err(Rejection::Evaluation {
+            commitment: schedule.pool[k].commitment,
+        }),
+        Some(_) => Err(Rejection::Evaluation {
+            commitment: CommitmentClass::Advice,
+        }),
+    }
+}
+
+/// The openings' verdict on every target of `setup`'s schedule ([`opened_except`]).
 pub(super) fn opened(
     setup: &Setup,
     verdict: &Verdict,
     source: &dyn WitnessSource,
     multiplicities: &[Vec<Goldilocks>],
-) {
-    opened_under(setup, &setup.schedule, verdict, source, multiplicities);
+) -> Result<(), Rejection> {
+    opened_except(setup, &setup.schedule, verdict, source, multiplicities, &[])
 }
 
 /// [`opened`] under `schedule`, the graph's or one with checks removed.
@@ -764,29 +842,8 @@ pub(super) fn opened_under(
     verdict: &Verdict,
     source: &dyn WitnessSource,
     multiplicities: &[Vec<Goldilocks>],
-) {
-    let graph = &setup.graph;
-    let pool = pool_of_tables(&verdict.coords, graph, schedule, &|t| {
-        committed(graph, source, t)
-            .into_iter()
-            .map(Goldilocks::from_i64)
-            .collect()
-    });
-    assert_eq!(
-        verdict.pool, pool,
-        "the pool is the committed tables' extensions"
-    );
-    for (tensor, point, value) in &verdict.outputs {
-        assert_eq!(
-            *value,
-            mle(&committed(graph, source, *tensor), point),
-            "lookup output {tensor:?}"
-        );
-    }
-    for ((table, point, value), m) in verdict.multiplicities.iter().zip(multiplicities) {
-        let m: Vec<i64> = m.iter().map(|x| x.to_canonical_u64() as i64).collect();
-        assert_eq!(*value, mle(&m, point), "the multiplicities of {table:?}");
-    }
+) -> Result<(), Rejection> {
+    opened_except(setup, schedule, verdict, source, multiplicities, &[])
 }
 
 /// RFC-0011, RFC-0045, RFC-0072: the producer's opening targets ([`GraphOpenings`]) are what
@@ -878,8 +935,15 @@ pub(super) fn targets_are_the_verifiers(
 
 /// The multiplicities the prover commits for `leaf`'s tensors, in table order.
 pub(super) fn multiplicities(setup: &Setup, leaf: &GraphLeafWitness) -> Vec<Vec<Goldilocks>> {
-    let columns =
-        LeafColumns::new(&setup.layout, &setup.columns, &leaf.tensors()).expect("columns");
+    multiplicities_of(setup, &leaf.tensors())
+}
+
+/// The multiplicities of the leaf stage over `tensors`, in table order.
+pub(super) fn multiplicities_of(
+    setup: &Setup,
+    tensors: &[Vec<tessera_prover::leaf::SiteTensors<'_, ModelColumn>>],
+) -> Vec<Vec<Goldilocks>> {
+    let columns = LeafColumns::new(&setup.layout, &setup.columns, tensors).expect("columns");
     columns
         .columns()
         .iter()
@@ -982,12 +1046,10 @@ fn byte_run(seed: u64) -> (Setup, Vec<(TensorId, Vec<i64>)>, Witness) {
     (setup, inputs, witness)
 }
 
-/// The verifier's public data on the honest witness: its public tensors.
-fn statement<'w>(setup: &Setup, witness: &'w Witness) -> PublicOf<'w> {
-    PublicOf {
-        witness,
-        public: public_tensors(&setup.graph),
-    }
+/// The verifier's public data: its public tensors, computed from the public inputs among
+/// `inputs` alone ([`PublicOf`]).
+fn statement(setup: &Setup, inputs: &[(TensorId, Vec<i64>)]) -> PublicOf {
+    PublicOf::new(&setup.graph, inputs)
 }
 
 /// RFC-0072 'Gadgets and leaf sites' 'AES's lookups', 'Public tensors' 'In the leaf stage',
@@ -1001,7 +1063,7 @@ fn statement<'w>(setup: &Setup, witness: &'w Witness) -> PublicOf<'w> {
 /// `0x63`, and the requantization table's of the zero-padded `x` holds `rq(0) = 1`.
 #[test]
 fn a_graphs_lookups_prove_through_the_real_leaf_stage() {
-    let (setup, _, witness) = byte_run(0x0526_4B01);
+    let (setup, inputs, witness) = byte_run(0x0526_4B01);
     // Seven sites: twelve reads, of which `p` twice public; `c ⊕ c` reads `c` once.
     let reads: Vec<usize> = (0..7)
         .map(|s| setup.layout.reads(s, 0).expect("a site").len())
@@ -1025,7 +1087,7 @@ fn a_graphs_lookups_prove_through_the_real_leaf_stage() {
     assert_eq!(honest.padded.padded(s).expect("the S-box")[3], 0x63);
     let r = setup.graph.nodes[6].outputs[0];
     assert_eq!(honest.padded.padded(r).expect("rq(x)")[3], 1);
-    let public = statement(&setup, &witness);
+    let public = statement(&setup, &inputs);
     let verdict = verify(
         &setup.graph,
         &setup.specs,
@@ -1041,18 +1103,20 @@ fn a_graphs_lookups_prove_through_the_real_leaf_stage() {
         &verdict,
         &honest.padded,
         &multiplicities(&setup, &honest.leaf),
-    );
+    )
+    .expect("the openings accept");
     targets_are_the_verifiers(&setup, &honest.targets, &verdict, &honest.padded);
 }
 
 /// RFC-0045 'The check', RFC-0072 'In the leaf stage': each value the split sends is checked, a
 /// changed one is `Reject(Sumcheck { stage: 0, round: 0 })`, and so is a public input changed on
-/// the verifier's side, which it evaluates itself: one entry of `p`, real or not.
+/// the verifier's side, which it evaluates itself: three of `p`'s real entries, the first, a
+/// middle one and the last. (Its padded entries are 0 on both sides by RFC-0072, not inputs.)
 #[test]
 fn a_changed_split_value_or_public_input_is_rejected_at_stage_0() {
     let (setup, inputs, witness) = byte_run(0x0526_4B02);
     let honest = setup.honest(&witness);
-    let public = statement(&setup, &witness);
+    let public = statement(&setup, &inputs);
     let split = Err(Rejection::Sumcheck { stage: 0, round: 0 });
     let verdict = |proof: &LeafProof, statement: &dyn WitnessSource| {
         verify(
@@ -1073,33 +1137,13 @@ fn a_changed_split_value_or_public_input_is_rejected_at_stage_0() {
     let mut short = honest.proof.clone();
     short.splits.pop();
     assert_eq!(verdict(&short, &public), split, "a value short");
-    // The public bytes changed on the verifier's side, entry by entry.
-    let (p, values) = &inputs[1];
+    // The public bytes changed on the verifier's side, entry by entry: the verifier computes its
+    // public tensors from them.
     for entry in [0, 5, 11] {
-        let mut changed = values.clone();
-        changed[entry] ^= 1;
-        let overridden = Override {
-            inner: &public,
-            tensor: *p,
-            values: changed,
-        };
-        assert_eq!(verdict(&honest.proof, &overridden), split, "p[{entry}]");
-    }
-}
-
-/// A public source with one tensor's values replaced.
-pub(super) struct Override<'a> {
-    pub(super) inner: &'a dyn WitnessSource,
-    pub(super) tensor: TensorId,
-    pub(super) values: Vec<i64>,
-}
-
-impl WitnessSource for Override<'_> {
-    fn values(&self, tensor: TensorId) -> Option<&[i64]> {
-        match tensor == self.tensor {
-            true => Some(&self.values),
-            false => self.inner.values(tensor),
-        }
+        let mut changed = inputs.clone();
+        changed[1].1[entry] ^= 1;
+        let public = statement(&setup, &changed);
+        assert_eq!(verdict(&honest.proof, &public), split, "p[{entry}]");
     }
 }
 
@@ -1129,9 +1173,9 @@ impl WitnessSource for Committing<'_> {
 /// rest of the witness is honest, so the S-box's instance is the one that fails.
 #[test]
 fn a_lookup_off_its_table_is_rejected_at_logup() {
-    let (setup, _, witness) = byte_run(0x0526_4B03);
+    let (setup, inputs, witness) = byte_run(0x0526_4B03);
     let honest = setup.honest(&witness);
-    let public = statement(&setup, &witness);
+    let public = statement(&setup, &inputs);
     let s = setup.graph.nodes[1].outputs[0];
     let table = committed(&setup.graph, &honest.padded, s);
     let mut off = table.clone();
@@ -1172,7 +1216,7 @@ fn a_lookup_off_its_table_is_rejected_at_logup() {
 /// padded position, the S-box's.
 #[test]
 fn the_multiplicities_count_the_padded_positions() {
-    let (setup, _, witness) = byte_run(0x0526_4B04);
+    let (setup, inputs, witness) = byte_run(0x0526_4B04);
     let honest = setup.honest(&witness);
     let tensors = honest.leaf.tensors();
     let columns = LeafColumns::new(&setup.layout, &setup.columns, &tensors).expect("columns");
@@ -1243,7 +1287,7 @@ fn the_multiplicities_count_the_padded_positions() {
     let logup = prove_logup(&mut t, &instances, &[], &setup.layout.trees()).expect("the trees");
     let splits = split_values(&setup.layout, &leaf_point(&logup), &tensors).expect("the split");
     let proof = LeafProof::of(&logup, &splits, Vec::new());
-    let public = statement(&setup, &witness);
+    let public = statement(&setup, &inputs);
     assert_eq!(
         verify(
             &setup.graph,
@@ -1367,10 +1411,11 @@ fn a_classed_lookup_takes_class_0_at_a_padded_channel() {
         .expect("a classed lookup")[0];
     let setup = Setup::new(g.finish(), specs);
     assert_eq!(setup.layout.reads(1, 0).expect("the site").len(), 3);
-    let witness = setup.witness(vec![
+    let given = vec![
         (x, (0..12).map(|i| (53 * i + 7) % 256).collect()),
         (c, vec![1, 0, 1]),
-    ]);
+    ];
+    let witness = setup.witness(given.clone());
     let honest = setup.honest(&witness);
     let table = honest.padded.padded(q).expect("the classed lookup's table");
     assert!(
@@ -1381,7 +1426,7 @@ fn a_classed_lookup_takes_class_0_at_a_padded_channel() {
         &setup.graph,
         &setup.specs,
         &setup.schedule,
-        &statement(&setup, &witness),
+        &statement(&setup, &given),
         &honest.proof,
         Claims::Own,
     )
@@ -1391,8 +1436,356 @@ fn a_classed_lookup_takes_class_0_at_a_padded_channel() {
         &verdict,
         &honest.padded,
         &multiplicities(&setup, &honest.leaf),
-    );
+    )
+    .expect("the openings accept");
     // The classes are committed with the weights: their claim is a weight target.
     assert_eq!(honest.targets.weights().len(), 1);
     targets_are_the_verifiers(&setup, &honest.targets, &verdict, &honest.padded);
+}
+
+/// RFC-0072 'Messages, rejections and stages' (the openings of a graph), RFC-0045 'The split': a
+/// lookup output's split claim is the one check that binds a committed lookup output to its key.
+/// A prover commits `T'`, the S-box output with one real entry changed, runs the S-box site's
+/// LogUp on the true outputs, and runs the `Gf256Mul { 2 }` site that reads it, and the stages,
+/// on `T'` and its `m' = Gf256Mul{2}(T')`. LogUp, the split and every stage accept; of the
+/// openings, the S-box output's target alone fails, `Reject(Evaluation { commitment: Advice
+/// })`, and with exactly that target removed the openings accept the cheat.
+#[test]
+fn only_a_lookup_outputs_opening_binds_it_to_its_key() {
+    let mut g = GraphBuilder::new();
+    let mut byte = decl(&[4, 3], ADVICE);
+    byte.range = IntRange { lo: 0, hi: 255 };
+    let x = g.input(byte).expect("x");
+    let mut bits = decl(&[4, 3, 8], ADVICE);
+    bits.range = IntRange { lo: 0, hi: 1 };
+    g.node(Op::BitDecompose { low: 8, high: 0 }, &[x], vec![bits])
+        .expect("the range check");
+    let output = |t| decl(&[4, 3], NodeKind::LookupOutput { table: TableId(t) });
+    let s = g
+        .node(Op::TableMap { table: TableId(0) }, &[x], vec![output(0)])
+        .expect("the S-box")[0];
+    let m = g
+        .node(Op::TableMap { table: TableId(1) }, &[s], vec![output(1)])
+        .expect("Gf256Mul { 2 }")[0];
+    let setup = Setup::new(g.finish(), byte_tables());
+    let given = vec![(x, (0..12).map(|i| (29 * i + 3) % 256).collect())];
+    let witness = setup.witness(given.clone());
+    let honest = setup.honest(&witness);
+    let mul2 = GeneratedTable::new(TableId(1), TableKind::Gf256Mul { c: 2 }).expect("mul2");
+    let mut t = committed(&setup.graph, &honest.padded, s);
+    t[5] ^= 0x01;
+    let m2: Vec<i64> = t
+        .iter()
+        .map(|&v| mul2.lookup(v, 0).expect("a byte"))
+        .collect();
+    let cheat = Committing {
+        inner: &honest.padded,
+        tables: vec![(s, t), (m, m2)],
+    };
+    let cheat_leaf =
+        GraphLeafWitness::new(&setup.layout, &setup.graph, &setup.schedule.layers, &cheat)
+            .expect("the cheat's leaf tensors");
+    // The S-box's site (0) reads the true outputs, the `Gf256Mul` site (1) `T'`.
+    let mut mixed = cheat_leaf.tensors();
+    mixed[0] = honest.leaf.tensors().into_iter().next().expect("site 0");
+    let mut tr = transcript();
+    let lookup =
+        prepare_leaf(&mut tr, &setup.layout, &setup.columns, &mixed, &[]).expect("the leaf");
+    let points: Vec<Vec<F>> = setup.schedule.stages[0]
+        .claims
+        .iter()
+        .map(|c| lookup.point()[..c.point.len()].to_vec())
+        .collect();
+    let mut prover = StageProver::for_graph(&setup.graph, &setup.specs, &setup.schedule, &cheat);
+    prover.leaf(&points).expect("the leaf claims");
+    let atoms = prover.leaf_split_values().expect("the atoms");
+    let proven = lookup.finish(&atoms).expect("the split");
+    let stages = (1..setup.schedule.stages.len())
+        .map(|k| {
+            let k = u16::try_from(k).expect("small");
+            prover.prove_stage(&mut tr, k).expect("a stage")
+        })
+        .collect();
+    let proof = LeafProof::of(proven.logup(), proven.splits(), stages);
+    let public = statement(&setup, &given);
+    let verdict = verify(
+        &setup.graph,
+        &setup.specs,
+        &setup.schedule,
+        &public,
+        &proof,
+        Claims::Own,
+    )
+    .expect("LogUp, the split and the stages accept");
+    let k = verdict
+        .outputs
+        .iter()
+        .position(|(tensor, _, _)| *tensor == s)
+        .expect("the S-box output's target");
+    let mults = multiplicities_of(&setup, &mixed);
+    let schedule = &setup.schedule;
+    assert_eq!(
+        unopened(&setup, schedule, &verdict, &cheat, &mults),
+        [Target::Output(k)],
+        "the S-box output's opening alone"
+    );
+    assert_eq!(
+        opened(&setup, &verdict, &cheat, &mults),
+        Err(Rejection::Evaluation {
+            commitment: CommitmentClass::Advice
+        })
+    );
+    opened_except(
+        &setup,
+        schedule,
+        &verdict,
+        &cheat,
+        &mults,
+        &[Target::Output(k)],
+    )
+    .expect("accepted without the S-box output's opening");
+}
+
+/// RFC-0008 'Fraction tree', RFC-0045 'The leaf point': the multiplicities are committed, and
+/// their claim at the table tree's leaf point is the one check that binds the committed column to
+/// the one LogUp balanced. A prover that commits the S-box's multiplicities with one count moved
+/// to another row, after an honest LogUp, fails that target's opening alone, `Reject(Evaluation
+/// { commitment: Advice })`, and is accepted with exactly that target removed. And a prover that
+/// commits a committed input other than the one LogUp and the stages read, one real byte of `x`
+/// changed, fails exactly the pool targets that read `x`, and is accepted without them.
+#[test]
+fn only_the_multiplicities_and_the_pools_openings_bind_their_commitments() {
+    let (setup, inputs, witness) = byte_run(0x0526_4B06);
+    let honest = setup.honest(&witness);
+    let public = statement(&setup, &inputs);
+    let verdict = verify(
+        &setup.graph,
+        &setup.specs,
+        &setup.schedule,
+        &public,
+        &honest.proof,
+        Claims::Own,
+    )
+    .expect("the honest proof verifies");
+    let schedule = &setup.schedule;
+    let advice = Err(Rejection::Evaluation {
+        commitment: CommitmentClass::Advice,
+    });
+    // The S-box's multiplicities, one count moved from row 0 to row 1.
+    let mut mults = multiplicities(&setup, &honest.leaf);
+    assert_eq!(setup.layout.instances()[0].table, TableId(0));
+    mults[0][0] -= Goldilocks::ONE;
+    mults[0][1] += Goldilocks::ONE;
+    assert_eq!(
+        unopened(&setup, schedule, &verdict, &honest.padded, &mults),
+        [Target::Multiplicity(0)]
+    );
+    assert_eq!(opened(&setup, &verdict, &honest.padded, &mults), advice);
+    let skip = [Target::Multiplicity(0)];
+    opened_except(&setup, schedule, &verdict, &honest.padded, &mults, &skip)
+        .expect("accepted without the multiplicities' opening");
+    // A committed `x` other than the one the proof read.
+    let x = inputs[0].0;
+    let mut other = committed(&setup.graph, &honest.padded, x);
+    other[4 * 2 + 1] ^= 0x40;
+    let cheat = Committing {
+        inner: &honest.padded,
+        tables: vec![(x, other)],
+    };
+    let mults = multiplicities(&setup, &honest.leaf);
+    let reading_x: Vec<Target> = schedule
+        .pool
+        .iter()
+        .enumerate()
+        .filter(|(_, claim)| {
+            claim
+                .atoms
+                .iter()
+                .any(|a| a.kind == tessera_compiler::schedule::Kind::Tensor(x))
+        })
+        .map(|(k, _)| Target::Pool(k))
+        .collect();
+    assert!(
+        reading_x.len() >= 2,
+        "the S-box site's and the range check's"
+    );
+    assert_eq!(
+        unopened(&setup, schedule, &verdict, &cheat, &mults),
+        reading_x
+    );
+    assert_eq!(opened(&setup, &verdict, &cheat, &mults), advice);
+    opened_except(&setup, schedule, &verdict, &cheat, &mults, &reading_x)
+        .expect("accepted without the pool targets that read x");
+}
+
+/// INV-SCH-3, RFC-0072: `GraphOpenings::derive` refuses what it cannot list rather than drop it.
+/// A leaf stage proven with a product forest beside the lookups, whose leaf claims a graph's
+/// targets do not take; a pool not yet complete, before the stages are proven; and a pool claim
+/// whose atom lies at another point than the claim's.
+#[test]
+fn a_graphs_opening_targets_refuse_what_they_cannot_list() {
+    use tessera_prover::StageError;
+    let (setup, _, witness) = byte_run(0x0526_4B07);
+    let padded = PaddedWitness::new(&setup.graph, &setup.specs, &witness).expect("padded");
+    let leaf = GraphLeafWitness::new(&setup.layout, &setup.graph, &setup.schedule.layers, &padded)
+        .expect("the leaf tensors");
+    let tensors = leaf.tensors();
+    let schedule = &setup.schedule;
+    let points = |p: &[F]| -> Vec<Vec<F>> {
+        schedule.stages[0]
+            .claims
+            .iter()
+            .map(|c| p[..c.point.len()].to_vec())
+            .collect()
+    };
+    // A product forest beside the lookups.
+    let fields: Vec<Goldilocks> = [2, 3, 4, 5].into_iter().map(Goldilocks::from_i64).collect();
+    let forests = [tessera_sumcheck::Forest::new(&fields, 1)];
+    let mut t = transcript();
+    let lookup = prepare_leaf(&mut t, &setup.layout, &setup.columns, &tensors, &forests)
+        .expect("the leaf with a forest");
+    let mut prover = StageProver::for_graph(&setup.graph, &setup.specs, schedule, &padded);
+    prover
+        .leaf(&points(lookup.point()))
+        .expect("the leaf claims");
+    let atoms = prover.leaf_split_values().expect("the atoms");
+    let proven = lookup.finish(&atoms).expect("the split");
+    assert_eq!(
+        GraphOpenings::derive(&setup.graph, schedule, &setup.layout, &proven, &prover).err(),
+        Some(StageError::Internal {
+            rule: "a graph's leaf stage proves no product forest, whose claims it does not open"
+        })
+    );
+    // No forest, before the stages: the pool is not complete.
+    let bad = Some(StageError::Internal {
+        rule: "INV-SCH-3: original opening sources, points and order follow the runtime schedule",
+    });
+    let mut t = transcript();
+    let lookup =
+        prepare_leaf(&mut t, &setup.layout, &setup.columns, &tensors, &[]).expect("the leaf");
+    let mut prover = StageProver::for_graph(&setup.graph, &setup.specs, schedule, &padded);
+    prover
+        .leaf(&points(lookup.point()))
+        .expect("the leaf claims");
+    let atoms = prover.leaf_split_values().expect("the atoms");
+    let proven = lookup.finish(&atoms).expect("the split");
+    assert!(schedule.stages.len() > 1, "the range check's stage 1");
+    assert_eq!(
+        GraphOpenings::derive(&setup.graph, schedule, &setup.layout, &proven, &prover).err(),
+        bad
+    );
+    // The stages proven: listed; with a pool atom moved to another claim's point: refused.
+    for k in 1..schedule.stages.len() {
+        let k = u16::try_from(k).expect("small");
+        prover.prove_stage(&mut t, k).expect("a stage");
+    }
+    GraphOpenings::derive(&setup.graph, schedule, &setup.layout, &proven, &prover)
+        .expect("the targets");
+    let mut moved = schedule.clone();
+    let other = moved
+        .pool
+        .iter()
+        .map(|c| c.point.clone())
+        // A stage's point, not a leaf one: two sites' leaf points are prefixes of one `P`.
+        .find(|p| p.iter().any(|c| matches!(c, Coord::Round { .. })))
+        .expect("a stage's point");
+    assert!(
+        moved.pool[0]
+            .point
+            .iter()
+            .all(|c| matches!(c, Coord::Leaf { .. }))
+    );
+    moved.pool[0].atoms[0].point = other;
+    assert_eq!(
+        GraphOpenings::derive(&setup.graph, &moved, &setup.layout, &proven, &prover).err(),
+        bad
+    );
+}
+
+/// RFC-0037 'Splits', RFC-0045 'What is sent': a lookup whose input is a sum of a committed tensor
+/// and a virtual product, `TableMap(x + a·b)` into the requantization table, leaves a leaf claim
+/// that splits into a pool part and an instance. The split sends its two parts' values after the
+/// lookups' values, in the same `stage/0/split`; the verifier checks that they add up to the
+/// lookup input's value. Each changed is `Reject(Sumcheck { stage: 0, round: 0 })`.
+#[test]
+fn a_split_leaf_claim_proves_and_its_parts_are_checked() {
+    let mut g = GraphBuilder::new();
+    let input = |g: &mut GraphBuilder, hi: i128, bits: u8| {
+        let mut d = decl(&[4, 3], ADVICE);
+        d.range = IntRange { lo: 0, hi };
+        let t = g.input(d).expect("an input");
+        let mut b = decl(&[4, 3, u32::from(bits)], ADVICE);
+        b.range = IntRange { lo: 0, hi: 1 };
+        g.node(Op::BitDecompose { low: bits, high: 0 }, &[t], vec![b])
+            .expect("its range check");
+        t
+    };
+    let x = input(&mut g, 127, 7);
+    let a = input(&mut g, 1, 1);
+    let b = input(&mut g, 1, 1);
+    let mul = Op::Mul {
+        broadcast: tessera_ir::Broadcast::Trailing,
+    };
+    let m = one(&mut g, mul, &[a, b], decl(&[4, 3], NodeKind::Virtual));
+    let u = one(&mut g, Op::Add, &[x, m], decl(&[4, 3], NodeKind::Virtual));
+    let output = decl(&[4, 3], NodeKind::LookupOutput { table: TableId(3) });
+    g.node(Op::TableMap { table: TableId(3) }, &[u], vec![output])
+        .expect("a lookup");
+    let setup = Setup::new(g.finish(), byte_tables());
+    let [claim] = setup.schedule.stages[0].claims.as_slice() else {
+        panic!("one leaf claim");
+    };
+    assert!(
+        claim.split && claim.parts.len() == 2,
+        "a pool part and an instance"
+    );
+    let given = vec![
+        (x, (0..12).map(|i| (41 * i + 9) % 128).collect()),
+        (a, (0..12).map(|i| i % 2).collect()),
+        (b, (0..12).map(|i| (i / 3) % 2).collect()),
+    ];
+    let witness = setup.witness(given.clone());
+    let honest = setup.honest(&witness);
+    let public = statement(&setup, &given);
+    let verdict = verify(
+        &setup.graph,
+        &setup.specs,
+        &setup.schedule,
+        &public,
+        &honest.proof,
+        Claims::Own,
+    )
+    .expect("the honest proof verifies");
+    opened(
+        &setup,
+        &verdict,
+        &honest.padded,
+        &multiplicities(&setup, &honest.leaf),
+    )
+    .expect("the openings accept");
+    targets_are_the_verifiers(&setup, &honest.targets, &verdict, &honest.padded);
+    let sent = setup.layout.split_len();
+    assert_eq!(
+        honest.proof.splits.len(),
+        sent + 2,
+        "the lookups', then the parts'"
+    );
+    for index in sent..sent + 2 {
+        let mut bad = honest.proof.clone();
+        bad.splits[index] += TvFp2::ONE;
+        assert_eq!(
+            verify(
+                &setup.graph,
+                &setup.specs,
+                &setup.schedule,
+                &public,
+                &bad,
+                Claims::Own
+            )
+            .err(),
+            Some(Rejection::Sumcheck { stage: 0, round: 0 }),
+            "part {}",
+            index - sent
+        );
+    }
 }

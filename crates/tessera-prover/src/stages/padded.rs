@@ -674,7 +674,8 @@ impl Evaluator<'_> {
             }
             Op::BitFn { f } => {
                 let ins: Vec<&[i64]> = (0..f.arity()).map(input).collect::<Result<_, _>>()?;
-                let mut at = [0i64; 3];
+                // The inputs' bits at one position, secret-class: cleared when dropped (OBS-2).
+                let mut at = zeroize::Zeroizing::new([0i64; 3]);
                 for (i, slot) in y.iter_mut().enumerate() {
                     for (a, values) in at.iter_mut().zip(&ins) {
                         *a = values[i];

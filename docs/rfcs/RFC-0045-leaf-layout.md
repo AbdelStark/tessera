@@ -120,7 +120,7 @@ The lookup tree's leaf `i` holds column entry `σ_h(i)`, where `σ_h` keeps bit 
 **The result.** Each value is a per-layer claim of RFC-0037 'The layer point'.
 - Stage 1 stacks a site's tensor over its layers under `ρ_1`.
 - The stacked claim of a virtual tensor is a stage-1 instance.
-- The stacked claim of a committed tensor goes to the pool.
+- The stacked claim of a committed tensor goes to the opening pool (INV-SCH-3): a site's committed input through the schedule's pool, where its leaf claim is ready; a lookup's output, on which the schedule leaves no claim, as a fixed non-native leaf claim in RFC-0037 'The claim pool's order ([RFC-0072](RFC-0072-anchor-relations.md#messages-rejections-and-stages) 'Openings').
 
 **One claim per input.**
 - Every tensor a site's lookups read is read over one set of axes, so it has one point and one value per layer.

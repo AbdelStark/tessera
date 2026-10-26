@@ -18,13 +18,14 @@
 //!   instances, 154 evaluations, 332 split values, 3 stages, at both block counts, with the
 //!   range checks' zero-checks beside them.
 //! - **Rejections.** An S-box output off its table, and the padded block's S-box outputs taken as
-//!   0, are `Reject(Lookup { table })` of the S-box; a counter block changed on the verifier's side
-//!   is `Reject(Sumcheck { stage: 0, round: 0 })`; and `Gf256Mul { 3 }`'s lookup run on another
+//!   0, are `Reject(Lookup { table })` of the S-box; a counter block or a round constant changed on
+//!   the verifier's side, or a round constant on the prover's, is `Reject(Sumcheck { stage: 0,
+//!   round: 0 })`, the verifier computing its public tensors from the public inputs alone; and `Gf256Mul { 3 }`'s lookup run on another
 //!   column than `shifted`'s, its leaf value that column's, is `Reject(Sumcheck { stage: 1, round:
 //!   n_1 })`, which a verifier merging the two lookups' claims on `shifted` accepts.
 
 use super::lookups::{
-    Claims, Committing, Override, Rejection, Setup, Verdict, committed, multiplicities, opened,
+    Claims, Committing, LeafProof, Rejection, Setup, Verdict, committed, multiplicities, opened,
     opened_under, targets_are_the_verifiers, verify,
 };
 use super::padding::PublicOf;
@@ -137,13 +138,11 @@ fn inputs(c: &Circuit, key: &str, blocks: usize) -> Vec<(TensorId, Vec<i64>)> {
     ]
 }
 
-/// The verifier's public data on the honest witness: its public tensors, the round constants'
-/// rows and the counter blocks, functions of the public inputs alone.
-fn statement<'w>(c: &Circuit, witness: &'w Witness) -> PublicOf<'w> {
-    PublicOf {
-        witness,
-        public: public_tensors(&c.setup.graph),
-    }
+/// The verifier's public data: the round constants and the counter blocks among `inputs`, and the
+/// public tensors it computes from them alone, the round constants' rows `rc` among them
+/// ([`PublicOf`]).
+fn statement(c: &Circuit, inputs: &[(TensorId, Vec<i64>)]) -> PublicOf {
+    PublicOf::new(&c.setup.graph, inputs)
 }
 
 /// The honest run of `blocks` blocks under `key`: the ciphertext the vector gives, the proof
@@ -165,7 +164,7 @@ fn proven(c: &Circuit, key: &str, blocks: usize) -> (Witness, Verdict) {
     let honest = setup.honest(&witness);
     assert_eq!(setup.schedule.stage_count(), 3, "RFC-0072 'Chain length'");
     assert_eq!(stage_count(&setup.graph), 3, "the report's count");
-    let public = statement(c, &witness);
+    let public = statement(c, &inputs(c, key, blocks));
     let verdict = verify(
         &setup.graph,
         &setup.specs,
@@ -181,7 +180,8 @@ fn proven(c: &Circuit, key: &str, blocks: usize) -> (Witness, Verdict) {
         &verdict,
         &honest.padded,
         &multiplicities(setup, &honest.leaf),
-    );
+    )
+    .expect("the openings accept");
     targets_are_the_verifiers(setup, &honest.targets, &verdict, &honest.padded);
     (witness, verdict)
 }
@@ -345,7 +345,7 @@ fn an_s_box_output_off_its_table_is_rejected_at_logup() {
     let setup = &c.setup;
     let witness = setup.witness(inputs(&c, KEY, 3));
     let padded = PaddedWitness::new(&setup.graph, &setup.specs, &witness).expect("padded");
-    let public = statement(&c, &witness);
+    let public = statement(&c, &inputs(&c, KEY, 3));
     let sboxes: Vec<TensorId> = setup
         .graph
         .nodes
@@ -399,28 +399,62 @@ fn a_counter_block_changed_on_the_verifiers_side_is_rejected_at_stage_0() {
     let setup = &c.setup;
     let witness = setup.witness(inputs(&c, KEY, 3));
     let honest = setup.honest(&witness);
-    let public = statement(&c, &witness);
-    let counters = byte_major(&COUNTERS);
     for entry in [0, 17, 47] {
-        let mut changed = counters.clone();
-        changed[entry] ^= 1;
-        let overridden = Override {
-            inner: &public,
-            tensor: c.inputs[2],
-            values: changed,
-        };
+        let mut changed = inputs(&c, KEY, 3);
+        changed[2].1[entry] ^= 1;
         assert_eq!(
             verify(
                 &setup.graph,
                 &setup.specs,
                 &setup.schedule,
-                &overridden,
+                &statement(&c, &changed),
                 &honest.proof,
                 Claims::Own,
             )
             .err(),
             Some(Rejection::Sumcheck { stage: 0, round: 0 }),
             "counter byte {entry}"
+        );
+    }
+}
+
+/// RFC-0072 'Public tensors': the key schedule's lookups read the round constants' rows, `rc =
+/// Reshape(GatherPublic(rcon))`, public tensors derived from the public input `rcon`, which the
+/// verifier computes from it alone and evaluates at the block's point (RFC-0045 'The split'). A
+/// round constant changed on the verifier's side fails the split's identity, `Reject(Sumcheck {
+/// stage: 0, round: 0 })`, rounds 1, 4 and 10; so does a prover whose witness runs on another
+/// round constant, against the verifier's true ones.
+#[test]
+fn a_round_constant_changed_on_either_side_is_rejected_at_stage_0() {
+    let c = circuit(3);
+    let setup = &c.setup;
+    let witness = setup.witness(inputs(&c, KEY, 3));
+    let honest = setup.honest(&witness);
+    let split = Some(Rejection::Sumcheck { stage: 0, round: 0 });
+    let verdict = |public: &PublicOf, proof: &LeafProof| {
+        verify(
+            &setup.graph,
+            &setup.specs,
+            &setup.schedule,
+            public,
+            proof,
+            Claims::Own,
+        )
+        .err()
+    };
+    for round in [0, 3, 9] {
+        let mut changed = inputs(&c, KEY, 3);
+        changed[1].1[4 * round] ^= 1;
+        let public = statement(&c, &changed);
+        assert_eq!(verdict(&public, &honest.proof), split, "rcon row {round}");
+        // The prover's own run on the changed constant, against the true ones.
+        let other = setup.witness(changed);
+        let cheat = setup.honest(&other);
+        let truth = statement(&c, &inputs(&c, KEY, 3));
+        assert_eq!(
+            verdict(&truth, &cheat.proof),
+            split,
+            "the prover's rcon row {round}"
         );
     }
 }
@@ -462,8 +496,7 @@ fn a_mul3_lookup_on_another_column_is_rejected_at_stage_1() {
     let leaf = GraphLeafWitness::new(&cheat.layout, &cheat.graph, &cheat.schedule.layers, &padded)
         .expect("the cheat's leaf tensors");
     let (proof, _) = setup.prove(&leaf, &padded);
-    let honest_witness = setup.witness(inputs(&c, KEY, 3));
-    let public = statement(&c, &honest_witness);
+    let public = statement(&c, &inputs(&c, KEY, 3));
     let verdict = |claims| {
         verify(
             graph,
@@ -482,7 +515,7 @@ fn a_mul3_lookup_on_another_column_is_rejected_at_stage_1() {
         })
     );
     let merged = verdict(Claims::Merged).expect("accepted with the claims merged");
-    opened(setup, &merged, &padded, &multiplicities(setup, &leaf));
+    opened(setup, &merged, &padded, &multiplicities(setup, &leaf)).expect("the openings accept");
     // The cheat changed what the round computes: its ciphertext is not the vector's.
     assert_ne!(
         witness
@@ -506,7 +539,7 @@ fn a_padded_plaintext_byte_is_rejected_at_stage_1() {
     let setup = &c.setup;
     let witness = setup.witness(inputs(&c, KEY, 3));
     let padded = PaddedWitness::new(&setup.graph, &setup.specs, &witness).expect("padded");
-    let public = statement(&c, &witness);
+    let public = statement(&c, &inputs(&c, KEY, 3));
     let plaintext = c.inputs[3];
     let bits = setup
         .graph
@@ -578,5 +611,6 @@ fn a_padded_plaintext_byte_is_rejected_at_stage_1() {
         &verdict,
         &source,
         &multiplicities(setup, &leaf),
-    );
+    )
+    .expect("the openings accept");
 }
