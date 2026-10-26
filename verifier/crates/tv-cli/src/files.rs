@@ -72,21 +72,43 @@ fn read_bounded(
     Ok(out)
 }
 
+/// The file `path` names: its canonical path when it exists, else its directory's joined with
+/// its name. `ERR-RES-IO` when neither resolves.
+fn normalized(path: &Path) -> Result<PathBuf, ErrorCode> {
+    fs::canonicalize(path)
+        .or_else(|_| {
+            let parent = path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new("."));
+            Ok::<_, std::io::Error>(
+                fs::canonicalize(parent)?
+                    .join(path.file_name().ok_or(std::io::ErrorKind::InvalidInput)?),
+            )
+        })
+        .map_err(|_| ErrorCode::Io)
+}
+
+/// Whether two normalized paths may name one file: the same path, or names in one directory
+/// that differ only in ASCII case, which a case-insensitive filesystem (APFS, HFS+, NTFS by
+/// default) resolves to one entry. An output that does not exist yet keeps its name as given, so
+/// equality alone cannot see that alias.
+fn may_alias(a: &Path, b: &Path) -> bool {
+    a == b
+        || (a.parent() == b.parent()
+            && match (a.file_name(), b.file_name()) {
+                (Some(x), Some(y)) => x
+                    .as_encoded_bytes()
+                    .eq_ignore_ascii_case(y.as_encoded_bytes()),
+                _ => false,
+            })
+}
+
+/// `out` names no input: `ERR-USAGE` when it resolves to one. Every command's output takes this
+/// check, unchanged since before #446; the case rule is the run manifest's alone.
 pub(crate) fn output_distinct(out: Option<&str>, inputs: &[&str]) -> Result<(), ErrorCode> {
     if let Some(out) = out {
-        let out = Path::new(out);
-        let normalized = fs::canonicalize(out)
-            .or_else(|_| {
-                let parent = out
-                    .parent()
-                    .filter(|p| !p.as_os_str().is_empty())
-                    .unwrap_or(Path::new("."));
-                Ok::<_, std::io::Error>(
-                    fs::canonicalize(parent)?
-                        .join(out.file_name().ok_or(std::io::ErrorKind::InvalidInput)?),
-                )
-            })
-            .map_err(|_| ErrorCode::Io)?;
+        let normalized = normalized(Path::new(out))?;
         for input in inputs {
             if fs::canonicalize(input).is_ok_and(|p| p == normalized) {
                 return Err(ErrorCode::Usage);
@@ -94,6 +116,48 @@ pub(crate) fn output_distinct(out: Option<&str>, inputs: &[&str]) -> Result<(), 
         }
     }
     Ok(())
+}
+
+/// The run manifest's `path` names no input and not the report at `out`, in any ASCII case of
+/// its name in one directory (05 §6 'The verifier's manifest'): `ERR-USAGE` otherwise. Before
+/// verification neither output exists, so this is what can be seen then; [`same_file`] catches
+/// the aliases only the filesystem knows once the report exists.
+pub(crate) fn manifest_distinct(
+    path: &str,
+    inputs: &[&str],
+    out: Option<&str>,
+) -> Result<(), ErrorCode> {
+    let manifest = normalized(Path::new(path))?;
+    for input in inputs {
+        if fs::canonicalize(input).is_ok_and(|p| may_alias(&p, &manifest)) {
+            return Err(ErrorCode::Usage);
+        }
+    }
+    if let Some(out) = out
+        && may_alias(&normalized(Path::new(out))?, &manifest)
+    {
+        return Err(ErrorCode::Usage);
+    }
+    Ok(())
+}
+
+/// Whether `a` now resolves to the file `b` names: their canonical paths are equal, which also
+/// sees a link and the filesystem's own case folding and Unicode normalization, or, on Unix,
+/// they are one inode of one device. A path that does not resolve is no file.
+pub(crate) fn same_file(a: &Path, b: &Path) -> bool {
+    if let (Ok(x), Ok(y)) = (fs::canonicalize(a), fs::canonicalize(b))
+        && x == y
+    {
+        return true;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if let (Ok(x), Ok(y)) = (fs::metadata(a), fs::metadata(b)) {
+            return x.dev() == y.dev() && x.ino() == y.ino();
+        }
+    }
+    false
 }
 
 struct Temporary {
@@ -188,6 +252,52 @@ fn atomic(path: &Path, bytes: &[u8], replace: bool, next: &AtomicU64) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Whether names that differ only in case are one file in the temporary directory.
+    fn folds_case(dir: &Path) -> bool {
+        fs::write(dir.join("case-probe"), b"").unwrap();
+        fs::metadata(dir.join("CASE-PROBE")).is_ok()
+    }
+
+    /// The case rule is the run manifest's alone: `--out`, and every command's output with it
+    /// (`verify`, `live`, `audit report`, `audit reveal`), is refused only when it resolves to an
+    /// input, as before #446; the manifest's path is refused in any ASCII case of an input's
+    /// name or of the report's.
+    #[test]
+    fn the_case_rule_binds_the_manifest_alone() {
+        let dir = std::env::temp_dir().join(format!("tessera-case-rule-{}", std::process::id()));
+        fs::create_dir(&dir).unwrap();
+        fs::write(dir.join("input.bin"), b"input").unwrap();
+        let path = |name: &str| dir.join(name).display().to_string();
+        let input = path("input.bin");
+        let folds = folds_case(&dir);
+        let out = output_distinct(Some(&path("INPUT.BIN")), &[&input]);
+        let exact = output_distinct(Some(&input), &[&input]);
+        let manifest = manifest_distinct(&path("INPUT.BIN"), &[&input], None);
+        let report = manifest_distinct(&path("r.json"), &[&input], Some(&path("R.json")));
+        let apart = manifest_distinct(&path("m.json"), &[&input], Some(&path("r.json")));
+        fs::remove_dir_all(&dir).unwrap();
+        // A case variant of an input is that input only where the filesystem folds case.
+        assert_eq!(out, if folds { Err(ErrorCode::Usage) } else { Ok(()) });
+        assert_eq!(exact, Err(ErrorCode::Usage));
+        assert_eq!(manifest, Err(ErrorCode::Usage));
+        assert_eq!(report, Err(ErrorCode::Usage));
+        assert_eq!(apart, Ok(()));
+    }
+
+    #[test]
+    fn names_that_differ_only_in_ascii_case_in_one_directory_may_alias() {
+        for (a, b, alias) in [
+            ("/d/r.json", "/d/r.json", true),
+            ("/d/r.json", "/d/R.JSON", true),
+            ("/d/r.json", "/e/R.json", false),
+            ("/d/r.json", "/d/r.jsonx", false),
+            // Only ASCII letters fold: `é` and `É` are other bytes.
+            ("/d/\u{e9}.json", "/d/\u{c9}.json", false),
+            ("/", "/", true),
+        ] {
+            assert_eq!(may_alias(Path::new(a), Path::new(b)), alias, "{a} {b}");
+        }
+    }
     #[test]
     fn empty_read_terminates_without_retrying_eof() {
         struct Eof(bool);

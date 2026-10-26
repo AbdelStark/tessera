@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::{CommandOutput, files::Inputs, options::Options};
+use crate::{CommandOutput, files::Inputs, log::Flags, options::Options};
 use std::fmt::Write;
 use std::path::Path;
 use tv_codec::DecodeLimits;
@@ -11,7 +11,8 @@ use tv_core::{
 };
 use tv_tables::{Table, TableError};
 
-pub(crate) fn run(args: &[String], json: bool) -> CommandOutput {
+pub(crate) fn run(args: &[String], flags: Flags) -> CommandOutput {
+    let json = flags.json;
     if args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h") {
         return CommandOutput {exit_code:0,stdout:"tessera-verify tables --claims CLAIMS.tcl [--json] [--max-table-rows N]\nRegenerate and check the table catalog; this accepts no model proof.\nDefault total table-work allowance: 16777216 padded rows.\n".into(),stderr:String::new()};
     }
@@ -98,7 +99,7 @@ pub(crate) fn run(args: &[String], json: bool) -> CommandOutput {
         crate::command_error(
             "tables",
             "table catalog could not be evaluated",
-            json,
+            flags,
             e.id(),
             e.exit_code(),
         )

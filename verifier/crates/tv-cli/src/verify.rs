@@ -1,17 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Protocol/1 CLI policy: authenticate the entire statement with the caller's digest.
+//!
+//! The CLI reads and decodes the inputs, authenticates the pins and selects the parameter set
+//! before tv-core runs: that work is RFC-0019's step 1, which tv-core's own step 1 continues
+//! ([`Trail`] joins the two), and a parameter set the verifier does not accept is step 2's
+//! rejection. Each check is reported to the trail as it completes (05 §2, §5).
 use crate::{
     CommandOutput, files,
+    log::{Flags, Trail},
+    manifest,
     options::{self, Options},
 };
 use std::fmt::Write;
 use std::path::Path;
-use std::time::{Duration, Instant};
-use tv_codec::{DecodeLimits, Envelope, WeightCommitmentPublic};
+use std::time::{Duration, Instant, SystemTime};
+use tv_codec::{Cursor, DecodeError, DecodeLimits, Envelope, Expected, WeightCommitmentPublic};
 use tv_core::{
     ResourceLimits, VerifierConfig,
-    claims::ClaimList,
+    claims::{self, ClaimList},
+    observe::{CheckKind, CheckOutcome, Observer},
     params::ParamSet,
     protocol::{FixedBits, NiProof},
     verdict::{ErrorCode, RejectReason, Verdict, VerifierError},
@@ -25,13 +33,16 @@ USAGE:
   tessera-verify verify --claims CLAIMS.tcl --weights WEIGHTS.twr
     --weights-root HEX --statement-digest HEX --proof PROOF.tnp --bound BITS
     [--out VERDICT.json] [--json] [--max-artifact-bytes N]
-    [--max-memory-bytes N] [--timeout-ms N]
+    [--max-memory-bytes N] [--timeout-ms N] [--run-manifest PATH]
+    [--log-format human|json] [--log-level LEVEL]
 
 The statement digest is a trusted caller-owned H(statement,TCE(PublicStatement));
 obtain it independently of the proof. --bound is exact bits in increments of1/256.
 Input files must be regular files. The report records real CLI phase timings;
 core per-check timings remain null. Anchor, ledger and ZK are not verified.
 Test-small builds certify nothing. --manifest belongs to future anchor support.
+--run-manifest writes a public tessera.run-manifest/1 at PATH after the report; PATH must
+differ from the inputs and --out. --log-level debug logs one line per check.
 ";
 
 struct Config<'a> {
@@ -39,6 +50,7 @@ struct Config<'a> {
     weights: &'a str,
     proof: &'a str,
     out: Option<&'a str>,
+    manifest: Option<&'a str>,
     root: [u8; 32],
     statement: [u8; 32],
     bound: FixedBits,
@@ -59,6 +71,7 @@ impl<'a> Config<'a> {
                 "--max-artifact-bytes",
                 "--max-memory-bytes",
                 "--timeout-ms",
+                "--run-manifest",
             ],
         )?;
         let defaults = ResourceLimits::default();
@@ -67,6 +80,7 @@ impl<'a> Config<'a> {
             weights: o.required("--weights")?,
             proof: o.required("--proof")?,
             out: o.get("--out"),
+            manifest: o.get("--run-manifest"),
             root: options::digest(o.required("--weights-root")?)?,
             statement: options::digest(o.required("--statement-digest")?)?,
             bound: FixedBits(options::bound(o.required("--bound")?)?),
@@ -139,28 +153,73 @@ pub(crate) fn decode_limits(limits: ResourceLimits) -> DecodeLimits {
         ..DecodeLimits::MESSAGE
     }
 }
+/// What the run manifest names of the inputs (05 §6): each envelope's digest once it verifies,
+/// and the claim list's parameter set once it decodes.
+#[derive(Default)]
+pub(crate) struct Opened {
+    pub(crate) claims: Option<[u8; 32]>,
+    pub(crate) weights: Option<[u8; 32]>,
+    pub(crate) proof: Option<[u8; 32]>,
+    pub(crate) params: Option<String>,
+}
+
+/// Opens `bytes` as an envelope of `expected`, recording its digest once it verifies, then
+/// decodes its payload: each artifact's own `open`, in RFC-0003's order, in two steps so that an
+/// artifact whose payload fails is still named by its digest.
+fn open<T>(
+    bytes: &[u8],
+    expected: Expected,
+    limits: &DecodeLimits,
+    digest: &mut Option<[u8; 32]>,
+    decode: impl FnOnce(&mut Cursor<'_>) -> Result<T, DecodeError>,
+) -> Result<T, ErrorCode> {
+    let mut computed = None;
+    let envelope = Envelope::open(bytes, expected, limits, |b| {
+        let d = hash(Domain::Envelope, b);
+        computed = Some(d);
+        d
+    })
+    .map_err(|e| ErrorCode::from(e.code()))?;
+    *digest = computed;
+    envelope
+        .decode_payload(|c, _| decode(c))
+        .map_err(|e| ErrorCode::from(e.code()))
+}
+
 pub(crate) fn public_inputs(
     claims: &str,
     weights: &str,
     input: &mut files::Inputs,
     limits: &DecodeLimits,
+    opened: &mut Opened,
 ) -> Result<(ClaimList, WeightCommitmentPublic), ErrorCode> {
     let claims = {
         let bytes = input.read(Path::new(claims))?;
-        ClaimList::open(&bytes, limits).map_err(|e| ErrorCode::from(e.code()))?
+        open(&bytes, claims::SCHEMA, limits, &mut opened.claims, |c| {
+            ClaimList::decode(c)
+        })?
     };
+    opened.params = Some(claims.params.as_str().to_owned());
     let weights = {
         let bytes = input.read(Path::new(weights))?;
-        Envelope::open(&bytes, WeightCommitmentPublic::EXPECTED, limits, |b| {
-            hash(Domain::Envelope, b)
-        })
-        .and_then(|e| e.decode_payload(|c, _| WeightCommitmentPublic::decode(c)))
-        .map_err(|e| ErrorCode::from(e.code()))?
+        open(
+            &bytes,
+            WeightCommitmentPublic::EXPECTED,
+            limits,
+            &mut opened.weights,
+            WeightCommitmentPublic::decode,
+        )?
     };
     Ok((claims, weights))
 }
 
-fn verify(c: &Config<'_>, e: &mut Execution) -> Result<Verdict, ErrorCode> {
+/// The CLI's part of step 1: the time limit, the inputs read and decoded, and the pins.
+fn load(
+    c: &Config<'_>,
+    e: &mut Execution,
+    trail: &mut Trail,
+    opened: &mut Opened,
+) -> Result<(ClaimList, WeightCommitmentPublic, NiProof), ErrorCode> {
     e.remaining(c.limits.max_wall_time)?;
     // Reserve a conservative input/decoded-object allowance before any file allocation.
     let mut input = files::Inputs {
@@ -168,14 +227,25 @@ fn verify(c: &Config<'_>, e: &mut Execution) -> Result<Verdict, ErrorCode> {
         max_artifact: c.limits.max_artifact_bytes,
     };
     let limits = decode_limits(c.limits);
-    let (claims, weights, proof) = e.phase(0, || {
-        let (claims, weights) = public_inputs(c.claims, c.weights, &mut input, &limits)?;
+    let loaded = e.phase(0, || {
+        let (claims, weights) = public_inputs(c.claims, c.weights, &mut input, &limits, opened)?;
         let proof = {
             let bytes = input.read(Path::new(c.proof))?;
-            NiProof::open(&bytes, &limits).map_err(|e| ErrorCode::from(e.code()))?
+            open(
+                &bytes,
+                NiProof::SCHEMA,
+                &limits,
+                &mut opened.proof,
+                NiProof::decode,
+            )?
         };
         Ok((claims, weights, proof))
-    })?;
+    });
+    // `verify{proof_digest}` records the digest once the envelope verifies (05 §5).
+    if let Some(digest) = &opened.proof {
+        trail.record_proof(digest);
+    }
+    let (claims, weights, proof) = loaded?;
     e.remaining(c.limits.max_wall_time)?;
     e.phase(1, || {
         if proof.round1.statement.digest() != c.statement
@@ -186,23 +256,60 @@ fn verify(c: &Config<'_>, e: &mut Execution) -> Result<Verdict, ErrorCode> {
         Ok(())
     })?;
     e.pinned = true;
+    Ok((claims, weights, proof))
+}
+
+fn verify(
+    c: &Config<'_>,
+    e: &mut Execution,
+    trail: &mut Trail,
+    opened: &mut Opened,
+) -> Result<Verdict, ErrorCode> {
+    let input = Instant::now();
+    let failed = |trail: &mut Trail, code| {
+        trail.check(
+            CheckKind::Input,
+            CheckOutcome::Inconclusive,
+            input.elapsed(),
+        );
+        code
+    };
+    let (claims, weights, proof) = load(c, e, trail, opened).map_err(|code| failed(trail, code))?;
+    let selected = Instant::now();
     let Some(params) = ParamSet::accept(&claims.params) else {
+        trail.check(
+            CheckKind::Input,
+            CheckOutcome::Pass,
+            selected.duration_since(input),
+        );
+        trail.check(CheckKind::Params, CheckOutcome::Reject, selected.elapsed());
         return Ok(Verdict::Reject(RejectReason::Params {
             name: claims.params,
         }));
     };
+    let remaining = e
+        .remaining(c.limits.max_wall_time)
+        .map_err(|code| failed(trail, code))?;
     let cfg = VerifierConfig {
         params,
         weights,
         accept_bound: c.bound,
         limits: ResourceLimits {
-            max_wall_time: e.remaining(c.limits.max_wall_time)?,
+            max_wall_time: remaining,
             ..c.limits
         },
     };
+    trail.check(CheckKind::Input, CheckOutcome::Pass, input.elapsed());
     // Only after the external whole-statement pin matches is its content trusted.
     let verdict = e.evaluate(|| {
-        tv_core::verify_non_interactive(&claims, &proof.round1.statement, &proof, &cfg)
+        let observer: &mut dyn Observer = trail;
+        tv_core::verify_non_interactive_observed(
+            &claims,
+            &proof.round1.statement,
+            &proof,
+            &cfg,
+            observer,
+        )
     });
     Ok(verdict)
 }
@@ -247,7 +354,7 @@ pub(crate) fn failure(code: ErrorCode) -> CommandOutput {
         stderr: String::new(),
     }
 }
-pub(crate) fn run(args: &[String], json_flag: bool) -> CommandOutput {
+pub(crate) fn run(args: &[String], flags: Flags, command_line: &[String]) -> CommandOutput {
     if args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h") {
         return CommandOutput {
             exit_code: 0,
@@ -261,48 +368,167 @@ pub(crate) fn run(args: &[String], json_flag: bool) -> CommandOutput {
             return crate::command_error(
                 "verify",
                 "invalid, missing or duplicate option; see verify --help",
-                json_flag,
+                flags,
                 code.id(),
                 code.exit_code(),
             );
         }
     };
     let mut execution = Execution::new();
-    let checked_output =
-        files::output_distinct(config.out, &[config.claims, config.weights, config.proof]);
+    let started_at = SystemTime::now();
+    let mut trail = Trail::new(flags);
+    let inputs = [config.claims, config.weights, config.proof];
+    // Neither output may name an input, nor the manifest the report, before verification.
+    let checked_output = files::output_distinct(config.out, &inputs).and_then(|()| {
+        config.manifest.map_or(Ok(()), |path| {
+            files::manifest_distinct(path, &inputs, config.out)
+        })
+    });
+    let mut opened = Opened::default();
     let verdict = match checked_output {
-        Ok(()) => verify(&config, &mut execution).unwrap_or_else(inconclusive),
+        Ok(()) => {
+            verify(&config, &mut execution, &mut trail, &mut opened).unwrap_or_else(inconclusive)
+        }
         Err(code) => inconclusive(code),
     };
-    finish(verdict, execution, config.out, json_flag, checked_output)
+    let manifest = config.manifest.map(|path| Manifest {
+        path,
+        arguments: command_line,
+        started_at,
+        opened: &opened,
+        inputs,
+    });
+    finish(
+        verdict,
+        execution,
+        config.out,
+        flags,
+        checked_output,
+        trail,
+        manifest,
+    )
 }
 
+/// What `finish` needs to write the run manifest at `path` (05 §6).
+pub(crate) struct Manifest<'a> {
+    path: &'a str,
+    arguments: &'a [String],
+    started_at: SystemTime,
+    opened: &'a Opened,
+    /// The claim list's, the weight commitment's and the proof's paths.
+    inputs: [&'a str; 3],
+}
+
+impl Manifest<'_> {
+    fn render(&self, verdict: &Verdict, report: Option<&str>, run: (&Execution, &Trail)) -> String {
+        let (execution, trail) = run;
+        let [claims, weights, proof] = self.inputs;
+        let inputs = [
+            manifest::Artifact {
+                path: claims,
+                schema: "ClaimList",
+                class: "public",
+                digest: self.opened.claims,
+            },
+            manifest::Artifact {
+                path: weights,
+                schema: "WeightCommitmentPublic",
+                class: "public",
+                digest: self.opened.weights,
+            },
+            manifest::Artifact {
+                path: proof,
+                schema: "NiProof",
+                class: "protocol",
+                digest: self.opened.proof,
+            },
+        ];
+        let outputs: Vec<manifest::Artifact<'_>> = report
+            .map(|path| manifest::Artifact {
+                path,
+                schema: "tessera.verdict/1",
+                class: "public",
+                digest: None,
+            })
+            .into_iter()
+            .collect();
+        manifest::render(&manifest::Run {
+            arguments: self.arguments,
+            started_at: self.started_at,
+            params: self.opened.params.as_deref(),
+            inputs: &inputs,
+            outputs: &outputs,
+            checks: trail.checks(),
+            elapsed: execution.start.elapsed(),
+            exit_code: verdict.exit_code(),
+            error_code: match verdict {
+                Verdict::Accept(_) => None,
+                Verdict::Reject(reason) => Some(reason.code()),
+                Verdict::Inconclusive(error) => Some(error.code.id()),
+            },
+        })
+    }
+}
+
+/// Writes the report, then the run manifest when asked, then ends the `verify` span with
+/// `verified`: each write that fails makes the verdict `Inconclusive` with its error, and the
+/// manifest and the log record the final one. A manifest path that now resolves to the report
+/// just written is not written, `Inconclusive(ERR-USAGE)`. A report already written stays
+/// (05 §6).
 pub(crate) fn finish(
     mut verdict: Verdict,
     execution: Execution,
     out: Option<&str>,
-    json_flag: bool,
+    flags: Flags,
     checked_output: Result<(), ErrorCode>,
+    mut trail: Trail,
+    manifest: Option<Manifest<'_>>,
 ) -> CommandOutput {
+    trail.flush();
     let mut report = match json(&verdict, &execution) {
         Ok(report) => report,
         Err(code) => return failure(code),
     };
-    if let (Ok(()), Some(out)) = (checked_output, out)
-        && let Err(code) = files::write(Path::new(out), report.as_bytes())
-    {
-        verdict = inconclusive(code);
-        report = match json(&verdict, &execution) {
-            Ok(report) => report,
-            Err(code) => return failure(code),
+    let mut written = None;
+    if let (Ok(()), Some(out)) = (checked_output, out) {
+        match files::write(Path::new(out), report.as_bytes()) {
+            Ok(()) => written = Some(out),
+            Err(code) => {
+                verdict = inconclusive(code);
+                report = match json(&verdict, &execution) {
+                    Ok(report) => report,
+                    Err(code) => return failure(code),
+                };
+            }
+        }
+    }
+    if let (Ok(()), Some(m)) = (checked_output, &manifest) {
+        // An alias only the filesystem can see, such as a link or its own case folding, shows
+        // once the report exists: the manifest may not replace it (05 §6 'Where').
+        let aliased =
+            written.is_some_and(|out| files::same_file(Path::new(m.path), Path::new(out)));
+        let written = if aliased {
+            Err(ErrorCode::Usage)
+        } else {
+            let text = m.render(&verdict, written, (&execution, &trail));
+            files::write(Path::new(m.path), text.as_bytes())
         };
+        if let Err(code) = written {
+            verdict = inconclusive(code);
+            report = match json(&verdict, &execution) {
+                Ok(report) => report,
+                Err(code) => return failure(code),
+            };
+        }
     }
     let exit_code = verdict.exit_code();
-    if json_flag {
+    trail.verified(&verdict, exit_code, execution.start.elapsed());
+    let stderr = trail.into_lines();
+    if flags.json {
         return CommandOutput {
             exit_code,
             stdout: report,
-            stderr: String::new(),
+            stderr,
         };
     }
     let text = match &verdict {
@@ -316,9 +542,6 @@ pub(crate) fn finish(
     CommandOutput {
         exit_code,
         stdout: text,
-        stderr: format!(
-            "verify: completed in {} ns; protocol/1, anchor/ledger/ZK unchecked\n",
-            nanos(execution.start.elapsed())
-        ),
+        stderr,
     }
 }

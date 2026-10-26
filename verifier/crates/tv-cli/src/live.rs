@@ -1,23 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Caller-pinned one-request directory Live CLI (RFC-0014/0019/0036).
+//!
+//! Each check is reported to the `verify` span's [`Trail`] as it completes (05 §2, §5): the
+//! CLI's reading of the inputs and its pins as step 1, a parameter set it does not accept as
+//! step 2, then tv-core's checks of each message, which a check spans message by message. The
+//! directory's waits and writes are the transport's, not checks.
 use crate::{
     CommandOutput,
     directory::Directory,
     files,
+    log::{Flags, Trail},
     options::{self, Options},
-    verify::{self, Execution},
+    verify::{self, Execution, Opened},
 };
-use std::{path::Path, time::Duration};
+use std::{
+    path::Path,
+    time::{Duration, Instant},
+};
 use tv_core::{
-    LiveVerifier, ResourceLimits, VerifierConfig, open_live,
+    LiveVerifier, ResourceLimits, VerifierConfig,
+    observe::{CheckKind, CheckOutcome},
+    open_live_observed,
     params::ParamSet,
     protocol::*,
     verdict::{ErrorCode, RejectReason, Verdict},
 };
 use tv_hash::{Domain, hash};
 
-const HELP: &str = "tessera-verify live --claims CLAIMS.tcl --weights WEIGHTS.twr --weights-root HEX --statement-digest HEX --bound BITS --connect DIR --request-id N --request-session HEX --prompt-len N --output-len N --manifest-digest HEX [--out VERDICT.json] [--json] [--timeout-ms N] [--max-artifact-bytes N] [--max-memory-bytes N]\nOne-shot RFC-0014 directory exchange, non-hiding protocol/1. The caller owns all request metadata and both pins. No TLS, anchor, ledger or ZK. Test parameters certify nothing. Default message deadlines:600 seconds,3600 for Round2.\n";
+const HELP: &str = "tessera-verify live --claims CLAIMS.tcl --weights WEIGHTS.twr --weights-root HEX --statement-digest HEX --bound BITS --connect DIR --request-id N --request-session HEX --prompt-len N --output-len N --manifest-digest HEX [--out VERDICT.json] [--json] [--timeout-ms N] [--max-artifact-bytes N] [--max-memory-bytes N] [--log-format human|json] [--log-level LEVEL]\nOne-shot RFC-0014 directory exchange, non-hiding protocol/1. The caller owns all request metadata and both pins. No TLS, anchor, ledger or ZK. Test parameters certify nothing. Default message deadlines:600 seconds,3600 for Round2.\n";
 
 fn checked_output(
     out: Option<&str>,
@@ -131,7 +142,7 @@ impl<'a> Config<'a> {
     }
 }
 
-pub(crate) fn run(args: &[String], json: bool) -> CommandOutput {
+pub(crate) fn run(args: &[String], flags: Flags) -> CommandOutput {
     if args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h") {
         return CommandOutput {
             exit_code: 0,
@@ -145,7 +156,7 @@ pub(crate) fn run(args: &[String], json: bool) -> CommandOutput {
             return crate::command_error(
                 "live",
                 "invalid or missing request policy; see live --help",
-                json,
+                flags,
                 e.id(),
                 e.exit_code(),
             );
@@ -154,76 +165,109 @@ pub(crate) fn run(args: &[String], json: bool) -> CommandOutput {
     let out = c.out;
     let checked = checked_output(out, c.claims, c.weights, c.dir);
     let mut e = Execution::new();
+    let mut trail = Trail::new(flags);
     let result = (|| {
         checked?;
-        e.remaining(c.limits.max_wall_time)?;
-        let mut input = files::Inputs {
+        let input = Instant::now();
+        let failed = |trail: &mut Trail, code| {
+            trail.check(
+                CheckKind::Input,
+                CheckOutcome::Inconclusive,
+                input.elapsed(),
+            );
+            code
+        };
+        let mut inputs = files::Inputs {
             remaining: c.limits.max_memory_bytes / 8,
             max_artifact: c.limits.max_artifact_bytes,
         };
         let decode = verify::decode_limits(c.limits);
-        let (claims, weights) = e.phase(0, || {
-            verify::public_inputs(c.claims, c.weights, &mut input, &decode)
-        })?;
-        let statement = PublicStatement {
-            claim_list_digest: claims.digest(),
-            weights_root: c.root,
-            weights_epoch: weights.epoch,
-            manifest_digest: c.manifest,
-            batch: BatchDescriptor {
-                requests: vec![c.request.clone()],
-            },
-            predictor: PredictorSpec::Exact {
-                decoding: Decoding::Greedy,
-            },
-        };
-        e.phase(1, || {
-            if statement.digest() != c.pin
-                || weights.weights_root(|b| hash(Domain::WeightsRoot, b)) != c.root
-                || c.request.prompt_len + c.request.output_len > claims.arch.max_context
-            {
-                return Err(ErrorCode::Usage);
-            }
-            Ok(())
-        })?;
-        e.pinned = true;
+        let (claims, weights, statement) = (|| {
+            e.remaining(c.limits.max_wall_time)?;
+            let (claims, weights) = e.phase(0, || {
+                verify::public_inputs(
+                    c.claims,
+                    c.weights,
+                    &mut inputs,
+                    &decode,
+                    &mut Opened::default(),
+                )
+            })?;
+            let statement = PublicStatement {
+                claim_list_digest: claims.digest(),
+                weights_root: c.root,
+                weights_epoch: weights.epoch,
+                manifest_digest: c.manifest,
+                batch: BatchDescriptor {
+                    requests: vec![c.request.clone()],
+                },
+                predictor: PredictorSpec::Exact {
+                    decoding: Decoding::Greedy,
+                },
+            };
+            e.phase(1, || {
+                if statement.digest() != c.pin
+                    || weights.weights_root(|b| hash(Domain::WeightsRoot, b)) != c.root
+                    || c.request.prompt_len + c.request.output_len > claims.arch.max_context
+                {
+                    return Err(ErrorCode::Usage);
+                }
+                Ok(())
+            })?;
+            e.pinned = true;
+            Ok((claims, weights, statement))
+        })()
+        .map_err(|code| failed(&mut trail, code))?;
+        let selected = Instant::now();
         let Some(params) = ParamSet::accept(&claims.params) else {
+            trail.check(
+                CheckKind::Input,
+                CheckOutcome::Pass,
+                selected.duration_since(input),
+            );
+            trail.check(CheckKind::Params, CheckOutcome::Reject, selected.elapsed());
             return Ok(Verdict::Reject(RejectReason::Params {
                 name: claims.params,
             }));
         };
+        let remaining = e
+            .remaining(c.limits.max_wall_time)
+            .map_err(|code| failed(&mut trail, code))?;
         let cfg = VerifierConfig {
             params,
             weights,
             accept_bound: c.bound,
             limits: ResourceLimits {
-                max_wall_time: e.remaining(c.limits.max_wall_time)?,
+                max_wall_time: remaining,
                 ..c.limits
             },
         };
+        trail.check(CheckKind::Input, CheckOutcome::Pass, input.elapsed());
+        let trail = &mut trail;
         Ok(e.evaluate(|| {
             let mut verifier = LiveVerifier::new(claims, statement, cfg);
-            let commit = match verifier.start() {
+            let commit = match verifier.start_observed(trail) {
                 Ok(c) => c,
                 Err(v) => return v,
             };
             let exchange = (|| {
-                let mut d = Directory::new(Path::new(c.dir), input, c.timeout)?;
+                let mut d = Directory::new(Path::new(c.dir), inputs, c.timeout)?;
                 d.send(
                     0,
                     SeedCommit::SCHEMA,
                     &commit.to_tce().map_err(ErrorCode::from)?,
                 )?;
                 // A prover's message that fails to decode is Malformed (RFC-0043).
-                let first = match open_live::<Round1>(&d.receive(1)?, &decode) {
+                let first = match open_live_observed::<Round1>(&d.receive(1)?, &decode, trail) {
                     Ok(m) => m,
                     Err(v) => return Ok(v),
                 };
-                let share = match open_live::<ProverSeedShare>(&d.receive(2)?, &decode) {
-                    Ok(m) => m,
-                    Err(v) => return Ok(v),
-                };
-                let reveal = match verifier.on_round1(&first, &share) {
+                let share =
+                    match open_live_observed::<ProverSeedShare>(&d.receive(2)?, &decode, trail) {
+                        Ok(m) => m,
+                        Err(v) => return Ok(v),
+                    };
+                let reveal = match verifier.on_round1_observed(&first, &share, trail) {
                     Ok(r) => r,
                     Err(v) => return Ok(v),
                 };
@@ -232,11 +276,12 @@ pub(crate) fn run(args: &[String], json: bool) -> CommandOutput {
                     SeedReveal::SCHEMA,
                     &reveal.to_tce().map_err(ErrorCode::from)?,
                 )?;
-                let second = match open_live::<Round2Response>(&d.receive(4)?, &decode) {
-                    Ok(m) => m,
-                    Err(v) => return Ok(v),
-                };
-                let queries = match verifier.on_round2(&second) {
+                let second =
+                    match open_live_observed::<Round2Response>(&d.receive(4)?, &decode, trail) {
+                        Ok(m) => m,
+                        Err(v) => return Ok(v),
+                    };
+                let queries = match verifier.on_round2_observed(&second, trail) {
                     Ok(q) => q,
                     Err(v) => return Ok(v),
                 };
@@ -245,11 +290,12 @@ pub(crate) fn run(args: &[String], json: bool) -> CommandOutput {
                     ColumnQueries::SCHEMA,
                     &queries.to_tce().map_err(ErrorCode::from)?,
                 )?;
-                let third = match open_live::<Round3Response>(&d.receive(6)?, &decode) {
-                    Ok(m) => m,
-                    Err(v) => return Ok(v),
-                };
-                Ok(verifier.on_round3(&third))
+                let third =
+                    match open_live_observed::<Round3Response>(&d.receive(6)?, &decode, trail) {
+                        Ok(m) => m,
+                        Err(v) => return Ok(v),
+                    };
+                Ok(verifier.on_round3_observed(&third, trail))
             })();
             exchange.unwrap_or_else(verify::inconclusive)
         }))
@@ -258,8 +304,10 @@ pub(crate) fn run(args: &[String], json: bool) -> CommandOutput {
         result.unwrap_or_else(verify::inconclusive),
         e,
         out,
-        json,
+        flags,
         checked,
+        trail,
+        None,
     )
 }
 
@@ -271,6 +319,10 @@ mod tests {
     use tv_codec::{DecodeLimits, WeightCommitmentPublic, WeightLayoutParams};
     use tv_core::claims::ClaimList;
     use tv_testkit::{Json, hex};
+    /// `live` with `--json` or without, in the default log format.
+    fn run(args: &[String], json: bool) -> CommandOutput {
+        super::run(args, Flags::human(json))
+    }
     struct Fixture {
         dir: PathBuf,
         args: Vec<String>,
@@ -455,6 +507,68 @@ mod tests {
             code(run(&args, true), 20, reason);
             assert_eq!(fs::read_dir(f.dir.join("exchange")).unwrap().count(), 0);
         }
+    }
+    /// A live session's `verify` span has no proof digest, and the CLI's own checks of its
+    /// inputs are step 1 (05 §2, §5): a refused pin is step 1's inconclusive, before `verified`.
+    #[test]
+    fn a_refused_pin_logs_step_one_and_the_verdict_in_the_verify_span() {
+        use crate::log::{Format, Level};
+        let f = Fixture::new();
+        let flags = Flags {
+            json: true,
+            format: Format::Json,
+            level: Level::Debug,
+        };
+        let out = super::run(&f.set("--statement-digest", "ab".repeat(32)), flags);
+        assert_eq!(out.exit_code, 64);
+        let lines: Vec<Json> = out
+            .stderr
+            .lines()
+            .map(|l| Json::parse(l).unwrap())
+            .collect();
+        assert_eq!(lines.len(), 2, "{}", out.stderr);
+        let get = |j: &Json, k: &str| j.get(k).unwrap().clone();
+        let fields = |j: &Json| get(j, "fields");
+        assert_eq!(
+            get(&lines[0], "event").as_str(),
+            Some("tessera.tv_cli.check_completed")
+        );
+        assert_eq!(fields(&lines[0]).get("step").unwrap().as_u64(), Some(1));
+        assert_eq!(
+            fields(&lines[0]).get("outcome").unwrap().as_str(),
+            Some("inconclusive")
+        );
+        assert_eq!(
+            get(&lines[1], "event").as_str(),
+            Some("tessera.tv_cli.verified")
+        );
+        assert_eq!(
+            fields(&lines[1]).get("code").unwrap().as_str(),
+            Some("ERR-USAGE")
+        );
+        for line in &lines {
+            let spans = get(line, "span_path");
+            let verify = &spans.as_array().unwrap()[0];
+            assert_eq!(verify.get("name").unwrap().as_str(), Some("verify"));
+            assert_eq!(verify.get("fields"), Some(&Json::Object(vec![])));
+        }
+        // An --out that names an input is refused before any check runs.
+        let out = super::run(
+            &f.set("--out", f.dir.join("claims.tcl").display().to_string()),
+            flags,
+        );
+        assert_eq!(out.exit_code, 64);
+        let events: Vec<String> = out
+            .stderr
+            .lines()
+            .map(|l| {
+                get(&Json::parse(l).unwrap(), "event")
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(events, ["tessera.tv_cli.verified"]);
     }
     #[test]
     fn lengths_are_exact_and_oversized_pinned_requests_never_start() {

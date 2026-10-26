@@ -83,7 +83,26 @@ impl LiveVerifier {
         reason = "the specified Live API returns Verdict; reports stay by value without an infallible allocation"
     )]
     pub fn start(&mut self) -> Result<protocol::SeedCommit, Verdict> {
+        self.start_observed(&mut ())
+    }
+    /// [`start`](Self::start), reporting its work to `observer` as step 2, `params`: the
+    /// parameter set and mode, then the session's limits and entropy (05 §2,
+    /// [`observe`](crate::observe)).
+    ///
+    /// # Errors
+    /// As [`start`](Self::start).
+    #[allow(
+        clippy::result_large_err,
+        reason = "the specified Live API returns Verdict; reports stay by value without an infallible allocation"
+    )]
+    pub fn start_observed(
+        &mut self,
+        observer: &mut dyn Observer,
+    ) -> Result<protocol::SeedCommit, Verdict> {
+        let mut tracker = Tracker::new(observer);
+        tracker.enter(CheckKind::Params);
         let result = self.start_inner();
+        let result = conclude(&mut tracker, result);
         if result.as_ref().is_err_and(|error| {
             !matches!(error, Failure::Inconclusive(e) if e.code == ErrorCode::ProtocolOrder)
         }) {
@@ -145,12 +164,33 @@ impl LiveVerifier {
         message: &protocol::Round1,
         prover: &protocol::ProverSeedShare,
     ) -> Result<protocol::SeedReveal, Verdict> {
-        self.round1(message, prover).map_err(Into::into)
+        self.on_round1_observed(message, prover, &mut ())
+    }
+    /// [`on_round1`](Self::on_round1), reporting each check to `observer` as it completes: steps
+    /// 1 to 6 on success, all before the reveal (05 §2, [`observe`](crate::observe)).
+    ///
+    /// # Errors
+    /// As [`on_round1`](Self::on_round1).
+    #[allow(
+        clippy::result_large_err,
+        reason = "the specified Live API returns Verdict; reports stay by value without an infallible allocation"
+    )]
+    pub fn on_round1_observed(
+        &mut self,
+        message: &protocol::Round1,
+        prover: &protocol::ProverSeedShare,
+        observer: &mut dyn Observer,
+    ) -> Result<protocol::SeedReveal, Verdict> {
+        let mut tracker = Tracker::new(observer);
+        tracker.enter(CheckKind::Input);
+        let result = self.round1(message, prover, &mut tracker);
+        conclude(&mut tracker, result).map_err(Into::into)
     }
     fn round1(
         &mut self,
         message: &protocol::Round1,
         prover: &protocol::ProverSeedShare,
+        tracker: &mut Tracker<'_>,
     ) -> Check<protocol::SeedReveal> {
         if !matches!(self.state, State::Committed { .. }) {
             return Err(fail(ErrorCode::ProtocolOrder));
@@ -162,7 +202,7 @@ impl LiveVerifier {
         if message.session_id != id || prover.session_id != id {
             return Err(fail(ErrorCode::ProtocolOrder));
         }
-        match verify_unit(
+        match verify_unit_tracked(
             &self.claims,
             &self.statement,
             Frame {
@@ -172,10 +212,14 @@ impl LiveVerifier {
             },
             &self.cfg,
             Session::Initial,
+            tracker,
         )? {
             Outcome::Ready => {}
             _ => return Err(internal()),
         }
+        // Step 5 reserves nothing in `tessera-protocol/1`; step 6 binds Round1 and the seed.
+        tracker.not_applicable(CheckKind::WeightReservation);
+        tracker.enter(CheckKind::Transcript);
         let first = message.to_tce().map_err(codec)?;
         let context = SessionContext {
             protocol: ascii("tessera-protocol/1")?,
@@ -215,9 +259,32 @@ impl LiveVerifier {
         &mut self,
         message: &protocol::Round2Response,
     ) -> Result<protocol::ColumnQueries, Verdict> {
-        self.round2(message).map_err(Into::into)
+        self.on_round2_observed(message, &mut ())
     }
-    fn round2(&mut self, message: &protocol::Round2Response) -> Check<protocol::ColumnQueries> {
+    /// [`on_round2`](Self::on_round2), reporting each check to `observer` as it completes: steps
+    /// 1 to 10 on success, all before the queries go out (05 §2, [`observe`](crate::observe)).
+    ///
+    /// # Errors
+    /// As [`on_round2`](Self::on_round2).
+    #[allow(
+        clippy::result_large_err,
+        reason = "the specified Live API returns Verdict; reports stay by value without an infallible allocation"
+    )]
+    pub fn on_round2_observed(
+        &mut self,
+        message: &protocol::Round2Response,
+        observer: &mut dyn Observer,
+    ) -> Result<protocol::ColumnQueries, Verdict> {
+        let mut tracker = Tracker::new(observer);
+        tracker.enter(CheckKind::Input);
+        let result = self.round2(message, &mut tracker);
+        conclude(&mut tracker, result).map_err(Into::into)
+    }
+    fn round2(
+        &mut self,
+        message: &protocol::Round2Response,
+        tracker: &mut Tracker<'_>,
+    ) -> Check<protocol::ColumnQueries> {
         if !matches!(self.state, State::Round2 { .. }) {
             return Err(fail(ErrorCode::ProtocolOrder));
         }
@@ -226,7 +293,7 @@ impl LiveVerifier {
             return Err(internal());
         };
         let round1 = own_decode(&first, protocol::Round1::decode)?;
-        let result = verify_unit(
+        let result = verify_unit_tracked(
             &self.claims,
             &self.statement,
             Frame {
@@ -239,6 +306,7 @@ impl LiveVerifier {
                 seed: &seed,
                 queries: None,
             },
+            tracker,
         )?;
         let Outcome::Queries(queries) = result else {
             return Err(internal());
@@ -256,12 +324,26 @@ impl LiveVerifier {
     /// Authenticate every queried column and complete the exact proof. The response consumes
     /// the session on either acceptance or rejection.
     pub fn on_round3(&mut self, message: &protocol::Round3Response) -> Verdict {
-        match self.round3(message) {
-            Ok(report) => Verdict::Accept(report),
-            Err(e) => e.into(),
-        }
+        self.on_round3_observed(message, &mut ())
     }
-    fn round3(&mut self, message: &protocol::Round3Response) -> Check<AcceptReport> {
+    /// [`on_round3`](Self::on_round3), reporting each check to `observer` as it completes: steps
+    /// 1 to 13 on acceptance (05 §2, [`observe`](crate::observe)). The verdict is the unobserved
+    /// one.
+    pub fn on_round3_observed(
+        &mut self,
+        message: &protocol::Round3Response,
+        observer: &mut dyn Observer,
+    ) -> Verdict {
+        let mut tracker = Tracker::new(observer);
+        tracker.enter(CheckKind::Input);
+        let result = self.round3(message, &mut tracker);
+        into_verdict(conclude(&mut tracker, result))
+    }
+    fn round3(
+        &mut self,
+        message: &protocol::Round3Response,
+        tracker: &mut Tracker<'_>,
+    ) -> Check<AcceptReport> {
         if !matches!(self.state, State::Round3 { .. }) {
             return Err(fail(ErrorCode::ProtocolOrder));
         }
@@ -280,7 +362,7 @@ impl LiveVerifier {
         let queries = own_decode(&queries, protocol::ColumnQueries::decode)?;
         // shortcut: replay immutable Round2 to reconstruct borrowed PCS state; retain an owned
         // verified column plan when optimizing Live verification latency after the MVP.
-        match verify_unit(
+        match verify_unit_tracked(
             &self.claims,
             &self.statement,
             Frame {
@@ -293,10 +375,56 @@ impl LiveVerifier {
                 seed: &seed,
                 queries: Some(&queries),
             },
+            tracker,
         )? {
             Outcome::Accepted(report) => Ok(report),
             _ => Err(internal()),
         }
+    }
+}
+/// Where a recorded session resumes, for the tests that replay one through the observed calls.
+#[cfg(all(test, feature = "test-params"))]
+pub(super) enum Phase {
+    /// Round1's turn, as `start` leaves it, the verifier's share all zeros.
+    Round1 { session_id: [u8; 16] },
+    /// Round2's turn, as `on_round1` leaves it.
+    Round2 { first: Vec<u8>, seed: Digest },
+    /// Round3's turn, as `on_round2` leaves it.
+    Round3 {
+        first: Vec<u8>,
+        second: Vec<u8>,
+        queries: Vec<u8>,
+        seed: Digest,
+    },
+}
+#[cfg(all(test, feature = "test-params"))]
+impl LiveVerifier {
+    pub(super) fn at(
+        claims: ClaimList,
+        statement: PublicStatement,
+        cfg: VerifierConfig,
+        phase: Phase,
+    ) -> Self {
+        let mut session = Self::new(claims, statement, cfg);
+        session.state = match phase {
+            Phase::Round1 { session_id } => State::Committed {
+                id: session_id,
+                share: SecretSeed(Zeroizing::new(vec![0; 32])),
+            },
+            Phase::Round2 { first, seed } => State::Round2 { first, seed },
+            Phase::Round3 {
+                first,
+                second,
+                queries,
+                seed,
+            } => State::Round3 {
+                first,
+                second,
+                queries,
+                seed,
+            },
+        };
+        session
     }
 }
 fn indices(file: &mut impl Read, log_n: u32, count: u32) -> Check<Vec<u32>> {

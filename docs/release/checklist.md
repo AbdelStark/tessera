@@ -36,7 +36,7 @@ Each milestone is a minor release (`v0.1.0` … `v0.5.0`, then `v1.0.0`, [09 §2
 ## 5. Tag and build
 
 - [ ] Tag the release commit `vX.Y.Z`, `verify-vX.Y.Z`, or both. The release workflow builds the artifacts.
-- [ ] Reproducible verifier binaries: built with `--locked`, the pinned toolchain of `rust-toolchain.toml`, `SOURCE_DATE_EPOCH` and `--remap-path-prefix`, in a clean `CARGO_HOME` and environment.
+- [ ] Reproducible verifier binaries: built with `--locked`, the pinned toolchain of `rust-toolchain.toml`, `SOURCE_DATE_EPOCH` and `--remap-path-prefix`, in a clean `CARGO_HOME` and environment. `TESSERA_GIT_COMMIT` and `TESSERA_RUSTC_VERSION` are the release commit and `rustc --version`, which the verifier's run manifest records ([05 §6](../spec/05-observability.md#6-run-manifest)).
 - [ ] Two independent builders reproduce the verifier binary hashes.
 - [ ] The SHA-256 of every binary is listed in the release notes.
 

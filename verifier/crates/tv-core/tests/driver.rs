@@ -465,3 +465,300 @@ fn each_statement_field_and_version_preserve_their_exact_first_error() {
     own.claim_list_digest[0] ^= 1;
     inconclusive(verify(&c, &own, &p, &cfg), ErrorCode::Usage);
 }
+
+// ----- Observation (05 §2 'The verifier's lines', §5 'The verifier's spans') ------------------
+
+use tv_core::observe::{CheckEvent, CheckKind, CheckOutcome};
+
+/// The outcome the last reported check carries for `verdict`.
+fn outcome_of(verdict: &Verdict) -> CheckOutcome {
+    match verdict {
+        Verdict::Accept(_) => CheckOutcome::Pass,
+        Verdict::Reject(_) => CheckOutcome::Reject,
+        Verdict::Inconclusive(_) => CheckOutcome::Inconclusive,
+    }
+}
+/// `events` are RFC-0019's steps 1 to `last` exactly, in order, each the check of its step;
+/// step 5 is `not_applicable`, every other check before the last passed, and the last carries
+/// `outcome`.
+fn assert_steps(events: &[CheckEvent], last: u8, outcome: CheckOutcome) {
+    let steps: Vec<u8> = events.iter().map(|e| e.kind.step()).collect();
+    assert_eq!(steps, (1..=last).collect::<Vec<_>>(), "{events:?}");
+    for (i, e) in events.iter().enumerate() {
+        assert_eq!(e.kind, CheckKind::ALL[i]);
+        let expected = if e.kind == CheckKind::WeightReservation {
+            CheckOutcome::NotApplicable
+        } else if i + 1 == events.len() {
+            outcome
+        } else {
+            CheckOutcome::Pass
+        };
+        assert_eq!(e.outcome, expected, "{events:?}");
+    }
+}
+/// The NI driver observed and unobserved: one verdict, byte for byte, and the observed checks.
+fn observed(
+    c: &ClaimList,
+    s: &PublicStatement,
+    p: &NiProof,
+    cfg: &VerifierConfig,
+) -> (Verdict, Vec<CheckEvent>) {
+    let plain = verify(c, s, p, cfg);
+    let mut events = Vec::new();
+    let seen = tv_core::verify_non_interactive_observed(c, s, p, cfg, &mut events);
+    assert_eq!(plain.to_json().unwrap(), seen.to_json().unwrap());
+    let mut ignored = ();
+    let quiet = tv_core::verify_non_interactive_observed(c, s, p, cfg, &mut ignored);
+    assert_eq!(quiet.to_json().unwrap(), seen.to_json().unwrap());
+    (seen, events)
+}
+
+#[test]
+fn observed_ni_checks_end_at_the_check_that_decides() {
+    use tv_core::validation::StatementField as F;
+    let (c, s, good, cfg) = fixture();
+    // (what is broken, the step that decides, the verdict).
+    let mut cases: Vec<(
+        &str,
+        ClaimList,
+        PublicStatement,
+        NiProof,
+        VerifierConfig,
+        u8,
+    )> = vec![];
+    let mut p = good.clone();
+    let empty = tv_core::opening::CombinedRow {
+        u: vec![],
+        mask: vec![],
+    };
+    p.round2.weight_combined = vec![
+        WeightCombinedRows {
+            matrix: 2,
+            evaluations: vec![],
+            proximity: empty.clone(),
+        },
+        WeightCombinedRows {
+            matrix: 1,
+            evaluations: vec![],
+            proximity: empty,
+        },
+    ];
+    cases.push(("matrix order", c.clone(), s.clone(), p, cfg.clone(), 1));
+    let mut limited = cfg.clone();
+    limited.limits.max_memory_bytes = 0;
+    cases.push(("memory", c.clone(), s.clone(), good.clone(), limited, 1));
+    let mut limited = cfg.clone();
+    limited.limits.max_wall_time = std::time::Duration::ZERO;
+    cases.push(("deadline", c.clone(), s.clone(), good.clone(), limited, 1));
+    let mut unknown = c.clone();
+    unknown.params = ParamSetId::new("unknown/1").unwrap();
+    cases.push((
+        "parameter set",
+        unknown,
+        s.clone(),
+        good.clone(),
+        cfg.clone(),
+        2,
+    ));
+    let mut mode = cfg.clone();
+    mode.params = ParamSet::Live64;
+    cases.push(("mode", c.clone(), s.clone(), good.clone(), mode, 2));
+    let mut invalid = c.clone();
+    invalid.arch.n_layers = 0;
+    cases.push((
+        "claim list",
+        invalid,
+        s.clone(),
+        good.clone(),
+        cfg.clone(),
+        3,
+    ));
+    let mut p = good.clone();
+    p.round1.statement.claim_list_digest[0] ^= 1;
+    cases.push(("statement field", c.clone(), s.clone(), p, cfg.clone(), 4));
+    let mut own = s.clone();
+    own.claim_list_digest[0] ^= 1;
+    cases.push((
+        "own statement",
+        c.clone(),
+        own,
+        good.clone(),
+        cfg.clone(),
+        4,
+    ));
+    let mut p = good.clone();
+    p.round1.protocol_version = 1;
+    cases.push(("protocol version", c.clone(), s.clone(), p, cfg.clone(), 4));
+    cases.push((
+        "layout digest",
+        c.clone(),
+        s.clone(),
+        good.clone(),
+        cfg.clone(),
+        4,
+    ));
+    let mut p = good.clone();
+    set_layout_digest(&c, &s, &mut p);
+    p.seed_nonce = (0..1024)
+        .find(|&nonce| {
+            let mut q = p.clone();
+            q.seed_nonce = nonce;
+            matches!(
+                verify(&c, &s, &q, &cfg),
+                Verdict::Reject(R::ProofOfWork { .. })
+            )
+        })
+        .unwrap();
+    cases.push((
+        "seed proof of work",
+        c.clone(),
+        s.clone(),
+        p,
+        cfg.clone(),
+        6,
+    ));
+    for (what, c, s, p, cfg, step) in &cases {
+        let (verdict, events) = observed(c, s, p, cfg);
+        assert!(!matches!(verdict, Verdict::Accept(_)), "{what}");
+        assert_steps(&events, *step, outcome_of(&verdict));
+    }
+    // The verdicts themselves are the unobserved driver's, as the tests above pin them.
+    let (verdict, _) = observed(&cases[6].1, &cases[6].2, &cases[6].3, &cases[6].4);
+    rejected(
+        verdict,
+        R::StatementMismatch {
+            field: F::ClaimListDigest,
+        },
+    );
+}
+
+#[test]
+fn observed_ni_bytes_judge_the_envelope_in_step_one() {
+    let (c, s, _, cfg) = fixture();
+    for bytes in [&[][..], &[0u8; 64][..]] {
+        let plain = tv_core::verify_non_interactive_bytes(&c, &s, bytes, &cfg);
+        let mut events = Vec::new();
+        let seen = tv_core::verify_non_interactive_bytes_observed(&c, &s, bytes, &cfg, &mut events);
+        assert_eq!(plain.to_json().unwrap(), seen.to_json().unwrap());
+        assert!(matches!(seen, Verdict::Reject(R::Malformed { .. })));
+        assert_steps(&events, 1, CheckOutcome::Reject);
+    }
+}
+
+#[test]
+fn observed_live_messages_report_step_one_and_start_reports_step_two() {
+    let vectors = tv_testkit::read_vectors("protocol/protocol.json");
+    let round1 = vectors
+        .get("messages")
+        .and_then(|m| m.as_array())
+        .unwrap()
+        .iter()
+        .map(|m| tv_testkit::hex(m.get("envelope").unwrap().as_str().unwrap()))
+        .find(|e| e[6..8] == [0x10, 0x05])
+        .unwrap();
+    let limits = tv_codec::DecodeLimits::MESSAGE;
+    let mut events = Vec::new();
+    let opened = tv_core::open_live_observed::<Round1>(&round1, &limits, &mut events);
+    assert!(opened.is_ok());
+    assert_steps(&events, 1, CheckOutcome::Pass);
+    let mut events = Vec::new();
+    let refused = tv_core::open_live_observed::<Round1>(&round1[1..], &limits, &mut events);
+    assert!(matches!(refused, Err(Verdict::Reject(R::Malformed { .. }))));
+    assert_steps(&events, 1, CheckOutcome::Reject);
+    assert_eq!(
+        tv_core::open_live::<Round1>(&round1[1..], &limits)
+            .unwrap_err()
+            .to_json()
+            .unwrap(),
+        refused.unwrap_err().to_json().unwrap()
+    );
+    // The NI fixture's claim list is ni-100's: a live session refuses it at step 2.
+    let (c, s, _p, cfg) = fixture();
+    let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+    let mut events = Vec::new();
+    assert!(matches!(
+        live.start_observed(&mut events),
+        Err(Verdict::Reject(R::Params { .. }))
+    ));
+    assert_eq!(
+        events
+            .iter()
+            .map(|e| (e.kind, e.outcome))
+            .collect::<Vec<_>>(),
+        [(CheckKind::Params, CheckOutcome::Reject)]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn observed_live_rounds_run_their_checks_per_message() {
+    let (c, s, mut p, cfg) = live_fixture();
+    let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+    let mut events = Vec::new();
+    let commit = live.start_observed(&mut events).unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .map(|e| (e.kind, e.outcome))
+            .collect::<Vec<_>>(),
+        [(CheckKind::Params, CheckOutcome::Pass)]
+    );
+    // Out of order: the session's state is step 1's, and the call changes nothing.
+    let mut events = Vec::new();
+    inconclusive(
+        live.on_round2_observed(&p.round2, &mut events).unwrap_err(),
+        ErrorCode::ProtocolOrder,
+    );
+    assert_steps(&events, 1, CheckOutcome::Inconclusive);
+    p.round1.session_id = commit.session_id;
+    let share = ProverSeedShare {
+        session_id: commit.session_id,
+        share: [17; 32],
+    };
+    // Steps 1 to 6 complete before SeedReveal (RFC-0019).
+    let mut events = Vec::new();
+    live.on_round1_observed(&p.round1, &share, &mut events)
+        .unwrap();
+    assert_steps(&events, 6, CheckOutcome::Pass);
+    let mut events = Vec::new();
+    let verdict = live.on_round2_observed(&p.round2, &mut events).unwrap_err();
+    rejected(
+        verdict,
+        R::Malformed {
+            artifact: ArtifactKind(0x0511),
+            code: ErrorCode::CodecNoncanonical,
+        },
+    );
+    assert_steps(&events, 7, CheckOutcome::Reject);
+}
+
+#[cfg(unix)]
+#[test]
+fn observed_live_round1_rejection_reveals_nothing_and_ends_at_the_statement() {
+    let (c, s, mut p, cfg) = live_fixture();
+    let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+    let commit = live.start().unwrap();
+    p.round1.session_id = commit.session_id;
+    let share = ProverSeedShare {
+        session_id: commit.session_id,
+        share: [17; 32],
+    };
+    p.round1.advice.layout_digest[0] ^= 1;
+    let mut events = Vec::new();
+    rejected(
+        live.on_round1_observed(&p.round1, &share, &mut events)
+            .unwrap_err(),
+        R::StatementMismatch {
+            field: tv_core::validation::StatementField::LayoutDigest,
+        },
+    );
+    assert_steps(&events, 4, CheckOutcome::Reject);
+}
+
+/// `TEST_PARAMS` says what the build accepts: test-small exactly when the feature is on
+/// (RFC-0001 'Cargo features'), which a run manifest names (05 §6, OBS-5).
+#[test]
+fn test_params_names_whether_this_build_accepts_test_small() {
+    let accepted = ParamSet::accept(&ParamSetId::new("test-small/1").unwrap()).is_some();
+    assert_eq!(tv_core::TEST_PARAMS, accepted);
+}

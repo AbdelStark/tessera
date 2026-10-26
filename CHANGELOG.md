@@ -6,6 +6,15 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The verifier's log lines, spans and run manifest, specified ([#446](https://github.com/AbdelStark/tessera/issues/446); the verifier's own changelog has the code):
+  - **05 §2 'A human line'** states the human format both tools share, which only the prover's rustdoc said. A message follows `error: ` or `warn: `, or at `debug` and `trace` the level and the span path; the fields it does not name follow it.
+  - **05 §2 'The verifier's lines'.** `tessera-verify` writes both formats itself, adding no crate (RFC-0001, DEP-1). Every command takes `--log-format` and `--log-level`, read before its other options. Its human lines are today's at the default level. Its three events are `tessera.tv_cli.command_failed`, `check_completed` for each RFC-0019 check that runs, and `verified`.
+  - **05 §5.** `verify{proof_digest}`, the proof's envelope digest once it verifies, and `check{kind}`, one per check in the verdict report's names. In `live`, each message reports the checks it runs, repeated ones included.
+  - **05 §6 'The verifier's manifest'.** `verify --run-manifest PATH` writes a public-class `tessera.run-manifest/1` after the report, with each input's envelope digest and one `tessera_verifier_seconds` sample per check. The build's commit and `rustc` come from `TESSERA_GIT_COMMIT` and `TESSERA_RUSTC_VERSION` at build time, since RFC-0001 refuses a verifier build script. The schema's description says so.
+  - **02 §2 and §2.3** and the reference CLI guide list the options. The release checklist sets the two build-time variables.
+  - **RFC-0001 'Enforcement' item 3** now states what `check-isolation` already refused: a build script or a procedural macro in a verifier crate.
+  - **`e2e_verifier_json_log_lines_and_run_manifest`** (`tessera-e2e`, `exact_cli`) checks every line of an acceptance, a resealed tampered proof and a corrupt envelope against `log-event-v1`, the checks' order and outcomes, the proof's digest, and the manifest against `run-manifest-v1`. The canary scan now logs the verifier too, at `trace` in both formats.
+
 - A batch of several requests in one proof unit, specified ([#357](https://github.com/AbdelStark/tessera/issues/357); implementation [#551](https://github.com/AbdelStark/tessera/issues/551)):
   - **RFC-0071, 'A Batch of Requests in One Proof Unit: Request Slots on One Token Axis'.**
     - **The gap.** Every document and both workspaces assumed one sequence per proof, so a statement's batch could hold one request only.

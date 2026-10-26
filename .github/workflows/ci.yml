@@ -177,6 +177,9 @@ jobs:
       - name: Test-parameter unit and claim validation coverage
         if: matrix.workspace == 'verifier'
         run: cargo nextest run -p tv-core --features test-params --lib --test claims_validation --locked
+      - name: The verifier CLI's logs and run manifest through accepting checks (05 §2, §6)
+        if: matrix.workspace == 'verifier'
+        run: cargo nextest run -p tv-cli --features tv-core/test-params --tests --locked
 
   # SC-4 (07 §4): every mutation of a valid tiny proof yields its predeclared verdict.
   # The fuzz crate is its own workspace on its own toolchain: its format, lints and allocation

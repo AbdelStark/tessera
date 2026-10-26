@@ -14,6 +14,7 @@
 //! through [`leaf::split::LeafPoint`], so an ungrouped stage's are unchanged.
 
 use crate::claims::ClaimList;
+use crate::observe::{CheckKind, CheckOutcome, Observer, Tracker};
 use crate::protocol::{Decoding, FixedBits, NiProof, PredictorSpec, PublicStatement};
 use crate::verdict::{
     AcceptReport, ArtifactKind, CommitmentClass, ErrorCode, PowPhase, RejectReason, Verdict,
@@ -98,6 +99,25 @@ fn malformed(artifact: ArtifactKind) -> Failure {
 }
 fn codec(code: tv_codec::ErrorCode) -> Failure {
     fail(code.into())
+}
+/// How the check running when `result` came back ended (05 §2, `check_completed`).
+fn outcome<T>(result: &Check<T>) -> CheckOutcome {
+    match result {
+        Ok(_) => CheckOutcome::Pass,
+        Err(Failure::Rejected(_)) => CheckOutcome::Reject,
+        Err(Failure::Inconclusive(_)) => CheckOutcome::Inconclusive,
+    }
+}
+/// Ends the running check with `result`'s outcome, then returns `result`.
+fn conclude<T>(tracker: &mut Tracker<'_>, result: Check<T>) -> Check<T> {
+    tracker.close(outcome(&result));
+    result
+}
+fn into_verdict(result: Check<AcceptReport>) -> Verdict {
+    match result {
+        Ok(report) => Verdict::Accept(report),
+        Err(failure) => failure.into(),
+    }
 }
 fn reserve<T>(n: usize) -> Check<Vec<T>> {
     let mut out = Vec::new();
@@ -374,17 +394,35 @@ pub fn open_live<T: protocol::ProverMessage>(
     bytes: &[u8],
     limits: &DecodeLimits,
 ) -> Result<T, Verdict> {
-    T::open_sealed(bytes, limits).map_err(|e| {
+    open_live_observed(bytes, limits, &mut ())
+}
+/// [`open_live`], reporting its decoding to `observer` as step 1, `input` (05 §2,
+/// [`observe`](crate::observe)).
+///
+/// # Errors
+/// The verdict that ends the session, as [`open_live`].
+#[allow(
+    clippy::result_large_err,
+    reason = "the specified Live API returns Verdict; reports stay by value without an infallible allocation"
+)]
+pub fn open_live_observed<T: protocol::ProverMessage>(
+    bytes: &[u8],
+    limits: &DecodeLimits,
+    observer: &mut dyn Observer,
+) -> Result<T, Verdict> {
+    let mut tracker = Tracker::new(observer);
+    tracker.enter(CheckKind::Input);
+    let opened = T::open_sealed(bytes, limits).map_err(|e| {
         if e.code().is_input_fault() {
             reject(RejectReason::Malformed {
                 artifact: ArtifactKind(T::SCHEMA.schema_id),
                 code: e.code().into(),
             })
-            .into()
         } else {
-            codec(e.code()).into()
+            codec(e.code())
         }
-    })
+    });
+    conclude(&mut tracker, opened).map_err(Into::into)
 }
 /// Verify a canonical NI envelope under the caller's limits, then every semantic predicate.
 /// Decoding a prover artifact fails as Malformed; reader failures remain Inconclusive.
@@ -394,50 +432,71 @@ pub fn verify_non_interactive_bytes(
     bytes: &[u8],
     cfg: &VerifierConfig,
 ) -> Verdict {
+    verify_non_interactive_bytes_observed(claims, statement, bytes, cfg, &mut ())
+}
+/// [`verify_non_interactive_bytes`], reporting each check to `observer` as it completes (05 §2,
+/// [`observe`](crate::observe)): the envelope and its limits are step 1's. The verdict is the
+/// unobserved one.
+pub fn verify_non_interactive_bytes_observed(
+    claims: &ClaimList,
+    statement: &PublicStatement,
+    bytes: &[u8],
+    cfg: &VerifierConfig,
+    observer: &mut dyn Observer,
+) -> Verdict {
+    let mut tracker = Tracker::new(observer);
+    tracker.enter(CheckKind::Input);
+    let result = verify_ni_bytes(claims, statement, bytes, cfg, &mut tracker);
+    into_verdict(conclude(&mut tracker, result))
+}
+fn verify_ni_bytes(
+    claims: &ClaimList,
+    statement: &PublicStatement,
+    bytes: &[u8],
+    cfg: &VerifierConfig,
+    tracker: &mut Tracker<'_>,
+) -> Check<AcceptReport> {
     let started = Instant::now();
     let limits = DecodeLimits {
         max_total_bytes: cfg.limits.max_artifact_bytes,
         ..DecodeLimits::MESSAGE
     };
     if cfg.limits.max_memory_bytes == 0 {
-        return memory().into();
+        return Err(memory());
     }
     let Ok(len) = u64::try_from(bytes.len()) else {
-        return memory().into();
+        return Err(memory());
     };
     if len > limits.max_total_bytes {
-        return reject(RejectReason::Malformed {
+        return Err(reject(RejectReason::Malformed {
             artifact: ArtifactKind(0x0520),
             code: ErrorCode::CodecLimit,
-        })
-        .into();
+        }));
     }
     // Reserve an input-sized planning allowance before decoding; full accounting is #182.
     if len
         .checked_mul(8)
         .is_none_or(|n| n > cfg.limits.max_memory_bytes)
     {
-        return memory().into();
+        return Err(memory());
     }
-    if let Err(error) = deadline(started, cfg.limits) {
-        return error.into();
-    }
-    match NiProof::open(bytes, &limits) {
-        Ok(proof) => {
-            let Some(remaining) = cfg.limits.max_wall_time.checked_sub(started.elapsed()) else {
-                return fail(ErrorCode::Time).into();
-            };
-            let mut cfg = cfg.clone();
-            cfg.limits.max_wall_time = remaining;
-            verify_non_interactive(claims, statement, &proof, &cfg)
+    deadline(started, cfg.limits)?;
+    let proof = match NiProof::open(bytes, &limits) {
+        Ok(proof) => proof,
+        Err(e) if e.code().is_input_fault() => {
+            return Err(reject(RejectReason::Malformed {
+                artifact: ArtifactKind(0x0520),
+                code: e.code().into(),
+            }));
         }
-        Err(e) if e.code().is_input_fault() => reject(RejectReason::Malformed {
-            artifact: ArtifactKind(0x0520),
-            code: e.code().into(),
-        })
-        .into(),
-        Err(e) => codec(e.code()).into(),
-    }
+        Err(e) => return Err(codec(e.code())),
+    };
+    let Some(remaining) = cfg.limits.max_wall_time.checked_sub(started.elapsed()) else {
+        return Err(fail(ErrorCode::Time));
+    };
+    let mut cfg = cfg.clone();
+    cfg.limits.max_wall_time = remaining;
+    verify_ni(claims, statement, &proof, &cfg, tracker)
 }
 /// Verify protocol/1 against application-owned claims, expected statement and weight artifact.
 /// A test-small acceptance certifies nothing. No anchor, ledger or zero-knowledge claim is made.
@@ -447,10 +506,22 @@ pub fn verify_non_interactive(
     proof: &NiProof,
     cfg: &VerifierConfig,
 ) -> Verdict {
-    match verify_ni(claims, statement, proof, cfg) {
-        Ok(report) => Verdict::Accept(report),
-        Err(verdict) => verdict.into(),
-    }
+    verify_non_interactive_observed(claims, statement, proof, cfg, &mut ())
+}
+/// [`verify_non_interactive`], reporting each check of RFC-0019 'Check order' to `observer` as
+/// it completes, with its outcome and measured time (05 §2, [`observe`](crate::observe)). The
+/// verdict is the unobserved one, and so is its report: per-check durations stay null there.
+pub fn verify_non_interactive_observed(
+    claims: &ClaimList,
+    statement: &PublicStatement,
+    proof: &NiProof,
+    cfg: &VerifierConfig,
+    observer: &mut dyn Observer,
+) -> Verdict {
+    let mut tracker = Tracker::new(observer);
+    tracker.enter(CheckKind::Input);
+    let result = verify_ni(claims, statement, proof, cfg, &mut tracker);
+    into_verdict(conclude(&mut tracker, result))
 }
 mod live;
 pub use live::LiveVerifier;
@@ -548,8 +619,9 @@ fn verify_ni(
     expected: &PublicStatement,
     proof: &NiProof,
     cfg: &VerifierConfig,
+    tracker: &mut Tracker<'_>,
 ) -> Check<AcceptReport> {
-    match verify_unit(
+    match verify_unit_tracked(
         claims,
         expected,
         Frame {
@@ -562,11 +634,14 @@ fn verify_ni(
             seed_nonce: proof.seed_nonce,
             query_nonce: proof.query_nonce,
         },
+        tracker,
     )? {
         Outcome::Accepted(report) => Ok(report),
         _ => Err(internal()),
     }
 }
+/// [`verify_unit_tracked`] unobserved, as the recorded-session tests replay it.
+#[cfg(all(test, feature = "test-params"))]
 fn verify_unit(
     claims: &ClaimList,
     expected: &PublicStatement,
@@ -574,6 +649,22 @@ fn verify_unit(
     cfg: &VerifierConfig,
     session: Session<'_>,
 ) -> Check<Outcome> {
+    let mut ignored = ();
+    let mut tracker = Tracker::new(&mut ignored);
+    verify_unit_tracked(claims, expected, proof, cfg, session, &mut tracker)
+}
+/// One proof unit's checks in RFC-0019's order, `tracker` entering each check where its work
+/// starts (the table of [`observe`](crate::observe)). It leaves the last check it entered running:
+/// the caller ends it with the call's outcome.
+fn verify_unit_tracked(
+    claims: &ClaimList,
+    expected: &PublicStatement,
+    proof: Frame<'_>,
+    cfg: &VerifierConfig,
+    session: Session<'_>,
+    tracker: &mut Tracker<'_>,
+) -> Check<Outcome> {
+    tracker.enter(CheckKind::Input);
     let started = Instant::now();
     let artifact = session.artifact();
     let mode = session.mode();
@@ -638,11 +729,14 @@ fn verify_unit(
         return Err(memory());
     }
     deadline(started, cfg.limits)?;
+    tracker.enter(CheckKind::Params);
     if ParamSet::accept(&claims.params) != Some(cfg.params) || !mode_allowed(cfg.params, mode) {
         return Err(params_error(claims));
     }
+    tracker.enter(CheckKind::Claims);
     let validated = validation::validate(claims).map_err(claims_error)?;
     deadline(started, cfg.limits)?;
+    tracker.enter(CheckKind::Statement);
     // RFC-0040: inconsistent own root/epoch is Usage before judging statement fields.
     let public = weights::check_public(
         claims,
@@ -783,6 +877,9 @@ fn verify_unit(
     if matches!(session, Session::Initial) {
         return Ok(Outcome::Ready);
     }
+    // Step 5 reserves nothing in `tessera-protocol/1`, whose report lists it as not applicable.
+    tracker.not_applicable(CheckKind::WeightReservation);
+    tracker.enter(CheckKind::Transcript);
     let grouped_proof = leaf::grouped::Proof {
         logup: &proof.round2.logup,
         trees: &proof.round2.trees,
@@ -817,6 +914,7 @@ fn verify_unit(
             *xi.get_mut(i).ok_or_else(internal)? = point(&mut t, &label, l.proximity_vars())?;
         }
     }
+    tracker.enter(CheckKind::Leaf);
     let mut table_error = None;
     let mut evaluate = |id: tv_tables::TableId, b: Fp2, p: &[Fp2]| {
         let table = runtime.table(id)?;
@@ -894,6 +992,7 @@ fn verify_unit(
                 .map_err(|e| grouped_error(e, artifact))?
         }
     };
+    tracker.enter(CheckKind::Stages);
     let prepared = native.bind_runtime(&bound).map_err(gadget_error)?;
     let rope = runtime
         .catalog()
@@ -904,6 +1003,7 @@ fn verify_unit(
     let reduced = prepared
         .verify(&mut t, rope, &proof.round2.stages)
         .map_err(|e| stage_error(e, artifact))?;
+    tracker.enter(CheckKind::Evaluations);
     let originals = model_openings::Claims::derive(&graph, claims, &layout, &wl, reduced)
         .map_err(model_error)?;
     if originals.external().is_some() {
@@ -999,6 +1099,7 @@ fn verify_unit(
         &protocol::encode(&proof.round2.scoring).map_err(codec)?,
     );
     deadline(started, cfg.limits)?;
+    tracker.enter(CheckKind::Queries);
     let generated = match session {
         Session::Ni { query_nonce, .. } => {
             t = proof_of_work(t, &parameters, PowPhase::Queries, query_nonce)?;
@@ -1065,6 +1166,7 @@ fn verify_unit(
         &parameters,
         claims.layout.advice.log2_k,
     )?;
+    tracker.enter(CheckKind::Columns);
     let mut advice_queries = reserve(packet.advice.len())?;
     advice_queries.extend(packet.advice.iter().copied().map(u64::from));
     let mut queries: [Vec<u64>; 10] = core::array::from_fn(|_| Vec::new());
@@ -1111,6 +1213,7 @@ fn verify_unit(
         }
     }
     deadline(started, cfg.limits)?;
+    tracker.enter(CheckKind::ExactBound);
     for (request, &uhat) in expected
         .batch
         .requests
@@ -1125,6 +1228,7 @@ fn verify_unit(
             }));
         }
     }
+    tracker.enter(CheckKind::Complete);
     let mut requests = reserve(expected.batch.requests.len())?;
     requests.extend(
         expected

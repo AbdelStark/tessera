@@ -3,6 +3,7 @@
 //! Independent public verdict/error types (04 sections 2–4, RFC-0043).
 
 use crate::claims::ParamSetId;
+use crate::observe::{CheckKind, CheckOutcome};
 use crate::params::ParamSet;
 use crate::protocol::FixedBits;
 use crate::runtime::Budget;
@@ -588,32 +589,22 @@ impl Verdict {
                 out.write_str(",\"manifest\":")?;
                 out.digest(&report.manifest_digest)?;
                 out.write_str("},\"checks\":[")?;
-                for (i, name) in [
-                    "input",
-                    "params",
-                    "claims",
-                    "statement",
-                    "weight_reservation",
-                    "transcript",
-                    "leaf",
-                    "stages",
-                    "evaluations",
-                    "queries",
-                    "columns",
-                    "exact_bound",
-                    "complete",
-                ]
-                .into_iter()
-                .enumerate()
-                {
+                for (i, kind) in CheckKind::ALL.into_iter().enumerate() {
                     if i != 0 {
                         out.write_char(',')?;
                     }
-                    let outcome = if i == 4 { "not_applicable" } else { "pass" };
+                    // Step 5 reserves nothing in `tessera-protocol/1`.
+                    let outcome = if kind == CheckKind::WeightReservation {
+                        CheckOutcome::NotApplicable
+                    } else {
+                        CheckOutcome::Pass
+                    };
                     write!(
                         out,
-                        "{{\"step\":{},\"check\":\"{name}\",\"outcome\":\"{outcome}\",\"duration_ns\":null}}",
-                        i.saturating_add(1)
+                        "{{\"step\":{},\"check\":\"{}\",\"outcome\":\"{}\",\"duration_ns\":null}}",
+                        kind.step(),
+                        kind.name(),
+                        outcome.name()
                     )?;
                 }
                 out.write_str("],\"requests\":[")?;

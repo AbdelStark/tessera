@@ -12,9 +12,13 @@ mod directory;
 mod files;
 mod json;
 mod live;
+mod log;
+mod manifest;
 mod options;
 mod tables;
 mod verify;
+
+use log::Flags;
 
 use std::fmt::Write;
 use tv_core::soundness::{
@@ -60,6 +64,11 @@ COMMANDS:
               commit and reveal: the verifier's coin toss, kept in a file between them
               (RFC-0016, RFC-0067)
     weights link    Reserved; requires the ledger's weight epochs (#158)
+
+OPTIONS OF EVERY COMMAND (05 §2):
+    --log-format <human|json>   stderr's lines: human (default) or tessera.log-event/1 objects
+    --log-level <LEVEL>         The most detailed level written: error, warn, info (default),
+                                debug (one line per check) or trace
 ";
 
 const PARAMS_HELP: &str = "\
@@ -81,6 +90,44 @@ OPTIONS:
     -h, --help              Print this help information
 ";
 
+/// [`run`] on the process's arguments (excluding `argv[0]`), which may not be UTF-8.
+///
+/// An argument that is not UTF-8 is refused as before, `ERR-USAGE` with the line ``unknown
+/// command `invalid-utf8-argument` ``, but in the format the valid arguments ask for (05 §2):
+/// their `--log-format`, `--log-level` and `--json` are kept, and a log option whose own value is
+/// not UTF-8 is an invalid value.
+pub fn run_os<I>(args: I) -> CommandOutput
+where
+    I: IntoIterator<Item = std::ffi::OsString>,
+{
+    const PLACEHOLDER: &str = "invalid-utf8-argument";
+    let given: Vec<Option<String>> = args.into_iter().map(|a| a.into_string().ok()).collect();
+    if given.iter().all(Option::is_some) {
+        return run(given.into_iter().flatten());
+    }
+    let mut kept = Vec::new();
+    let mut json = false;
+    let mut given = given.into_iter();
+    while let Some(arg) = given.next() {
+        match arg.as_deref() {
+            Some(option @ ("--log-format" | "--log-level")) => {
+                kept.push(option.to_string());
+                if let Some(value) = given.next() {
+                    kept.push(value.unwrap_or_else(|| PLACEHOLDER.to_string()));
+                }
+            }
+            Some("--json") => json = true,
+            _ => {}
+        }
+    }
+    // The placeholder stands where the command is read; `--json` counts in any position.
+    kept.push(PLACEHOLDER.to_string());
+    if json {
+        kept.push("--json".to_string());
+    }
+    run(kept)
+}
+
 /// Runs the `tessera-verify` CLI on `args` (excluding `argv[0]`) and returns its exit code,
 /// `stdout`, and `stderr`.
 pub fn run<I, S>(args: I) -> CommandOutput
@@ -96,7 +143,8 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    let mut collected = Vec::new();
+    // An argument past the 64th, or longer than 8 KiB, is not kept: `None` holds its place.
+    let mut given = Vec::new();
     let mut json_flag = false;
     let mut oversized = false;
     for (i, arg) in args.into_iter().take(65).enumerate() {
@@ -104,20 +152,25 @@ where
         json_flag |= value == "--json";
         if i == 64 || value.len() > 8192 {
             oversized = true;
+            given.push(None);
         } else {
-            collected.push(String::from(value));
+            given.push(Some(String::from(value)));
         }
     }
+    // `--log-format` and `--log-level` are read before anything else, so that every later
+    // refusal is logged in the format asked for; their own refusal is human (05 §2).
+    let (flags, rest) = match log::scan(given.clone(), json_flag) {
+        Ok(scanned) => scanned,
+        Err(detail) => return usage_error("tessera-verify", detail, Flags::human(json_flag)),
+    };
     if oversized {
-        return usage_error(
-            "tessera-verify",
-            "too many or oversized arguments",
-            json_flag,
-        );
+        return usage_error("tessera-verify", "too many or oversized arguments", flags);
     }
+    let command_line: Vec<String> = given.into_iter().flatten().collect();
+    let collected: Vec<String> = rest.into_iter().flatten().collect();
 
     let Some(first) = collected.first().map(String::as_str) else {
-        return usage_error("tessera-verify", "missing command", json_flag);
+        return usage_error("tessera-verify", "missing command", flags);
     };
 
     match first {
@@ -126,25 +179,26 @@ where
             stdout: String::from(ROOT_HELP),
             stderr: String::new(),
         },
-        "params" => run_params(&collected[1..], json_flag),
-        "verify" => verify::run(&collected[1..], json_flag),
-        "tables" => tables::run(&collected[1..], json_flag),
-        "live" => live::run(&collected[1..], json_flag),
-        "audit" => audit::run(&collected[1..], json_flag),
+        "params" => run_params(&collected[1..], flags),
+        "verify" => verify::run(&collected[1..], flags, &command_line),
+        "tables" => tables::run(&collected[1..], flags),
+        "live" => live::run(&collected[1..], flags),
+        "audit" => audit::run(&collected[1..], flags),
         "weights" => usage_error(
             first,
             "this operation requires the ledger's weight epochs (#158)",
-            json_flag,
+            flags,
         ),
         other => usage_error(
             "tessera-verify",
             &format!("unknown command `{other}`"),
-            json_flag,
+            flags,
         ),
     }
 }
 
-fn run_params(args: &[String], json_flag: bool) -> CommandOutput {
+fn run_params(args: &[String], flags: Flags) -> CommandOutput {
+    let json_flag = flags.json;
     if args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h") {
         return CommandOutput {
             exit_code: EXIT_SUCCESS,
@@ -166,84 +220,68 @@ fn run_params(args: &[String], json_flag: bool) -> CommandOutput {
             }
             "--params" => {
                 let Some(val) = args.get(i + 1) else {
-                    return usage_error("params", "missing value for `--params`", json_flag);
+                    return usage_error("params", "missing value for `--params`", flags);
                 };
                 if param_name.is_some() {
-                    return usage_error("params", "`--params` specified more than once", json_flag);
+                    return usage_error("params", "`--params` specified more than once", flags);
                 }
                 param_name = Some(val.as_str());
                 i += 2;
             }
             "--lookups" => {
                 let Some(val) = args.get(i + 1) else {
-                    return usage_error("params", "missing value for `--lookups`", json_flag);
+                    return usage_error("params", "missing value for `--lookups`", flags);
                 };
                 if lookups.is_some() {
-                    return usage_error(
-                        "params",
-                        "`--lookups` specified more than once",
-                        json_flag,
-                    );
+                    return usage_error("params", "`--lookups` specified more than once", flags);
                 }
                 let Ok(n) = val.parse::<u64>() else {
                     return usage_error(
                         "params",
                         &format!("invalid `--lookups` value `{val}`"),
-                        json_flag,
+                        flags,
                     );
                 };
                 if n == 0 {
-                    return usage_error("params", "`--lookups` must be at least 1", json_flag);
+                    return usage_error("params", "`--lookups` must be at least 1", flags);
                 }
                 lookups = Some(n);
                 i += 2;
             }
             "--table-rows" => {
                 let Some(val) = args.get(i + 1) else {
-                    return usage_error("params", "missing value for `--table-rows`", json_flag);
+                    return usage_error("params", "missing value for `--table-rows`", flags);
                 };
                 if table_rows.is_some() {
-                    return usage_error(
-                        "params",
-                        "`--table-rows` specified more than once",
-                        json_flag,
-                    );
+                    return usage_error("params", "`--table-rows` specified more than once", flags);
                 }
                 let Ok(t) = val.parse::<u64>() else {
                     return usage_error(
                         "params",
                         &format!("invalid `--table-rows` value `{val}`"),
-                        json_flag,
+                        flags,
                     );
                 };
                 if t == 0 {
-                    return usage_error("params", "`--table-rows` must be at least 1", json_flag);
+                    return usage_error("params", "`--table-rows` must be at least 1", flags);
                 }
                 table_rows = Some(t);
                 i += 2;
             }
             other => {
-                return usage_error(
-                    "params",
-                    &format!("unexpected argument `{other}`"),
-                    json_flag,
-                );
+                return usage_error("params", &format!("unexpected argument `{other}`"), flags);
             }
         }
     }
 
     let Some(name) = param_name else {
-        return usage_error(
-            "params",
-            "missing required `--params <PARAMSET>`",
-            json_flag,
-        );
+        return usage_error("params", "missing required `--params <PARAMSET>`", flags);
     };
     let Some(params) = SoundnessParams::by_cli_name(name) else {
         return usage_error(
             "params",
             &format!("unknown parameter set `{name}` (expected live-64, ni-100, or test-small)"),
-            json_flag,
+            flags,
         );
     };
 
@@ -279,7 +317,7 @@ fn run_params(args: &[String], json_flag: bool) -> CommandOutput {
         Err(err) => command_error(
             "params",
             &err.to_string(),
-            json_flag,
+            flags,
             err.code(),
             if err == tv_core::soundness::SoundnessError::Memory {
                 EXIT_FAILURE
@@ -290,36 +328,35 @@ fn run_params(args: &[String], json_flag: bool) -> CommandOutput {
     }
 }
 
-fn usage_error(command: &str, message: &str, json_flag: bool) -> CommandOutput {
-    command_error(command, message, json_flag, "ERR-USAGE", EXIT_USAGE)
+fn usage_error(command: &str, message: &str, flags: Flags) -> CommandOutput {
+    command_error(command, message, flags, "ERR-USAGE", EXIT_USAGE)
 }
+/// A refused command: with `--json`, stdout's `{"command", "error": {"code", "message"}}`
+/// (02 §2); on stderr, `tessera.tv_cli.command_failed` in the format asked for, today's
+/// `error (CODE): message` in the human one.
 pub(crate) fn command_error(
     command: &str,
     message: &str,
-    json_flag: bool,
+    flags: Flags,
     code: &str,
     exit_code: i32,
 ) -> CommandOutput {
-    if json_flag {
+    let stdout = if flags.json {
         let escaped = escape_json(message);
-        let stdout = format!(
+        format!(
             "{{\"command\":\"{command}\",\"error\":{{\"code\":\"{code}\",\"message\":\"{escaped}\"}}}}\n"
-        );
-        CommandOutput {
-            exit_code,
-            stdout,
-            stderr: String::new(),
-        }
+        )
     } else {
-        CommandOutput {
-            exit_code,
-            stdout: String::new(),
-            stderr: format!("error ({code}): {message}\n"),
-        }
+        String::new()
+    };
+    CommandOutput {
+        exit_code,
+        stdout,
+        stderr: log::command_failed(flags, command, code, message),
     }
 }
 
-fn escape_json(s: &str) -> String {
+pub(crate) fn escape_json(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
         match ch {
