@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-19
 - Target milestone: v0.3
-- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('The maximum layout', 'A request's sequence length' and 'RFC-0034's zero rows': a batch's own layout is checked at statement binding, each request in a slot)
+- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('The maximum layout', 'A request's sequence length' and 'RFC-0034's zero rows': a batch's own layout is checked at statement binding, each request in a slot), [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) ('The order of a tensor's variables', in `tessera-protocol/2`: a token axis padded to four rows is a padded axis, #488)
 - Supersedes, on acceptance:
   - [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) 'Canonical advice layout' rules 1 and 3: the order of a tensor's variables, and `ν`;
   - [RFC-0007](RFC-0007-claim-list.md#verifier-validation) 'Verifier validation' steps 2 and 6: heads grouped by a power of two, and the protocol's maximum layout;
@@ -49,7 +49,7 @@ This RFC fixes each.
 ### The order of a tensor's variables
 
 A committed tensor's **layout order** lists its axes from most to least significant:
-1. its padded axes, those whose length is not a power of two, in axis order;
+1. its padded axes, those whose length is not a power of two, in axis order. In `tessera-protocol/2` a token axis that RFC-0013's four-row minimum pads, of one or two rows, is padded too;
 2. its other axes, in axis order.
 
 An attention tile's score tensor takes RFC-0034's `(i_hi, h, q, i_lo)` instead.

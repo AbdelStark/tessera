@@ -30,6 +30,7 @@
 
 mod claims;
 mod layers;
+pub mod masks;
 mod natives;
 mod relations;
 mod tokens;

@@ -46,6 +46,7 @@ cargo test --workspace --locked
 cargo xtask lint                 # unsafe code, SPDX headers, licenses, Markdown links, policy files, conflict markers
 cargo xtask check-isolation      # the verifier shares no code with the prover
 cargo xtask check-test-features  # test-only features fail release builds
+cargo xtask check-mask-rank      # every mask row's revealed points are independent on the compiled schedule (R10)
 cargo xtask check-pr --base origin/main   # changelog entry and sign-off for your branch
 cargo xtask check-deps           # needs cargo-deny 0.20.2 and cargo-vet 0.10.2
 cargo xtask gen-vectors          # rewrite spec/vectors/: codec vectors and every oracle's; a test fails while they are stale
