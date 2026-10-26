@@ -40,7 +40,9 @@ use crate::{MAX_DEGREE, Operand};
 ///
 /// [`Recomposition::new`](crate::Recomposition::new) checks its bit widths, that its instance's
 /// entries can be counted, then each input's length; its `tables` and `claims` check points and
-/// evaluations as the others do.
+/// evaluations as the others do. [`Selection::new`](crate::Selection::new) checks that its
+/// entries can be counted and `x`'s length, its `tables` the point, then member by member that
+/// its rows fit the kernel's axes, and its `claim` as `Rotate`'s does.
 ///
 /// The variants carry indices, lengths, heights, degrees and operand names, never a field
 /// element, so an error cannot carry a secret table value, a leaf or an evaluation (05 §3).
@@ -241,6 +243,19 @@ pub enum SumcheckError {
         /// The bits above them, `high`.
         high: u8,
     },
+    /// A [`Selection`](crate::Selection)'s kernel does not fit its axes (RFC-0072 'The selection
+    /// relation'): a member selects more rows than the output's axis has, `len > 2^rows`, or
+    /// names a row outside `x`'s axis of `2^vars`.
+    SelectionRows {
+        /// The member, counted from 0 in the order given.
+        member: usize,
+        /// The rows it selects.
+        len: usize,
+        /// The output axis's variables.
+        rows: usize,
+        /// The input axis's variables.
+        vars: usize,
+    },
     /// RFC-0054's merge was given inputs that do not fit its shapes: a claim on no polynomial,
     /// a point or group bits of the wrong size, a group variable out of order, a table of the
     /// wrong length, or a two-pass prover asked for more table rounds than its polynomials have.
@@ -380,6 +395,16 @@ impl fmt::Display for SumcheckError {
             Self::BitWidths { low, high } => write!(
                 f,
                 "a recomposition of {low} low and {high} high bits is not a BitDecompose's"
+            ),
+            Self::SelectionRows {
+                member,
+                len,
+                rows,
+                vars,
+            } => write!(
+                f,
+                "selection {member} takes {len} rows, which do not fit an output axis of {rows} \
+                 variables and an input axis of {vars}"
             ),
             Self::Merge { rule } => write!(f, "the merge's inputs break a rule: {rule}"),
         }

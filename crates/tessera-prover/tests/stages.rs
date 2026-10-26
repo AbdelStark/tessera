@@ -21,7 +21,10 @@
 //! `c̃(r_c)·ψ̃(r)` in its place rejects an honest proof.
 //!
 //! Stage 1's bit zero-checks (RFC-0072 'The bit zero-checks', #526's second slice) are checked
-//! by the verifier's closed forms in [`bits`], which holds their tests.
+//! by the verifier's closed forms in [`bits`], which holds their tests. The selection relation,
+//! combined selections and `BitFn` (RFC-0072 'The selection relation', 'Combined selections';
+//! RFC-0066 '`BitFn`', #526's third slice) are checked by the closed forms in [`selections`],
+//! which holds theirs. [`sha256`] proves the SHA-256 circuit end to end through all of them.
 
 use std::collections::HashMap;
 use std::fs;
@@ -54,6 +57,8 @@ use tessera_witness::{Engine, Witness};
 type F = GoldilocksExt2;
 
 mod bits;
+mod selections;
+mod sha256;
 
 // ----- Models ---------------------------------------------------------------------------------
 
@@ -227,12 +232,22 @@ enum Shift {
     Omitted,
 }
 
+/// How a verifier evaluates a selection's kernel (RFC-0072 'The selection relation').
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kernel {
+    /// RFC-0072's `K̃(r_a, r'_k) = Σ_t a_t·S̃_t(r_a, r'_k)`, each member's by its closed form.
+    Closed,
+    /// The same with the last member's rows each moved one row down its axis: a wrong verifier.
+    LastMemberMoved,
+}
+
 /// What a verifier holds beside the proof: the graph's public tensors, which it computes from
-/// public data, and how it evaluates a shift.
+/// public data, and how it evaluates a shift and a selection's kernel.
 #[derive(Clone, Copy)]
 struct Publics<'a> {
     values: &'a dyn WitnessSource,
     shift: Shift,
+    kernel: Kernel,
 }
 
 /// A graph with no public tensor but its inputs, which no claim reaches: the Llama templates'.
@@ -247,6 +262,7 @@ impl WitnessSource for NoPublic {
 const NO_PUBLIC: Publics<'static> = Publics {
     values: &NoPublic,
     shift: Shift::Extension,
+    kernel: Kernel::Closed,
 };
 
 /// The verifier's state: the graph and its tables, its public data, the challenges, each stage's
@@ -602,7 +618,7 @@ impl Verifier<'_> {
         for instance in &stage.instances {
             let e = &evals[at..at + instance.claims.len()];
             at += instance.claims.len();
-            batched += power * self.relation(instance, e);
+            batched += power * self.relation(k, instance, e);
             power *= gamma;
             for (c, &value) in instance.claims.clone().zip(e) {
                 values[c] = vec![value];
@@ -634,6 +650,13 @@ impl Verifier<'_> {
             | Relation::OneHotVocabulary => 3,
             Relation::OneHotCount | Relation::OneHotIndex => 2,
             Relation::Rotate => 2,
+            // The kernel times `x` (RFC-0072 'The selection relation').
+            Relation::Selection => 2,
+            // `eq` times RFC-0066's polynomial, of degree 2 or 3.
+            Relation::BitFn(f) => match f {
+                tessera_ir::BoolFn::Xor3 | tessera_ir::BoolFn::Maj => 4,
+                tessera_ir::BoolFn::Xor | tessera_ir::BoolFn::And | tessera_ir::BoolFn::Ch => 3,
+            },
             // RFC-0072's table: the three checks of degree 3, recomposition's of 2.
             Relation::InputPadding | Relation::BitPadding | Relation::AssertEqual => 3,
             Relation::Recomposition => 2,
@@ -658,8 +681,9 @@ impl Verifier<'_> {
         &self.graph.nodes[id.0 as usize]
     }
 
-    /// An instance's relation at its point from its evaluations, public factors included.
-    fn relation(&self, instance: &tessera_compiler::schedule::Instance, e: &[F]) -> F {
+    /// An instance of stage `k`'s relation at its point from its evaluations, public factors
+    /// included.
+    fn relation(&self, k: u16, instance: &tessera_compiler::schedule::Instance, e: &[F]) -> F {
         let mut target = self.point(&instance.point);
         let stacked = matches!(instance.layers, Layers::Eq(_));
         let lambda = if stacked {
@@ -781,6 +805,14 @@ impl Verifier<'_> {
                     _ => panic!("an equality zero-check's operation"),
                 };
                 eq(&target, &r).expect("eq") * (e[0] - f)
+            }
+            Relation::Selection => self.selection_relation(k, instance, node, &target, &r, e),
+            Relation::BitFn(f) => {
+                let mut next = 0;
+                let inputs: Vec<F> = (0..node.inputs.len())
+                    .map(|i| self.read(node, i, &r, e, &mut next))
+                    .collect();
+                eq(&target, &r).expect("eq") * selections::bit_function(f, &inputs)
             }
             Relation::InputPadding
             | Relation::BitPadding
@@ -1787,6 +1819,7 @@ impl Run {
         let publics = Publics {
             values: &values,
             shift,
+            kernel: Kernel::Closed,
         };
         verify_public(graph, &[], &self.schedule, proof, &self.points, publics)
     }

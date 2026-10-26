@@ -337,6 +337,9 @@ impl Context<'_> {
             s::Relation::OneHotCount => (json!({"OneHotCount":[shape_vars(&out[1..]),out[0]]}), 2),
             s::Relation::OneHotIndex => (json!({"OneHotIndex":[shape_vars(&out[1..])]}), 2),
             s::Relation::ScaleChannels => panic!("no per-channel ConstMul in the Llama lowering"),
+            s::Relation::Selection | s::Relation::BitFn(_) => {
+                panic!("no selection or BitFn in the Llama lowering")
+            }
             s::Relation::InputPadding
             | s::Relation::BitPadding
             | s::Relation::Recomposition

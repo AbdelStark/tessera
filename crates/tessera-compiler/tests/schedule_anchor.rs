@@ -58,9 +58,6 @@ const PUBLIC_SITE: &str = "a leaf site reads no public tensor: the leaf layout d
                            value out of the split yet";
 /// RFC-0072 'Public tensors' 'As an operand': a matmul reads no operand as `Public`.
 const MATMUL: &str = "a matmul's operands are not public, unless both are";
-/// A claim through a selection waits for the selection relation (#526's third slice).
-const MAPS: &str = "RFC-0037 maps a claim through Add, Sub, ConstMul, Sum, Reshape, Transpose and \
-                    Expand only";
 
 /// The schedule of `graph` with no layers and no logits.
 fn layerless(graph: &Graph, tables: &[TableSpec]) -> Result<StageSchedule, CompileError> {
@@ -913,13 +910,21 @@ fn a_layer_template_holds_no_operation_whose_stacked_form_is_unspecified() {
         Some(one(g, Op::Reshape, &[scaled], virt(&[4, 8])))
     })
     .expect("one value on a last axis of 1 is a scalar");
-    // A Boolean function stacks as any relation does (its relation is #526's third slice).
-    layered(|g, c, _| {
-        g.node(Op::BitFn { f: BoolFn::Xor }, &[c, c], vec![virt(&[4, 8])])
+    // A Boolean function stacks as any relation does: stage 1 proves it stacked over the layers.
+    let stacked = layered(|g, c, _| {
+        let z = g
+            .node(Op::BitFn { f: BoolFn::Xor }, &[c, c], vec![virt(&[4, 8])])
             .expect("a BitFn");
-        None
+        Some(z[0])
     })
     .expect("BitFn may sit in a template");
+    let xor = stacked.stages[1]
+        .instances
+        .iter()
+        .find(|i| i.relation == Relation::BitFn(BoolFn::Xor))
+        .expect("a stacked BitFn");
+    assert!(matches!(xor.layers, Layers::Eq(_)));
+    assert_eq!(xor.vars, 5 + stacked.layers.vars);
 }
 
 /// RFC-0072 'Not inside a layer', after its final review: a template position whose node's output
@@ -1206,30 +1211,33 @@ fn a_sum_over_a_padded_axis_needs_an_input_zero_there() {
         SUMS,
         "an Expand along another axis"
     );
-    // A selection along the summed axis is 0 there: the summing rule admits it, and the claim then
-    // waits for the selection relation.
-    assert_eq!(
-        refusal(sum_of(&[4, 4], &|g, s| {
-            let op = Op::Slice {
-                axis: 1,
-                start: 1,
-                len: 3,
-            };
-            let cut = one(g, op, &[s], virt(&[4, 3]));
-            (one(g, Op::Sum { axis: 1 }, &[cut], virt(&[4])), vec![4])
-        })),
-        MAPS,
-        "a Slice along the summed axis"
-    );
-    assert_eq!(
-        refusal(sum_of(&[4, 2], &|g, s| {
-            let index = g.constant(vec![0, 2, 3]).expect("rows");
-            let picked = one(g, Op::GatherPublic { index }, &[s], virt(&[3, 2]));
-            (one(g, Op::Sum { axis: 0 }, &[picked], virt(&[2])), vec![2])
-        })),
-        MAPS,
-        "a GatherPublic along the summed axis"
-    );
+    // A selection along the summed axis is 0 there: the summing rule admits it, and the claim,
+    // at `½` on the summed axis, is the selection relation's.
+    let selected = |schedule: StageSchedule| {
+        schedule.stages[1]
+            .instances
+            .iter()
+            .map(|i| i.relation)
+            .collect::<Vec<_>>()
+    };
+    let cut = sum_of(&[4, 4], &|g, s| {
+        let op = Op::Slice {
+            axis: 1,
+            start: 1,
+            len: 3,
+        };
+        let cut = one(g, op, &[s], virt(&[4, 3]));
+        (one(g, Op::Sum { axis: 1 }, &[cut], virt(&[4])), vec![4])
+    })
+    .expect("a Slice along the summed axis");
+    assert_eq!(selected(cut), [Relation::Selection]);
+    let picked = sum_of(&[4, 2], &|g, s| {
+        let index = g.constant(vec![0, 2, 3]).expect("rows");
+        let picked = one(g, Op::GatherPublic { index }, &[s], virt(&[3, 2]));
+        (one(g, Op::Sum { axis: 0 }, &[picked], virt(&[2])), vec![2])
+    })
+    .expect("a GatherPublic along the summed axis");
+    assert_eq!(selected(picked), [Relation::Selection]);
     assert_eq!(
         refusal(sum_of(&[4, 3], &|g, s| {
             let op = Op::Slice {
@@ -1380,8 +1388,8 @@ fn requantized(lo: i64, hi: i64, x: Operand) -> Result<StageSchedule, CompileErr
 /// an operation pins them: a `OneHot` reading it directly, or a `BitDecompose` reading it directly
 /// or moved by `Reshape`, `Slice`, `Transpose`, `GatherPublic` or `Expand`, whose input padding
 /// check, one of stage 1's bit zero-checks, pins them. A pinned input's sum is admitted, and the
-/// schedule derives that check; through a gather and a slice, the decomposition's recomposition
-/// claim then waits for the selection relation (`MAPS`), not the summing rule (`SUMS`).
+/// schedule derives that check; through a gather and a slice too, the decomposition's
+/// recomposition claim then reaching `x` through two selections.
 #[test]
 fn a_committed_input_is_zero_at_padding_only_when_pinned() {
     // `requant(Sum_1(x))`, `x` committed `[4, 3]`, which `reader` reads too.
@@ -1444,22 +1452,37 @@ fn a_committed_input_is_zero_at_padding_only_when_pinned() {
     })
     .expect("a BitDecompose reads it moved");
     assert!(pinned(moved), "a BitDecompose reads it moved");
-    assert_eq!(
-        refusal(sum_with(|g, x| {
-            let index = g.constant(vec![1]).expect("a row");
-            let row = one(g, Op::GatherPublic { index }, &[x], virt(&[1, 3]));
-            let cut = Op::Slice {
-                axis: 1,
-                start: 0,
-                len: 2,
-            };
-            let pair = one(g, cut, &[row], virt(&[1, 2]));
-            let wide = one(g, Op::Expand { axis: 0, len: 2 }, &[pair], virt(&[2, 1, 2]));
-            decompose(g, wide, &[2, 1, 2]);
-        })),
-        MAPS,
-        "a BitDecompose reads part of it, moved: its padding check covers the whole input"
+    // A BitDecompose reads part of it, moved: its padding check covers the whole input.
+    let part = sum_with(|g, x| {
+        let index = g.constant(vec![1]).expect("a row");
+        let row = one(g, Op::GatherPublic { index }, &[x], virt(&[1, 3]));
+        let cut = Op::Slice {
+            axis: 1,
+            start: 0,
+            len: 2,
+        };
+        let pair = one(g, cut, &[row], virt(&[1, 2]));
+        let wide = one(g, Op::Expand { axis: 0, len: 2 }, &[pair], virt(&[2, 1, 2]));
+        decompose(g, wide, &[2, 1, 2]);
+    })
+    .expect("a BitDecompose reads part of it, moved");
+    assert!(
+        pinned(part.clone()),
+        "its padding check covers the whole input"
     );
+    // Recomposition's claim on the decomposed tensor reaches `x` through the slice, then the
+    // gather.
+    let selections: Vec<usize> = part
+        .stages
+        .iter()
+        .map(|s| {
+            s.instances
+                .iter()
+                .filter(|i| i.relation == Relation::Selection)
+                .count()
+        })
+        .collect();
+    assert_eq!(selections, [0, 0, 1, 1]);
     // Through an `Add`, the decomposition reads another tensor.
     assert_eq!(
         refusal(sum_with(|g, x| {
@@ -1783,15 +1806,331 @@ fn the_report_counts_the_stages_of_the_bit_zero_checks() {
     }
 }
 
-/// RFC-0072 'Migration / Rollout': the SHA-256 circuit's bit zero-checks are derived, and its
-/// schedule now waits for the selection relation (#526's third slice), whose claims its sums'
-/// values reach. The report already counts its 10 stages.
+// ----- Selections, combined selections and BitFn (#526's third slice) -------------------------
+
+/// A leaf point's coordinates `from..to` of site `site`.
+fn leaf_coords(site: u32, range: core::ops::Range<u32>) -> Vec<Coord> {
+    range.map(|index| Coord::Leaf { site, index }).collect()
+}
+
+/// Round challenges `from..to` of stage `stage`.
+fn rounds(stage: u16, range: core::ops::Range<u32>) -> Vec<Coord> {
+    range.map(|round| Coord::Round { stage, round }).collect()
+}
+
+/// RFC-0037 'Claims and atoms', RFC-0072 'The selection relation', RFC-0066 '`BitFn`': a claim
+/// through a `Slice` or a `GatherPublic` of a tensor that is not public is a selection's virtual
+/// atom, and one through a `BitFn` a virtual atom of its `Elementwise` relation; through a
+/// selection of a public tensor it is a public term. Stage 1 proves each: a selection over its
+/// selected axis's `⌈log2 n_a⌉` variables, its one claim on `x` at `r_lo ‖ r'_k ‖ r_hi`, and a
+/// `BitFn` over its output's, a claim per input that is not public.
 #[test]
-fn sha256_waits_for_the_selection_relation() {
+fn a_claim_maps_through_selections_and_bit_functions() {
+    let mut g = GraphBuilder::new();
+    let x = g.input(decl(&[6, 5], ADVICE, -3, 3)).expect("x");
+    let p = g.input(decl(&[6, 5], NodeKind::Public, 0, 1)).expect("p");
+    let bits = g.input(decl(&[6, 5], ADVICE, 0, 1)).expect("bits");
+    // A `Slice` on the last axis: no variable below it, `x`'s axis 0 above.
+    let cut = Op::Slice {
+        axis: 1,
+        start: 1,
+        len: 3,
+    };
+    let s = one(&mut g, cut.clone(), &[x], virt(&[6, 3]));
+    requant(&mut g, s, &[6, 3], -128, 127);
+    // A `GatherPublic` of 3 rows of 6: the last axis's 3 variables below it.
+    let index = g.constant(vec![5, 0, 2]).expect("rows");
+    let rows = one(&mut g, Op::GatherPublic { index }, &[x], virt(&[3, 5]));
+    requant(&mut g, rows, &[3, 5], -128, 127);
+    // `Xor` of committed bits and a public tensor, plus a public tensor's slice.
+    let z = one(
+        &mut g,
+        Op::BitFn { f: BoolFn::Xor },
+        &[bits, p],
+        virt(&[6, 5]),
+    );
+    let public_cut = one(&mut g, cut, &[p], virt(&[6, 3]));
+    let wide = one(
+        &mut g,
+        Op::Expand { axis: 1, len: 1 },
+        &[public_cut],
+        virt(&[6, 1, 3]),
+    );
+    let back = one(&mut g, Op::Reshape, &[wide], virt(&[6, 3]));
+    let zs = one(
+        &mut g,
+        Op::Slice {
+            axis: 1,
+            start: 0,
+            len: 3,
+        },
+        &[z],
+        virt(&[6, 3]),
+    );
+    let sum = one(&mut g, Op::Add, &[zs, back], virt(&[6, 3]));
+    requant(&mut g, sum, &[6, 3], -128, 127);
+    let graph = g.finish();
+    let schedule = layerless(&graph, &[]).expect("a schedule");
+    assert_eq!(schedule.stage_count(), 3);
+    assert_eq!(schedule.stage_count(), stage_count(&graph) as usize);
+    // The leaf claims: on `s` and `rows`, ready, and on `sum`, the slice of `z` and a public
+    // term where the walk meets the first public tensor, the `Reshape` of the public slice's
+    // `Expand`.
+    let leaf = &schedule.stages[0].claims;
+    for (c, tensor) in [(0, s), (1, rows)] {
+        assert_eq!(leaf[c].atoms.len(), 1);
+        assert_eq!(leaf[c].atoms[0].kind, Kind::Tensor(tensor));
+        assert!(leaf[c].atoms[0].combined.is_empty() && !leaf[c].split);
+    }
+    assert_eq!(leaf[2].atoms.len(), 1);
+    assert_eq!(leaf[2].atoms[0].kind, Kind::Tensor(zs));
+    assert_eq!(leaf[2].public.len(), 1);
+    assert_eq!(leaf[2].public[0].source, PublicSource::Tensor(back));
+    let public = public_tensors(&graph);
+    assert!(
+        [public_cut, wide, back]
+            .iter()
+            .all(|t| public[t.0 as usize])
+    );
+    let stage = &schedule.stages[1];
+    let instances: Vec<(Relation, u32)> = stage
+        .instances
+        .iter()
+        .map(|i| (i.relation, i.vars))
+        .collect();
+    assert_eq!(
+        instances,
+        [
+            (Relation::Selection, 3),
+            (Relation::Selection, 3),
+            (Relation::Selection, 3)
+        ],
+        "each over x's axis of 5 or 6, or z's of 5"
+    );
+    // `s` is `[6, 3]`, its point `leaf(2) ‖ leaf(3)`: the claim on `x` replaces the slice's
+    // two coordinates with the stage's three challenges.
+    let on_x = |i: usize| &stage.claims[stage.instances[i].claims.start];
+    assert_eq!(on_x(0).kind, Kind::Tensor(x));
+    assert_eq!(
+        on_x(0).point,
+        [rounds(1, 0..3), leaf_coords(0, 2..5)].concat()
+    );
+    // `rows` is `[3, 5]`: `r_lo` its last axis's three coordinates, `r'_k` the gather's.
+    assert_eq!(on_x(1).kind, Kind::Tensor(x));
+    assert_eq!(
+        on_x(1).point,
+        [leaf_coords(1, 0..3), rounds(1, 0..3)].concat()
+    );
+    assert_eq!(on_x(2).kind, Kind::Tensor(z));
+    // Stage 2 proves the `Xor`: one claim, on the committed bits, none on `p`.
+    let xor = &schedule.stages[2];
+    assert_eq!(xor.instances.len(), 1);
+    assert_eq!(xor.instances[0].relation, Relation::BitFn(BoolFn::Xor));
+    assert_eq!(xor.instances[0].vars, 6);
+    assert_eq!(xor.claims.len(), 1);
+    assert_eq!(xor.claims[0].kind, Kind::Tensor(bits));
+    assert_eq!(xor.claims[0].point, rounds(2, 0..6));
+}
+
+/// The leaf claim on `requant(key(x))`, `x` committed `[6, 4]` in `[−3, 3]`, and its schedule.
+fn leaf_claim_of(key: Key<'_>) -> StageSchedule {
+    let mut g = GraphBuilder::new();
+    let x = g.input(decl(&[6, 4], ADVICE, -3, 3)).expect("x");
+    let (k, shape) = key(&mut g, x);
+    requant(&mut g, k, &shape, -128, 127);
+    let graph = g.finish();
+    let schedule = layerless(&graph, &[]).expect("a schedule");
+    assert_eq!(schedule.stage_count(), stage_count(&graph) as usize);
+    schedule
+}
+
+/// `Slice { axis, start, len }` of `x`, of `shape`.
+fn cut(
+    g: &mut GraphBuilder,
+    x: TensorId,
+    shape: &[u32],
+    axis: u8,
+    start: u32,
+    len: u32,
+) -> TensorId {
+    let mut out = shape.to_vec();
+    out[usize::from(axis)] = len;
+    one(g, Op::Slice { axis, start, len }, &[x], virt(&out))
+}
+
+/// The rows `index` of `x`, of `inner` positions each.
+fn pick(g: &mut GraphBuilder, x: TensorId, index: Vec<i64>, inner: &[u32]) -> TensorId {
+    let mut out = vec![u32::try_from(index.len()).expect("small")];
+    out.extend_from_slice(inner);
+    let index = g.constant(index).expect("rows");
+    one(g, Op::GatherPublic { index }, &[x], virt(&out))
+}
+
+/// RFC-0072 'Combined selections', 'The rule', and its boundary cases. Within one claim, two or
+/// more virtual atoms that select rows of one input tensor along one axis at one point are one
+/// atom: coefficient 1, the first member's kind and place, its members in order with their
+/// coefficients, and one instance; a `Slice` and a `GatherPublic` along the outermost axis
+/// combine. They do not combine along different axes, of different tensors or at different
+/// points, a single selection atom is not combined, its coefficient weighing its split value,
+/// and two claims on one tensor at one point stay two claims and two instances. (Layer weights
+/// cannot differ outside the layers, which hold no selection; the rule's unit tests in
+/// `schedule/claims.rs` cover them.)
+#[test]
+fn selections_combine_within_one_claim_along_one_axis_of_one_tensor_at_one_point() {
+    let leaf = |schedule: &StageSchedule| schedule.stages[0].claims[0].clone();
+    let instances = |schedule: &StageSchedule| {
+        schedule.stages[1]
+            .instances
+            .iter()
+            .map(|i| i.relation)
+            .collect::<Vec<_>>()
+    };
+    // `even + 2·odd`: one atom, one instance.
+    let level = leaf_claim_of(&|g, x| {
+        let even = pick(g, x, vec![0, 2, 4], &[4]);
+        let odd = pick(g, x, vec![1, 3, 5], &[4]);
+        let c = g.constant(vec![2]).expect("2");
+        let scaled = one(g, Op::ConstMul { c }, &[odd], virt(&[3, 4]));
+        (one(g, Op::Add, &[even, scaled], virt(&[3, 4])), vec![3, 4])
+    });
+    let claim = leaf(&level);
+    assert_eq!((claim.atoms.len(), claim.split), (1, false), "ready");
+    let atom = &claim.atoms[0];
+    assert!(atom.is_unit());
+    assert_eq!(atom.combined.len(), 2);
+    assert_eq!(atom.combined[0].kind, atom.kind);
+    assert_eq!(atom.combined[0].coefficient, [Vec::<Factor>::new()]);
+    assert!(matches!(
+        atom.combined[1].coefficient.as_slice(),
+        [product] if matches!(product.as_slice(), [Factor::Constant(_)])
+    ));
+    assert_eq!(instances(&level), [Relation::Selection]);
+    // A `Slice` and a `GatherPublic` along axis 0, and a third member, merged before: `a − b +
+    // a`, `a` the slice twice, is two members.
+    let mixed = leaf_claim_of(&|g, x| {
+        let a = cut(g, x, &[6, 4], 0, 1, 4);
+        let b = pick(g, x, vec![0, 5, 1, 2], &[4]);
+        let d = one(g, Op::Sub, &[a, b], virt(&[4, 4]));
+        (one(g, Op::Add, &[d, a], virt(&[4, 4])), vec![4, 4])
+    });
+    let claim = leaf(&mixed);
+    assert_eq!(claim.atoms.len(), 1);
+    let members = &claim.atoms[0].combined;
+    assert_eq!(members.len(), 2, "the slice's atoms merged first");
+    assert_eq!(members[0].coefficient.len(), 2, "a, twice");
+    assert_eq!(members[1].coefficient, [vec![Factor::Minus]]);
+    assert_eq!(instances(&mixed), [Relation::Selection]);
+    // Three members, in the order substitution reaches them.
+    let three = leaf_claim_of(&|g, x| {
+        let a = pick(g, x, vec![0, 1], &[4]);
+        let b = pick(g, x, vec![2, 3], &[4]);
+        let c = cut(g, x, &[6, 4], 0, 4, 2);
+        let ab = one(g, Op::Add, &[a, b], virt(&[2, 4]));
+        (one(g, Op::Add, &[ab, c], virt(&[2, 4])), vec![2, 4])
+    });
+    let claim = leaf(&three);
+    let kinds: Vec<Kind> = claim.atoms[0].combined.iter().map(|m| m.kind).collect();
+    let tensors: Vec<TensorId> = (1..=3).map(TensorId).collect();
+    assert_eq!(
+        kinds,
+        tensors.iter().map(|&t| Kind::Tensor(t)).collect::<Vec<_>>()
+    );
+    // Different axes of one tensor, at one point: a square `x`'s rows and columns, each slice
+    // whole, since slices of different axes of one shape are otherwise of different shapes.
+    let axes = {
+        let mut g = GraphBuilder::new();
+        let x = g.input(decl(&[4, 4], ADVICE, -3, 3)).expect("x");
+        let rows = cut(&mut g, x, &[4, 4], 0, 0, 4);
+        let columns = cut(&mut g, x, &[4, 4], 1, 0, 4);
+        let sum = one(&mut g, Op::Add, &[rows, columns], virt(&[4, 4]));
+        requant(&mut g, sum, &[4, 4], -128, 127);
+        layerless(&g.finish(), &[]).expect("a schedule")
+    };
+    let claim = leaf(&axes);
+    assert_eq!(claim.atoms[0].point, claim.atoms[1].point, "one point");
+    assert_eq!(
+        (claim.atoms.len(), claim.split),
+        (2, true),
+        "different axes"
+    );
+    assert!(claim.atoms.iter().all(|a| a.combined.is_empty()));
+    // Different tensors.
+    let tensors = {
+        let mut g = GraphBuilder::new();
+        let x = g.input(decl(&[6, 4], ADVICE, -3, 3)).expect("x");
+        let w = g.input(decl(&[6, 4], ADVICE, -3, 3)).expect("w");
+        let a = pick(&mut g, x, vec![0, 1], &[4]);
+        let b = pick(&mut g, w, vec![0, 1], &[4]);
+        let sum = one(&mut g, Op::Add, &[a, b], virt(&[2, 4]));
+        requant(&mut g, sum, &[2, 4], -128, 127);
+        layerless(&g.finish(), &[]).expect("a schedule")
+    };
+    let claim = leaf(&tensors);
+    assert_eq!(
+        (claim.atoms.len(), claim.split),
+        (2, true),
+        "different tensors"
+    );
+    // Different points: one slice at the claim's point, the other summed, at `½` on its last
+    // axis.
+    let points = leaf_claim_of(&|g, x| {
+        let a = cut(g, x, &[6, 4], 0, 0, 4);
+        let b = cut(g, x, &[6, 4], 0, 2, 4);
+        let total = one(g, Op::Sum { axis: 1 }, &[b], virt(&[4]));
+        let spread = one(g, Op::Expand { axis: 1, len: 4 }, &[total], virt(&[4, 4]));
+        (one(g, Op::Add, &[a, spread], virt(&[4, 4])), vec![4, 4])
+    });
+    let claim = leaf(&points);
+    assert_eq!(
+        (claim.atoms.len(), claim.split),
+        (2, true),
+        "different points"
+    );
+    assert_ne!(claim.atoms[0].point, claim.atoms[1].point);
+    assert_eq!(
+        instances(&points),
+        [Relation::Selection, Relation::Selection]
+    );
+    // A single selection atom, scaled by 3: not combined, split with its coefficient.
+    let single = leaf_claim_of(&|g, x| {
+        let a = pick(g, x, vec![3, 1], &[4]);
+        let c = g.constant(vec![3]).expect("3");
+        (one(g, Op::ConstMul { c }, &[a], virt(&[2, 4])), vec![2, 4])
+    });
+    let claim = leaf(&single);
+    assert_eq!((claim.atoms.len(), claim.split), (1, true), "a single atom");
+    assert!(claim.atoms[0].combined.is_empty() && !claim.atoms[0].is_unit());
+    assert_eq!(instances(&single), [Relation::Selection]);
+    // Two claims on one tensor at one point: `g·g`.
+    let squared = leaf_claim_of(&|g, x| {
+        let a = pick(g, x, vec![0, 4, 4], &[4]);
+        (one(g, mul(), &[a, a], virt(&[3, 4])), vec![3, 4])
+    });
+    let stage = &squared.stages[1];
+    assert_eq!(stage.claims.len(), 2);
+    assert_eq!(
+        (stage.claims[0].kind, &stage.claims[0].point),
+        (stage.claims[1].kind, &stage.claims[1].point)
+    );
+    let second: Vec<Relation> = squared.stages[2]
+        .instances
+        .iter()
+        .map(|i| i.relation)
+        .collect();
+    assert_eq!(
+        second,
+        [Relation::Selection, Relation::Selection],
+        "no merging across claims"
+    );
+}
+
+/// A SHA-256 circuit's graph: `blocks` blocks of `messages` messages, the bytes at `committed`
+/// committed, its last block's chaining words bound to a digest when `bind`.
+fn sha256_graph(blocks: u32, messages: u32, committed: Vec<u32>, bind: bool) -> Graph {
     let layout = Sha256Layout {
-        blocks: 1,
-        messages: 1,
-        committed: Vec::new(),
+        blocks,
+        messages,
+        committed,
     };
     let mut g = GraphBuilder::new();
     let inputs: Vec<TensorId> = sha256_inputs(&layout)
@@ -1799,22 +2138,280 @@ fn sha256_waits_for_the_selection_relation() {
         .map(|d| g.input(d).expect("an input"))
         .collect();
     let sha = sha256(&mut g, &layout, &inputs).expect("the circuit");
-    let digest = g.input(sha256_digest_input(1)).expect("the digest");
-    sha256_bind(&mut g, sha.chaining.last().expect("a block"), digest, 1).expect("the binding");
-    let graph = g.finish();
-    assert_eq!(refusal(layerless(&graph, &[])), MAPS, "SHA-256");
-    assert_eq!(
-        stage_count(&graph),
-        10,
-        "the report counts RFC-0072's stages"
-    );
+    if bind {
+        let digest = g.input(sha256_digest_input(messages)).expect("the digest");
+        sha256_bind(
+            &mut g,
+            sha.chaining.last().expect("a block"),
+            digest,
+            messages,
+        )
+        .expect("the binding");
+    }
+    g.finish()
 }
 
-/// AES-128-CTR's schedule waits for the selection relation (#526's third slice): the first lookup's
-/// key, a gather of the key's bytes, is a selection's output. The report already counts its 3
-/// stages.
+/// A schedule's figures, stage by stage: instances, evaluations (`stage/{k}/evals`) and split
+/// values (`stage/{k}/split`), and the pool's claims.
+#[derive(Debug, PartialEq, Eq)]
+struct Figures {
+    instances: Vec<usize>,
+    evaluations: Vec<usize>,
+    splits: Vec<usize>,
+    pool: usize,
+}
+
+impl Figures {
+    fn of(schedule: &StageSchedule) -> Self {
+        let stages = &schedule.stages;
+        Self {
+            instances: stages.iter().map(|s| s.instances.len()).collect(),
+            evaluations: stages
+                .iter()
+                .map(|s| s.instances.iter().map(|i| i.claims.len()).sum())
+                .collect(),
+            splits: stages
+                .iter()
+                .map(|s| {
+                    s.claims
+                        .iter()
+                        .filter(|c| c.split)
+                        .map(|c| c.parts.len())
+                        .sum()
+                })
+                .collect(),
+            pool: schedule.pool.len(),
+        }
+    }
+
+    /// The totals of RFC-0072's sizes table: instances and evaluations of the reduction stages,
+    /// and every split value.
+    fn totals(&self) -> [usize; 3] {
+        [
+            self.instances.iter().sum(),
+            self.evaluations.iter().sum(),
+            self.splits.iter().sum(),
+        ]
+    }
+}
+
+/// The circuit's nodes RFC-0072's sizes table counts, those whose output is not public: its
+/// zero-checks (in stage 1), its selections, `BitFn`s and `Mul`s.
+fn node_counts(graph: &Graph, schedule: &StageSchedule) -> [usize; 4] {
+    let public = public_tensors(graph);
+    let count = |pick: fn(&Op) -> bool| {
+        graph
+            .nodes
+            .iter()
+            .filter(|n| pick(&n.op) && n.outputs.iter().all(|t| !public[t.0 as usize]))
+            .count()
+    };
+    let zero_checks = schedule.stages[1]
+        .instances
+        .iter()
+        .filter(|i| i.source == tessera_compiler::schedule::Source::ZeroCheck)
+        .count();
+    [
+        zero_checks,
+        count(|op| matches!(op, Op::Slice { .. } | Op::GatherPublic { .. })),
+        count(|op| matches!(op, Op::BitFn { .. })),
+        count(|op| matches!(op, Op::Mul { .. })),
+    ]
+}
+
+/// RFC-0072 'Messages, rejections and stages' (the circuits' sizes) and 'Testing Strategy'
+/// ('Combined selections'): the SHA-256 schedule's instances, evaluations and split values, stage
+/// by stage, and its pool, equal an independent count's. That count is a model of RFC-0072's
+/// rules written by a reviewer of the RFC from its text, not from this code (read 11's
+/// `r11sched.py`, on the circuit rebuilt in `circuits.py`): public tensors, substitution, combined
+/// selections, splits, instances, the zero-checks and the stages. Its per-stage figures are the
+/// arrays below. RFC-0072's table follows from them: a later block costs the difference of two
+/// blocks and one, and the key commitment is one block, 32 committed bytes, bound.
 #[test]
-fn aes_ctr_waits_for_the_selection_relation() {
+fn sha256s_schedule_is_rfc_0072s_independent_count() {
+    let figures = |blocks, committed: Vec<u32>, bind| {
+        let graph = sha256_graph(blocks, 1, committed, bind);
+        let schedule = layerless(&graph, &[]).expect("a schedule");
+        assert_eq!(schedule.stage_count(), stage_count(&graph) as usize);
+        (Figures::of(&schedule), node_counts(&graph, &schedule))
+    };
+    let committed = || (8..24).collect::<Vec<u32>>();
+    let model = |instances: &[usize], evaluations: &[usize], splits: &[usize], pool| Figures {
+        instances: instances.to_vec(),
+        evaluations: evaluations.to_vec(),
+        splits: splits.to_vec(),
+        pool,
+    };
+    // Public bytes, one block and two.
+    let (public_1, nodes_1) = figures(1, Vec::new(), false);
+    assert_eq!(
+        public_1,
+        model(
+            &[0, 680, 180, 180, 180, 180, 180, 457, 804, 79],
+            &[0, 1044, 180, 180, 180, 180, 180, 1362, 804, 79],
+            &[0, 0, 0, 0, 0, 0, 613, 0, 0, 0],
+            2395
+        ),
+        "public bytes, one block"
+    );
+    let (public_2, nodes_2) = figures(2, Vec::new(), false);
+    assert_eq!(
+        public_2,
+        model(
+            &[0, 1360, 362, 362, 362, 362, 362, 920, 1617, 158],
+            &[0, 2090, 362, 362, 362, 362, 362, 2751, 1617, 158],
+            &[0, 0, 0, 0, 0, 0, 1240, 0, 0, 0],
+            4825
+        ),
+        "public bytes, two blocks"
+    );
+    // Bytes 8 to 23 committed, one block and two.
+    let (committed_1, cnodes_1) = figures(1, committed(), false);
+    assert_eq!(
+        committed_1,
+        model(
+            &[
+                0, 682, 184, 184, 184, 184, 184, 522, 903, 178, 99, 51, 51, 17
+            ],
+            &[
+                0, 1051, 184, 184, 184, 184, 184, 1461, 903, 178, 99, 51, 51, 17
+            ],
+            &[0, 0, 0, 0, 0, 0, 681, 0, 0, 0, 0, 0, 0, 0],
+            2497
+        ),
+        "committed bytes, one block"
+    );
+    let (committed_2, cnodes_2) = figures(2, committed(), false);
+    assert_eq!(
+        committed_2,
+        model(
+            &[
+                0, 1362, 368, 368, 368, 368, 368, 1050, 1815, 356, 198, 102, 102, 34
+            ],
+            &[
+                0, 2099, 368, 368, 368, 368, 368, 2949, 1815, 356, 198, 102, 102, 34
+            ],
+            &[0, 0, 0, 0, 0, 0, 1378, 0, 0, 0, 0, 0, 0, 0],
+            5026
+        ),
+        "committed bytes, two blocks"
+    );
+    // The key commitment: `"tessera-anchor-key/v1" ‖ k_s ‖ salt_k`, bytes 21 to 52 committed.
+    let (key, key_nodes) = figures(1, (21..53).collect(), true);
+    assert_eq!(
+        key,
+        model(
+            &[
+                0, 690, 184, 184, 184, 184, 184, 522, 903, 178, 99, 51, 51, 17
+            ],
+            &[
+                0, 1059, 184, 184, 184, 184, 184, 1461, 903, 178, 99, 51, 51, 17
+            ],
+            &[0, 0, 0, 0, 0, 0, 681, 0, 0, 0, 0, 0, 0, 0],
+            2505
+        ),
+        "the key commitment"
+    );
+    // RFC-0072's table: zero-checks, selections, `BitFn`s, `Mul`s; instances, evaluations and
+    // split values.
+    let later = |two: [usize; 4], one: [usize; 4]| {
+        two.map(|t| t)
+            .iter()
+            .zip(one)
+            .map(|(t, o)| t - o)
+            .collect::<Vec<_>>()
+    };
+    let difference =
+        |two: [usize; 3], one: [usize; 3]| [two[0] - one[0], two[1] - one[1], two[2] - one[2]];
+    assert_eq!(
+        later(nodes_2, nodes_1),
+        [680, 2441, 335, 79],
+        "a later block, public bytes"
+    );
+    assert_eq!(
+        difference(public_2.totals(), public_1.totals()),
+        [2945, 4237, 627]
+    );
+    assert_eq!(
+        later(cnodes_2, cnodes_1),
+        [680, 2528, 352, 96],
+        "a later block, committed bytes"
+    );
+    assert_eq!(
+        difference(committed_2.totals(), committed_1.totals()),
+        [3436, 4764, 697]
+    );
+    assert_eq!(key_nodes, [690, 2523, 349, 97], "the key commitment");
+    assert_eq!(key.totals(), [3431, 4739, 681]);
+    // A first block of public bytes reads the initial value, part of it public.
+    assert_eq!(nodes_1[1..], [2415, 331, 79], "a first block, public bytes");
+    // A block's 680 zero-checks: 368 booleanity checks, 128 bit-padding checks of the round
+    // carries and 184 recompositions.
+    let checks = |blocks| {
+        let schedule =
+            layerless(&sha256_graph(blocks, 1, Vec::new(), false), &[]).expect("a schedule");
+        let count = |relation| {
+            schedule.stages[1]
+                .instances
+                .iter()
+                .filter(|i| i.relation == relation)
+                .count()
+        };
+        [
+            count(Relation::Booleanity),
+            count(Relation::BitPadding),
+            count(Relation::Recomposition),
+        ]
+    };
+    let (one, two) = (checks(1), checks(2));
+    assert_eq!(
+        [two[0] - one[0], two[1] - one[1], two[2] - one[2]],
+        [368, 128, 184]
+    );
+    // About 3,400 instances once selections combine, of which 1,973 selections in the key
+    // commitment.
+    let schedule =
+        layerless(&sha256_graph(1, 1, (21..53).collect(), true), &[]).expect("a schedule");
+    let selections = schedule
+        .stages
+        .iter()
+        .flat_map(|s| &s.instances)
+        .filter(|i| i.relation == Relation::Selection)
+        .count();
+    assert_eq!(selections, 1973);
+}
+
+/// RFC-0072 'Chain length': the SHA-256 schedule takes 10 stages for public bytes and 14 with
+/// committed bytes, the leaf stage included, whatever the block count or the message count
+/// (INV-SCH-4), and the commitment report counts the same (RFC-0037 'Stage count').
+#[test]
+fn sha256s_stage_count_is_the_reports_whatever_the_blocks() {
+    for (blocks, messages) in [(1, 1), (2, 1), (3, 1), (1, 3), (2, 2)] {
+        for committed in [false, true] {
+            let offsets = if committed {
+                vec![21, 40, 63]
+            } else {
+                Vec::new()
+            };
+            let graph = sha256_graph(blocks, messages, offsets, true);
+            let schedule = layerless(&graph, &[]).expect("a schedule");
+            let expected = if committed { 14 } else { 10 };
+            let name = format!("{blocks} blocks of {messages} messages, committed {committed}");
+            assert_eq!(schedule.stage_count(), expected, "{name}");
+            assert_eq!(
+                stage_count(&graph) as usize,
+                expected,
+                "{name}: the report's"
+            );
+        }
+    }
+}
+
+/// AES-128-CTR's schedule maps its claims through its gathers now, and waits for the leaf layout
+/// to leave a lookup's public input out of the split (#526's fourth slice): its key schedule's
+/// round-constant `Bitwise` reads a public row of `rcon`. The report already counts its 3 stages.
+#[test]
+fn aes_ctr_waits_for_public_leaf_reads() {
     let tables = AesTables {
         sbox: TableId(0),
         mul2: TableId(1),
@@ -1832,7 +2429,50 @@ fn aes_ctr_waits_for_the_selection_relation() {
         let inputs = aes128_ctr_inputs(blocks).map(|d| g.input(d).expect("an input"));
         aes128_ctr(&mut g, &tables, inputs, blocks).expect("the circuit");
         let graph = g.finish();
-        assert_eq!(refusal(layerless(&graph, &specs)), MAPS, "{blocks} blocks");
+        assert_eq!(
+            refusal(layerless(&graph, &specs)),
+            PUBLIC_SITE,
+            "{blocks} blocks"
+        );
         assert_eq!(stage_count(&graph), 3, "{blocks} blocks");
     }
+}
+
+/// RFC-0072 'The circuits' sizes': at `M = 3` messages the figures are the independent count's,
+/// per stage, for the key commitment and for public messages of two blocks.
+#[test]
+fn sha256s_figures_at_three_messages_are_the_independent_counts() {
+    let fig = |blocks, committed: Vec<u32>, bind| {
+        let graph = sha256_graph(blocks, 3, committed, bind);
+        let schedule = layerless(&graph, &[]).expect("a schedule");
+        Figures::of(&schedule)
+    };
+    let model = |instances: &[usize], evaluations: &[usize], splits: &[usize], pool| Figures {
+        instances: instances.to_vec(),
+        evaluations: evaluations.to_vec(),
+        splits: splits.to_vec(),
+        pool,
+    };
+    assert_eq!(
+        fig(1, (21..53).collect(), true),
+        model(
+            &[
+                0, 691, 184, 184, 184, 184, 184, 522, 903, 178, 99, 51, 51, 17
+            ],
+            &[
+                0, 1060, 184, 184, 184, 184, 184, 1461, 903, 178, 99, 51, 51, 17
+            ],
+            &[0, 0, 0, 0, 0, 0, 681, 0, 0, 0, 0, 0, 0, 0],
+            2506
+        )
+    );
+    assert_eq!(
+        fig(2, Vec::new(), false),
+        model(
+            &[0, 1360, 362, 362, 362, 362, 362, 920, 1617, 158],
+            &[0, 2090, 362, 362, 362, 362, 362, 2751, 1617, 158],
+            &[0, 0, 0, 0, 0, 0, 1240, 0, 0, 0],
+            4825
+        )
+    );
 }

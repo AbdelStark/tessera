@@ -5,7 +5,7 @@
 
 use tessera_ir::{Broadcast, Node, NodeKind, Op, OpClass, TensorId};
 
-use super::claims::Derivation;
+use super::claims::{Derivation, offsets};
 use super::{
     Claim, Coord, Instance, Kind, Layers, Native, NodeRef, Part, Relation, Site, Source, Stage,
     axis_vars, blocks, refuse,
@@ -304,6 +304,8 @@ fn relation(node: &Node) -> Result<Relation, CompileError> {
         Op::SumSquares { .. } => Relation::SumSquares,
         Op::Rotate { .. } => Relation::Rotate,
         Op::ConstMul { .. } => Relation::ScaleChannels,
+        Op::Slice { .. } | Op::GatherPublic { .. } => Relation::Selection,
+        Op::BitFn { f } => Relation::BitFn(f),
         _ => {
             return refuse(
                 Some(node.id),
@@ -491,8 +493,19 @@ fn instance_vars(
             }
             vars(node.inputs[0])
         }
+        // The selected axis's variables alone, `⌈log2 n_a⌉` of `x`'s (RFC-0072 'The selection
+        // relation'). No layer template holds a selection ('Graphs without layers').
+        Relation::Selection => {
+            if lambda > 0 {
+                return refuse(Some(node.id), "a selection is outside the layers");
+            }
+            let axis = selected_axis(node)?;
+            let x = shape(node.inputs[0]);
+            axis_vars(x[axis])
+        }
         Relation::Mul(_)
         | Relation::ScaleChannels
+        | Relation::BitFn(_)
         | Relation::Equality
         | Relation::Booleanity
         | Relation::OneHotVocabulary
@@ -584,6 +597,25 @@ fn evaluations(
         Relation::SumSquares | Relation::Rotate | Relation::ScaleChannels => {
             vec![at(0, own.to_vec())?]
         }
+        // `y`'s point `r_lo ‖ r_a ‖ r_hi` with the selected axis's coordinates `r_a` replaced by
+        // the instance's `r'_k`: one claim on `x` (RFC-0072 'Its claim'). A combined selection's
+        // members select along one axis of one tensor, so the first member's node says where.
+        Relation::Selection => {
+            let axis = selected_axis(node)?;
+            let output = &derivation.graph.tensors[node.outputs[0].0 as usize].shape;
+            let (at_axis, block) = (offsets(output)[axis], axis_vars(output[axis]) as usize);
+            let mut point = target.to_vec();
+            point.splice(at_axis..at_axis + block, own.iter().copied());
+            vec![at(0, point)?]
+        }
+        // Each input that is not public, at the instance's point (RFC-0066 '`BitFn`').
+        Relation::BitFn(_) => {
+            let mut claims = Vec::with_capacity(node.inputs.len());
+            for i in 0..node.inputs.len() {
+                claims.extend(operand(i, own.to_vec())?);
+            }
+            claims
+        }
         Relation::Booleanity
         | Relation::OneHotVocabulary
         | Relation::OneHotCount
@@ -649,6 +681,18 @@ fn evaluations(
             [vec![output], inputs].concat()
         }
     })
+}
+
+/// The axis a selection's node selects along: a `Slice`'s own, a `GatherPublic`'s the outermost.
+fn selected_axis(node: &Node) -> Result<usize, CompileError> {
+    match node.op {
+        Op::Slice { axis, .. } => Ok(usize::from(axis)),
+        Op::GatherPublic { .. } => Ok(0),
+        _ => refuse(
+            Some(node.id),
+            "a selection is a Slice's or a GatherPublic's",
+        ),
+    }
 }
 
 /// The point of `Mul`'s broadcast operand `b` within the product's point `own` over `a`'s shape.

@@ -55,10 +55,11 @@ fn relation(relation: Relation) -> &'static str {
         Relation::Native { zero: false, .. } => "Elementwise",
         Relation::MatMulWeight => "MatMulWeight",
         Relation::MatMulAct { .. } => "MatMulAct",
-        Relation::Mul(_) => "Elementwise",
+        Relation::Mul(_) | Relation::BitFn(_) => "Elementwise",
         Relation::SumSquares => "SumSquares",
         Relation::Rotate => "Rotate",
         Relation::ScaleChannels => "ScaleChannels",
+        Relation::Selection => "Selection",
         Relation::Equality
         | Relation::Booleanity
         | Relation::OneHotVocabulary
