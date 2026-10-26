@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-25
 - Target milestone: v0.4
-- Amended by: [RFC-0072](RFC-0072-anchor-relations.md) ('`BitDecompose`' and 'Where the zero-checks run': recomposition summed over the bit axis, its claim on `x` at `y`'s coordinates, and the zero-checks' messages; '`AssertEqual`': a public input pads with zeros; OQ-0066-1 and OQ-0066-2, closed)
+- Amended by: [RFC-0072](RFC-0072-anchor-relations.md) ('`BitDecompose`' and 'Where the zero-checks run': recomposition summed over the bit axis, its claim on `x` at `y`'s coordinates, and the zero-checks' messages; '`AssertEqual`': a public input pads with zeros; 'Drawbacks': no stacking; OQ-0066-1 and OQ-0066-2, closed)
 - Amends:
   - [RFC-0006](RFC-0006-compiler-ir.md#operation-set) 'Operation set': three operations join the closed set, `BitDecompose`, `BitFn` and `AssertEqual`, and `Bitwise` is AES's alone;
   - RFC-0006 'Range analysis': the three operations' ranges and integrality rules;
