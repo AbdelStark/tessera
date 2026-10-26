@@ -277,6 +277,7 @@ fn the_capacity_bounds_every_collection_before_it_grows() {
     let y = b
         .node1(Op::Sum { axis: 0 }, &[x], &[1], Kind::Virtual)
         .unwrap();
+    // Nodes and tensors are both full here; the bounds are tested alone below.
     assert_eq!(
         b.node1(Op::Sum { axis: 0 }, &[y], &[1], Kind::Virtual),
         Err(BuildError::Capacity)
@@ -311,6 +312,144 @@ fn the_capacity_bounds_every_collection_before_it_grows() {
     );
 }
 
+#[test]
+fn the_node_bound_and_the_tensor_bound_each_refuse_alone() {
+    // `AssertEqual` makes no tensor: the node bound is its only limit.
+    let mut b = GraphBuilder::new(Capacity {
+        tensors: 8,
+        nodes: 1,
+        constant_values: 1,
+    })
+    .unwrap();
+    let x = b.input(&[2], Kind::Public, BIT, 0, 1).unwrap();
+    assert!(b.node(Op::AssertEqual, &[x, x], &[]).is_ok());
+    let before = b.graph().clone();
+    assert_eq!(
+        b.node(Op::AssertEqual, &[x, x], &[]),
+        Err(BuildError::Capacity)
+    );
+    assert_eq!(&before, b.graph());
+    // With every tensor taken and nodes to spare, a node of an output is refused, and one of
+    // none is not.
+    let mut b = GraphBuilder::new(Capacity {
+        tensors: 1,
+        nodes: 8,
+        constant_values: 1,
+    })
+    .unwrap();
+    let x = b.input(&[2], Kind::Public, BIT, 0, 1).unwrap();
+    assert_eq!(
+        b.node1(Op::Sum { axis: 0 }, &[x], &[1], Kind::Virtual),
+        Err(BuildError::Capacity)
+    );
+    assert!(b.node(Op::AssertEqual, &[x, x], &[]).is_ok());
+}
+
+#[test]
+fn extend_refuses_a_graph_past_each_bound_alone() {
+    // Two tensors (an input and a sum), one node, one constant of two values, no checkpoint.
+    let mut b = GraphBuilder::new(roomy()).unwrap();
+    let x = b.input(&[2], Kind::Public, BIT, 0, 1).unwrap();
+    let y = b
+        .node1(Op::Sum { axis: 0 }, &[x], &[1], Kind::Virtual)
+        .unwrap();
+    b.constant(&[5, 6]).unwrap();
+    let plain = b.graph().clone();
+    let exact = Capacity {
+        tensors: 2,
+        nodes: 1,
+        constant_values: 2,
+    };
+    assert!(GraphBuilder::extend(plain.clone(), exact).is_ok());
+    for (bound, capacity) in [
+        (
+            "the tensors",
+            Capacity {
+                tensors: 1,
+                ..exact
+            },
+        ),
+        ("the nodes", Capacity { nodes: 0, ..exact }),
+        (
+            "the constants' values",
+            Capacity {
+                constant_values: 1,
+                ..exact
+            },
+        ),
+    ] {
+        assert_eq!(
+            GraphBuilder::extend(plain.clone(), capacity).err(),
+            Some(BuildError::Capacity),
+            "{bound}"
+        );
+    }
+    // Three checkpoints of the two tensors: past `tensors: 2` by them alone.
+    for checkpoint in [x, y, y] {
+        b.checkpoint(checkpoint).unwrap();
+    }
+    let marked = b.finish();
+    assert_eq!(
+        GraphBuilder::extend(marked.clone(), exact).err(),
+        Some(BuildError::Capacity),
+        "the checkpoints"
+    );
+    assert!(
+        GraphBuilder::extend(
+            marked,
+            Capacity {
+                tensors: 3,
+                ..exact
+            }
+        )
+        .is_ok()
+    );
+    // Two shift-class sets, then two tables, past `nodes: 1` by them alone.
+    let one_node = Capacity {
+        tensors: 8,
+        nodes: 1,
+        constant_values: 8,
+    };
+    let mut b = GraphBuilder::new(roomy()).unwrap();
+    b.shift_classes(&[1]).unwrap();
+    b.shift_classes(&[2]).unwrap();
+    let sets = b.finish();
+    assert_eq!(
+        GraphBuilder::extend(sets.clone(), one_node).err(),
+        Some(BuildError::Capacity),
+        "the sets"
+    );
+    assert!(
+        GraphBuilder::extend(
+            sets,
+            Capacity {
+                nodes: 2,
+                ..one_node
+            }
+        )
+        .is_ok()
+    );
+    let mut b = GraphBuilder::new(roomy()).unwrap();
+    b.table(TableKind::AesSbox).unwrap();
+    b.table(TableKind::Gf256Mul { c: 2 }).unwrap();
+    let tables = b.finish();
+    assert_eq!(
+        GraphBuilder::extend(tables.clone(), one_node).err(),
+        Some(BuildError::Capacity),
+        "the tables"
+    );
+    assert!(
+        GraphBuilder::extend(
+            tables,
+            Capacity {
+                nodes: 2,
+                ..one_node
+            }
+        )
+        .is_ok()
+    );
+}
+
 // ----- Nodes -------------------------------------------------------------------------------------
 
 /// A lowered graph extended with the builder's inputs, constants, sets and tables, which each
@@ -332,6 +471,10 @@ struct Fixture {
     z3: TensorId,
     /// Public `[1, 1, 1, 2]`, of four axes.
     x4: TensorId,
+    /// Public `[3, 4, 5]` (leading axis unlike `x3`'s), `[4, 6]` and `[4, 6, 1]`.
+    lead: TensorId,
+    w46: TensorId,
+    w461: TensorId,
     /// Public `[2]` and `[4]`.
     rows: TensorId,
     channels: TensorId,
@@ -343,6 +486,12 @@ struct Fixture {
     /// The lowering's positions `[4]`, and a public `[4, 2, 6]` to rotate.
     positions: TensorId,
     rotated: TensorId,
+    /// Public `[4, 2, 5]` and `[4, 1]`: odd widths with the positions' rows.
+    odd: TensorId,
+    narrow: TensorId,
+    /// A weight of three axes `[1, 5, 4]`, of `cube`.
+    cube: WeightRef,
+    cube_matrix: TensorId,
     /// Public scores `[2, 3, 3]`.
     scores: TensorId,
     /// Constants: `[3]`, one per channel of 4, of 3, the indices `[1, 0, 1]`, `[2]` and `[-1]`.
@@ -396,6 +545,9 @@ fn fixture() -> Fixture {
     let y3 = public(&mut b, &[2, 4, 5]);
     let z3 = public(&mut b, &[2, 5, 4]);
     let x4 = public(&mut b, &[1, 1, 1, 2]);
+    let lead = public(&mut b, &[3, 4, 5]);
+    let w46 = public(&mut b, &[4, 6]);
+    let w461 = public(&mut b, &[4, 6, 1]);
     let rows = public(&mut b, &[2]);
     let channels = public(&mut b, &[4]);
     let w = WeightRef {
@@ -406,6 +558,15 @@ fn fixture() -> Fixture {
     let classes = b.weight(Role::Classes(w), &[4], BIT, 0, 1).unwrap();
     let multipliers = b.weight(Role::Multipliers(w), &[3], BIT, 0, 1).unwrap();
     let rotated = public(&mut b, &[4, 2, 6]);
+    let odd = public(&mut b, &[4, 2, 5]);
+    let narrow = public(&mut b, &[4, 1]);
+    let cube = WeightRef {
+        ty: WeightType::K,
+        layer: 9,
+    };
+    let cube_matrix = b
+        .weight(Role::Weight(cube), &[1, 5, 4], INT8, -127, 127)
+        .unwrap();
     let scores = public(&mut b, &[2, 3, 3]);
     let one = b.constant(&[3]).unwrap();
     let per4 = b.constant(&[1, 2, 3, 4]).unwrap();
@@ -430,6 +591,9 @@ fn fixture() -> Fixture {
         y3,
         z3,
         x4,
+        lead,
+        w46,
+        w461,
         rows,
         channels,
         w,
@@ -438,6 +602,10 @@ fn fixture() -> Fixture {
         multipliers,
         positions,
         rotated,
+        odd,
+        narrow,
+        cube,
+        cube_matrix,
         scores,
         one,
         per4,
@@ -835,6 +1003,15 @@ fn the_linear_operations_rules_broken_alone_are_refused() {
                 Kind::Virtual,
             )
         }),
+        ("Transpose of no axis", Some(Rule::Permutation), |f| {
+            one(
+                f,
+                Op::Transpose { perm: perm(&[]) },
+                &[f.a],
+                &[2, 4],
+                Kind::Virtual,
+            )
+        }),
         ("Transpose past the axes", Some(Rule::Permutation), |f| {
             one(
                 f,
@@ -980,6 +1157,20 @@ fn the_products_rules_broken_alone_are_refused() {
                 Kind::Virtual,
             )
         }),
+        (
+            "MatMulWeight of a weight of three axes",
+            Some(Rule::MatMul),
+            |f| {
+                let w = f.cube;
+                one(
+                    f,
+                    Op::MatMulWeight { weight: w },
+                    &[f.a, f.cube_matrix],
+                    &[2, 5],
+                    Kind::Virtual,
+                )
+            },
+        ),
         ("MatMulWeight committed", Some(Rule::OutputKind), |f| {
             one(
                 f,
@@ -1027,6 +1218,18 @@ fn the_products_rules_broken_alone_are_refused() {
                 )
             },
         ),
+        ("MatMulAct of two axes", None, |f| {
+            one(
+                f,
+                Op::MatMulAct {
+                    transpose_rhs: false,
+                },
+                &[f.a, f.w46],
+                &[2, 6],
+                Kind::Virtual,
+            )
+        }),
+        // [2, 3, 4]·[3, 4, 5]: the inner axes agree, the leading ones alone differ.
         (
             "MatMulAct of leading axes that differ",
             Some(Rule::MatMul),
@@ -1036,23 +1239,39 @@ fn the_products_rules_broken_alone_are_refused() {
                     Op::MatMulAct {
                         transpose_rhs: false,
                     },
-                    &[f.x3, f.rotated],
-                    &[2, 3, 6],
+                    &[f.x3, f.lead],
+                    &[2, 3, 5],
                     Kind::Virtual,
                 )
             },
         ),
+        // [2, 4]·[4, 6, 1]: the rank alone differs; without the rule it would pass as [2, 6].
         ("MatMulAct of ranks that differ", Some(Rule::MatMul), |f| {
             one(
                 f,
                 Op::MatMulAct {
                     transpose_rhs: false,
                 },
-                &[f.x3, f.a],
-                &[2, 3, 4],
+                &[f.a, f.w461],
+                &[2, 6],
                 Kind::Virtual,
             )
         }),
+        (
+            "MatMulAct of a right operand with an axis less",
+            Some(Rule::MatMul),
+            |f| {
+                one(
+                    f,
+                    Op::MatMulAct {
+                        transpose_rhs: false,
+                    },
+                    &[f.x3, f.a],
+                    &[2, 3, 4],
+                    Kind::Virtual,
+                )
+            },
+        ),
         ("MatMulAct of one axis", Some(Rule::MatMul), |f| {
             one(
                 f,
@@ -1185,12 +1404,34 @@ fn the_products_rules_broken_alone_are_refused() {
                 )
             },
         ),
+        (
+            "Rotate with positions of another length",
+            Some(Rule::Rotate),
+            |f| {
+                one(
+                    f,
+                    Op::Rotate { rope: f.rope },
+                    &[f.x3, f.positions],
+                    &[2, 3, 4],
+                    Kind::Virtual,
+                )
+            },
+        ),
         ("Rotate of an odd width", Some(Rule::Rotate), |f| {
             one(
                 f,
                 Op::Rotate { rope: f.rope },
-                &[f.x3, f.positions],
-                &[2, 3, 4],
+                &[f.odd, f.positions],
+                &[4, 2, 5],
+                Kind::Virtual,
+            )
+        }),
+        ("Rotate of a width of 1", Some(Rule::Rotate), |f| {
+            one(
+                f,
+                Op::Rotate { rope: f.rope },
+                &[f.narrow, f.positions],
+                &[4, 1],
                 Kind::Virtual,
             )
         }),
@@ -1604,6 +1845,39 @@ fn the_gadgets_rules_broken_alone_are_refused() {
                 ],
             )
         }),
+        (
+            "SoftmaxRow's reciprocals virtual",
+            Some(Rule::OutputKind),
+            |f| {
+                let t = f.exp;
+                f.b.node(
+                    Op::SoftmaxRow {
+                        exp_table: t,
+                        sigma: 16,
+                    },
+                    &[f.scores],
+                    &[
+                        (&[2, 3, 3], Kind::Lookup { table: t }),
+                        (&[2, 3], Kind::Virtual),
+                    ],
+                )
+            },
+        ),
+        (
+            "SoftmaxRow's exponentials advice",
+            Some(Rule::OutputKind),
+            |f| {
+                let t = f.exp;
+                f.b.node(
+                    Op::SoftmaxRow {
+                        exp_table: t,
+                        sigma: 16,
+                    },
+                    &[f.scores],
+                    &[(&[2, 3, 3], Kind::Advice), (&[2, 3], Kind::Advice)],
+                )
+            },
+        ),
         ("SoftmaxRow of one output", Some(Rule::Outputs), |f| {
             let t = f.exp;
             one(
@@ -1642,6 +1916,32 @@ fn the_gadgets_rules_broken_alone_are_refused() {
                 &[f.channels],
                 &[4],
                 Kind::Advice,
+            )
+        }),
+        ("RsqrtRow of κ 31", None, |f| {
+            one(
+                f,
+                Op::RsqrtRow {
+                    kappa: 31,
+                    eps_int: 1,
+                    dim: 4,
+                },
+                &[f.channels],
+                &[4],
+                Kind::Advice,
+            )
+        }),
+        ("RsqrtRow virtual", Some(Rule::OutputKind), |f| {
+            one(
+                f,
+                Op::RsqrtRow {
+                    kappa: 4,
+                    eps_int: 1,
+                    dim: 4,
+                },
+                &[f.channels],
+                &[4],
+                Kind::Virtual,
             )
         }),
         ("RsqrtRow of κ 32", Some(Rule::Parameter), |f| {

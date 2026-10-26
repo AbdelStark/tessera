@@ -12,6 +12,22 @@
 //! that table again. Nodes are in topological order by construction, since a node reads only
 //! tensors that exist, and no tensor has two producers.
 //!
+//! # What it does not check
+//!
+//! The builder checks shapes, kinds and parameters' domains: what makes a graph one RFC-0006
+//! admits, not what makes it the graph the specification defines. A wrong rotation's indices, a
+//! swapped `Ch` operand or a wrong round constant pass every rule. Two preconditions follow:
+//!
+//! - **Its calls are the verifier's own.** Only the verifier's circuit builders, written from
+//!   the specification over public sizes, and tests may drive it. It must never be fed a graph
+//!   that the proof or the statement describes, node by node or in any other form: such a graph
+//!   would be the prover's word for the relation it is checked against (SP-7, RFC-0019
+//!   Alternative 2).
+//! - **Its capacity is already bounded.** The caller computes the [`Capacity`] from sizes that
+//!   the statement's maximum and the local [`ResourceLimits`](crate::ResourceLimits) have
+//!   already bounded, refusing larger sizes before building (`StatementMismatch { Batch }` or
+//!   `ERR-RES-MEMORY`): [`GraphBuilder::new`] reserves the whole capacity at once.
+//!
 //! # Declarations
 //!
 //! Each call checks, in this order, and the first rule broken is the error,
@@ -88,10 +104,19 @@
 //! no second input. A second input where none belongs, none where one does, or one of another
 //! shape is [`Rule::Classes`]; one of another kind [`Rule::InputKind`].
 //!
-//! Three readings of RFC-0006 are this module's. A `Requant`'s output is advice, as the
+//! Four readings of RFC-0006 are this module's. A `Requant`'s output is advice, as the
 //! lowering's are, not a lookup output, whose table gadget selection numbers later. `OneHot`'s
 //! vocabulary axis is the innermost, as in the lowering and RFC-0037. A `MatMulAct` reads its
 //! operands as one sequence's, RFC-0071's slots being a batch lowering's, not a built graph's.
+//! `Rotate`'s positions are a graph input declared public, as the lowering's are: a tensor
+//! RFC-0072 'What is public' would derive public from public inputs is refused, until the
+//! schedule derives public tensors.
+//!
+//! Two rules of the circuits are not the builder's. RFC-0066 'The graph' gives each
+//! `GatherPublic`, `ConstMul` and `ConstAdd` of the SHA-256 circuit a constant of its own, never
+//! shared, while RFC-0006's constant references may be shared: the circuit's builder keeps that
+//! rule, and its tests check it. And a table's id is its declaration's: a circuit's builder that
+//! declares each table just before its first node numbers them in node order of first use.
 //!
 //! # Capacity
 //!
@@ -248,6 +273,11 @@ impl fmt::Display for BuildError {
 impl std::error::Error for BuildError {}
 
 /// A graph built call by call, under RFC-0006's rules (module documentation).
+///
+/// It checks shapes and kinds, not meaning: only the verifier's own circuit builders and tests
+/// drive it, never a graph the proof or the statement describes, and its [`Capacity`] comes from
+/// sizes the statement's maximum and the local resource limits already bound (module
+/// documentation, 'What it does not check').
 #[derive(Debug)]
 #[must_use = "a builder does nothing until its graph is taken with `finish`"]
 pub struct GraphBuilder {
@@ -381,6 +411,8 @@ impl GraphBuilder {
         if !holds(ty, lo, hi) {
             return Err(declaration(Rule::Range));
         }
+        // A scan of every input, quadratic in the weight declarations: a lowering extended by
+        // a builder holds a few hundred inputs, and the anchor's graphs declare no weight.
         if self.graph.inputs.iter().any(|i| i.role == role) {
             return Err(declaration(Rule::Weight));
         }
@@ -564,23 +596,15 @@ impl GraphBuilder {
         let shapes = shapes.get(..outputs.len()).ok_or(fail(Rule::Outputs))?;
         self.check(&op, inputs, shapes).map_err(fail)?;
 
+        // The node, whole, before the graph changes: its outputs' ids are the next tensors'.
+        let first = self.graph.tensors.len();
         let mut created = [TensorId(0); 2];
         let slots = created
             .get_mut(..outputs.len())
             .ok_or(fail(Rule::Outputs))?;
-        for ((slot, &shape), &(_, kind)) in slots.iter_mut().zip(shapes).zip(outputs) {
-            let tensor = TensorId(
-                u32::try_from(self.graph.tensors.len()).map_err(|_| BuildError::Capacity)?,
-            );
-            push(
-                &mut self.graph.tensors,
-                Tensor {
-                    shape,
-                    kind,
-                    producer: Some(id),
-                },
-            )?;
-            *slot = tensor;
+        for (offset, slot) in slots.iter_mut().enumerate() {
+            let tensor = first.checked_add(offset).ok_or(BuildError::Capacity)?;
+            *slot = TensorId(u32::try_from(tensor).map_err(|_| BuildError::Capacity)?);
         }
         let node = Node {
             op,
@@ -588,7 +612,23 @@ impl GraphBuilder {
             outputs: Ids::of(created.get(..outputs.len()).ok_or(fail(Rule::Outputs))?)
                 .map_err(|_| fail(Rule::Outputs))?,
         };
-        push(&mut self.graph.nodes, node)?;
+        // Room for both, then the pushes, which cannot fail: nothing is added unless all is.
+        self.graph
+            .tensors
+            .try_reserve(outputs.len())
+            .map_err(|_| BuildError::Memory)?;
+        self.graph
+            .nodes
+            .try_reserve(1)
+            .map_err(|_| BuildError::Memory)?;
+        for (&shape, &(_, kind)) in shapes.iter().zip(outputs) {
+            self.graph.tensors.push(Tensor {
+                shape,
+                kind,
+                producer: Some(id),
+            });
+        }
+        self.graph.nodes.push(node);
         Ok(node)
     }
 

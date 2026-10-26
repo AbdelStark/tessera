@@ -242,6 +242,16 @@ fn operation(name: &str, params: &Json) -> Op {
     }
 }
 
+/// Each constant's values, by index.
+fn constant_lists(graph: &Graph) -> Vec<Vec<i64>> {
+    (0..graph.constant_count())
+        .map(|c| {
+            let c = u32::try_from(c).expect("a constant's index");
+            graph.constant(c).expect("each index a constant").to_vec()
+        })
+        .collect()
+}
+
 /// `[id, shape, kind]`: a tensor of the vectors.
 fn tensor(value: &Json) -> (u32, Vec<u32>, Kind) {
     let [id, shape, kind] = items(value) else {
@@ -384,7 +394,7 @@ fn compare(case: &Json, name: &str, graph: &Graph, diffs: &mut Differences) {
         .iter()
         .map(|c| items(c).iter().map(number).collect())
         .collect();
-    let found: Vec<Vec<i64>> = graph.constants().iter().map(|&c| vec![c]).collect();
+    let found = constant_lists(graph);
     diffs.check(name, "the constants", constants, found);
     let shifts: Vec<Vec<u8>> = list(case, "shift_classes")
         .iter()
@@ -518,7 +528,12 @@ fn the_node_and_tensor_ids_do_not_depend_on_the_length() {
             golden.name
         );
         assert_eq!(one.tables(), longest.tables(), "{}", golden.name);
-        assert_eq!(one.constants(), longest.constants(), "{}", golden.name);
+        assert_eq!(
+            constant_lists(&one),
+            constant_lists(&longest),
+            "{}",
+            golden.name
+        );
         assert_eq!(one.weights(), longest.weights(), "{}", golden.name);
     }
 }

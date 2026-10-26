@@ -607,10 +607,14 @@ impl Graph {
         self.nodes.get(usize::try_from(id.0).ok()?)
     }
 
-    /// Every constant's values, constant after constant in index order. Every constant the Llama
-    /// lowering creates is one value, so in a lowered graph entry `c` is constant `c`. A graph a
-    /// [`GraphBuilder`] made may hold constants of several values: read one by its index with
-    /// [`Graph::constant`].
+    /// Every value of every constant, flat, constant after constant in index order.
+    ///
+    /// **It is not indexed by constant.** A constant may hold several values, one per channel or
+    /// a gather's indices, so entry `c` is constant `c` only in a graph whose constants are all
+    /// one value, as the Llama lowering's are. Read constant `c` with [`Graph::constant`], and
+    /// count the constants with [`Graph::constant_count`]. Its length is what a [`Capacity`]'s
+    /// `constant_values` bounds. (The name is kept for the callers that count values in a
+    /// lowered graph.)
     pub fn constants(&self) -> &[i64] {
         &self.constant_values
     }
