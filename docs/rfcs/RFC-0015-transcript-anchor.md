@@ -28,6 +28,7 @@
   - 'Log format': `SessionCarry`, and a batch's entries read from its period's log;
   - 'Prover pre-check', 'Verifier checks' 2 and INV-ANC-2: the session rules over the period's log.
 - Amended by: [RFC-0066](RFC-0066-bits-and-sha256.md) ('Circuits' steps 3 and 4: the SHA-256 circuit's construction, its cost, and the binding's zero-check), [RFC-0071](RFC-0071-request-slots.md) ('Circuits' and 'Prover pre-check': in a batch, a request's frames bind its own slot's rows, and a failing request is left out)
+- Amended by: [RFC-0074](RFC-0074-anchor-binding.md) ('Circuits' steps 1 to 5: the circuits a batch's graph holds and their inputs from the log, the AES-128-CTR graph to the node, the plaintext committed per session and range-checked, and the binding's two `AssertEqual`s)
 
 ## Summary
 
@@ -143,7 +144,7 @@ For each request in the batch and each direction, the following hold. In a batch
 
 These steps are amended by [RFC-0059 'The circuits'](RFC-0059-frame-headers-and-nonces.md#the-circuits): the counter blocks and each plaintext's 22-byte prefix are public inputs, and the sampler commitment is opened too.
 
-1. **Token bytes.** The committed token stream feeds both the forward pass (`OneHot`, RFC-0009) and the frame plaintext: each token's four little-endian bytes are committed advice, range-checked to 8 bits, with `token = Σ_b byte_b 2^{8b}` (linear).
+1. **Token bytes.** The committed token stream feeds both the forward pass (`OneHot`, RFC-0009) and the frame plaintext: each token's four little-endian bytes are committed advice, range-checked to 8 bits, with `token = Σ_b byte_b 2^{8b}` (linear). [RFC-0074](RFC-0074-anchor-binding.md#the-token-byte-binding) states the relations: the bytes are the session's committed plaintext, `BitDecompose { 8, 0 }` range-checks it, and two `AssertEqual`s bind its public bytes to their values and its token bytes, recomposed, to the token axis's rows.
 2. **AES-128-CTR.** The key schedule runs once per session; each 16-byte counter block runs 10 rounds with S-box lookups (`AesSbox`), MixColumns through `Gf256Mul { 2 }`, `Gf256Mul { 3 }` and byte XORs (`Bitwise8 { xor }`). Ciphertext bytes are `plaintext ⊕ keystream`.
    - **The lowering.** `tessera_compiler::anchor` lowers it into the IR (RFC-0006):
      - the byte operations as `TableMap` and `Bitwise` lookups;

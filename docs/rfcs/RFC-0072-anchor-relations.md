@@ -16,6 +16,7 @@
   - [RFC-0008](RFC-0008-logup-and-tables.md#table-kinds) 'Table kinds': `Bitwise8` serves AES-128 alone (RFC-0066);
   - [RFC-0014](RFC-0014-interaction-and-soundness.md#soundness-calculator) 'Soundness calculator': a recomposition's `zero_checks` entry.
 - Origin: [#526](https://github.com/AbdelStark/tessera/issues/526)
+- Amended by: [RFC-0074](RFC-0074-anchor-binding.md) ('Real positions': the batch refusal, cut at the anchor's gather of real rows; 'Graphs without layers', 'In a model's graph': the circuits a batch holds; 'Non-Goals': token groups; 'Migration' item 3)
 
 ## Summary
 
@@ -62,7 +63,7 @@ A SHA-256 block of a message with committed bytes holds 680 zero-checks, 2,528 s
 - **`tessera-protocol/2`.** The circuits' committed bits are advice, masked under RFC-0013's rules. Their sums and some of their carries at `M ≤ 2` have fewer than the two variables a masked tensor needs, so #145 pads them, or R10's check refuses the schedule (#488). Their virtual tensors take RFC-0013's masks and folds, in #145's argument. The selection relation leaves its claims at random points, so it adds no Boolean coordinate that R8 forbids.
 - **The anchor's wiring.** #146 puts the circuits into a batch's graph, its inputs taken from the log and the session, and its statement's sizes; #163 tests it end to end.
 - **The verifier's mirror** of these relations is #150's and #159's.
-- **Token groups.** RFC-0054 refuses a `Bitwise` site, and the other operations its token axis lists, in a leaf stage in token groups. RFC-0054's token axis has no rule for RFC-0066's operations either. So a batch that carries the anchor circuits runs its leaf stage without token groups, or #146 amends RFC-0054.
+- **Token groups.** RFC-0054 refuses a `Bitwise` site, and the other operations its token axis lists, in a leaf stage in token groups. RFC-0054's token axis has no rule for RFC-0066's operations either. So a batch that carries the anchor circuits runs its leaf stage without token groups, or #146 amends RFC-0054, as [RFC-0074](RFC-0074-anchor-binding.md#the-leaf-stage-and-token-groups) does.
 - **Stacking instances of one kind** ('Alternatives Considered' 3).
 
 ## Proposed Design
@@ -94,6 +95,7 @@ A SHA-256 block of a message with committed bytes holds 680 zero-checks, 2,528 s
 **Real positions.** A tensor's real positions are those inside its shape `(n_a)`. Its selector `ψ(x) = Π_a [x_a < n_a]` is 1 on them, with extension `ψ̃(r) = Π_a LT(r_a, n_a)`: the selector of `ConstAdd`, of `AssertEqual` and of the input padding check alike.
 - **In a batch of several requests** (RFC-0071), the rows of each slot past its request's length are RFC-0071's padded rows, although they are real positions here, inside the token axis's shape ('Real and padded rows'). So a tensor downstream of the tokens or the positions, by any path through the graph, would need RFC-0071's row factor on its token axis.
 - **Refused until #146.** A `ConstAdd` or an `AssertEqual` with an input so downstream, in a graph of more than one request, is refused when the schedule is derived (`ERR-INTERNAL`). Reachability decides it on any graph, without RFC-0054's token axis. #146 binds the anchor to the tokens and states that selector. The circuits read neither the tokens nor the positions, and Llama has neither operation.
+- **The anchor's read** ([RFC-0074](RFC-0074-anchor-binding.md#batches-of-several-requests)). Reachability does not pass through a `GatherPublic` that reads the tokens or the positions directly, and such a gather is refused unless each index is a real row. The token binding reads the tokens so. Every other path stays refused.
 
 Every tensor's padded positions hold what its operation computes from its inputs' padded positions, as RFC-0035 'What a padded row holds' says. `ConstAdd` is the exception, and selections, `Expand` and `Rotate` are 0 on their padded rows by their relations. That holds for virtual and public tensors too:
 - graph inputs and constants pad with zeros, and a per-channel constant is 0 at padded channels;
