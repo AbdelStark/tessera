@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0050](RFC-0050-gadget-advice-columns.md) ('Production order': canonical gadget auxiliary order), [RFC-0071](RFC-0071-request-slots.md) ('Non-Goals', 'Tiles', 'The plan' and 'Drawbacks': a batch's tiles, query blocks within one request), [RFC-0074](RFC-0074-anchor-binding.md) ('Motivation' and 'Production order': the anchor's inputs from the log, and its tiles after the model's nodes)
+- Amended by: [RFC-0050](RFC-0050-gadget-advice-columns.md) ('Production order': canonical gadget auxiliary order), [RFC-0071](RFC-0071-request-slots.md) ('Non-Goals', 'Tiles', 'The plan' and 'Drawbacks': a batch's tiles, query blocks within one request), draft [RFC-0074](RFC-0074-anchor-binding.md) ('Motivation' and 'Production order': the anchor's inputs from the log, and its tiles after the model's nodes; in effect when it is accepted)
 - Supersedes, on acceptance:
   - [RFC-0006](RFC-0006-compiler-ir.md#tiling-and-the-execution-plan) 'Tiling and the execution plan': what a tile holds, the production order, and the plan's contents. The plan carries the claim list and one sequence's tiles. It holds neither row ranges, nor stage membership, nor devices.
   - [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) 'Canonical advice layout' rule 2: tensors are allocated tile by tile, in this RFC's production order;
@@ -84,7 +84,7 @@ The tiles of a sequence come in this order:
 2. the `Node` and `Attention` tiles, in node order. The attention node's tiles take its place, by KV head, then query block. This orders the prologue's nodes, each layer's, then the epilogue's;
 3. the `Table` tiles, by table id, for each table that a lookup reads.
 
-In a batch's graph, the anchor's committed inputs and its nodes' committed outputs come between the model's nodes' tiles and the `Table` tiles ([RFC-0074](RFC-0074-anchor-binding.md#the-advice-layout-and-the-openings)).
+In a batch's graph, the anchor's committed inputs and its nodes' committed outputs come after the model's nodes' tiles and before the greedy certificate's maximum and the `Table` tiles (draft [RFC-0074](RFC-0074-anchor-binding.md#the-advice-layout-and-the-openings)).
 
 Within a tile, values come in this order:
 - the node's outputs, in output order;

@@ -11,7 +11,7 @@
   - each sum's operand order, `e`'s `Add(shared, d)` among them, the table listing `d` last;
   - the digest's binding, the permutations and the constants;
   - messages of one circuit that differ in length.
-- Amended by: [RFC-0074](RFC-0074-anchor-binding.md) ('The message': one frame per circuit, its committed bytes a `Slice` of the AES ciphertext)
+- Amended by: draft [RFC-0074](RFC-0074-anchor-binding.md) ('The message': one frame per circuit, its committed bytes a `Slice` of the AES ciphertext; in effect when it is accepted)
 - Amends:
   - [RFC-0006](RFC-0006-compiler-ir.md#operation-set) 'Operation set': three operations join the closed set, `BitDecompose`, `BitFn` and `AssertEqual`, and `Bitwise` is AES's alone;
   - RFC-0006 'Range analysis': the three operations' ranges and integrality rules;
@@ -158,7 +158,7 @@ The two round sums share their first rows, `h + Σ1(e) + Ch(e, f, g) + W_t`. The
 **The message.**
 - **Its bytes**, padding included, are public, except those the prover commits: the ciphertext's, a committed key's or salt's.
 - **A public byte** enters as public bits.
-- **A committed byte** enters through `BitDecompose { low: 8, high: 0 }` of that byte. The circuit takes its committed bytes as one `[K, M]` tensor, `K` per message, in offset order. Over several frames, the anchor gathers that tensor from the AES circuit's `[16, B]` ciphertext with `Transpose`, `Reshape` and `GatherPublic` (#146). [RFC-0074](RFC-0074-anchor-binding.md#the-composed-graph) takes one frame per circuit, its bytes a `Slice` of the flattened ciphertext.
+- **A committed byte** enters through `BitDecompose { low: 8, high: 0 }` of that byte. The circuit takes its committed bytes as one `[K, M]` tensor, `K` per message, in offset order. Over several frames, the anchor gathers that tensor from the AES circuit's `[16, B]` ciphertext with `Transpose`, `Reshape` and `GatherPublic` (#146). draft [RFC-0074](RFC-0074-anchor-binding.md#the-composed-graph) takes one frame per circuit, its bytes a `Slice` of the flattened ciphertext.
 - **The message's bits** are `Xor(message, Mul(gather(c), place))`, a `[512·N, M]` tensor of words, 16 per block:
   - `message` is the public bits of the padded messages, and **0 at every committed byte's bits**. The verifier builds it so, from the public bytes alone.
   - `c` is the committed bits, row `8k + i` holding bit `i` of committed byte `k`. The gather puts each one at its word position, and row 0 at the others.

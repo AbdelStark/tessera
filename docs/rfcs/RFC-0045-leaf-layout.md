@@ -134,7 +134,7 @@ The lookup tree's leaf `i` holds column entry `σ_h(i)`, where `σ_h` keeps bit 
 
 ### The verifier's derivation
 
-The verifier derives the sites, the blocks, their offsets and the instances' heights from the claim list. It uses its own lowering (RFC-0044) and gadget selection (RFC-0006), and nothing the prover sends. It reads `P` from the transcript.
+The verifier derives the sites, the blocks, their offsets and the instances' heights from the claim list. It uses its own lowering (RFC-0044) and gadget selection (RFC-0006), and nothing the prover sends. It reads `P` from the transcript. The anchor's sites and blocks come from the batch's verified logs (draft [RFC-0074](RFC-0074-anchor-binding.md#the-leaf-stage-and-token-groups)).
 
 ## Alternatives Considered
 

@@ -7,7 +7,7 @@
 - Supersedes, on acceptance:
   - [04 §2](../spec/04-error-model.md#2-verdicts) 'Verdicts': `StatementField`, the payload of `Reject(StatementMismatch)`, is defined here;
   - [RFC-0007](RFC-0007-claim-list.md#verifier-validation) 'Verifier validation': every step names the field it rejects with. Step 1 defers to RFC-0019's order. Step 2 states every architecture and quantization rule. Step 5 checks the gadget policy first and the table set last.
-- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('The checks', step 2.4: in `tessera-protocol/2`, affine `ChannelParams` sites only, until #486), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('The checks', step 2.4: lifted), [RFC-0074](RFC-0074-anchor-binding.md) ('The checks', step 7: the scoring template alone)
+- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('The checks', step 2.4: in `tessera-protocol/2`, affine `ChannelParams` sites only, until #486), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) ('The checks', step 2.4: lifted), draft [RFC-0074](RFC-0074-anchor-binding.md) ('The checks', step 7: the scoring template alone; in effect when it is accepted)
 - Origin: [#346](https://github.com/AbdelStark/tessera/issues/346)
 
 ## Summary
@@ -81,7 +81,7 @@ Its TCE encoding is RFC-0003's: a `u16` tag, the variant's declaration index, th
 | 5.2 | each gadget-backed node's key, inputs, preconditions and `Exp` table | `Gadget { gadget }`, the first in node order, numbered as [RFC-0006](RFC-0006-compiler-ir.md#gadget-selection) numbers gadgets |
 | 5.3 | the derived tables against the claim list's, id for id | `Table { table }`, the first id whose two specifications differ, or that only one side has |
 | 6 | the commitment parameters and the advice layout | `Layout` |
-| 7 | the scoring template; the anchor joins no field ([RFC-0074](RFC-0074-anchor-binding.md#the-claim-list-and-the-statement)) | `Template` |
+| 7 | the scoring template; the anchor joins no field (draft [RFC-0074](RFC-0074-anchor-binding.md#the-claim-list-and-the-statement)) | `Template` |
 | RFC-0019 step 4 | the proof's `PublicStatement` against the one the verifier's inputs give | the first field that differs, in declaration order ([RFC-0036](RFC-0036-protocol-messages.md#round1)): `ClaimListDigest`, `WeightsRoot`, `WeightsEpoch`, `ManifestDigest`, `Batch`, `Predictor`. `Batch` includes a request outside the audit sample or already proven ([RFC-0043](RFC-0043-rejection-payloads.md#the-audit-samples-checks)) |
 | RFC-0019 step 4 | the weight commitment's layout against the claim list's ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#the-verifiers-weight-inputs)) | `Layout` |
 | RFC-0019 step 4 | `Round1`'s `layout_digest` against the `commitment_id` the verifier derives ([RFC-0031](RFC-0031-commitment-id.md#layout_digest)) | `LayoutDigest` |

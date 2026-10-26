@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-21
 - Target milestone: v0.3
-- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Public request and sources', the native relations and 'Schedule, transcript and budget': in a batch, one maximum for the batch, a key column, key relation and time coefficient per request with outputs, one observation only when none has, and their registration order), [RFC-0074](RFC-0074-anchor-binding.md) ('Public request and sources': the node count is the whole graph's, the anchor's nodes included)
+- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Public request and sources', the native relations and 'Schedule, transcript and budget': in a batch, one maximum for the batch, a key column, key relation and time coefficient per request with outputs, one observation only when none has, and their registration order), draft [RFC-0074](RFC-0074-anchor-binding.md) ('Public request and sources': the node count is the whole graph's, the anchor's nodes included; in effect when it is accepted)
 - Origin: #128 and #130; IDEA-0038 / EXP-0025
 - Supersedes: RFC-0009 Argmax's physical range/maximum representation; RFC-0037's native boundary and source schedule; RFC-0045's runtime lookup columns; RFC-0047/0050's complete advice order and RFC-0041's private tile enum, extended below. It adds no protocol-message field or parameter preset and preserves RFC-0011's per-group evaluation checks.
 
@@ -48,7 +48,7 @@ their independent per-axis power-of-two padding.
 `L[t,v]` is the actual final LM-head output; `H[t,v]` the model's actual OneHot.
 The output token at `prompt+u` uses logits at `prompt-1+u`. Certificate ids are
 the graph node count plus the verifier-derived request ordinal, reserving every
-model node id. The count is the whole graph's, the anchor's nodes included ([RFC-0074](RFC-0074-anchor-binding.md#the-composed-graph)). Arithmetic is checked. A maximum is a
+model node id. The count is the whole graph's, the anchor's nodes included (draft [RFC-0074](RFC-0074-anchor-binding.md#the-composed-graph)). Arithmetic is checked. A maximum is a
 certificate source, never an invented model node or model auxiliary.
 
 Allocate `M[t]` on the model's padded time domain. Real output-logit positions
