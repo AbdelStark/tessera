@@ -48,7 +48,7 @@ their independent per-axis power-of-two padding.
 `L[t,v]` is the actual final LM-head output; `H[t,v]` the model's actual OneHot.
 The output token at `prompt+u` uses logits at `prompt-1+u`. Certificate ids are
 the graph node count plus the verifier-derived request ordinal, reserving every
-model node id. The count is the whole graph's, the anchor's nodes included (draft [RFC-0074](RFC-0074-anchor-binding.md#the-composed-graph)). Arithmetic is checked. A maximum is a
+model node id. Under draft [RFC-0074](RFC-0074-anchor-binding.md#the-composed-graph), in effect when it is accepted, the count is the whole graph's, the anchor's nodes included. Arithmetic is checked. A maximum is a
 certificate source, never an invented model node or model auxiliary.
 
 Allocate `M[t]` on the model's padded time domain. Real output-logit positions

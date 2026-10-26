@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-24
 - Target milestone: v0.4
+- Amended by: draft [RFC-0074](RFC-0074-anchor-binding.md) ('Why a frame of its own': at most two empty frames per request; in effect when it is accepted)
 - Supersedes in the listed sections:
   - [RFC-0015](RFC-0015-transcript-anchor.md#frames):
     - 'Deployment assumptions', A-ANCHOR-2: the recorder sequences inbound frames before the cluster can read them, and logs request ends;
@@ -60,7 +61,7 @@ RequestEnd { seq: u64, t_ns: u64, session_id: [u8; 16], request_id: u64 }      D
 - **Request ids.** A session never reuses a `request_id`. A reuse within one window breaks rule 1 or 5. A reuse two periods apart makes two candidates with disjoint frames, each its own ledger entry.
 - **A session's close** goes on the outbound path after the session's last request end.
 - **Why a frame of its own.**
-  - **Not an empty frame.** An empty outbound frame could have marked the end, but RFC-0059 allows empty frames anywhere, and a stack that sent one mid-stream would end its request early.
+  - **Not an empty frame.** An empty outbound frame could have marked the end, but RFC-0059 allows empty frames anywhere, and a stack that sent one mid-stream would end its request early. Under draft [RFC-0074](RFC-0074-anchor-binding.md#the-anchors-inputs), in effect when it is accepted, a request holds at most two of them.
   - **Not a header flag.** A flag in the frame header would change RFC-0059's header and entry for every frame.
 
 ### The periods

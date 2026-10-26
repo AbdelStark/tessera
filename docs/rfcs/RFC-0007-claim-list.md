@@ -44,7 +44,7 @@ pub struct ClaimList {                       // schema 0x0201, version 1
     pub gadget_policy: GadgetPolicy,
     pub layout: CommitmentLayout,
     pub params: ParamSetId,                  // RFC-0014
-}                                            // scoring joins with its circuits (RFC-0026); the anchor joins none (draft RFC-0074)
+}                                            // scoring and anchor join with their circuits (RFC-0026); draft RFC-0074: the anchor joins none
 
 pub struct PublicQuantSpec {
     pub act_exponents: Vec<(QuantPoint, i8)>,      // per-tensor activation scales 2^e, sorted
@@ -133,7 +133,7 @@ Before reading any proof message, the verifier runs these checks in order. The f
       - a `SoftmaxRow`'s `Exp` table maps its last key to 0 ([RFC-0030](RFC-0030-masked-exponentials.md#range-analysis-and-validation)).
    3. The tables the lowering derives are the claim list's, id for id (`Table { table }`, the first id that differs). A lookup names a lookup table, never a `Rope` table ([RFC-0008](RFC-0008-logup-and-tables.md#table-kinds)): no lowering derives one for a lookup.
 6. Layout: commitment parameters are those the parameter set prescribes, and the advice layout derives and fits within the protocol's maximum, `2^{32}` rows at `n = max_context` ([RFC-0047](RFC-0047-advice-order.md#the-maximum-layout)) (`Layout`). Its attention tiles take `log2 query_block` ([RFC-0034](RFC-0034-causal-blocks.md#causal-layout)), so `query_block` is a power of two, and a row holds one key against a tile's queries and heads: `g·min(query_block, N_max) ≤ k` ([RFC-0046](RFC-0046-advice-segments.md#rows-too-short-for-a-key)).
-7. The scoring template names supported variants, once it joins the claim list ([RFC-0026](RFC-0026-claim-list-layout.md)) (`Template`). The anchor joins none (draft [RFC-0074](RFC-0074-anchor-binding.md#the-claim-list-and-the-statement)).
+7. Scoring and anchor templates name supported variants, once they join the claim list ([RFC-0026](RFC-0026-claim-list-layout.md)) (`Template`). Under draft [RFC-0074](RFC-0074-anchor-binding.md#the-claim-list-and-the-statement), in effect when it is accepted, the anchor joins none, and the step reads the scoring template alone.
 
 The derived constraint system has a canonical digest (`ConstraintSystemDigest`, computed by both the compiler and the verifier with independent code). It is not part of the protocol; CI compares the two digests on every conformance model to detect lowering divergence early.
 

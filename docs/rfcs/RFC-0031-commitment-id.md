@@ -66,7 +66,7 @@ pub enum WeightMatrix { Embed, Q, K, V, O, Gate, Up, Down, LmHead, ChannelParams
 `commitment_id = H("commitment-id", TCE(CommitmentDescriptor))`. Every field is public:
 
 - **Advice.**
-  - The statement digest binds the claim list, `R_W` and its epoch, the manifest and the batch. The layout, a function of the claim list, the batch descriptor and the anchor's inputs from the manifest's logs (INV-PCS-1), follows from it.
+  - The statement digest binds the claim list, `R_W` and its epoch, the manifest and the batch. The layout, a function of the claim list and the batch descriptor (INV-PCS-1), follows from it. Under draft RFC-0074, in effect when it is accepted, it is also a function of the anchor's inputs from the manifest's logs, which the statement digest binds through the manifest.
   - `unit` is always 0 (RFC-0057). It keeps its place so that the descriptor's encoding, and every digest, is unchanged.
   - `layout` and `rows` state the code and the number of rows each column chain absorbs. The verifier derives the rows from the layout, never from the prover.
 - **Weights.**
