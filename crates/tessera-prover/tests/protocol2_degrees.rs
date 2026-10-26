@@ -7,8 +7,8 @@
 //! constant class, the test builds the relation on the row's tiny masked instance: every
 //! committed or virtual read is its masked extension `V' = Ṽ + Z·R̃_V`, with
 //! `Z = Π_{i ≥ 2} y_i(1 − y_i)` over the read's own variables `y` and a random mask over all of
-//! them; every public table, constant and kernel is random and multilinear over the variables its
-//! relation gives it, or the selector it is. It evaluates every round polynomial of the instance's
+//! them; each public table, constant and kernel is random and multilinear over its relation
+//! variables, or the RFC's fixed selector or weight. It evaluates every round polynomial of the instance's
 //! sumcheck, at random earlier challenges, at 14 nodes, more than the `d + 2` a degree of `d`
 //! needs, and reads its degree from their finite differences. It asserts that every round's degree
 //! is at most the row's `d`, and that the largest is exactly `d` on a row the table marks tight
@@ -608,17 +608,21 @@ fn cases() -> Vec<Case> {
     }
 
     // `Recomposition`: `low = 2`, `high = 4`, so `k_b = 1`, `k_h = 2` and `k = 2` bit variables,
-    // the lowest, under `n_y = 2`; random public tables in place of `W_b` and `W_h`. `b` is read
+    // the lowest, under `n_y = 2`; RFC-0072's exact weights and zero-extensions. `b` is read
     // at the high `k_b` bit coordinates, `h` at both, `x` at `y` alone.
     for x_public in [false, true] {
         let (v, b, h, wb, wh, z, s) = (
             Operand::new(rng, 2, x_public),
             Masked::new(rng, 3),
             Masked::new(rng, 4),
-            rng.table(2),
-            rng.table(2),
+            [1, 0, 2, 0]
+                .map(|v| F::from(Goldilocks::from_u64_reduced(v)))
+                .to_vec(),
+            [1, 2, 4, 8]
+                .map(|v| F::from(Goldilocks::from_u64_reduced(v)))
+                .to_vec(),
             rng.elements(2),
-            rng.element(),
+            F::from(Goldilocks::from_u64_reduced(4)).inverse().unwrap(),
         );
         cases.push(Case::new(
             format!("Recomposition, x public {x_public}"),
@@ -627,7 +631,9 @@ fn cases() -> Vec<Case> {
             move |x| {
                 let (i, y) = x.split_at(2);
                 eq(&z, y)
-                    * (s * v.at(y) - mle(&wb, i) * b.at(&with(&i[1..], y)) - mle(&wh, i) * h.at(x))
+                    * (s * v.at(y)
+                        - mle(&wb, i) * (F::ONE - i[0]) * b.at(&with(&i[1..], y))
+                        - F::from(Goldilocks::from_u64_reduced(4)) * mle(&wh, i) * h.at(x))
             },
         ));
     }

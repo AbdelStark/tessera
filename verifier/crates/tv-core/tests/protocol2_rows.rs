@@ -251,13 +251,9 @@ fn build(
             let a = Tensor::new(rng, 2, p(0));
             let b = Tensor::new(rng, 3, false);
             let h = Tensor::new(rng, 4, false);
-            let wb = Tensor::new(rng, 2, true);
-            let wh = Tensor::new(rng, 2, true);
             Box::new(move |x| {
                 eq(&rho[2..], &x[2..])
-                    * (a.at(&x[2..]) * Fe::base(4).inverse().unwrap()
-                        - wb.at(&x[..2]) * b.at(&x[1..])
-                        - wh.at(&x[..2]) * h.at(x))
+                    * recomposition_term(x, a.at(&x[2..]), b.at(&x[1..]), h.at(x))
             })
         }
         "Product" => {
@@ -465,4 +461,37 @@ fn lowering_any_tight_row_by_one_fails_the_independent_measurement() {
         }
     }
     assert_eq!(checked, 77);
+}
+
+/// RFC-0072 low=2/high=4: both W_b and b-hat carry the zero-extension factor.
+fn recomposition_term(point: &[Fe], value: Fe, low: Fe, high: Fe) -> Fe {
+    let z = Fe::ONE - point[0];
+    let wb = z * (Fe::ONE + point[1]);
+    let wh = (Fe::ONE + point[0]) * (Fe::ONE + Fe::base(3) * point[1]);
+    value * Fe::base(4).inverse().unwrap() - wb * z * low - Fe::base(4) * wh * high
+}
+
+#[test]
+fn recomposition_fixture_pins_integer_weights_and_both_off_cube_padding_factors() {
+    let residual = |word| {
+        (0..4).fold(Fe::ZERO, |sum, i| {
+            let point = [Fe::base(i & 1), Fe::base(i >> 1), Fe::ZERO, Fe::ZERO];
+            let low = if i >> 1 == 0 { Fe::ONE } else { Fe::ZERO };
+            let high = if i == 0 { Fe::ONE } else { Fe::ZERO };
+            sum + recomposition_term(&point, Fe::base(word), low, high)
+        })
+    };
+    // 5 = 1 + 2^2 * 1; changing only the input word leaves residual one.
+    assert_eq!(residual(5), Fe::ZERO);
+    assert_eq!(residual(6), Fe::ONE);
+    // Boolean checks cannot distinguish z from z^2. At i0=2, both factors give -1 here.
+    assert_eq!(
+        recomposition_term(
+            &[Fe::base(2), Fe::ZERO, Fe::ZERO, Fe::ZERO],
+            Fe::ZERO,
+            Fe::ONE,
+            Fe::ZERO
+        ),
+        Fe::ZERO - Fe::ONE
+    );
 }

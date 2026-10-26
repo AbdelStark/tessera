@@ -249,3 +249,28 @@ fn operand_counts_constant_classes_and_public_output_guards_fail_closed() {
         Err(ScheduleError::Internal)
     );
 }
+
+/// Layer stacking must not hide head stacking: these are real one-layer lowerings (lambda=0).
+#[test]
+fn head_stacking_sets_the_matmul_degree_without_a_layer_variable() {
+    use tv_core::schedule::{self, Relation};
+    for heads in [1, 2] {
+        let mut claims = claim_support::with_layers(&golden("tiny-2-servable"), 1);
+        claims.arch.n_heads = heads;
+        claims.arch.n_kv_heads = 1;
+        claims.arch.d_model = heads * claims.arch.d_head;
+        let graph = lowering::lower(&validation::check_public(&claims).unwrap(), 4).unwrap();
+        let schedule = schedule::derive(&graph).unwrap();
+        assert_eq!(schedule.layer_vars(), 0);
+        let mut checked = 0;
+        for instance in schedule.stages().iter().flat_map(|s| &s.instances) {
+            if matches!(instance.relation, Relation::MatMulAct { .. }) {
+                let degree = degree::protocol2_instance(&graph, &schedule, instance).unwrap();
+                assert_eq!(degree.stacked, heads > 1);
+                assert_eq!(degree.row.degree, if heads > 1 { 7 } else { 6 });
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 2);
+    }
+}
