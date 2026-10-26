@@ -91,7 +91,7 @@
 //!
 //! It reads the compiled [`StageSchedule`], which does not hold every revealed point of
 //! `tessera-protocol/2`. RFC-0013 'Committed tensors' 'Hiding' states R10's gap as one list, these
-//! nine items in this order, and makes it block #154 and #159; each is to be added as its
+//! ten items in this order, and makes it block #154 and #159; each is to be added as its
 //! geometry is compiled:
 //! 1. the leaf stage's values of gadget outputs and auxiliary columns at their leaf read points
 //!    (RFC-0068 step 5's `v_{s,t}` on value forms); the schedule's leaf sites are gadget inputs
@@ -102,8 +102,11 @@
 //! 4. `SoftmaxRow`'s reciprocal at its row point, its maximum, `Exp` at its score-leaf point and
 //!    the `Exp` row sum at key coordinates `½` (RFC-0037 'The claim pool', RFC-0030), which the
 //!    prover assembles outside the schedule;
-//! 5. native raw evaluations on graph tensors, such as the greedy natives' reads of the one-hot
-//!    tokens at their carry points, whose `tessera-protocol/2` form RFC-0053 disclaims;
+//! 5. the native relations' raw evaluations, on graph tensors and on auxiliary columns at the
+//!    natives' own points: the root's bytes and input limbs in each coefficient product,
+//!    `SoftmaxRow`'s maximum in its key, forest and padding relations, and the greedy certificate's
+//!    reads of the one-hot tokens at their carry points, whose `tessera-protocol/2` form RFC-0053
+//!    disclaims;
 //! 6. the multiplicities' claims;
 //! 7. the tree levels' masks, the identity sumcheck's root levels (RFC-0032) and the `SoftmaxRow`
 //!    leaf mask;
@@ -112,7 +115,9 @@
 //!    the advice the check keeps such a value apart from every other ([`Functional::scale`]) and
 //!    reads it through the stacked kind's mask row; on a weight matrix it refuses it
 //!    ([`Finding::ScaledWeight`]), since a matrix's pair would drop it as its first claim's value;
-//! 9. batches of several requests (RFC-0071, `R ≥ 2`): a claim list is checked for one request.
+//! 9. batches of several requests (RFC-0071, `R ≥ 2`): a claim list is checked for one request;
+//! 10. the anchor's circuits (RFC-0066, RFC-0072), whose schedules this check does not lower:
+//!     their committed bits and bytes, once they join a batch's graph (#146, #526).
 //!
 //! Outside R10 altogether, other lemmas cover the masking polynomials' `G(r)` and RFC-0070's
 //! batching (`M`, `S`, `r*`; Lemma 4a), and the combined rows, the advice groups' blinding rows
@@ -159,7 +164,8 @@ pub enum ColumnRule {
     /// read a virtual tensor's row at the point of a value, and serves as the regression control.
     Row,
     /// RFC-0013 as amended by #488: `c = min(n_V, log2 k − 1)` for a virtual tensor whose mask a
-    /// reduction stage folds, `c = min(n_V, log2 k)` for a committed tensor.
+    /// reduction stage folds; for a committed tensor, its data column's `min(n_P, log2 k)` under
+    /// [`CommittedColumns::RULE`] (#554).
     BelowRow,
 }
 
