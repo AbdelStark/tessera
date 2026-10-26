@@ -10,19 +10,23 @@
 //!
 //! The cases:
 //! - every claim list of `spec/vectors/claims/claim-lists.json`, at the lengths
-//!   `spec/vectors/schedule/` covers (1, 4, 5 and `max_context`, `schedule_vectors.rs`), for each
-//!   request: none, a prefill and a generation (`Request`);
+//!   `spec/vectors/schedule/` covers (1, 4, 5 and `max_context`, `schedule_vectors.rs`) and 3,
+//!   the shortest layout of `tessera-protocol/2`, for each request: none, a prefill and a
+//!   generation (`Request`);
 //! - Llama-3.1-405B's claim list, servable with two shift classes at every site after a weight,
 //!   for `ni-100/1`'s layout (advice `log2 k = 22`, weights 20; the fixture of
 //!   `crates/tessera-bench/tests/commitment_report.rs`, copied in [`llama_405b`]), at
-//!   `n = 2^j` and `2^j + 1` for `j = 0..17` within `max_context`, for a generation. The
+//!   `n = 2^j` and `2^j + 1` for `j = 0..17` within `max_context`, for each request. The
 //!   lengths cover every `⌈log2 n⌉`, on which the schedule's points depend: RFC-0013's amendment
 //!   comes from `n ∈ (16384, 32768]`.
 //!
-//! Each length `n` is checked at the token-axis shape `tessera-protocol/2` lays out,
-//! `masks::protocol2_length(n) = max(n, 4)` (RFC-0013 'Masked extensions', RFC-0071 'The slots'),
-//! and reported with both. Cases of one claim list, checked length and request share one check,
-//! and the checks run on up to [`WORKERS`] threads.
+//! Each length `n` is checked at the token-axis layout `tessera-protocol/2` gives it,
+//! `masks::protocol2_length(n) = max(n, 3)` (RFC-0013 'Masked extensions', RFC-0047, RFC-0071
+//! 'The slots'), and reported with both. Each check runs under both readings of #554, committed
+//! tensors' mask columns in tensor order and limited to the data claim's own column inputs
+//! (`CommittedColumns::BOTH`); a case passes only if both pass, and its findings are reported
+//! per reading. Cases of one claim list, checked length and request share one check, and the
+//! checks run on up to [`WORKERS`] threads.
 
 use std::fs;
 use std::io;
@@ -35,7 +39,9 @@ use std::thread;
 use serde_json::Value;
 use tessera_codec::{Ascii, DecodeLimits, Rational, envelope, schema};
 use tessera_compiler::schedule::Request;
-use tessera_compiler::schedule::masks::{ColumnRule, MaskReport, check_at, protocol2_length};
+use tessera_compiler::schedule::masks::{
+    ColumnRule, CommittedColumns, MaskReport, check_readings, protocol2_length,
+};
 use tessera_compiler::{Lowering, PublicModel, analyze, claim_list, lower, select};
 use tessera_ir::{
     AdviceLayoutParams, ArchFamily, ArchSpec, ClaimList, CommitmentLayout, GadgetPolicy,
@@ -78,7 +84,7 @@ fn hex(text: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
-/// The conformance claim lists of the tree at `repo`, each at the lengths 1, 4, 5 and its
+/// The conformance claim lists of the tree at `repo`, each at the lengths 1, 3, 4, 5 and its
 /// `max_context`, for every request.
 pub(crate) fn vector_cases(repo: &Path) -> Result<Vec<Case>, String> {
     let path = claim_vectors::PATH;
@@ -102,7 +108,7 @@ pub(crate) fn vector_cases(repo: &Path) -> Result<Vec<Case>, String> {
             .ok_or_else(|| format!("{source}: case `{name}` has no hex claim list"))?;
         let claims: ClaimList = envelope::open(&bytes, &schema::CLAIM_LIST, DecodeLimits::MESSAGE)
             .map_err(|e| format!("{source}: case `{name}` is no claim list (RFC-0007): {e}"))?;
-        for n in [1, 4, 5, claims.arch.max_context] {
+        for n in [1, 3, 4, 5, claims.arch.max_context] {
             for request in REQUESTS {
                 cases.push(Case {
                     source: source.clone(),
@@ -255,19 +261,22 @@ pub(crate) fn llama_405b() -> Result<ClaimList, String> {
     claim_list(model, &selection, &policy, layout, params).map_err(|e| fail(&e))
 }
 
-/// The 405B claim list's cases: a generation at every length of [`lengths`].
+/// The 405B claim list's cases: every request at every length of [`lengths`].
 pub(crate) fn llama_405b_cases(claims: &ClaimList) -> Vec<Case> {
-    lengths(claims.arch.max_context)
-        .into_iter()
-        .map(|n| Case {
-            source: LLAMA_405B.to_owned(),
-            name: "llama-3.1-405b".to_owned(),
-            claims: claims.clone(),
-            n,
-            length: protocol2_length(n),
-            request: Request::Generate,
-        })
-        .collect()
+    let mut cases = Vec::new();
+    for n in lengths(claims.arch.max_context) {
+        for request in REQUESTS {
+            cases.push(Case {
+                source: LLAMA_405B.to_owned(),
+                name: "llama-3.1-405b".to_owned(),
+                claims: claims.clone(),
+                n,
+                length: protocol2_length(n),
+                request,
+            });
+        }
+    }
+    cases
 }
 
 /// `t` as the lowering builds it: its shape and what produces it.
@@ -323,11 +332,20 @@ pub(crate) struct Outcome {
     pub(crate) violations: Vec<String>,
 }
 
-/// What one check finds: its system's counts, and each finding with the tensors it names.
+/// What one check finds: its system's counts, each reading's count of findings, and each finding
+/// with its reading and the tensors it names.
 #[derive(Clone)]
 struct Checked {
     counts: (usize, usize, usize, usize),
+    per_reading: Vec<(CommittedColumns, usize)>,
     findings: Vec<String>,
+}
+
+fn reading(committed: CommittedColumns) -> &'static str {
+    match committed {
+        CommittedColumns::TensorOrder => "tensor-order columns",
+        CommittedColumns::DataColumn => "data-column columns",
+    }
 }
 
 /// Where a case is: the claim list's file and line, the model, `n`, the checked length and the
@@ -340,18 +358,34 @@ fn at(case: &Case) -> String {
 }
 
 fn check_one(case: &Case, rule: ColumnRule) -> Result<Checked, String> {
-    let report = check_at(&case.claims, case.length, case.request, rule)
-        .map_err(|e| format!("{}: the schedule's functionals: {e}", at(case)))?;
-    let findings = report
-        .findings
-        .iter()
-        .map(|finding| {
+    let reports = check_readings(
+        &case.claims,
+        case.length,
+        case.request,
+        rule,
+        &CommittedColumns::BOTH,
+    )
+    .map_err(|e| format!("{}: the schedule's functionals: {e}", at(case)))?;
+    let counts = reports
+        .first()
+        .map(MaskReport::counts)
+        .ok_or_else(|| format!("{}: no reading was checked", at(case)))?;
+    let mut findings = Vec::new();
+    let mut per_reading = Vec::new();
+    for report in &reports {
+        per_reading.push((report.committed, report.findings.len()));
+        for finding in &report.findings {
             let text = finding.to_string();
-            format!("{text} [{}]", named(&report, &text))
-        })
-        .collect();
+            findings.push(format!(
+                "[{}] {text} [{}]",
+                reading(report.committed),
+                named(report, &text)
+            ));
+        }
+    }
     Ok(Checked {
-        counts: report.counts(),
+        counts,
+        per_reading,
         findings,
     })
 }
@@ -359,10 +393,16 @@ fn check_one(case: &Case, rule: ColumnRule) -> Result<Checked, String> {
 fn outcome(case: &Case, checked: &Checked) -> Outcome {
     let at = at(case);
     let (rows, functionals, folds, pairs) = checked.counts;
+    let readings: Vec<String> = checked
+        .per_reading
+        .iter()
+        .map(|&(committed, count)| format!("{count} under {}", reading(committed)))
+        .collect();
     Outcome {
         summary: format!(
             "{at}: {rows} mask rows, {functionals} functionals ({folds} folds), {pairs} pair \
-             functionals"
+             functionals; findings {}",
+            readings.join(", ")
         ),
         violations: checked
             .findings
@@ -517,6 +557,14 @@ mod tests {
             .filter(|c| c.request == Request::Generate)
             .map(|c| (c.name.clone(), c.n))
             .collect();
+        // And 3, the shortest layout of `tessera-protocol/2`, for each model.
+        let models: Vec<String> = expected.iter().map(|(m, _)| m.clone()).collect();
+        for model in models {
+            if !expected.contains(&(model.clone(), 3)) {
+                expected.push((model, 3));
+            }
+        }
+        expected.sort();
         found.sort();
         assert_eq!(found, expected);
         assert_eq!(cases.len(), 3 * expected.len());
@@ -534,21 +582,28 @@ mod tests {
         }
     }
 
-    /// Lengths up to four are checked at four, `tessera-protocol/2`'s fewest rows on the token
-    /// axis (RFC-0013 'Masked extensions'), longer ones at their own.
+    /// Lengths up to three are checked at three, the layout `tessera-protocol/2` gives them, a
+    /// token axis padded to four rows laid out as a padded axis (RFC-0013 'Masked extensions',
+    /// RFC-0047); longer ones at their own. The 405B claim list is checked for every request.
     #[test]
-    fn lengths_one_to_three_are_checked_at_four() {
+    fn lengths_one_to_three_are_checked_at_three() {
         let cases = vector_cases(&repo::root()).expect("the claim lists");
         for case in &cases {
-            assert_eq!(case.length, case.n.max(4), "{}", case.name);
+            assert_eq!(case.length, case.n.max(3), "{}", case.name);
         }
         let claims = llama_405b().expect("the 405B claim list");
-        let big: Vec<(u32, u32)> = llama_405b_cases(&claims)
+        let big = llama_405b_cases(&claims);
+        assert_eq!(big.len(), 3 * 34);
+        let generate: Vec<(u32, u32)> = big
             .iter()
+            .filter(|c| c.request == Request::Generate)
             .map(|c| (c.n, c.length))
             .take(6)
             .collect();
-        assert_eq!(big, [(1, 4), (2, 4), (3, 4), (4, 4), (5, 5), (8, 8)]);
+        assert_eq!(generate, [(1, 3), (2, 3), (3, 3), (4, 4), (5, 5), (8, 8)]);
+        for request in [Request::None, Request::Prefill, Request::Generate] {
+            assert_eq!(big.iter().filter(|c| c.request == request).count(), 34);
+        }
     }
 
     /// The clean case: a conformance claim list passes at its protocol/2 lengths, one position
@@ -557,10 +612,10 @@ mod tests {
     fn a_clean_claim_list_passes() {
         let fixture = one_case("tiny-2-affine");
         let cases = vector_cases(fixture.path()).expect("the fixture's claim list");
-        assert_eq!(cases.len(), 12);
+        assert_eq!(cases.len(), 15);
         let short: Vec<Case> = cases.into_iter().filter(|c| c.n <= 4).collect();
         let outcomes = check_all(&short, ColumnRule::BelowRow).expect("checked");
-        assert_eq!(outcomes.len(), 6);
+        assert_eq!(outcomes.len(), 9);
         for (case, outcome) in short.iter().zip(&outcomes) {
             assert_eq!(
                 outcome.violations,
@@ -568,8 +623,20 @@ mod tests {
                 "{}",
                 outcome.summary
             );
-            let shown = format!("at n = {}, checked at 4 ({:?})", case.n, case.request);
+            let shown = format!(
+                "at n = {}, checked at {} ({:?})",
+                case.n,
+                case.n.max(3),
+                case.request
+            );
             assert!(outcome.summary.contains(&shown), "{}", outcome.summary);
+            assert!(
+                outcome
+                    .summary
+                    .contains("findings 0 under tensor-order columns, 0 under data-column columns"),
+                "{}",
+                outcome.summary
+            );
         }
     }
 
@@ -590,18 +657,21 @@ mod tests {
             ..case.clone()
         };
         let outcome = check_case(&unpadded, ColumnRule::BelowRow).expect("checked");
-        let tokens = outcome
-            .violations
-            .iter()
-            .find(|v| v.contains("t0 [1]: the tokens"))
-            .unwrap_or_else(|| panic!("the tokens: {:?}", outcome.violations));
-        for part in [
-            "spec/vectors/claims/claim-lists.json:",
-            "`tiny-2-affine` at n = 1, checked at 1 (Generate)",
-            "revealed with 0 variable(s)",
-            "RFC-0013",
-        ] {
-            assert!(tokens.contains(part), "{part}: {tokens}");
+        // Each reading refuses it, and says which it is.
+        for reading in ["[tensor-order columns]", "[data-column columns]"] {
+            let tokens = outcome
+                .violations
+                .iter()
+                .find(|v| v.contains("t0 [1]: the tokens") && v.contains(reading))
+                .unwrap_or_else(|| panic!("the tokens, {reading}: {:?}", outcome.violations));
+            for part in [
+                "spec/vectors/claims/claim-lists.json:",
+                "`tiny-2-affine` at n = 1, checked at 1 (Generate)",
+                "revealed with 0 variable(s)",
+                "RFC-0013",
+            ] {
+                assert!(tokens.contains(part), "{part}: {tokens}");
+            }
         }
     }
 
@@ -616,11 +686,22 @@ mod tests {
             (22, 20)
         );
         let cases = llama_405b_cases(&claims);
-        let case = cases.iter().find(|c| c.n == 32_768).expect("n = 32,768");
+        let case = cases
+            .iter()
+            .find(|c| c.n == 32_768 && c.request == Request::Generate)
+            .expect("n = 32,768");
         let old = check_case(case, ColumnRule::Row).expect("checked");
-        assert_eq!(old.violations.len(), 2, "{:?}", old.violations);
-        for (violation, t) in old.violations.iter().zip(["t6", "t53"]) {
+        // The virtual rows' columns do not depend on the committed reading: both refuse.
+        assert_eq!(old.violations.len(), 4, "{:?}", old.violations);
+        let expected = [
+            ("[tensor-order columns]", "t6"),
+            ("[tensor-order columns]", "t53"),
+            ("[data-column columns]", "t6"),
+            ("[data-column columns]", "t53"),
+        ];
+        for (violation, (reading, t)) in old.violations.iter().zip(expected) {
             for part in [
+                reading,
                 "xtask/src/mask_rank.rs:",
                 "`llama-3.1-405b` at n = 32768, checked at 32768 (Generate)",
                 "linearly dependent (R10",

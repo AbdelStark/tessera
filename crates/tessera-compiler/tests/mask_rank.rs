@@ -10,11 +10,13 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use tessera_codec::{Ascii, DecodeLimits, Rational, envelope, schema};
 use tessera_compiler::schedule::masks::{
-    ColumnRule, Finding, MaskRow, MaskSystem, PairFunctional, PairRole, PairSystem, Role, SEED,
-    Src, Var, check, check_at, check_claim_list, extract, protocol2_length, weight_layout,
+    ColumnRule, CommittedColumns, Finding, Functional, MaskReport, MaskRow, MaskSystem,
+    PairFunctional, PairRole, PairSystem, Role, RowSystem, SEED, Src, Var, check, check_at,
+    check_claim_list, extract, protocol2_length, weight_layout,
 };
 use tessera_compiler::schedule::{
-    Coord, Kind, Layers, Request, Source, StageSchedule, derive_composed_schedule, model_natives,
+    Coord, Factor, Kind, Layers, NodeRef, Request, Source, StageSchedule, derive_composed_schedule,
+    model_natives,
 };
 use tessera_compiler::{
     Lowering, ModelAdviceLayout, PublicModel, Selection, analyze, claim_list, lower, select,
@@ -83,12 +85,24 @@ fn compiled(claims: ClaimList, n: u32, request: Request) -> Compiled {
 }
 
 impl Compiled {
-    /// R10's functionals of `schedule`, a schedule of this lowering, under `rule`.
+    /// R10's functionals of `schedule`, a schedule of this lowering, under `rule`, with committed
+    /// tensors' mask columns in tensor order.
     fn system(&self, schedule: &StageSchedule, rule: ColumnRule) -> MaskSystem {
+        self.system_with(schedule, rule, CommittedColumns::TensorOrder)
+    }
+
+    /// R10's functionals of `schedule` under `rule` and the reading `committed`.
+    fn system_with(
+        &self,
+        schedule: &StageSchedule,
+        rule: ColumnRule,
+        committed: CommittedColumns,
+    ) -> MaskSystem {
         let advice =
             ModelAdviceLayout::new(&self.lowering, &self.selection, &self.claims).expect("layout");
         let weights = weight_layout(&self.claims, &self.lowering).expect("weights");
-        extract(&self.lowering, schedule, &advice, &weights, rule).expect("the functionals")
+        extract(&self.lowering, schedule, &advice, &weights, rule, committed)
+            .expect("the functionals")
     }
 
     /// The pool claim whose single atom is on `tensor`'s kind, layer 0's tensor being `tensor`.
@@ -165,6 +179,78 @@ fn two_values_at_one_column_point_are_refused() {
     assert_eq!(functionals.len(), 2);
     assert_eq!(functionals[0].point, functionals[1].point);
     assert_ne!(functionals[0].key, functionals[1].key);
+}
+
+/// tiny-4-servable's residual key `acc + 2^r·X_in` reads the layer input with a per-layer
+/// constant (8, 8, 16 and 2 at position 34): its pool atom on `LayerInput` weighs the layers by
+/// `eq(ρ, ℓ)·c_ℓ` (RFC-0037 'Claims and atoms'), a value other than `X'(P ‖ ρ)`.
+fn scaled_layer_input() -> (Compiled, usize) {
+    let c = compiled(golden("tiny-4-servable"), 4, Request::Generate);
+    let layers = &c.schedule.layers;
+    let index = c
+        .schedule
+        .pool
+        .iter()
+        .position(|p| {
+            p.atoms.iter().any(|a| {
+                a.kind == Kind::LayerInput
+                    && a.coefficient.iter().flatten().any(|f| {
+                        matches!(f, Factor::Constant(NodeRef::Position(p)) if !layers.uniform(*p))
+                    })
+            })
+        })
+        .expect("the scaled read of the layer input");
+    (c, index)
+}
+
+/// The review's E14: an unscaled read of the layer input at the scaled read's point and layer
+/// weights. The two values differ by `Σ_ℓ eq(ρ, ℓ)·(c_ℓ − 1)·X̃_ℓ(P)` and read `R_LayerInput`
+/// through one functional, so their difference is revealed; the merge must not take them for
+/// one value.
+#[test]
+fn an_unscaled_twin_of_a_per_layer_scaled_read_is_refused() {
+    let (c, index) = scaled_layer_input();
+    let mut twin = c.schedule.pool[index].clone();
+    let atom = twin
+        .atoms
+        .iter_mut()
+        .find(|a| a.kind == Kind::LayerInput)
+        .expect("the atom");
+    atom.coefficient = vec![Vec::new()];
+    let mut schedule = c.schedule.clone();
+    schedule.pool.push(twin.clone());
+    let findings = check(&c.system(&schedule, ColumnRule::BelowRow), SEED);
+    assert_eq!(
+        dependent_rows(&findings),
+        vec![MaskRow::Stacked(Kind::LayerInput)],
+        "{findings:?}"
+    );
+    // The control: the same twin at a fresh layer point. The layer input fills its row of 2^10
+    // here, so the layer point is in the row part and the twin shares the scaled read's
+    // functional: it is refused whether or not the merge keys on the coefficient, so the twin
+    // at the scaled read's own point was accepted by the merge alone.
+    let atom = twin
+        .atoms
+        .iter_mut()
+        .find(|a| a.kind == Kind::LayerInput)
+        .expect("the atom");
+    let Layers::Eq(rho) = &atom.layers else {
+        panic!("a stacked read");
+    };
+    atom.layers = Layers::Eq((0..rho.len() as u32).map(fresh).collect());
+    let mut schedule = c.schedule.clone();
+    schedule.pool.push(twin);
+    let control = check(&c.system(&schedule, ColumnRule::BelowRow), SEED);
+    assert_eq!(
+        dependent_rows(&control),
+        vec![MaskRow::Stacked(Kind::LayerInput)],
+        "{control:?}"
+    );
+    // The scaled read alone, as compiled, is accepted.
+    assert_eq!(
+        check(&c.system(&c.schedule, ColumnRule::BelowRow), SEED),
+        Vec::new()
+    );
 }
 
 /// A row part that differs in the tensor's own variables: the one-hot tokens `[n, vocab]` at
@@ -530,31 +616,191 @@ fn tensors_of_fewer_than_two_variables_are_unmaskable() {
     );
 }
 
-/// `tessera-protocol/2` pads the token axis to `2^max(⌈log2 n⌉, 2)` rows (RFC-0013 'Masked
-/// extensions', RFC-0071 'The slots'): lengths 1 to 4 are checked at 4, longer ones at their own,
-/// and a sequence of one position is then accepted with the revealed points of four.
+/// `tessera-protocol/2` pads the token axis to `2^max(⌈log2 n⌉, 2)` rows and lays an axis padded
+/// to four rows out as a padded axis (RFC-0013 'Masked extensions', RFC-0047, RFC-0071 'The
+/// slots'): lengths 1 to 3 take the layout of 3, longer ones their own. The layout of 3 is not
+/// that of 4. RFC-0047 puts a padded axis highest, so tiny-2-servable's `[n, 192]` stacked output
+/// at position 44 keeps its natural order at 3, both axes padded, and puts the position bits
+/// lowest at 4, where only 192 is.
 #[test]
-fn the_token_axis_pads_to_four_rows() {
+fn short_sequences_take_the_layout_of_three_positions() {
     let lengths: Vec<u32> = [1, 2, 3, 4, 5, 8, 9, 131_072]
         .map(protocol2_length)
         .to_vec();
-    assert_eq!(lengths, [4, 4, 4, 4, 5, 8, 9, 131_072]);
+    assert_eq!(lengths, [3, 3, 3, 4, 5, 8, 9, 131_072]);
     let claims = golden("tiny-2-servable");
+    let kind = Kind::Layer {
+        position: 44,
+        output: 0,
+    };
+    // The row's points, each with its key: the natural point, 8 channel bits, the position
+    // bits, the layer bit.
+    let points = |report: &MaskReport| -> Vec<(Vec<Src>, Vec<Src>)> {
+        report
+            .system
+            .rows
+            .iter()
+            .find(|r| r.row == MaskRow::Stacked(kind))
+            .expect("the [n, 192] row")
+            .functionals
+            .iter()
+            .map(|f| (f.point.clone(), f.key.clone()))
+            .collect()
+    };
+    let check = |n| {
+        check_claim_list(
+            &claims,
+            n,
+            Request::Generate,
+            ColumnRule::BelowRow,
+            CommittedColumns::TensorOrder,
+        )
+        .expect("the schedule")
+    };
     for n in [1, 2, 3] {
-        let report = check_claim_list(&claims, n, Request::Generate, ColumnRule::BelowRow)
-            .expect("the schedule");
-        assert_eq!((report.n, report.length), (n, 4));
+        let report = check(n);
+        assert_eq!((report.n, report.length), (n, 3));
         assert_eq!(report.findings, Vec::new());
-        let four = check_at(&claims, 4, Request::Generate, ColumnRule::BelowRow).expect("4");
-        assert_eq!(
-            report.system, four.system,
-            "n = {n} reveals the points of n = 4"
-        );
+        for (point, key) in points(&report) {
+            assert_eq!(point, key[..10], "n = {n}: the natural order");
+        }
     }
-    let one = check_at(&claims, 1, Request::Generate, ColumnRule::BelowRow).expect("1");
+    let four = check(4);
+    assert_eq!((four.n, four.length), (4, 4));
+    assert_eq!(four.findings, Vec::new());
+    for (point, key) in points(&four) {
+        let mut expected = key[8..10].to_vec();
+        expected.extend(&key[..8]);
+        assert_eq!(point, expected, "n = 4: the position bits lowest");
+    }
+    let one = check_at(
+        &claims,
+        1,
+        Request::Generate,
+        ColumnRule::BelowRow,
+        CommittedColumns::TensorOrder,
+    )
+    .expect("1");
     assert!(
         !one.findings.is_empty(),
         "unpadded, one position is unmaskable"
+    );
+}
+
+/// #554's two readings of a committed tensor's mask columns differ where the tensor does not
+/// fill a row: tiny-2-servable's layer input at 4 positions has 8 variables of its own and a
+/// layer bit below `log2 k = 10`. A second read at its point and other layer weights is then
+/// independent in tensor order, the layer bit being a column, and refused when the mask's column
+/// is the data claim's own, which the layer bit is not part of.
+#[test]
+fn the_two_readings_of_a_committed_mask_column_differ_below_a_row() {
+    let c = compiled(golden("tiny-2-servable"), 4, Request::Generate);
+    let mut schedule = c.schedule.clone();
+    let index = schedule
+        .pool
+        .iter()
+        .position(|p| {
+            p.commitment == CommitmentClass::Advice
+                && p.atoms.len() == 1
+                && p.atoms[0].kind == Kind::LayerInput
+        })
+        .expect("a claim on the layer input");
+    let mut twin = schedule.pool[index].clone();
+    let Layers::Eq(rho) = &twin.atoms[0].layers else {
+        panic!("a stacked claim");
+    };
+    twin.atoms[0].layers = Layers::Eq((0..rho.len() as u32).map(fresh).collect());
+    schedule.pool.push(twin);
+    let tensor_order = check(
+        &c.system_with(
+            &schedule,
+            ColumnRule::BelowRow,
+            CommittedColumns::TensorOrder,
+        ),
+        SEED,
+    );
+    assert_eq!(tensor_order, Vec::new());
+    let data_column = check(
+        &c.system_with(
+            &schedule,
+            ColumnRule::BelowRow,
+            CommittedColumns::DataColumn,
+        ),
+        SEED,
+    );
+    assert_eq!(
+        dependent_rows(&data_column),
+        vec![MaskRow::Stacked(Kind::LayerInput)],
+        "{data_column:?}"
+    );
+    // The compiled schedule passes under both.
+    for committed in CommittedColumns::BOTH {
+        assert_eq!(
+            check(
+                &c.system_with(&c.schedule, ColumnRule::BelowRow, committed),
+                SEED
+            ),
+            Vec::new(),
+            "{committed:?}"
+        );
+    }
+}
+
+/// A functional of another length than its row's width is refused, on a row and on a pair,
+/// never sketched over the coordinates it shares with the test vectors.
+#[test]
+fn a_functional_off_its_row_width_is_refused() {
+    let value = |point: Vec<Src>| Functional {
+        role: Role::Value,
+        key: point.clone(),
+        point,
+        scale: None,
+        origins: Vec::new(),
+    };
+    let row = MaskSystem {
+        rows: vec![RowSystem {
+            row: MaskRow::Tensor(TensorId(1)),
+            tensor: Some(TensorId(1)),
+            vars: 3,
+            width: 3,
+            functionals: vec![
+                value(vec![var(0), var(1), var(2)]),
+                value(vec![var(0), var(1)]),
+            ],
+        }],
+        pairs: Vec::new(),
+    };
+    assert_eq!(
+        check(&row, SEED),
+        vec![Finding::Width {
+            row: Some(MaskRow::Tensor(TensorId(1))),
+            matrix: None,
+            width: 3,
+            found: 2,
+        }]
+    );
+    let pair = MaskSystem {
+        rows: Vec::new(),
+        pairs: vec![PairSystem {
+            matrix: WeightMatrix::ChannelParams,
+            width: 2,
+            functionals: vec![PairFunctional {
+                role: PairRole::Blinding,
+                point: vec![var(0), var(1), var(2)],
+                key: Vec::new(),
+                tensor: None,
+                origins: Vec::new(),
+            }],
+        }],
+    };
+    assert_eq!(
+        check(&pair, SEED),
+        vec![Finding::Width {
+            row: None,
+            matrix: Some(WeightMatrix::ChannelParams),
+            width: 2,
+            found: 3,
+        }]
     );
 }
 
@@ -682,8 +928,14 @@ fn llama_405b() -> ClaimList {
 #[test]
 fn the_405b_schedule_folds_below_a_full_row() {
     let claims = llama_405b();
-    let old = check_claim_list(&claims, 32_768, Request::Generate, ColumnRule::Row)
-        .expect("the schedule");
+    let old = check_claim_list(
+        &claims,
+        32_768,
+        Request::Generate,
+        ColumnRule::Row,
+        CommittedColumns::TensorOrder,
+    )
+    .expect("the schedule");
     let refused: Vec<(MaskRow, Option<TensorId>)> = old
         .findings
         .iter()
@@ -718,7 +970,13 @@ fn the_405b_schedule_folds_below_a_full_row() {
             (sum_squares(38), Some(TensorId(53)))
         ]
     );
-    let amended = check_claim_list(&claims, 32_768, Request::Generate, ColumnRule::BelowRow)
-        .expect("the schedule");
+    let amended = check_claim_list(
+        &claims,
+        32_768,
+        Request::Generate,
+        ColumnRule::BelowRow,
+        CommittedColumns::TensorOrder,
+    )
+    .expect("the schedule");
     assert_eq!(amended.findings, Vec::new());
 }

@@ -56,8 +56,8 @@ jobs:
     needs: scope
     name: checks
     runs-on: ubuntu-24.04
-    # About 2 minutes with code changes, and the mask-rank gate adds 1 to 2 on two cores.
-    timeout-minutes: 8
+    # About 2 minutes with code changes; the mask-rank gate adds 2 to 4 on two cores.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -99,8 +99,8 @@ jobs:
       - name: Test-only features fail release builds (RFC-0001)
         if: needs.scope.outputs.code == 'true'
         run: cargo run --locked --quiet -p xtask -- check-test-features
-      # About 95 s of CPU over the conformance and 405B claim lists, which the gate spreads
-      # over the runner's cores.
+      # About 260 s of CPU over the conformance and 405B claim lists, every request and both
+      # readings of #554, which the gate spreads over the runner's cores.
       - name: Every mask row's revealed points are independent (R10, #488)
         if: needs.scope.outputs.code == 'true'
         run: cargo run --locked --quiet -p xtask -- check-mask-rank

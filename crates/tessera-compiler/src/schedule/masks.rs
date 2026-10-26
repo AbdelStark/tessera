@@ -20,7 +20,10 @@
 //!   tiles), followed by the variables it leaves out, then the layer variables, the highest
 //!   (RFC-0037 'Layers and kinds'). So `c ≤ log2 k` takes the data's column sub-point when the
 //!   tensor fills a row, and the tensor's variables then its layer variables when it does not
-//!   (RFC-0068 'The layer sumcheck' step 4 reads it so).
+//!   (RFC-0068 'The layer sumcheck' step 4 reads it so). Until #554 settles which, both readings
+//!   are checked ([`CommittedColumns`]): that one, and the mask's column limited to the data
+//!   claim's own column inputs (`docs/zk/simulator.md` §7), which excludes a tile's index bits and
+//!   the layer bits.
 //! - **Virtual tensors** have no placement: their variables are their relation's, lowest first,
 //!   then the layer variables.
 //! - **A fold** (RFC-0013 'Virtual tensors', #538) reveals `u = R̃_row(r'')`, the whole row's
@@ -58,8 +61,11 @@
 //! # The check ([`check`])
 //!
 //! Values with the same row and full point, layer weights included, are one value, a public
-//! relation, and merge; so do identical folds and identical blinding claims, never one with a
-//! value. Each indeterminate takes a deterministic pseudo-random [`GoldilocksExt2`] value, `½`,
+//! relation, and merge; so do identical folds, never one with a value. A committed stacked value
+//! whose per-layer constants differ between layers weighs its layers by `eq(ρ, ℓ)·c_ℓ` (RFC-0037
+//! 'Claims and atoms'), so it merges only with values of its own coefficient
+//! ([`Functional::scale`]). A functional whose length is not its row's width is refused
+//! ([`Finding::Width`]), never sketched. Each indeterminate takes a deterministic pseudo-random [`GoldilocksExt2`] value, `½`,
 //! `0` and `1` themselves. Each functional is sketched against `m + 8` random product vectors,
 //! `⟨eq(p), ⊗_j (a_j, b_j)⟩ = Π_j ((1 − p_j)·a_j + p_j·b_j)`, and the sketches are eliminated over
 //! `Fp2`. Full rank proves the functionals generically independent; a deficiency is reported as
@@ -71,12 +77,14 @@
 //! point are functionals of `β_T`. A value with a secret term must lie outside the span of the
 //! others ([`Finding::Spanned`]); one with `S ≡ 0`, decided symbolically (the claim's row point
 //! and `Z(y) ≡ Z(x_i)`), joins the span and is never refused. The compiled schedule leaves one
-//! claim per type tensor (RFC-0052, INV-SCH-5); a further point on one would be such a value.
+//! claim per type tensor (RFC-0052, INV-SCH-5); a further point on one would be such a value. No
+//! compiled schedule has one today, so on them the pass sees blinding claims alone: it guards
+//! future schedules, and the synthetic tests exercise it.
 //!
 //! **Tensors of fewer than two variables** cannot carry RFC-0013's mask, whose `Z` spares the
 //! lowest variable ([`Finding::Unmaskable`]). `tessera-protocol/2` pads the token axis to four rows
-//! at least, so a sequence of `n` positions is checked at [`protocol2_length`]`(n)`; a tensor that
-//! still has fewer than two variables there is refused.
+//! at least, laid out as a padded axis, so a sequence of `n` positions is checked at
+//! [`protocol2_length`]`(n)`; a tensor that still has fewer than two variables there is refused.
 //!
 //! # What this check does not cover
 //!
@@ -88,6 +96,16 @@
 //! - the `Exp` row sum at key coordinates `½` (RFC-0037 'The claim pool', RFC-0030), which the
 //!   prover assembles outside the schedule;
 //! - gadget auxiliary columns, native raw evaluations and the multiplicities' claims;
+//! - the gadget outputs' values at their leaf read points (RFC-0068 step 5's `v_{s,t}` on value
+//!   forms), and `SoftmaxRow`'s output reads: its reciprocal at its row point and `Exp` at its
+//!   score-leaf point; the schedule's leaf sites are gadget inputs only;
+//! - native raw openings on graph tensors, such as the greedy natives' reads of the one-hot
+//!   tokens at their carry points, whose `tessera-protocol/2` form RFC-0053 disclaims;
+//! - batches of several requests (RFC-0071, `R ≥ 2`): a claim list is checked for one request;
+//! - the masked value of a committed group whose layer weights carry per-layer constants
+//!   (RFC-0037 'Claims and atoms'), which no RFC specifies in `tessera-protocol/2` yet: the check
+//!   keeps such a value apart from every other ([`Functional::scale`]) and reads it through the
+//!   stacked kind's mask row;
 //! - the tree levels' masks, the identity sumcheck's root levels (RFC-0032), the `SoftmaxRow`
 //!   leaf mask, the masking polynomials' `G(r)` and RFC-0070's batching (`M`, `S`, `r*`);
 //! - combined rows, blinding rows of advice groups and the proximity rows (Lemmas 5 to 7).
@@ -99,9 +117,11 @@ use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField, QuadraticExte
 use tessera_ir::{ClaimList, CommitmentClass, TensorId};
 use tessera_pcs::{WeightLayout, WeightMatrix, WeightShapes};
 
+use std::sync::Arc;
+
 use super::{
-    Atom, Coord, Kind, Layers, Request, Source, StageSchedule, derive_composed_schedule,
-    model_natives,
+    Atom, Coord, Factor, Kind, Layers, NodeRef, Request, Source, StageSchedule,
+    derive_composed_schedule, model_natives,
 };
 use crate::{
     AdviceSource, CompileError, Lowering, ModelAdviceLayout, PublicModel, analyze, lower, select,
@@ -112,8 +132,9 @@ type Fp2 = GoldilocksExt2;
 /// The seed of the gate's pseudo-random assignment and sketches.
 pub const SEED: u64 = 0x5231_305f_6d61_736b;
 
-/// The fewest rows `tessera-protocol/2` lays out on the token axis: four, two variables.
-pub const MIN_POSITIONS: u32 = 4;
+/// The shortest length the check lowers at: three positions, whose token axis pads to four rows
+/// and is laid out as a padded axis, as `tessera-protocol/2` lays out every shorter sequence's.
+pub const MIN_POSITIONS: u32 = 3;
 
 /// The test vectors a row's sketch takes beyond its functionals' count.
 const EXTRA_TESTS: usize = 8;
@@ -131,6 +152,24 @@ pub enum ColumnRule {
     /// RFC-0013 as amended by #488: `c = min(n_V, log2 k − 1)` for a virtual tensor whose mask a
     /// reduction stage folds, `c = min(n_V, log2 k)` for a committed tensor.
     BelowRow,
+}
+
+/// Which of a committed advice tensor's variables its mask's column takes, the two readings of
+/// #554 (RFC-0013 'Committed tensors' against RFC-0068's `n_V`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum CommittedColumns {
+    /// The tensor's low `c = min(n_V, log2 k)` variables in layout order: the data claim's column
+    /// inputs, then the variables the column sub-point leaves out (a tile's index bits), then the
+    /// layer variables.
+    TensorOrder,
+    /// The data claim's own column inputs alone, `docs/zk/simulator.md` §7's reading: the mask's
+    /// column part is the data's, `eq(p_col ‖ 0)`, and every coordinate past its inputs is 0.
+    DataColumn,
+}
+
+impl CommittedColumns {
+    /// Both readings, which the gate checks until #554 settles which.
+    pub const BOTH: [Self; 2] = [Self::TensorOrder, Self::DataColumn];
 }
 
 /// An indeterminate: a challenge of `tessera-protocol/2` that the check treats as a variable.
@@ -230,8 +269,13 @@ pub struct Functional {
     /// The point, over the row's coordinates, the lowest first.
     pub point: Vec<Src>,
     /// The value's identity: its full point, layer coordinates included, or a fold's `r''`.
-    /// Functionals of one role and one key are one value.
+    /// Functionals of one role, one key and one scale are one value.
     pub key: Vec<Src>,
+    /// The coefficient of a committed stacked value whose per-layer constants differ between
+    /// layers, `Factor::Constant` of a template position that is not uniform: its layers weigh
+    /// `eq(ρ, ℓ)·c_ℓ` (RFC-0037 'Claims and atoms'), so it is another value than an unscaled one
+    /// at its point. `None` for every other functional.
+    pub scale: Option<Vec<Vec<Factor>>>,
     /// Where it comes from: several once merged.
     pub origins: Vec<Origin>,
 }
@@ -321,6 +365,18 @@ pub enum Finding {
         value: PairFunctional,
         /// The functionals whose span holds it.
         span: Vec<PairFunctional>,
+    },
+    /// A functional whose point has another length than its row's width: a malformed system,
+    /// which the check refuses rather than sketch a truncated functional.
+    Width {
+        /// The row, or `None` for a matrix's pair.
+        row: Option<MaskRow>,
+        /// The matrix, for a pair.
+        matrix: Option<WeightMatrix>,
+        /// The row's width.
+        width: u32,
+        /// The functional's coordinates.
+        found: usize,
     },
     /// A revealed tensor of fewer than two variables, which RFC-0013's mask cannot hide: its `Z`
     /// spares the lowest variable, so it would not vanish on the hypercube.
@@ -450,6 +506,23 @@ impl fmt::Display for Finding {
                     )?;
                 }
                 Ok(())
+            }
+            Self::Width {
+                row,
+                matrix,
+                width,
+                found,
+            } => {
+                match (row, matrix) {
+                    (Some(row), _) => write!(f, "{row}")?,
+                    (None, Some(matrix)) => write!(f, "weight matrix {matrix:?}'s pair beta_T")?,
+                    (None, None) => f.write_str("a row")?,
+                }
+                write!(
+                    f,
+                    ": a functional of {found} coordinates on a row of {width}, a malformed \
+                     system (R10)"
+                )
             }
             Self::Unmaskable {
                 row,
@@ -595,6 +668,7 @@ struct Builder<'a> {
     advice: &'a ModelAdviceLayout<'a>,
     weights: &'a WeightLayout,
     rule: ColumnRule,
+    committed: CommittedColumns,
     log2_k: u32,
     rounds: Rounds,
     system: MaskSystem,
@@ -721,6 +795,7 @@ impl<'a> Builder<'a> {
     fn advice_atom(&mut self, atom: &Atom, origin: Origin) -> Result<(), CompileError> {
         let lambda = self.schedule.layers.vars;
         let r = self.rounds.point(&atom.point)?;
+        let mut scale = None;
         let (row, data, rho) = match (atom.kind, &atom.layers) {
             (Kind::Tensor(t), Layers::None) => (MaskRow::Tensor(t), t, Vec::new()),
             (kind, &Layers::One(layer)) if !matches!(kind, Kind::Tensor(_)) => {
@@ -743,6 +818,13 @@ impl<'a> Builder<'a> {
                             "a stacked kind's layers share one column sub-point",
                         ));
                     }
+                    let scaled = atom.coefficient.iter().flatten().any(|factor| {
+                        matches!(factor, Factor::Constant(NodeRef::Position(p))
+                            if !self.schedule.layers.uniform(*p))
+                    });
+                    if scaled {
+                        scale = Some(atom.coefficient.clone());
+                    }
                     (MaskRow::Stacked(kind), t, self.rounds.point(rho)?)
                 }
             }
@@ -757,13 +839,19 @@ impl<'a> Builder<'a> {
         ordered.extend((0..r.len()).filter(|j| !order.contains(j)).map(|j| r[j]));
         ordered.extend(&rho);
         let vars = u32::try_from(ordered.len()).unwrap_or(u32::MAX);
-        let c = self.columns_of(vars, false);
+        let c = match self.committed {
+            CommittedColumns::TensorOrder => self.columns_of(vars, false),
+            CommittedColumns::DataColumn => {
+                self.columns_of(u32::try_from(order.len()).unwrap_or(u32::MAX), false)
+            }
+        };
         let mut key = r;
         key.extend(&rho);
         let functional = Functional {
             role: Role::Value,
             point: self.row_point(&ordered, c),
             key,
+            scale,
             origins: vec![origin],
         };
         self.push(row, Some(data), vars, self.log2_k, functional)
@@ -819,6 +907,7 @@ impl<'a> Builder<'a> {
             role: Role::Value,
             point: column.to_vec(),
             key: x.clone(),
+            scale: None,
             origins: vec![origin],
         };
         self.push(row, Some(data), vars, width, functional)?;
@@ -875,6 +964,7 @@ impl<'a> Builder<'a> {
             role: Role::Value,
             point: self.row_point(&x, c),
             key: x,
+            scale: None,
             origins: vec![origin],
         };
         let tensor = self.schedule.layers.tensor(&self.lowering.graph, kind, 0);
@@ -918,7 +1008,8 @@ pub fn weight_layout(
     })
 }
 
-/// The functionals `schedule` reveals of every mask row and every matrix pair, under `rule`.
+/// The functionals `schedule` reveals of every mask row and every matrix pair, under `rule` and
+/// the reading `committed` of committed tensors' mask columns.
 ///
 /// `advice` and `weights` are `lowering`'s layouts for the claim list the schedule is proven
 /// under: the column points come from them.
@@ -933,6 +1024,7 @@ pub fn extract(
     advice: &ModelAdviceLayout<'_>,
     weights: &WeightLayout,
     rule: ColumnRule,
+    committed: CommittedColumns,
 ) -> Result<MaskSystem, CompileError> {
     let log2_k = advice.layout().params().log2_k;
     let mut builder = Builder {
@@ -941,6 +1033,7 @@ pub fn extract(
         advice,
         weights,
         rule,
+        committed,
         log2_k,
         rounds: Rounds::new(schedule, log2_k),
         system: MaskSystem::default(),
@@ -995,6 +1088,7 @@ pub fn extract(
                     role: Role::Fold,
                     point: fold.clone(),
                     key: fold.clone(),
+                    scale: None,
                     origins: vec![Origin::Fold {
                         stage: stage.index,
                         instance: i,
@@ -1146,10 +1240,9 @@ fn tests(stream: &mut Stream, count: usize, width: u32) -> Vec<Vec<(Fp2, Fp2)>> 
 fn merge(functionals: &[Functional]) -> Vec<Functional> {
     let mut merged: Vec<Functional> = Vec::new();
     for functional in functionals {
-        match merged
-            .iter_mut()
-            .find(|m| m.role == functional.role && m.key == functional.key)
-        {
+        match merged.iter_mut().find(|m| {
+            m.role == functional.role && m.key == functional.key && m.scale == functional.scale
+        }) {
             Some(m) => m.origins.extend(&functional.origins),
             None => merged.push(functional.clone()),
         }
@@ -1188,6 +1281,19 @@ pub fn check(system: &MaskSystem, seed: u64) -> Vec<Finding> {
         |p: &[Src]| -> Vec<Fp2> { p.iter().map(|&s| assignment.value(s)).collect::<Vec<_>>() };
     let mut findings = Vec::new();
     for row in &system.rows {
+        if let Some(bad) = row
+            .functionals
+            .iter()
+            .find(|f| f.point.len() != row.width as usize)
+        {
+            findings.push(Finding::Width {
+                row: Some(row.row),
+                matrix: None,
+                width: row.width,
+                found: bad.point.len(),
+            });
+            continue;
+        }
         let functionals = merge(&row.functionals);
         if row.vars < 2 && functionals.iter().any(|f| f.role == Role::Value) {
             findings.push(Finding::Unmaskable {
@@ -1211,6 +1317,19 @@ pub fn check(system: &MaskSystem, seed: u64) -> Vec<Finding> {
         }
     }
     for pair in &system.pairs {
+        if let Some(bad) = pair
+            .functionals
+            .iter()
+            .find(|f| f.point.len() != pair.width as usize)
+        {
+            findings.push(Finding::Width {
+                row: None,
+                matrix: Some(pair.matrix),
+                width: pair.width,
+                found: bad.point.len(),
+            });
+            continue;
+        }
         let functionals = merge_pair(&pair.functionals);
         let points: Vec<Vec<Fp2>> = functionals.iter().map(|f| numeric(&f.point)).collect();
         let tests = tests(&mut stream, points.len() + EXTRA_TESTS, pair.width);
@@ -1247,20 +1366,23 @@ pub fn check(system: &MaskSystem, seed: u64) -> Vec<Finding> {
     findings
 }
 
-/// The length at which R10 checks a sequence of `n` positions: the token-axis shape
-/// `tessera-protocol/2` lays out.
+/// The length at which R10 checks a sequence of `n` positions: the token-axis layout
+/// `tessera-protocol/2` gives it.
 ///
 /// A masked tensor has two variables at least (RFC-0013 'Masked extensions'), so in
 /// `tessera-protocol/2` the token axis pads to `2^max(⌈log2 n⌉, 2)` rows, and so does a batch's
-/// slot (RFC-0071 'The slots'); RFC-0035's padded rows fill the rows past `n`. A lowering at
-/// `max(n, 4)` has that shape: lengths up to 4 share the shape of 4, and a longer sequence pads
-/// its axis to `2^⌈log2 n⌉` already. The real `n` changes only public selectors, never a tensor's
-/// variables or a revealed point of the schedule.
+/// slot (RFC-0071 'The slots'); RFC-0035's padded rows fill the rows past `n`. An axis padded to
+/// four rows is laid out as a padded axis (RFC-0047 'The order of a tensor's variables'), so
+/// `n = 1`, 2 and 3 all take the layout of `n = 3`, a 3-row axis padded to 4. From 3 on, a
+/// lowering at `n` has `tessera-protocol/2`'s shape and order. The real `n` matters: at 3 the
+/// token axis is padded and at 4 it is not, so RFC-0047 orders a tensor's variables, and with
+/// them its column sub-point, differently at the two lengths.
 pub fn protocol2_length(n: u32) -> u32 {
     n.max(MIN_POSITIONS)
 }
 
-/// R10 on one claim list at one length and request.
+/// R10 on one claim list at one length and request, under one reading of committed tensors'
+/// mask columns.
 #[derive(Clone, Debug)]
 pub struct MaskReport {
     /// The sequence's positions.
@@ -1268,8 +1390,10 @@ pub struct MaskReport {
     /// The length its schedule was derived at: [`protocol2_length`]`(n)` for
     /// [`check_claim_list`], `n` itself for [`check_at`].
     pub length: u32,
+    /// The reading of committed tensors' mask columns.
+    pub committed: CommittedColumns,
     /// The lowering the schedule was derived from, which names the findings' tensors.
-    pub lowering: Lowering,
+    pub lowering: Arc<Lowering>,
     /// The functionals, before merging.
     pub system: MaskSystem,
     /// What [`check`] refuses.
@@ -1306,27 +1430,48 @@ pub fn check_claim_list(
     n: u32,
     request: Request,
     rule: ColumnRule,
+    committed: CommittedColumns,
 ) -> Result<MaskReport, CompileError> {
-    let report = check_at(claims, protocol2_length(n), request, rule)?;
+    let report = check_at(claims, protocol2_length(n), request, rule, committed)?;
     Ok(MaskReport { n, ..report })
 }
 
-/// R10 on the schedule of `claims` lowered at exactly `length` positions, for `request`: the
-/// composed schedule the prover proves (`derive_composed_schedule` with [`model_natives`]), its
-/// layouts, [`extract`] under `rule`, and [`check`] with [`SEED`]. It does not pad the token axis,
-/// so below [`MIN_POSITIONS`] it checks a shape `tessera-protocol/2` never lays out: the controls'
-/// entry point; [`check_claim_list`] is the protocol's.
+/// R10 on the schedule of `claims` lowered at exactly `length` positions, for `request`, under
+/// one reading of committed tensors' mask columns: [`check_readings`] for that reading alone.
 ///
 /// # Errors
 ///
-/// The lowering's, the range analysis', the selection's, the schedule's and the layouts' errors,
-/// and [`CompileError::Usage`] when the selection's tables are not the claim list's.
+/// Those of [`check_readings`].
 pub fn check_at(
     claims: &ClaimList,
     length: u32,
     request: Request,
     rule: ColumnRule,
+    committed: CommittedColumns,
 ) -> Result<MaskReport, CompileError> {
+    check_readings(claims, length, request, rule, &[committed])?
+        .pop()
+        .ok_or(internal("a check has its reading's report"))
+}
+
+/// R10 on the schedule of `claims` lowered at exactly `length` positions, for `request`, under
+/// each reading of `readings`: the composed schedule the prover proves (`derive_composed_schedule`
+/// with [`model_natives`]), its layouts, [`extract`] under `rule` and each reading, and [`check`]
+/// with [`SEED`]. The readings share one lowering. It does not pad the token axis, so below
+/// [`MIN_POSITIONS`] it checks a layout `tessera-protocol/2` never gives: the controls' entry
+/// point; [`check_claim_list`] is the protocol's.
+///
+/// # Errors
+///
+/// The lowering's, the range analysis', the selection's, the schedule's and the layouts' errors,
+/// and [`CompileError::Usage`] when the selection's tables are not the claim list's.
+pub fn check_readings(
+    claims: &ClaimList,
+    length: u32,
+    request: Request,
+    rule: ColumnRule,
+    readings: &[CommittedColumns],
+) -> Result<Vec<MaskReport>, CompileError> {
     let lowering = lower(PublicModel::of_claims(claims), length)?;
     let ranges = analyze(&lowering.graph, &lowering.tables)?;
     let selection = select(
@@ -1339,16 +1484,26 @@ pub fn check_at(
     let schedule = derive_composed_schedule(&lowering, &natives.deferred, &natives.native)?;
     let advice = ModelAdviceLayout::new(&lowering, &selection, claims)?;
     let weights = weight_layout(claims, &lowering)?;
-    let system = extract(&lowering, &schedule, &advice, &weights, rule)?;
+    let systems = readings
+        .iter()
+        .map(|&committed| {
+            extract(&lowering, &schedule, &advice, &weights, rule, committed)
+                .map(|system| (committed, system))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     drop(advice);
-    let findings = check(&system, SEED);
-    Ok(MaskReport {
-        n: length,
-        length,
-        lowering,
-        system,
-        findings,
-    })
+    let lowering = Arc::new(lowering);
+    Ok(systems
+        .into_iter()
+        .map(|(committed, system)| MaskReport {
+            n: length,
+            length,
+            committed,
+            lowering: Arc::clone(&lowering),
+            findings: check(&system, SEED),
+            system,
+        })
+        .collect())
 }
 
 #[cfg(test)]
@@ -1435,6 +1590,7 @@ mod tests {
             role,
             point: key.clone(),
             key,
+            scale: None,
             origins: vec![Origin::Fold {
                 stage: 1,
                 instance: 0,
