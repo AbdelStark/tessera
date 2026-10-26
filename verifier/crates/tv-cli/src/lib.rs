@@ -38,6 +38,9 @@ pub const EXIT_FAILURE: i32 = 20;
 /// Exit code on a usage error (`02 §2.4`, `ERR-USAGE`).
 pub const EXIT_USAGE: i32 = 64;
 
+const MAX_ARGUMENTS: usize = 64;
+const MAX_ARGUMENT_BYTES: usize = 8192;
+
 /// Output produced by a `tessera-verify` command invocation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommandOutput {
@@ -96,12 +99,38 @@ OPTIONS:
 /// command `invalid-utf8-argument` ``, but in the format the valid arguments ask for (05 §2):
 /// their `--log-format`, `--log-level` and `--json` are kept, and a log option whose own value is
 /// not UTF-8 is an invalid value.
+/// Collection has [`run`]'s argument limits and panic boundary (RFC-0019, SP-8).
 pub fn run_os<I>(args: I) -> CommandOutput
 where
     I: IntoIterator<Item = std::ffi::OsString>,
 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_os_inner(args)))
+        .unwrap_or_else(|_| verify::failure(tv_core::verdict::ErrorCode::Internal))
+}
+fn run_os_inner<I>(args: I) -> CommandOutput
+where
+    I: IntoIterator<Item = std::ffi::OsString>,
+{
     const PLACEHOLDER: &str = "invalid-utf8-argument";
-    let given: Vec<Option<String>> = args.into_iter().map(|a| a.into_string().ok()).collect();
+    let mut given = Vec::new();
+    let mut json_flag = false;
+    let mut oversized = false;
+    for (i, arg) in args.into_iter().take(MAX_ARGUMENTS + 1).enumerate() {
+        json_flag |= arg == "--json";
+        if i == MAX_ARGUMENTS || arg.len() > MAX_ARGUMENT_BYTES {
+            oversized = true;
+            given.push(None);
+        } else {
+            given.push(arg.into_string().ok());
+        }
+    }
+    if oversized {
+        let flags = match log::scan(given, json_flag) {
+            Ok((flags, _)) => flags,
+            Err(detail) => return usage_error("tessera-verify", detail, Flags::human(json_flag)),
+        };
+        return usage_error("tessera-verify", "too many or oversized arguments", flags);
+    }
     if given.iter().all(Option::is_some) {
         return run(given.into_iter().flatten());
     }
@@ -147,10 +176,10 @@ where
     let mut given = Vec::new();
     let mut json_flag = false;
     let mut oversized = false;
-    for (i, arg) in args.into_iter().take(65).enumerate() {
+    for (i, arg) in args.into_iter().take(MAX_ARGUMENTS + 1).enumerate() {
         let value = arg.as_ref();
         json_flag |= value == "--json";
-        if i == 64 || value.len() > 8192 {
+        if i == MAX_ARGUMENTS || value.len() > MAX_ARGUMENT_BYTES {
             oversized = true;
             given.push(None);
         } else {

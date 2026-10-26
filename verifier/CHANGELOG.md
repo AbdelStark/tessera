@@ -4,6 +4,10 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ## [Unreleased]
 
+### Fixed
+
+- Bound `tv_cli::run_os` argument collection before converting OS strings, using the same 64-argument and 8 KiB limits as `run`, and catch argument-iterator panics at that public boundary (RFC-0019, SP-8, [#182](https://github.com/AbdelStark/tessera/issues/182)). The binary uses the shared boundary; oversized non-UTF-8 arguments fail the size limit without retaining their contents. Full verifier allocation accounting and arithmetic/I/O deadlines remain pending under #182.
+
 ### Added
 
 - Protocol/2 reduction-stage degree support through ten, independently implemented from RFC-0013 'Degree' ([#565](https://github.com/AbdelStark/tessera/issues/565)). `sumcheck::{reduce_in, verify_batch_in}` take an explicit protocol; existing entry points retain protocol/1's bound of seven, as do tree levels, stage zero and merge. Newton interpolation now handles all ten degrees, and unsupported degrees are refused before the transcript changes.
