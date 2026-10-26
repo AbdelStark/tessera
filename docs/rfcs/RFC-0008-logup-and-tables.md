@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.1 (argument), v0.2 (registry)
-- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Fraction tree', in `tessera-protocol/2`: the roots are not sent, and the leaf checks read masked keys, values and multiplicities); [RFC-0054](RFC-0054-token-groups.md) ('Batching' and 'Fraction tree', for a leaf stage larger than memory: a lookup tree per table and token group, their roots and the identity's check), [RFC-0072](RFC-0072-anchor-relations.md) ('Table kinds': `Bitwise8` serves AES-128 alone)
+- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Fraction tree', in `tessera-protocol/2`: the roots are not sent, and the leaf checks read masked keys, values and multiplicities), [RFC-0054](RFC-0054-token-groups.md) ('Batching' and 'Fraction tree', for a leaf stage larger than memory: a lookup tree per table and token group, their roots and the identity's check), [RFC-0072](RFC-0072-anchor-relations.md) ('Table kinds': `Bitwise8` serves AES-128 alone)
 
 ## Summary
 

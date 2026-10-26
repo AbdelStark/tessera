@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-25
 - Target milestone: v0.4
-- Amended by: [RFC-0072](RFC-0072-anchor-relations.md) ('`BitDecompose`' and 'Where the zero-checks run': recomposition summed over the bit axis, its claim on `x` at `y`'s coordinates, and the zero-checks' messages; '`BitFn`': `¬a` at padded positions; '`AssertEqual`': a public input pads with zeros, and the selector's example; 'Drawbacks': no stacking; '`BitDecompose`': a `ConstAdd`'s padded positions; OQ-0066-1 and OQ-0066-2, closed)
+- Amended by: [RFC-0072](RFC-0072-anchor-relations.md) ('`BitDecompose`' and 'Where the zero-checks run': recomposition summed over the bit axis, its claim on `x` at `y`'s coordinates, and the zero-checks' messages; '`BitFn`': `¬a` at padded positions; '`AssertEqual`': a public input pads with zeros, and the selector's example; 'Completeness there is the graph's': a `ConstAdd`'s padded positions; 'Drawbacks': no stacking; OQ-0066-1 and OQ-0066-2, closed)
 - Amends:
   - [RFC-0006](RFC-0006-compiler-ir.md#operation-set) 'Operation set': three operations join the closed set, `BitDecompose`, `BitFn` and `AssertEqual`, and `Bitwise` is AES's alone;
   - RFC-0006 'Range analysis': the three operations' ranges and integrality rules;
@@ -93,7 +93,7 @@ pub enum BoolFn { Xor, Xor3, And, Ch, Maj }
 - **Kind.** Virtual. Each is the multilinear polynomial that agrees with its Boolean function on `{0, 1}`, and its relation is `Elementwise` (RFC-0010): `Z̃(r) = Σ_x eq(r, x)·Σ_t w_t·Π_{f ∈ t} I_f(x)`, of degree at most 4 per variable.
 - **Range.** Every input's range lies in `[0, 1]`, so it holds 0 or 1 as an integer. The output's range is `[0, 1]`: on Boolean inputs each polynomial is its Boolean function. An input outside `[0, 1]` is `ERR-COMPILE-RANGE`.
   - So is a committed graph input, read directly or moved unchanged: its declared `[0, 1]` proves no bit. The circuit's bits come from `BitDecompose` or are public.
-- `¬a` needs no operation: `ConstAdd(1)` of `ConstMul(−1)`, whose interval is `[0, 1]`. It is `1 − a` at real positions and `−a` at padded ones, since a `ConstAdd` adds its constant at real positions only ([RFC-0072](RFC-0072-anchor-relations.md#padded-positions)): 0 where `a` is, as throughout the SHA-256 circuit.
+- `¬a` needs no operation: `ConstAdd(1)` of `ConstMul(−1)`, whose interval is `[0, 1]`. It is `1 − a` at real positions and `−a` at padded ones, since a `ConstAdd` adds its constant at real positions only ([RFC-0072](RFC-0072-anchor-relations.md#padded-positions)): 0 where `a` is 0, as throughout the SHA-256 circuit.
 
 ### `AssertEqual`
 
@@ -268,7 +268,7 @@ RFC-0006 'Range analysis' adds:
   - the reject reason of each failing check;
   - stacking instances of one kind.
 
-  They also amend RFC-0010 'Relations', RFC-0037 'Stages and their instances' and RFC-0014's counts. Until #526 lands, gadget selection refuses the three operations (`ERR-QUANT-ARCH`), so no proof contains them.
+  They also amend the documents RFC-0072's Amends list names, RFC-0010 'Relations', RFC-0037 'Stages and their instances' and RFC-0014's counts among them. Until #526 lands, gadget selection refuses the three operations (`ERR-QUANT-ARCH`), so no proof contains them.
 - **OQ-0066-2 (resolved): `GatherPublic`'s relation.** [RFC-0072](RFC-0072-anchor-relations.md#the-selection-relation)'s selection relation is this candidate, for `Slice` too. `ROTR`, `SHR` and the message's assembly reduce claims through `GatherPublic`, as AES's `ShiftRows` does. A public-kernel sumcheck `ỹ(r ‖ r_row) = Σ_k G(r_row, k)·x̃(r ‖ k)`, with `G(r, k) = Σ_{j : idx_j = k} eq(r, j)`, of degree 2, is the candidate for #526. Its points list low variables first, the outermost axis's `r_row` last.
 
 ## References
