@@ -10,6 +10,7 @@
   - [RFC-0037](RFC-0037-stage-schedule.md#the-claim-pool) 'The claim pool': that row's term in the claim's functional;
   - [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#the-layer-sumcheck) 'The layer sumcheck' step 1, 'Zero knowledge' and 'Non-Goals': an outside value at one layer.
 - Origin: [#535](https://github.com/AbdelStark/tessera/issues/535)
+- Amended by: [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) ('The mask' 'Degree', in `tessera-protocol/2`: a stage counts a masked factor at 3, [#565](https://github.com/AbdelStark/tessera/issues/565))
 
 ## Summary
 
@@ -53,7 +54,7 @@ For each committed kind `κ` and layer `ℓ` of an atom the schedule gives `Laye
   ```
   This is RFC-0013's masked extension of a committed tensor, for the tensor in its own variables. The stacked kind's own mask `R_κ` takes no part in it.
 - **On the hypercube** `Z = 0`, so every relation holds unchanged with `X'_{κ,ℓ}` in place of `X̃_κ(· ‖ e_ℓ)`.
-- **Degree.** `X'_{κ,ℓ}` has degree at most 3 in each variable, as RFC-0013's masked extensions have. A stage reading it has RFC-0014's bound of 7.
+- **Degree.** `X'_{κ,ℓ}` has degree at most 3 in each variable, as RFC-0013's masked extensions have. A stage reading it counts it at 3 in its degree (RFC-0013 'Masked extensions' 'Degree'), within RFC-0014's bound.
 
 ### The pool
 
