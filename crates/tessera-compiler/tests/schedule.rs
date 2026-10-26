@@ -351,6 +351,12 @@ fn check_rules(lowering: &Lowering, schedule: &StageSchedule, label: &str) {
                 Relation::OneHotIndex => vec![0, 1],
                 Relation::Rotate | Relation::SumSquares | Relation::ScaleChannels => vec![0],
                 Relation::MatMulAct { .. } | Relation::Mul(_) => vec![0, 1],
+                Relation::InputPadding
+                | Relation::BitPadding
+                | Relation::Recomposition
+                | Relation::AssertEqual => {
+                    panic!("this oracle covers the Llama lowering, which has no bit operation")
+                }
             };
             assert_eq!(
                 instance.claims.len(),
@@ -1168,6 +1174,12 @@ impl<'a> Witness<'a> {
                 }
                 // The kernel's own identity is tessera-sumcheck's (RFC-0037 'Rotate').
                 Relation::Rotate | Relation::ScaleChannels => continue,
+                Relation::InputPadding
+                | Relation::BitPadding
+                | Relation::Recomposition
+                | Relation::AssertEqual => {
+                    panic!("this oracle covers the Llama lowering, which has no bit operation")
+                }
             };
             assert_eq!(
                 sum, target,

@@ -479,6 +479,71 @@ fn groups_of_unlike_layers_and_empty_groups() {
     }
 }
 
+/// RFC-0072 'Non-Goals' 'Token groups' (#526's second slice): the leaf stage derives token axes
+/// only in token groups. RFC-0054's token axis has no rule for RFC-0066's operations, so a model's
+/// graph with a `BitDecompose` of committed bytes after its nodes, which RFC-0054's rules refuse,
+/// still has its leaf layout, with the model's sites, instances and split, since the
+/// decomposition has no site (RFC-0072 'Gadgets and leaf sites'). It runs in one group, and any
+/// other grouping is refused at the token axes' rule.
+#[test]
+fn a_graph_with_bit_operations_runs_its_leaf_stage_in_one_group() {
+    use tessera_ir::{
+        CommitmentClass, IntRange, IntType, Node, NodeKind, Op, TensorId, TensorSpec,
+    };
+    let (p, layout) = stage(&bounded_model(), 3);
+    assert_eq!(
+        layout.ungroupable(),
+        None,
+        "the model's own graph has its token axes"
+    );
+    let mut lowering = p.lowering.clone();
+    let graph = &mut lowering.graph;
+    let advice = NodeKind::Committed {
+        commitment: CommitmentClass::Advice,
+    };
+    let tensor = |id: u32, shape: Vec<u32>, hi: i128| TensorSpec {
+        id: TensorId(id),
+        shape,
+        ty: IntType::I32,
+        range: IntRange { lo: 0, hi },
+        kind: advice,
+    };
+    let u = u32::try_from(graph.tensors.len()).expect("small");
+    graph.tensors.push(tensor(u, vec![3], 255));
+    graph.tensors.push(tensor(u + 1, vec![3, 8], 1));
+    let id = NodeId(u32::try_from(graph.nodes.len()).expect("small"));
+    graph.nodes.push(Node {
+        id,
+        op: Op::BitDecompose { low: 8, high: 0 },
+        inputs: vec![TensorId(u)],
+        outputs: vec![TensorId(u + 1)],
+    });
+    graph.validate().expect("a valid graph");
+    let rule = "the Llama lowering emits no such operation";
+    assert!(
+        matches!(
+            tessera_compiler::schedule::token_axes(&lowering),
+            Err(tessera_compiler::CompileError::Schedule { rule: r, .. }) if r == rule
+        ),
+        "RFC-0054 has no token axis rule for it"
+    );
+    let ungrouped = LeafLayout::model(&lowering, &p.layers, &p.selection, &p.claims)
+        .expect("a layout without token groups");
+    assert_eq!(ungrouped.ungroupable(), Some(rule));
+    assert_eq!(ungrouped.instances(), layout.instances());
+    assert_eq!(ungrouped.split_len(), layout.split_len());
+    let nodes = |l: &LeafLayout<ModelColumn>| l.sites().iter().map(|s| s.node).collect::<Vec<_>>();
+    assert_eq!(nodes(&ungrouped), nodes(&layout));
+    GroupedLayout::new(&ungrouped, &p.layers, LeafGroups::NONE).expect("one group");
+    for g in [groups(1, 0), groups(0, 1), groups(1, 1)] {
+        assert_eq!(
+            GroupedLayout::new(&ungrouped, &p.layers, g),
+            Err(LeafError::Internal { rule }),
+            "{g:?}"
+        );
+    }
+}
+
 #[test]
 fn a_grouping_the_layout_cannot_take_is_refused_at_its_rule() {
     let (p, layout) = stage(&bounded_model(), 3);

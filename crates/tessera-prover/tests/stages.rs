@@ -19,6 +19,9 @@
 //! of a public term is the prover's, [`public_value`]; the tests check the shift against an
 //! extension of `ψ·c` they enumerate over the padded cube, and that a verifier taking
 //! `c̃(r_c)·ψ̃(r)` in its place rejects an honest proof.
+//!
+//! Stage 1's bit zero-checks (RFC-0072 'The bit zero-checks', #526's second slice) are checked
+//! by the verifier's closed forms in [`bits`], which holds their tests.
 
 use std::collections::HashMap;
 use std::fs;
@@ -49,6 +52,8 @@ use tessera_tables::{GeneratedTable, RopeTable, Table, TableId, TableKind, Table
 use tessera_witness::{Engine, Witness};
 
 type F = GoldilocksExt2;
+
+mod bits;
 
 // ----- Models ---------------------------------------------------------------------------------
 
@@ -629,6 +634,9 @@ impl Verifier<'_> {
             | Relation::OneHotVocabulary => 3,
             Relation::OneHotCount | Relation::OneHotIndex => 2,
             Relation::Rotate => 2,
+            // RFC-0072's table: the three checks of degree 3, recomposition's of 2.
+            Relation::InputPadding | Relation::BitPadding | Relation::AssertEqual => 3,
+            Relation::Recomposition => 2,
             Relation::Equality => match node.op {
                 Op::Mul { .. } => 3,
                 // `c̃(x_c)·X̃(x)`, the constant per channel a public factor.
@@ -774,6 +782,10 @@ impl Verifier<'_> {
                 };
                 eq(&target, &r).expect("eq") * (e[0] - f)
             }
+            Relation::InputPadding
+            | Relation::BitPadding
+            | Relation::Recomposition
+            | Relation::AssertEqual => self.bit_relation(instance, node, &target, &r, e),
         }
     }
 
@@ -949,6 +961,19 @@ fn pool_of_graph(
     schedule: &StageSchedule,
     witness: &Witness,
 ) -> Vec<F> {
+    pool_of_tables(verifier_coords, graph, schedule, &|tensor| {
+        padded(witness, graph, tensor)
+    })
+}
+
+/// Each pool claim's value of a schedule of `graph` from the committed tables `table` gives,
+/// each tensor's over its padded shape: what the openings check.
+fn pool_of_tables(
+    verifier_coords: &HashMap<Coord, F>,
+    graph: &Graph,
+    schedule: &StageSchedule,
+    table: &dyn Fn(TensorId) -> Vec<Goldilocks>,
+) -> Vec<F> {
     let v = Verifier {
         graph,
         tables: &[],
@@ -982,7 +1007,7 @@ fn pool_of_graph(
                         .layers
                         .tensor(graph, atom.kind, l)
                         .expect("a tensor");
-                    let table = padded(witness, graph, tensor);
+                    let table = table(tensor);
                     let x = evaluate_base::<F>(&table, &v.point(&atom.point)).expect("a point");
                     value += w * v.coefficient(&atom.coefficient, l) * x;
                 }

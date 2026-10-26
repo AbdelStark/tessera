@@ -14,6 +14,10 @@
 //! - **Llama.** 8B's 32 layers read exactly the tables its first two do. `minimal` 8B and 405B
 //!   compile: their down projections' residual keys take `RequantWide`, with one class or four
 //!   (#292).
+//! - **The bit operations** (RFC-0066, RFC-0072 'Gadgets and leaf sites'). `BitDecompose` and
+//!   `AssertEqual` take gadgets in node order with every other, read no table, and `BitFn` takes
+//!   none. Their preconditions, `low + high ≤ 62` and each input's range, are refused with
+//!   `ERR-COMPILE-RANGE` against ranges that break them.
 
 mod common;
 
@@ -25,7 +29,8 @@ use tessera_compiler::{
     CompileError, Gadget, PublicModel, Selection, analyze, analyze_fragment, lower, select,
 };
 use tessera_ir::{
-    GadgetId, GadgetPolicy, Graph, GraphBuilder, NodeId, Op, Profile, TableId, TensorId,
+    BoolFn, GadgetId, GadgetPolicy, Graph, GraphBuilder, NodeId, NodeKind, Op, Profile, TableId,
+    TensorId,
 };
 use tessera_tables::{GeneratedTable, Table, TableKind, TableSpec};
 
@@ -936,4 +941,178 @@ fn argmax_registers_its_range_and_requires_true_bounded_logits() {
             }
         );
     }
+}
+
+// ----- RFC-0066's bit operations ---------------------------------------------------------------
+
+/// Committed bytes of `[3]` and their bits: `BitDecompose { 8, 0 }`.
+fn bytes(g: &mut GraphBuilder) -> (TensorId, TensorId) {
+    let u = g.input(decl(&[3], ADVICE, 0, 255)).expect("bytes");
+    let b = one(
+        g,
+        Op::BitDecompose { low: 8, high: 0 },
+        &[u],
+        out(&[3, 8], ADVICE),
+    );
+    (u, b)
+}
+
+/// RFC-0072 'Gadgets and leaf sites', RFC-0006 'Gadget selection': `BitDecompose` and
+/// `AssertEqual` take gadgets numbered in node order with every other gadget, here between two
+/// requantizations, and read no table; `BitFn`, virtual, takes none, and no gadget id after it
+/// moves.
+#[test]
+fn the_bit_operations_take_gadgets_in_node_order() {
+    let mut g = GraphBuilder::new();
+    let (u, b) = bytes(&mut g);
+    let shift = g.shift_classes(vec![4]).expect("a shift");
+    let requant = Op::Requant {
+        shift,
+        lo: -128,
+        hi: 127,
+    };
+    one(&mut g, requant.clone(), &[u], out(&[3], ADVICE));
+    let xor = one(&mut g, Op::BitFn { f: BoolFn::Xor }, &[b, b], virt(&[3, 8]));
+    let p = g.input(decl(&[3], NodeKind::Public, 0, 255)).expect("p");
+    g.node(Op::AssertEqual, &[u, p], Vec::new())
+        .expect("an equality");
+    one(&mut g, requant, &[u], out(&[3], ADVICE));
+    let _: TensorId = xor;
+    let graph = g.finish();
+    let selection = selected(&graph, &[], &GadgetPolicy::default()).expect("selects");
+    let gadgets: Vec<(u32, &str)> = selection
+        .gadgets
+        .iter()
+        .map(|&(node, gadget)| {
+            let name = match gadget {
+                Gadget::BitDecompose { low: 8, high: 0 } => "BitDecompose",
+                Gadget::AssertEqual => "AssertEqual",
+                Gadget::Requant1 { .. } => "Requant1",
+                other => panic!("{other:?}"),
+            };
+            (node.0, name)
+        })
+        .collect();
+    assert_eq!(
+        gadgets,
+        [
+            (0, "BitDecompose"),
+            (1, "Requant1"),
+            (3, "AssertEqual"),
+            (4, "Requant1")
+        ],
+        "node 2, the BitFn, takes none"
+    );
+    for (node, gadget) in [(0, 0), (3, 2)] {
+        let (id, _) = selection.of(NodeId(node)).expect("a gadget");
+        assert_eq!(id, GadgetId(gadget));
+        assert_eq!(selection.reads(NodeId(node)), Some(&[][..]), "no table");
+    }
+    assert_eq!(selection.of(NodeId(2)), None, "BitFn");
+}
+
+/// RFC-0066 'Integrality', RFC-0039: a `BitDecompose`'s and an `AssertEqual`'s preconditions are
+/// statement checks, which selection makes against the ranges it is given (`ERR-COMPILE-RANGE`):
+/// a decomposition of more than 62 bits; an input whose range leaves `[0, 2^{low + high})`; a
+/// committed input whose declared range does not hold it, read directly or moved; an
+/// `AssertEqual` input outside the centered field range, or with no range (`ERR-COMPILE-WRAP`).
+/// Range analysis refuses each first, so the ranges here are another graph's.
+#[test]
+fn the_bit_operations_preconditions_are_checked_against_their_ranges() {
+    let policy = GadgetPolicy::default();
+    let range = |rule| CompileError::Range {
+        node: NodeId(1),
+        input: 0,
+        rule,
+    };
+    // `x = u + u` of `[0, 510]`, decomposed into 9 bits; selected against 8, it leaves them.
+    let decomposed = |bits: u8| {
+        let mut g = GraphBuilder::new();
+        let (u, _) = bytes(&mut g);
+        let x = one(&mut g, Op::Add, &[u, u], virt(&[3]));
+        one(
+            &mut g,
+            Op::BitDecompose { low: bits, high: 0 },
+            &[x],
+            out(&[3, u32::from(bits)], ADVICE),
+        );
+        g.finish()
+    };
+    let ranges = analyze(&decomposed(9), &[]).expect("analyzes");
+    assert!(select(&decomposed(9), &ranges, &[], &policy).is_ok());
+    assert_eq!(
+        select(&decomposed(8), &ranges, &[], &policy).map(|_| ()),
+        Err(CompileError::Range {
+            node: NodeId(2),
+            input: 0,
+            rule: "the integer lies in [0, 2^{low + high})",
+        })
+    );
+    // More than 62 bits, which the IR refuses when a graph is built.
+    let mut wide = decomposed(9);
+    wide.nodes[2].op = Op::BitDecompose { low: 40, high: 23 };
+    assert_eq!(
+        select(&wide, &ranges, &[], &policy).map(|_| ()),
+        Err(CompileError::Range {
+            node: NodeId(2),
+            input: 0,
+            rule: "a decomposition has 1 to 62 bits: 1 ≤ low and low + high ≤ 62",
+        })
+    );
+    // A committed input declared `[0, 255]`, moved by a `Reshape`, under nine bits.
+    let moved = |bits: u8| {
+        let mut g = GraphBuilder::new();
+        let u = g.input(decl(&[2, 2], ADVICE, 0, 255)).expect("bytes");
+        let flat = one(&mut g, Op::Reshape, &[u], virt(&[4]));
+        one(
+            &mut g,
+            Op::BitDecompose { low: bits, high: 0 },
+            &[flat],
+            out(&[4, u32::from(bits)], ADVICE),
+        );
+        g.finish()
+    };
+    let ranges = analyze(&moved(8), &[]).expect("analyzes");
+    assert_eq!(
+        select(&moved(9), &ranges, &[], &policy).map(|_| ()),
+        Err(range(
+            "a committed integer's declared range holds [0, 2^{low + high})"
+        ))
+    );
+    // Public inputs declared beyond the centered field range, then compared.
+    let compared = |equal: bool| {
+        let mut g = GraphBuilder::new();
+        let big = decl(&[2], NodeKind::Public, 0, 1 << 63);
+        let p = g.input(big.clone()).expect("p");
+        let q = g.input(big).expect("q");
+        if equal {
+            g.node(Op::AssertEqual, &[p, q], Vec::new())
+                .expect("an equality");
+        }
+        g.finish()
+    };
+    let ranges = analyze(&compared(false), &[]).expect("public inputs need no reader");
+    assert_eq!(
+        select(&compared(true), &ranges, &[], &policy).map(|_| ()),
+        Err(CompileError::Range {
+            node: NodeId(0),
+            input: 0,
+            rule: "a true integer lies in (−(P−1)/2, (P−1)/2)",
+        })
+    );
+    // With no range at all, the ranges of a graph without the inputs.
+    let empty = analyze(&GraphBuilder::new().finish(), &[]).expect("analyzes");
+    let refused = select(&compared(true), &empty, &[], &policy).map(|_| ());
+    assert_eq!(
+        refused,
+        Err(CompileError::Wrap {
+            node: NodeId(0),
+            input: 0
+        })
+    );
+    assert_eq!(
+        refused.map_err(|e| e.code()),
+        Err(ErrorCode::CompileWrap),
+        "ERR-COMPILE-WRAP"
+    );
 }

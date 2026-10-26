@@ -25,16 +25,28 @@
 //! Any other key is `ERR-COMPILE-RANGE`. A `TableMap`, `Bitwise` or `SoftmaxRow` reads a table of
 //! its own, which must hold at most `2^{B_max}` rows, since those lookups have no split.
 //!
+//! RFC-0066's `BitDecompose` and `AssertEqual` take gadgets too, numbered with every other: their
+//! relations are stage 1's zero-checks, with no lookup and no leaf site (RFC-0072 'Gadgets and
+//! leaf sites'). Their preconditions are statement checks, `ERR-COMPILE-RANGE` when broken
+//! (RFC-0039): `low + high ≤ 62`, and each input's range as RFC-0066 states it. `BitFn` is
+//! virtual and takes none.
+//!
 //! Tables are shared by definition: a requantization table is its kind with `(b, r_by_class, lo,
 //! hi)`, and two nodes asking for the same one name one table. New tables follow the lowering's,
 //! numbered in order of first use, so the selection is a function of the graph (INV-IR-4).
 
 use std::collections::BTreeMap;
 
-use tessera_ir::{GadgetId, GadgetPolicy, Graph, Node, NodeId, Op, TableId};
+use tessera_ir::{GadgetId, GadgetPolicy, Graph, Node, NodeId, Op, TableId, TensorId};
 use tessera_tables::{GeneratedTable, Table, TableKind, TableSpec};
 
+use crate::range::committed_source;
+use crate::schedule::producers;
 use crate::{CompileError, HALF_FIELD, Range, Ranges};
+
+/// The most bits a `BitDecompose` commits, `low + high` (RFC-0066 'Integrality'): every sum of
+/// its recomposition stays below `2^{62}`.
+const DECOMPOSE_BITS: u32 = 62;
 
 /// The bound of RFC-0009 Lemma 2 on a split key: both halves stay true integers.
 const SPLIT_KEY_BITS: u32 = 62;
@@ -105,6 +117,18 @@ pub enum Gadget {
     },
     /// The sampling certificate (RFC-0017).
     InverseCdf,
+    /// RFC-0066's committed bits of a true integer: the booleanity, bit-padding and
+    /// recomposition zero-checks of stage 1, and its committed input's padding check (RFC-0072
+    /// 'The bit zero-checks'). No lookup and no leaf site.
+    BitDecompose {
+        /// The result bits.
+        low: u8,
+        /// The bits above them, 0 for none.
+        high: u8,
+    },
+    /// RFC-0066's equality of two tensors: one zero-check of stage 1 at their real positions.
+    /// No lookup and no leaf site.
+    AssertEqual,
 }
 
 /// Every gadget of a graph and every table its lookups read.
@@ -138,10 +162,12 @@ impl Selection {
 /// # Errors
 ///
 /// - [`CompileError::Usage`] for a `B_max` outside `[1, 32]`;
-/// - [`CompileError::Range`] for a requantization key no gadget takes, or a table of more than
-///   `2^{B_max}` rows;
-/// - [`CompileError::Table`] for a table the specifications lack (`ERR-INTERNAL`);
-/// - [`CompileError::Model`] for an operation of RFC-0066, which has no proof schedule yet.
+/// - [`CompileError::Range`] for a requantization key no gadget takes, a table of more than
+///   `2^{B_max}` rows, or a bit operation whose precondition fails: a `BitDecompose` of more
+///   than 62 bits, or of an input whose range leaves `[0, 2^{low + high})` (a committed graph
+///   input's declared range must hold it instead), or an `AssertEqual` of an input outside the
+///   centered field range ([`CompileError::Wrap`] for one with no bound);
+/// - [`CompileError::Table`] for a table the specifications lack (`ERR-INTERNAL`).
 pub fn select(
     graph: &Graph,
     ranges: &Ranges,
@@ -161,6 +187,7 @@ pub fn select(
         limb_bits: policy.limb_bits,
         tables: tables.to_vec(),
         reads: Vec::new(),
+        producers: None,
     };
     let mut gadgets = Vec::new();
     let mut reads = BTreeMap::new();
@@ -184,6 +211,8 @@ struct Selector<'a> {
     limb_bits: u8,
     tables: Vec<TableSpec>,
     reads: Vec<TableId>,
+    /// Each tensor's producer, computed at the first `BitDecompose`.
+    producers: Option<Vec<Option<(NodeId, u32)>>>,
 }
 
 impl Selector<'_> {
@@ -221,14 +250,107 @@ impl Selector<'_> {
                 }
             }
             Op::InverseCdf { .. } => Gadget::InverseCdf,
-            // RFC-0066 'Migration': their relations are scheduled with the anchor's (#526).
-            Op::BitDecompose { .. } | Op::BitFn { .. } | Op::AssertEqual => {
-                return Err(CompileError::Model {
-                    rule: "RFC-0066's bit operations have no proof schedule yet",
-                });
+            Op::BitDecompose { low, high } => {
+                self.decomposed(node, *low, *high)?;
+                Gadget::BitDecompose {
+                    low: *low,
+                    high: *high,
+                }
             }
+            Op::AssertEqual => {
+                for input in 0..node.inputs.len() {
+                    self.integer(node, input)?;
+                }
+                Gadget::AssertEqual
+            }
+            // Virtual, each its multilinear polynomial: no gadget (RFC-0066 '`BitFn`').
+            Op::BitFn { .. } => return Ok(None),
             _ => return Ok(None),
         }))
+    }
+
+    /// RFC-0066's preconditions of a `BitDecompose { low, high }` (RFC-0072 'Gadgets and leaf
+    /// sites'): `low + high ≤ 62`, and its input a true integer in `[0, 2^{low + high})`, or a
+    /// committed graph input, read directly or moved by `Reshape`, `Slice`, `Transpose`,
+    /// `GatherPublic` or `Expand`, whose declared range holds that interval: the bits range-check
+    /// it (Lemma 1's converse), and its other readers trust its declared range.
+    fn decomposed(&mut self, node: &Node, low: u8, high: u8) -> Result<(), CompileError> {
+        let bits = u32::from(low) + u32::from(high);
+        if low == 0 || bits > DECOMPOSE_BITS {
+            return Err(CompileError::Range {
+                node: node.id,
+                input: 0,
+                rule: "a decomposition has 1 to 62 bits: 1 ≤ low and low + high ≤ 62",
+            });
+        }
+        let top = (1i128 << bits) - 1;
+        let graph = self.graph;
+        let producers = self.producers.get_or_insert_with(|| producers(graph));
+        let producer = |t: TensorId| {
+            producers
+                .get(t.0 as usize)
+                .copied()
+                .flatten()
+                .and_then(|(id, _)| graph.nodes.get(id.0 as usize))
+        };
+        let Some(&x) = node.inputs.first() else {
+            return Err(CompileError::Usage {
+                rule: "a BitDecompose reads its integer",
+            });
+        };
+        if let Some(source) = committed_source(graph, producer, x) {
+            let declared = self.ranges.of(source).and_then(Range::bounded);
+            if !declared.is_some_and(|r| r.lo <= 0 && top <= r.hi) {
+                return Err(CompileError::Range {
+                    node: node.id,
+                    input: 0,
+                    rule: "a committed integer's declared range holds [0, 2^{low + high})",
+                });
+            }
+            return Ok(());
+        }
+        self.within(node, 0, 0, top, "the integer lies in [0, 2^{low + high})")
+    }
+
+    /// Input `input` of `node` is a true integer: its range inside the centered field range, as
+    /// `AssertEqual`'s two tensors must be for equality in `Fp` to be equality as integers.
+    fn integer(&self, node: &Node, input: usize) -> Result<(), CompileError> {
+        self.within(
+            node,
+            input,
+            1 - HALF_FIELD,
+            HALF_FIELD - 1,
+            "a true integer lies in (−(P−1)/2, (P−1)/2)",
+        )
+    }
+
+    /// Input `input` of `node` has a range inside `[lo, hi]`: [`CompileError::Wrap`] when it has
+    /// none, [`CompileError::Range`] when it leaves the interval.
+    fn within(
+        &self,
+        node: &Node,
+        input: usize,
+        lo: i128,
+        hi: i128,
+        rule: &'static str,
+    ) -> Result<(), CompileError> {
+        let range = node
+            .inputs
+            .get(input)
+            .and_then(|&t| self.ranges.of(t))
+            .and_then(Range::bounded)
+            .ok_or(CompileError::Wrap {
+                node: node.id,
+                input,
+            })?;
+        if range.lo < lo || range.hi > hi {
+            return Err(CompileError::Range {
+                node: node.id,
+                input,
+                rule,
+            });
+        }
+        Ok(())
     }
 
     /// RFC-0050: R's range, then every low limb and virtual top of A, then B.

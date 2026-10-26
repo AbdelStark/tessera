@@ -167,7 +167,7 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
 
 | Check | Identity | Instance variables | `eq` variables | Evaluations, in order | Degree |
 |---|---|---|---|---|---|
-| Input padding, of the committed graph input `u` a `BitDecompose` reads, directly or moved (RFC-0066), when `u` has padded positions | `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·ũ(x)`, `ψ` 1 on `u`'s real positions | `n_u` | `n_u` | `ũ` | 3 |
+| Input padding, of the committed graph input `u`, advice or weight, a `BitDecompose` reads, directly or moved (RFC-0066), when `u` has padded positions | `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·ũ(x)`, `ψ` 1 on `u`'s real positions | `n_u` | `n_u` | `ũ` | 3 |
 | Booleanity of `b`, of `h` | `0 = Σ_x eq(z, x)·b̃(x)·(1 − b̃(x))` | `n_y + k_b`, `n_y + k_h` | all | `b̃`, `h̃` | 3 |
 | Bit padding of `b`, of `h`, when its `low` or `high` bits are not a power of two | `0 = Σ_x eq(z, x)·(1 − LT(x_bit, low))·b̃(x)`, `high` for `h̃` | `n_y + k_b`, `n_y + k_h` | all | `b̃`, `h̃` | 3 |
 | Recomposition | below | `n_y + k` | `n_y` | `x̃` unless public, `b̃`, `h̃` | 2 |
@@ -190,7 +190,7 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
   - `b̃(r'_{i, ≥ k − k_b} ‖ r'_y)` and `h̃(r'_{i, ≥ k − k_h} ‖ r'_y)`, claims on committed outputs, for the pool, at their booleanity checks' points.
 - **The verifier's check** computes the public factors itself: `eq(z_y, r'_y)`, the zero-extensions' products, and the weights on `k` variables. With `s = (r_{k − k_b}, …, r_{k − 1})`, the high `k_b` coordinates, low first, `W̃_b(r) = Π_{t < k − k_b}(1 − r_t)·Σ_{j < low} 2^j·eq(s, j)`, in `O(low·k)`. When `low = 2^{k_b}` the sum is `Π_{t < k_b}(1 − s_t + s_t·2^{2^t})`. `W̃_h` is the same with `high` and `k_h`.
 - **Why one instance.** Stage 1 batches its instances with `γ`, after each instance's claim is fixed (RFC-0010 'Batching within a stage'). RFC-0066 wrote recomposition as `x̃(z)` minus two sums of `n_y + k_b` and `n_y + k_h` variables. As three instances, the two sums' values, unknown to the verifier, would have to be sent before `γ`, a new message. Summed over the bit axis, the instance's claim is 0, and `x`'s claim moves from `z` to `r'_y`.
-- **Degree.** Each variable is of degree at most 2: `eq·x̃` in the `y` variables, and `W·b̂` in the bit variables. Stage 1's degree is 3 either way, from booleanity.
+- **Degree.** Each variable is of degree at most 2: `eq·x̃` in the `y` variables, and `W·b̂` in the bit variables. Stage 1's degree is 3 either way, from booleanity. As a sum of products of tables, though, a term has three factors, `eq(z_y, ·)·Z_b`, `W̃_b` and `b̃`, so an engine that bounds a term's factors by its batch's degree proves it only at degree 3. Stage 1 is always that, since every recomposition's booleanity checks sit beside it.
 
 **`AssertEqual` with neither side public** sends `ã(r')` then `b̃(r')`, two claims at one point on two tensors, each to its destination. With one side public, the proof sends only the other.
 
@@ -318,7 +318,7 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
   - The SHA-256 key commitment, one block with committed `k_s` and `salt_k`, proves on the CPU prover and verifies.
   - So does one AES-128-CTR block under a committed key.
   - An S-box output off its table is `Reject(Lookup { table })`.
-- **Calibration.** Over F65537, a witness with one non-Boolean bit passes stage 1's booleanity check at the rate `n/|F|`, within confidence bounds, with scripted challenges. There `low + high ≤ 16` (RFC-0066 Lemma 1).
+- **Calibration.** Over F65537, a witness with one non-Boolean bit passes stage 1's booleanity check at the rate `1 − (1 − 1/|F|)^n`, at most `n/|F|`, within confidence bounds, with scripted challenges. There `low + high ≤ 16` (RFC-0066 Lemma 1).
 - **No change elsewhere.** The Llama schedules' vectors (`spec/vectors/schedule/`), each Llama stage's evaluation count, `cargo xtask gen-vectors --check` and the verifier's stage tests are unchanged, and no Llama schedule meets the summing-relation, committed-output or layer refusals.
 - **The refusals.** Each is `ERR-INTERNAL` when the schedule is derived: a `Sum` over a padded axis downstream of a `TableMap` into `AesSbox`; a `MatMulAct` whose two inputs both have one upstream, while one with a single such input is admitted; a layer template holding a `BitDecompose`, an `AssertEqual`, a `ConstAdd`, a selection, a per-channel `ConstMul`, a lookup non-zero at padding or a node whose output is public; a single checkpoint; a sum over a padded axis downstream of a committed input that nothing pins; a committed output of a `Slice` and of a `Sum`; in a graph of two requests, a `ConstAdd` and an `AssertEqual` downstream of the tokens, once #551 builds one.
 

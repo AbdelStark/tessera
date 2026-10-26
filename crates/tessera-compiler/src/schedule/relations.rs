@@ -3,7 +3,7 @@
 //! The reduction stages: each instance's relation, its variables, and the claims its evaluations
 //! leave (RFC-0010 'Relations', RFC-0037 'Stages and their instances', 'Rotate').
 
-use tessera_ir::{Broadcast, Node, NodeKind, Op, OpClass};
+use tessera_ir::{Broadcast, Node, NodeKind, Op, OpClass, TensorId};
 
 use super::claims::Derivation;
 use super::{
@@ -11,6 +11,7 @@ use super::{
     axis_vars, blocks, refuse,
 };
 use crate::CompileError;
+use crate::range::committed_source;
 
 /// An instance before its stage's rounds are known.
 struct Planned<'a> {
@@ -27,8 +28,9 @@ struct Planned<'a> {
 }
 
 /// Stage `index`: an instance per virtual part of the stage before's claims `previous`, in order,
-/// then in stage 1 the OneHot and equality zero-checks in node order, and the claims their evaluations leave.
-/// It has no instances when nothing remains to prove.
+/// then in stage 1 the OneHot and equality zero-checks in node order, the natives' among them,
+/// then the bit zero-checks in node order ([`bit_checks`]), and the claims their evaluations
+/// leave. It has no instances when nothing remains to prove.
 pub(super) fn stage<'a>(
     derivation: &mut Derivation<'a>,
     index: u16,
@@ -133,6 +135,8 @@ pub(super) fn stage<'a>(
             let offset = planned[first_zero..].partition_point(|p| p.origin <= n.node.0);
             planned.insert(first_zero + offset, plan);
         }
+        // After every other zero-check (RFC-0072 'The bit zero-checks').
+        planned.extend(bit_checks(derivation)?);
     }
     let rounds = planned.iter().map(|p| p.vars).max().unwrap_or(0);
     let zero_vars = planned[first_zero..]
@@ -341,6 +345,93 @@ fn zero_checks<'a>(derivation: &Derivation<'a>) -> Vec<(NodeRef, &'a Node, Kind)
     checks
 }
 
+/// RFC-0066's zero-checks of each `BitDecompose` and `AssertEqual`, in node order, each node's in
+/// the order of RFC-0072's table ('The bit zero-checks'), each on the variables of its tensor:
+///
+/// 1. **Input padding**, `n_u`: of the committed graph input `u` a `BitDecompose` reads, directly
+///    or moved ([`committed_source`]), when `u` has padded positions. Two decompositions of one
+///    input check it twice. It pins `u`'s padded positions, which the schedule's summing rule
+///    relies on (RFC-0072 'Padded positions').
+/// 2. **Booleanity** of `b`, then of `h`: `n_y + k_b` and `n_y + k_h`.
+/// 3. **Bit padding** of `b`, then of `h`, when its `low` or `high` bits are not a power of two.
+/// 4. **Recomposition**, `n_y + k`, `k = max(k_b, k_h)`: summed over the bit axis.
+/// 5. **`AssertEqual`**, `n_a`, its tensors'.
+///
+/// Neither operation is in a layer template ([`super::LayerMap`]), so no check is stacked.
+fn bit_checks<'a>(derivation: &Derivation<'a>) -> Result<Vec<Planned<'a>>, CompileError> {
+    let graph = derivation.graph;
+    let vars = |t: TensorId| {
+        blocks(&graph.tensors[t.0 as usize].shape)
+            .iter()
+            .sum::<u32>()
+    };
+    let mut checks = Vec::new();
+    for node in &graph.nodes {
+        if !matches!(node.op, Op::BitDecompose { .. } | Op::AssertEqual) {
+            continue;
+        }
+        if derivation.layers.position(node.id).is_some() {
+            return refuse(
+                Some(node.id),
+                "a BitDecompose or an AssertEqual is outside the layers",
+            );
+        }
+        let mut check = |relation, tensor: TensorId, vars: u32| {
+            checks.push(Planned {
+                source: Source::ZeroCheck,
+                relation,
+                node: NodeRef::Node(node.id),
+                graph_node: node,
+                kind: derivation.layers.outside(tensor).0,
+                point: Vec::new(),
+                layers: Layers::None,
+                vars,
+                origin: node.id.0,
+                native: None,
+            });
+        };
+        let Op::BitDecompose { low, high } = node.op else {
+            check(Relation::AssertEqual, node.inputs[0], vars(node.inputs[0]));
+            continue;
+        };
+        let x = node.inputs[0];
+        let rows = vars(x);
+        if let Some(u) = committed_source(graph, |t| derivation.producer_of(t), x)
+            && graph.tensors[u.0 as usize]
+                .shape
+                .iter()
+                .any(|len| !len.is_power_of_two())
+        {
+            check(Relation::InputPadding, u, vars(u));
+        }
+        // Each output with its bit count and bit variables: `b`, then `h` when `high > 0`.
+        let outputs: Vec<(TensorId, u32, u32)> = node
+            .outputs
+            .iter()
+            .zip([low, high])
+            .map(|(&t, bits)| (t, u32::from(bits), axis_vars(u32::from(bits))))
+            .collect();
+        for &(t, _, bit_vars) in &outputs {
+            check(Relation::Booleanity, t, rows + bit_vars);
+        }
+        for &(t, bits, bit_vars) in &outputs {
+            if !bits.is_power_of_two() {
+                check(Relation::BitPadding, t, rows + bit_vars);
+            }
+        }
+        // The output whose bit axis has the `k` variables: `b`, or `h` when it has more.
+        let Some(&(b, _, k_b)) = outputs.first() else {
+            return refuse(Some(node.id), "a BitDecompose has its low bits");
+        };
+        let (widest, k) = match outputs.get(1) {
+            Some(&(h, _, k_h)) if k_h > k_b => (h, k_h),
+            _ => (b, k_b),
+        };
+        check(Relation::Recomposition, widest, rows + k);
+    }
+    Ok(checks)
+}
+
 /// The variables of an instance of `relation` on `node` whose claim weighs the layers by
 /// `layers`: the relation's summed and free variables, then the layer variables.
 fn instance_vars(
@@ -356,7 +447,7 @@ fn instance_vars(
         );
     }
     let lambda = u32::try_from(stacked(layers, derivation.layers.vars)).unwrap_or(u32::MAX);
-    let shape = |t: tessera_ir::TensorId| derivation.graph.tensors[t.0 as usize].shape.as_slice();
+    let shape = |t: TensorId| derivation.graph.tensors[t.0 as usize].shape.as_slice();
     let vars = |t| blocks(shape(t)).iter().sum::<u32>();
     let own = match relation {
         Relation::Native { .. } => {
@@ -407,6 +498,15 @@ fn instance_vars(
         | Relation::OneHotVocabulary
         | Relation::OneHotCount
         | Relation::OneHotIndex => vars(node.outputs[0]),
+        Relation::InputPadding
+        | Relation::BitPadding
+        | Relation::Recomposition
+        | Relation::AssertEqual => {
+            return refuse(
+                Some(node.id),
+                "a bit zero-check's variables are its own tensor's",
+            );
+        }
     };
     Ok(own + lambda)
 }
@@ -484,9 +584,32 @@ fn evaluations(
         Relation::SumSquares | Relation::Rotate | Relation::ScaleChannels => {
             vec![at(0, own.to_vec())?]
         }
-        Relation::Booleanity | Relation::OneHotVocabulary | Relation::OneHotCount => {
+        Relation::Booleanity
+        | Relation::OneHotVocabulary
+        | Relation::OneHotCount
+        | Relation::InputPadding
+        | Relation::BitPadding => {
             vec![(plan.kind, own.to_vec(), layers.clone())]
         }
+        // `x̃(r'_y)` unless public, then `b̃` and `h̃` at the high `k_b` and `k_h` of the bit
+        // coordinates `r'_i` with `r'_y`: the outputs zero-extended on their high coordinates,
+        // so these are the stage's last `n_y + k_b` and `n_y + k_h` challenges, their
+        // booleanity checks' points (RFC-0072 'Recomposition').
+        Relation::Recomposition => {
+            let Op::BitDecompose { low, high } = node.op else {
+                return refuse(id, "a recomposition is a BitDecompose's");
+            };
+            let k = axis_vars(u32::from(low)).max(axis_vars(u32::from(high))) as usize;
+            let mut claims = operand(0, own[k..].to_vec())?;
+            for (&t, bits) in node.outputs.iter().zip([low, high]) {
+                let from = k - axis_vars(u32::from(bits)) as usize;
+                let (kind, layers) = derivation.layers.outside(t);
+                claims.push((kind, own[from..].to_vec(), layers));
+            }
+            claims
+        }
+        // `ã`'s, then `b̃`'s, each unless public.
+        Relation::AssertEqual => [operand(0, own.to_vec())?, operand(1, own.to_vec())?].concat(),
         Relation::OneHotIndex => {
             let width = axis_vars(
                 *derivation.graph.tensors[node.outputs[0].0 as usize]

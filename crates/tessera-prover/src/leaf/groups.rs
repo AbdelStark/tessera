@@ -134,7 +134,8 @@ impl GroupedLayout {
     /// # Errors
     ///
     /// [`LeafError::Internal`] (`ERR-INTERNAL`) for the first rule broken, in this order: more than
-    /// 14 group bits, or more layer bits than the layer index has; then site by site, layer by
+    /// 14 group bits, or more layer bits than the layer index has; groups of a stage whose token
+    /// axes RFC-0054 does not derive ([`LeafLayout::ungroupable`]), with that rule; then site by site, layer by
     /// layer and lookup by lookup, a token axis shorter than `2^{g_T}` padded; then tensor by
     /// tensor, lookups that read one tensor with different group variables or, outside them,
     /// different coordinates in their groups' blocks.
@@ -148,6 +149,13 @@ impl GroupedLayout {
         }
         if u32::from(groups.layer_bits) > layers.vars {
             return internal("a grouping fixes at most the layer index's bits");
+        }
+        // RFC-0054's token axis has no rule for RFC-0066's operations: a graph that holds them
+        // runs its leaf stage in one group (RFC-0072 'Non-Goals' 'Token groups').
+        if groups.bits() > 0
+            && let Some(rule) = stage.ungroupable()
+        {
+            return internal(rule);
         }
         let g_t = u32::from(groups.token_bits);
         let mut fixed = Vec::with_capacity(stage.sites().len());

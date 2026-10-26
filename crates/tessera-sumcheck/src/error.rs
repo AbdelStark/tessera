@@ -38,6 +38,10 @@ use crate::{MAX_DEGREE, Operand};
 /// sits within its target's variables, and [`Linear::terms`](crate::Linear::terms) that the
 /// target's point has its coordinates.
 ///
+/// [`Recomposition::new`](crate::Recomposition::new) checks its bit widths, that its instance's
+/// entries can be counted, then each input's length; its `tables` and `claims` check points and
+/// evaluations as the others do.
+///
 /// The variants carry indices, lengths, heights, degrees and operand names, never a field
 /// element, so an error cannot carry a secret table value, a leaf or an evaluation (05 §3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -228,6 +232,15 @@ pub enum SumcheckError {
         /// The target's variables.
         target_vars: usize,
     },
+    /// A [`Recomposition`](crate::Recomposition)'s bit widths are not a `BitDecompose`'s
+    /// (RFC-0066): `low` is 0, `low + high` exceeds 62, or its high bits are given exactly when
+    /// `high` is 0.
+    BitWidths {
+        /// The result bits, `low`.
+        low: u8,
+        /// The bits above them, `high`.
+        high: u8,
+    },
     /// RFC-0054's merge was given inputs that do not fit its shapes: a claim on no polynomial,
     /// a point or group bits of the wrong size, a group variable out of order, a table of the
     /// wrong length, or a two-pass prover asked for more table rounds than its polynomials have.
@@ -363,6 +376,10 @@ impl fmt::Display for SumcheckError {
             Self::InputPlacement { input, target_vars } => write!(
                 f,
                 "input {input} does not sit within a target of {target_vars} variables"
+            ),
+            Self::BitWidths { low, high } => write!(
+                f,
+                "a recomposition of {low} low and {high} high bits is not a BitDecompose's"
             ),
             Self::Merge { rule } => write!(f, "the merge's inputs break a rule: {rule}"),
         }

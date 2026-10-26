@@ -113,6 +113,14 @@ nonlinear batched relation fails Sumcheck at its exact stage and round. A mixed
 sumcheck batch cannot identify one guilty gadget. Relabeling either failure as
 Gadget would violate that order. InverseCdf alternatives belong to #160.
 
+RFC-0066's `BitDecompose` and `AssertEqual` have no final check here: their relations are stage
+1's zero-checks (RFC-0072 'The bit zero-checks'), so a false bit fails stage 1's final check,
+`Reject(Sumcheck { stage: 1, round: n_1 })`, never `Reject(Gadget)`. Their alternatives are the
+prover's stage tests (`crates/tessera-prover/tests/bits/mod.rs`, part of `tests/stages.rs`): of every Boolean assignment
+of a decomposition's bits and padded slot only the honest one passes, nor does any non-Boolean
+assignment that recomposes; only equal tensors pass an `AssertEqual`; and each check's violation
+passes once exactly that check is removed. The verifier's mirror is #150's and #159's.
+
 Adversarial fixtures cover low-limb wrap and underflow, narrowed-top `u + P`, full
 products/constants beyond Goldilocks, root and reciprocal alternatives, wrong
 maxima, masked keys/leaves, omitted padding axes, two/wrong OneHot entries and

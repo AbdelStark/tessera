@@ -118,6 +118,18 @@ impl NativeProver for NoNative {
 pub trait WitnessSource {
     /// The values of `tensor`, or `None` when the witness lacks it.
     fn values(&self, tensor: TensorId) -> Option<&[i64]>;
+
+    /// The values of `tensor` over its padded shape, each axis padded to a power of two, flat
+    /// and row-major over that shape: the stage tables' layout, the last axis's index the lowest
+    /// bits (RFC-0011 rule 1). `None`, the default, for a source of the real positions alone,
+    /// whose padded positions the stage tables take as 0 (RFC-0072 'Padded positions'): what the
+    /// CPU engine's witness computes for every graph the stages prove today. A source that
+    /// returns them makes the stage tables hold them, as a prover that commits its padded
+    /// positions does.
+    fn padded(&self, tensor: TensorId) -> Option<&[i64]> {
+        let _ = tensor;
+        None
+    }
 }
 
 /// The CPU engine's witness, every tensor in memory.

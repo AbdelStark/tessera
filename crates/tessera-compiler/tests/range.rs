@@ -1162,13 +1162,23 @@ fn the_sha256_circuit_keeps_every_tensor_in_range() {
     // `BitDecompose { 8, 0 }` reads the committed bytes directly, so it proves them: the circuit
     // is a proof's graph, not a fragment (RFC-0006 'Committed graph inputs').
     analyze(&graph, &[]).expect("the bytes' decomposition proves them");
-    // Until the anchor's relations are scheduled (#526), the compiler takes the circuit to no
-    // proof, and it is no part of a model.
+    // Every `BitDecompose` and `AssertEqual` takes a gadget, in node order, and no `BitFn` does
+    // (RFC-0072 'Gadgets and leaf sites'); the circuit is no part of a model.
+    let selection = select(&graph, &ranges, &[], &GadgetPolicy::default()).expect("selects");
+    let gadgets: Vec<NodeId> = graph
+        .nodes
+        .iter()
+        .filter(|n| matches!(n.op, Op::BitDecompose { .. } | Op::AssertEqual))
+        .map(|n| n.id)
+        .collect();
+    assert!(!gadgets.is_empty());
     assert_eq!(
-        select(&graph, &ranges, &[], &GadgetPolicy::default()).err(),
-        Some(CompileError::Model {
-            rule: "RFC-0066's bit operations have no proof schedule yet"
-        })
+        selection
+            .gadgets
+            .iter()
+            .map(|&(node, _)| node)
+            .collect::<Vec<_>>(),
+        gadgets
     );
     let profile = check_profile(&graph, &ranges, &[], Profile::Minimal).expect_err("not a model");
     let CompileError::Profile { node, rule } = profile else {

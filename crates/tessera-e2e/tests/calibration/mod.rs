@@ -8,6 +8,7 @@
 //! messages', not taken from `tessera-poly`, so that a check here does not share a mistake with
 //! the code whose proofs it checks.
 
+pub mod booleanity;
 pub mod interval;
 pub mod logup;
 pub mod sumcheck;
