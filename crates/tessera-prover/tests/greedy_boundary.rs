@@ -9,7 +9,7 @@ use tessera_codec::{Ascii, Secret, encode};
 use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_pcs as pcs;
-use tessera_sumcheck::{Instance, MAX_DEGREE, Prefix, Table, Term, prove_batch};
+use tessera_sumcheck::{Instance, Prefix, Protocol, Table, Term, prove_batch};
 use tv_core::claims::{ClaimList, QuantPoint};
 use tv_core::gadgets::{
     Plan,
@@ -489,8 +489,11 @@ fn cpu_batches_use_original_carry_sources_in_both_mode_contexts() {
         for live in [false, true] {
             let public = [vec![key], pv.clone(), po.clone(), z.clone()].concat();
             let (mut p, _) = sessions(live, id as u8, &public, &committed_h.root());
-            // The complete model's mixed native batch uses the common degree-seven bound.
-            let produced = prove_batch(&mut p, Prefix::Stage(1), MAX_DEGREE, &instances).unwrap();
+            // The complete model's mixed native batch uses tessera-protocol/1's degree-seven
+            // bound.
+            let bound = Protocol::One.max_degree(Prefix::Stage(1));
+            let produced =
+                prove_batch(&mut p, Protocol::One, Prefix::Stage(1), bound, &instances).unwrap();
             let proof = tv::SumcheckProof {
                 rounds: produced
                     .proof()
@@ -511,7 +514,7 @@ fn cpu_batches_use_original_carry_sources_in_both_mode_contexts() {
                 let result = tv::verify_batch(
                     &mut v,
                     tv::Prefix::Stage(1),
-                    MAX_DEGREE,
+                    bound,
                     &expected,
                     proof,
                     |i, point, values| checks[i].evaluate(point, values).ok().map(|f| f.value),

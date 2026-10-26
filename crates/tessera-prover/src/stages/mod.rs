@@ -57,7 +57,8 @@ use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
 use tessera_ir::{Graph, Node, NodeId, Op, TensorId};
 use tessera_poly::{eq, evaluate_base, less_than};
 use tessera_sumcheck::{
-    Prefix, SumcheckError, SumcheckProof, SumcheckTranscript, prove_batch, zero_check_point,
+    Prefix, Protocol, SumcheckError, SumcheckProof, SumcheckTranscript, prove_batch,
+    zero_check_point,
 };
 use tessera_tables::TableSpec;
 
@@ -485,6 +486,7 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
                 degree: own_degree,
                 evaluations,
                 zero,
+                ..
             } = instance.relation
             {
                 let claim = native.claim(tag)?;
@@ -511,7 +513,13 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
                 );
             }
         }
-        let proven = prove_batch(transcript, Prefix::Stage(u32::from(k)), degree, &instances)?;
+        let proven = prove_batch(
+            transcript,
+            Protocol::One,
+            Prefix::Stage(u32::from(k)),
+            degree,
+            &instances,
+        )?;
         for (round, &r) in (0u32..).zip(proven.point()) {
             self.coords.insert(Coord::Round { stage: k, round }, r);
         }

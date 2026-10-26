@@ -21,7 +21,8 @@ use common::forests::mle;
 use common::{Fp, Fp2, Session, SplitMix64, TvFp2, tv_fp, tv_fp2, tv_fp2s, tv_prefix, tv_proof};
 use tessera_field::{Field, PrimeField};
 use tessera_sumcheck::{
-    Elementwise, Input, Instance, Prefix, Rotate, SumcheckError, SumcheckProof, prove_batch,
+    Elementwise, Input, Instance, Prefix, Protocol, Rotate, SumcheckError, SumcheckProof,
+    prove_batch,
 };
 use tv_core::sumcheck as tv;
 
@@ -173,6 +174,7 @@ fn prove(
     instances.extend(mul.iter().map(|t| t.instance()));
     prove_batch(
         &mut session.transcript(),
+        Protocol::One,
         Prefix::Stage(2),
         degree,
         &instances,
@@ -252,6 +254,7 @@ fn rotate_verifies_as_ropes_rotation_of_each_pair() {
         let tables = relation.tables(&case.point).expect("a point");
         let proven = prove_batch(
             &mut session.transcript(),
+            Protocol::One,
             Prefix::Stage(2),
             2,
             &[tables.instance()],

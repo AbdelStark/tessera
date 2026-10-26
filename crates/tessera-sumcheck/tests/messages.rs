@@ -12,7 +12,7 @@ use tessera_field::{Field, PrimeField, QuadraticExtension};
 use tessera_sumcheck::{
     Claim, Elementwise, ElementwiseShape, Forest, Input, Instance, Linear, LinearClaim,
     LinearInput, MatMulAct, MatMulActShape, MatMulWeight, MatMulWeightShape, Placement, Prefix,
-    RightLayout, Rotate, SumcheckProof, Table, Term, prove_batch, prove_forests,
+    Protocol, RightLayout, Rotate, SumcheckProof, Table, Term, prove_batch, prove_forests,
 };
 
 fn element_bytes(x: Fp2) -> Vec<u8> {
@@ -231,6 +231,7 @@ fn matmul_debug_forms_show_shapes_never_values() {
     assert_hidden(&format!("{:?}", tables.instance()), &secrets, "an instance");
     let proven = prove_batch(
         &mut session.transcript(),
+        Protocol::One,
         Prefix::Stage(0),
         3,
         &[tables.instance()],
@@ -265,6 +266,7 @@ fn matmul_debug_forms_show_shapes_never_values() {
     );
     let proven = prove_batch(
         &mut session.transcript(),
+        Protocol::One,
         Prefix::Stage(0),
         3,
         &[tables.instance()],
@@ -347,6 +349,7 @@ fn elementwise_and_linear_debug_forms_show_shapes_never_values() {
         assert_hidden(&format!("{:?}", tables.instance()), &secrets, "an instance");
         let proven = prove_batch(
             &mut session.transcript(),
+            Protocol::One,
             Prefix::Stage(1),
             relation.degree(),
             &[tables.instance()],
@@ -376,6 +379,7 @@ fn elementwise_and_linear_debug_forms_show_shapes_never_values() {
     assert_hidden(&format!("{:?}", tables.instance()), &secrets, "an instance");
     let proven = prove_batch(
         &mut session.transcript(),
+        Protocol::One,
         Prefix::Stage(2),
         2,
         &[tables.instance()],

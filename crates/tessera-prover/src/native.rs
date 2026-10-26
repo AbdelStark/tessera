@@ -3,7 +3,9 @@
 //! CPU native model relations in the graph's single stage batch (RFC-0037/0050).
 
 use tessera_codec::SecretBuf;
-use tessera_compiler::schedule::{LayerMap, Native, NativeOutput, NodeRef, StageSchedule};
+use tessera_compiler::schedule::{
+    LayerMap, Native, NativeKind, NativeOutput, NodeRef, StageSchedule,
+};
 use tessera_compiler::{AuxColumn, CompareColumn, Lowering, RuntimePlan, Selection};
 use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField};
 use tessera_gadgets::{RsqrtRow, Slack};
@@ -64,6 +66,25 @@ enum Relation {
     MaxPad,
     ReciprocalPad,
     Runtime,
+}
+
+impl Relation {
+    /// The compiler's kind of a model relation, which the descriptor carries (RFC-0013 'Degree'
+    /// keys the instance by it); `None` for a request's, whose kind its [`Runtime`] gives
+    /// (`runtime::append`).
+    fn kind(self) -> Option<NativeKind> {
+        Some(match self {
+            Self::Product => NativeKind::Product,
+            Self::RootPad => NativeKind::RootPad,
+            Self::ResidualPad => NativeKind::ResidualPad,
+            Self::Key => NativeKind::Key,
+            Self::Forest => NativeKind::Forest,
+            Self::Reciprocal => NativeKind::Reciprocal,
+            Self::MaxPad => NativeKind::MaxPad,
+            Self::ReciprocalPad => NativeKind::ReciprocalPad,
+            Self::Runtime => return None,
+        })
+    }
 }
 struct Family {
     site: usize,
@@ -202,9 +223,10 @@ impl ModelNativePlan {
         for (i, f) in families.iter().enumerate() {
             let node = &lowering.graph.nodes[f.nodes[0].0 as usize];
             let local = vars(&f.shape);
-            let mut add = |relation, local, degree, evaluations, zero, outputs| {
+            let mut add = |relation: Relation, local, degree, evaluations, zero, outputs| {
                 native.push(Native {
                     tag: (slots.len() + 1) as u32,
+                    kind: relation.kind().ok_or_else(bad)?,
                     node: node.id,
                     vars: local + f.lambda,
                     degree,
@@ -216,6 +238,7 @@ impl ModelNativePlan {
                     family: i,
                     relation,
                 });
+                Ok::<_, StageError>(())
             };
             let output = |tensor, from, vars| NativeOutput { tensor, from, vars };
             match f.kind {
@@ -236,7 +259,7 @@ impl ModelNativePlan {
                                 output(node.inputs[0], 0, local),
                                 output(node.outputs[0], 0, local),
                             ],
-                        );
+                        )?;
                     }
                     add(
                         Relation::RootPad,
@@ -245,7 +268,7 @@ impl ModelNativePlan {
                         1,
                         true,
                         vec![output(node.outputs[0], 0, local)],
-                    );
+                    )?;
                     let rvars = vars(&lowering.graph.tensors[residual.0 as usize].shape);
                     add(
                         Relation::ResidualPad,
@@ -254,7 +277,7 @@ impl ModelNativePlan {
                         1,
                         true,
                         vec![output(residual, 0, rvars)],
-                    );
+                    )?;
                 }
                 Kind::Softmax { .. } => {
                     for relation in [Relation::Key, Relation::Forest] {
@@ -265,7 +288,7 @@ impl ModelNativePlan {
                             2,
                             false,
                             vec![output(node.inputs[0], 0, local)],
-                        );
+                        )?;
                     }
                     let row = vars(&lowering.graph.tensors[node.outputs[1].0 as usize].shape);
                     add(
@@ -275,8 +298,8 @@ impl ModelNativePlan {
                         2,
                         false,
                         vec![output(node.outputs[1], 0, row)],
-                    );
-                    add(Relation::MaxPad, row, 3, 1, true, Vec::new());
+                    )?;
+                    add(Relation::MaxPad, row, 3, 1, true, Vec::new())?;
                     add(
                         Relation::ReciprocalPad,
                         row,
@@ -284,7 +307,7 @@ impl ModelNativePlan {
                         1,
                         true,
                         vec![output(node.outputs[1], 0, row)],
-                    );
+                    )?;
                     deferred.push((node.id, Some(0)));
                 }
                 Kind::Runtime(_) => return Err(bad()),

@@ -50,6 +50,7 @@
 //! verifier derives the same schedule from RFC-0037 itself (#114).
 
 mod claims;
+mod degree;
 mod layers;
 pub mod masks;
 mod natives;
@@ -67,6 +68,10 @@ use tessera_tables::TableSpec;
 
 use crate::{CompileError, Lowering};
 
+pub use degree::{
+    Constant, DegreeKey, DegreeRelation, DegreeRow, EqualityOp, FOLD_DEGREE, InstanceDegree,
+    StageDegree, degree_row, protocol2_degree, protocol2_stages, stage_degree,
+};
 pub use layers::LayerMap;
 pub use natives::{ModelNatives, NativeKind, Request, model_natives};
 pub use padding::{nonzero_at_padding, reads_padding, tensors_nonzero_at_padding};
@@ -303,6 +308,9 @@ pub enum Relation {
     Native {
         /// Verifier-independent stable identity in the compiler's native plan.
         tag: u32,
+        /// What it proves, the native plan's kind for its tag ([`Native::kind`]): RFC-0013
+        /// 'Degree' keys a native's row by it, never by its descriptor.
+        kind: NativeKind,
         /// Degree including the equality/selectors.
         degree: usize,
         /// Raw proof evaluations before graph-source transformation.
@@ -491,6 +499,12 @@ pub struct NativeOutput {
 pub struct Native {
     /// Backend component identity.
     pub tag: u32,
+    /// What it proves: the relation of RFC-0050, RFC-0030 or RFC-0053 the native plan names for
+    /// the tag ([`ModelNatives::kinds`]). The schedule's instance carries it
+    /// ([`Relation::Native`]), so that RFC-0013 'Degree' keys the instance from the schedule
+    /// alone: `Key`, `Forest` and `Reciprocal` share a descriptor of degree 3 and two
+    /// evaluations, and their rows differ.
+    pub kind: NativeKind,
     /// Owning first-layer gadget or LM-head node.
     pub node: NodeId,
     /// Total variables, with any layer coordinates highest.

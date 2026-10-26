@@ -21,18 +21,30 @@
 //! A coordinate is written `leaf:{s}:{i}` for coordinate `i` of leaf site `s`'s point,
 //! `layer:{i}` for the layer point `ρ_1`'s, `zero:{i}` for stage 1's zero-check point's,
 //! `round:{k}:{j}` for the challenge of round `j` of stage `k`, and `half` for `½`.
+//!
+//! The stage degrees, `spec/vectors/schedule/degrees.json` ([`render_degrees`], RFC-0013 'Masked
+//! extensions' 'Degree', #565), hold each reduction stage's `tessera-protocol/2` degree on the
+//! composed schedules `tessera-protocol/2` proves: each conformance claim list's, at `n` of 1, 4,
+//! 5 and `max_context`, for the requests `none`, `prefill` and, at `n ≥ 2`, `generate`.
 
 use std::path::Path;
 
 use serde_json::{Value, json};
-use tessera_compiler::schedule::{Coord, Kind, Layers, NodeRef, Relation, Site, StageSchedule};
+use tessera_compiler::schedule::masks::protocol2_length;
+use tessera_compiler::schedule::{
+    Coord, Kind, Layers, NodeRef, Relation, Request, Site, StageDegree, StageSchedule,
+    derive_composed_schedule, model_natives, protocol2_stages,
+};
 use tessera_compiler::{Lowering, PublicModel, derive_schedule, lower};
-use tessera_ir::CommitmentClass;
+use tessera_ir::{ClaimList, CommitmentClass};
 
-use crate::claim_vectors::models;
+use crate::claim_vectors::{claims, models};
 
 /// Where the schedules are written.
 pub(crate) const PATH: &str = "spec/vectors/schedule/schedule.json";
+
+/// Where the stage degrees are written.
+pub(crate) const DEGREES_PATH: &str = "spec/vectors/schedule/degrees.json";
 
 fn coord(coord: &Coord) -> Value {
     Value::String(match *coord {
@@ -198,6 +210,109 @@ pub(crate) fn render(repo: &Path) -> Result<String, String> {
     }
     let file = json!({
         "description": "Each conformance model's stage schedule (RFC-0010 'Stages', RFC-0037) at the lengths 1, 4, 5 and max_context, written by `cargo xtask gen-vectors` from the compiler's derivation; spec/vectors/schedule/README.md gives each field's meaning. The verifier derives its own schedule from the claim list and must give the same (INV-SCH-1).",
+        "cases": cases,
+    });
+    let mut text = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
+    text.push('\n');
+    Ok(text)
+}
+
+/// The requests of a case, as the vector names them, in its order.
+const REQUESTS: [(Request, &str); 3] = [
+    (Request::None, "none"),
+    (Request::Prefill, "prefill"),
+    (Request::Generate, "generate"),
+];
+
+/// One stage's degrees, as `degrees.json` records them.
+fn stage_degrees(stage: &StageDegree) -> Value {
+    let instances: Vec<Value> = stage
+        .instances
+        .iter()
+        .map(|i| {
+            json!({
+                "relation": i.key.relation.name(),
+                "stacked": i.key.stacked,
+                "public": i.key.public,
+                "constant": i.key.constant.map(|c| c.name()),
+                "d_1": i.row.d_1,
+                "s": i.row.s,
+                "d": i.row.d,
+            })
+        })
+        .collect();
+    json!({
+        "index": stage.index,
+        "rounds": stage.rounds,
+        "d": stage.d,
+        "folds": stage.folds,
+        "instances": instances,
+    })
+}
+
+/// The reduction stages of `claims`' composed schedule for a sequence of `n` positions and
+/// `request`, as `tessera-protocol/2` lays it out and proves it: lowered at `max(n, 3)` positions,
+/// with the request's native relations (`derive_composed_schedule` with `model_natives`).
+fn degrees(claims: &ClaimList, length: u32, request: Request) -> Result<Vec<StageDegree>, String> {
+    let lowering = lower(PublicModel::of_claims(claims), length).map_err(|e| e.to_string())?;
+    let natives = model_natives(&lowering, request).map_err(|e| e.to_string())?;
+    let schedule = derive_composed_schedule(&lowering, &natives.deferred, &natives.native)
+        .map_err(|e| e.to_string())?;
+    let log2_k = u32::from(claims.layout.advice.log2_k);
+    protocol2_stages(&lowering.graph, &schedule, log2_k).map_err(|e| e.to_string())
+}
+
+/// The stage degrees of the conformance claim lists in the tree at `repo`, as the file's text:
+/// RFC-0013 'Testing Strategy''s 44 cases, the claim lists in `claim-lists.json`'s order, then
+/// `n` ascending, then `none`, `prefill` and `generate`.
+///
+/// It checks what RFC-0013 says the file records: 10 for stage 1 and 7 for the later stages,
+/// `[10, 7]` in the 22 cases of the two `servable` lists and `[10, 7, 7]` in the 22 of the
+/// `minimal` and `affine` lists.
+pub(crate) fn render_degrees(repo: &Path) -> Result<String, String> {
+    let mut cases = Vec::new();
+    let mut checked = [0usize; 2];
+    for (name, _, model) in models(repo)? {
+        let list = claims(&name, &model)?;
+        let max_context = PublicModel::of_claims(&list).arch.max_context;
+        for n in [1, 4, 5, max_context] {
+            let length = protocol2_length(n);
+            for (request, label) in REQUESTS {
+                // RFC-0053 needs a prompt and an output.
+                if request == Request::Generate && n < 2 {
+                    continue;
+                }
+                let at = |e: String| format!("{name} at n = {n}, {label}: {e}");
+                let stages = degrees(&list, length, request).map_err(at)?;
+                let d: Vec<usize> = stages.iter().map(|s| s.d).collect();
+                let (expected, count): (&[usize], _) = if name.ends_with("-servable") {
+                    (&[10, 7], &mut checked[0])
+                } else {
+                    (&[10, 7, 7], &mut checked[1])
+                };
+                if d != expected {
+                    return Err(at(format!(
+                        "the stage degrees are {d:?}, where RFC-0013 records {expected:?}"
+                    )));
+                }
+                *count += 1;
+                cases.push(json!({
+                    "model": name,
+                    "n": n,
+                    "length": length,
+                    "request": label,
+                    "stages": stages.iter().map(stage_degrees).collect::<Vec<_>>(),
+                }));
+            }
+        }
+    }
+    if checked != [22, 22] {
+        return Err(format!(
+            "RFC-0013 records 22 servable and 22 minimal and affine cases, not {checked:?}"
+        ));
+    }
+    let file = json!({
+        "description": "Each reduction stage's tessera-protocol/2 round degree (RFC-0013 'Masked extensions' 'Degree') on the composed schedule tessera-protocol/2 proves, for each conformance claim list at n of 1, 4, 5 and max_context and the requests none, prefill and, at n >= 2, generate: written by `cargo xtask gen-vectors` from the compiler's schedules and RFC-0013's table; spec/vectors/schedule/README.md gives each field's meaning. The verifier derives each schedule and each instance's row with code of its own and must give the same.",
         "cases": cases,
     });
     let mut text = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;

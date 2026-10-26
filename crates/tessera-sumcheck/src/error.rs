@@ -5,13 +5,14 @@
 
 use core::fmt;
 
-use crate::{MAX_DEGREE, Operand};
+use crate::Operand;
 
 /// Why a batch, a batch of forests or a relation was refused: before the transcript moved, and
 /// before anything was computed.
 ///
 /// [`prove_batch`](crate::prove_batch) checks its inputs in this order and returns the first
-/// failure: the degree; that there is an instance; then instance by instance, that it has a
+/// failure: the degree, at most its protocol's bound at its prefix
+/// ([`Protocol::max_degree`](crate::Protocol::max_degree)); that there is an instance; then instance by instance, that it has a
 /// table; for a product, no more tables than the degree; for a sum of products, at least one
 /// term, and term by term between 1 and the degree factors, each naming one of its tables; then
 /// table by table, that the length is a power of two and equals the instance's first table's.
@@ -33,8 +34,8 @@ use crate::{MAX_DEGREE, Operand};
 /// [`Elementwise::new`](crate::Elementwise::new) checks, in this order, that its shape holds;
 /// input by input, that its length fits the relation's variables and that a partner's bit is one
 /// of them; term by term, that every factor names an input and that the term's degree is between
-/// 1 and [`MAX_DEGREE`]; and that there is a term. Its `tables` and `claims` check points and
-/// evaluations as the matmuls' do. [`Linear::new`](crate::Linear::new) checks that each input
+/// 1 and [`MAX_DEGREE`](crate::MAX_DEGREE); and that there is a term. Its `tables` and `claims`
+/// check points and evaluations as the matmuls' do. [`Linear::new`](crate::Linear::new) checks that each input
 /// sits within its target's variables, and [`Linear::terms`](crate::Linear::terms) that the
 /// target's point has its coordinates.
 ///
@@ -48,11 +49,15 @@ use crate::{MAX_DEGREE, Operand};
 /// element, so an error cannot carry a secret table value, a leaf or an evaluation (05 §3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SumcheckError {
-    /// The degree is outside `1..=MAX_DEGREE`: a batch's, or that of a term of an elementwise
-    /// relation, its factors plus `eq`'s, 0 for a relation with no term.
+    /// The degree is outside `1..=max`: a batch's, above its protocol's bound at its prefix
+    /// ([`Protocol::max_degree`](crate::Protocol::max_degree), RFC-0013 'Degree'), or that of a
+    /// term of an elementwise relation, its factors plus `eq`'s, above
+    /// [`MAX_DEGREE`](crate::MAX_DEGREE), 0 for a relation with no term.
     Degree {
         /// The degree asked for, or the term's.
         degree: usize,
+        /// The largest degree allowed there.
+        max: usize,
     },
     /// The batch has no instance.
     NoInstances,
@@ -268,8 +273,8 @@ pub enum SumcheckError {
 impl fmt::Display for SumcheckError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Degree { degree } => {
-                write!(f, "a sumcheck has degree 1 to {MAX_DEGREE}, not {degree}")
+            Self::Degree { degree, max } => {
+                write!(f, "a sumcheck has degree 1 to {max}, not {degree}")
             }
             Self::NoInstances => write!(f, "a batched sumcheck needs at least one instance"),
             Self::NoTables { instance } => {

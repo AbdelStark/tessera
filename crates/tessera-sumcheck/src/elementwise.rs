@@ -242,7 +242,9 @@ impl<'a, F: PolyField> Elementwise<'a, F> {
     /// variables, then [`SumcheckError::PartnerBit`] when it flips a bit outside them; term by
     /// term, [`SumcheckError::TermInput`] when a factor names no input, then
     /// [`SumcheckError::Degree`] when the term's degree, its factors plus `eq`'s, is outside
-    /// `1..=MAX_DEGREE`; and [`SumcheckError::Degree`] with degree 0 when there is no term.
+    /// `1..=MAX_DEGREE`, the largest any protocol allows; and [`SumcheckError::Degree`] with
+    /// degree 0 when there is no term. The batch it joins refuses a degree above its own
+    /// protocol's bound ([`prove_batch`](crate::prove_batch)).
     pub fn new(
         shape: ElementwiseShape,
         inputs: Vec<Input<'a, F>>,
@@ -269,12 +271,16 @@ impl<'a, F: PolyField> Elementwise<'a, F> {
             if !(1..=MAX_DEGREE).contains(&term_degree) {
                 return Err(SumcheckError::Degree {
                     degree: term_degree,
+                    max: MAX_DEGREE,
                 });
             }
             degree = degree.max(term_degree);
         }
         if terms.is_empty() {
-            return Err(SumcheckError::Degree { degree: 0 });
+            return Err(SumcheckError::Degree {
+                degree: 0,
+                max: MAX_DEGREE,
+            });
         }
         Ok(Self {
             shape,

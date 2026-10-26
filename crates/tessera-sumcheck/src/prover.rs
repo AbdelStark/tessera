@@ -12,7 +12,7 @@ use tessera_poly::{PolyField, evaluate, evaluate_base};
 
 use crate::kernel::{self, Entries, Lines, NODES, Scratch};
 use crate::terms::{Plan, Term};
-use crate::{MAX_DEGREE, SumcheckError, SumcheckProof, SumcheckTranscript};
+use crate::{MAX_DEGREE, Protocol, SumcheckError, SumcheckProof, SumcheckTranscript};
 
 /// Which sumcheck of the protocol a proof belongs to: the prefix of its labels (RFC-0014
 /// 'Transcript schedule', rows 5 and 6).
@@ -133,7 +133,7 @@ impl<'a, F: PolyField> Table<'a, F> {
     /// use tessera_codec::{Ascii, Secret};
     /// use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField};
     /// use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
-    /// use tessera_sumcheck::{Instance, Prefix, Table, prove_batch};
+    /// use tessera_sumcheck::{Instance, Prefix, Protocol, Table, prove_batch};
     ///
     /// let context = SessionContext {
     ///     protocol: Ascii::new("tessera-protocol/1").expect("ASCII"),
@@ -150,7 +150,13 @@ impl<'a, F: PolyField> Table<'a, F> {
     ///     Table::base(&selector).public(),
     /// ]);
     /// let mut transcript = Transcript::new(&context);
-    /// let proven = prove_batch::<GoldilocksExt2, _>(&mut transcript, Prefix::Stage(0), 2, &[instance])?;
+    /// let proven = prove_batch::<GoldilocksExt2, _>(
+    ///     &mut transcript,
+    ///     Protocol::One,
+    ///     Prefix::Stage(0),
+    ///     2,
+    ///     &[instance],
+    /// )?;
     /// // The selector is a public factor: one evaluation, the activations'.
     /// assert_eq!(proven.proof().final_evals.len(), 1);
     /// # Ok::<(), tessera_sumcheck::SumcheckError>(())
@@ -375,8 +381,8 @@ impl<F> fmt::Debug for ProvenBatch<F> {
     }
 }
 
-// `Degree` lists every degree up to `MAX_DEGREE`.
-const _: () = assert!(MAX_DEGREE == 7);
+// `Degree` lists every degree up to `MAX_DEGREE`, `tessera-protocol/2`'s 10 (RFC-0013 'Degree').
+const _: () = assert!(MAX_DEGREE == 10);
 
 /// A degree the round polynomials support, `1..=MAX_DEGREE`, so that every degree selects
 /// monomorphized loops.
@@ -389,6 +395,9 @@ enum Degree {
     Five,
     Six,
     Seven,
+    Eight,
+    Nine,
+    Ten,
 }
 
 impl Degree {
@@ -401,6 +410,9 @@ impl Degree {
             5 => Self::Five,
             6 => Self::Six,
             7 => Self::Seven,
+            8 => Self::Eight,
+            9 => Self::Nine,
+            10 => Self::Ten,
             _ => return None,
         })
     }
@@ -432,6 +444,9 @@ impl Degree {
             Self::Five => sums::<F, B, X, 5, true>(base, ext, pairs, scratch),
             Self::Six => sums::<F, B, X, 6, true>(base, ext, pairs, scratch),
             Self::Seven => sums::<F, B, X, 7, true>(base, ext, pairs, scratch),
+            Self::Eight => sums::<F, B, X, 8, true>(base, ext, pairs, scratch),
+            Self::Nine => sums::<F, B, X, 9, true>(base, ext, pairs, scratch),
+            Self::Ten => sums::<F, B, X, 10, true>(base, ext, pairs, scratch),
         }
     }
 
@@ -458,6 +473,9 @@ impl Degree {
             Self::Five => sums::<F, L, 5, true>(tables, plan, pairs, s),
             Self::Six => sums::<F, L, 6, true>(tables, plan, pairs, s),
             Self::Seven => sums::<F, L, 7, true>(tables, plan, pairs, s),
+            Self::Eight => sums::<F, L, 8, true>(tables, plan, pairs, s),
+            Self::Nine => sums::<F, L, 9, true>(tables, plan, pairs, s),
+            Self::Ten => sums::<F, L, 10, true>(tables, plan, pairs, s),
         }
     }
 
@@ -483,6 +501,9 @@ impl Degree {
             Self::Five => sums::<F, L, 6, false>(tables, plan, pairs, s),
             Self::Six => sums::<F, L, 7, false>(tables, plan, pairs, s),
             Self::Seven => sums::<F, L, 8, false>(tables, plan, pairs, s),
+            Self::Eight => sums::<F, L, 9, false>(tables, plan, pairs, s),
+            Self::Nine => sums::<F, L, 10, false>(tables, plan, pairs, s),
+            Self::Ten => sums::<F, L, 11, false>(tables, plan, pairs, s),
         }
     }
 
@@ -508,6 +529,9 @@ impl Degree {
             Self::Five => sums::<F, B, X, 6, false>(base, ext, pairs, scratch),
             Self::Six => sums::<F, B, X, 7, false>(base, ext, pairs, scratch),
             Self::Seven => sums::<F, B, X, 8, false>(base, ext, pairs, scratch),
+            Self::Eight => sums::<F, B, X, 9, false>(base, ext, pairs, scratch),
+            Self::Nine => sums::<F, B, X, 10, false>(base, ext, pairs, scratch),
+            Self::Ten => sums::<F, B, X, 11, false>(base, ext, pairs, scratch),
         }
     }
 }
@@ -832,8 +856,13 @@ impl<'a, F: PolyField> State<'a, F> {
 }
 
 /// Proves a batched sumcheck of degree `degree` over `instances`, under the labels of `prefix`,
-/// on `transcript` (RFC-0010 'Batching within a stage', 'Sumcheck messages'; RFC-0014
-/// 'Transcript schedule').
+/// on `transcript`, in `protocol` (RFC-0010 'Batching within a stage', 'Sumcheck messages';
+/// RFC-0014 'Transcript schedule').
+///
+/// The degree is at most the bound of `protocol` at `prefix`,
+/// [`protocol.max_degree(prefix)`](Protocol::max_degree): 10 at a reduction stage of
+/// `tessera-protocol/2`, 7 everywhere else (RFC-0013 'Masked extensions' 'Degree'). The protocol
+/// changes nothing else: a batch of a degree both protocols allow has the same messages in both.
 ///
 /// Instance `i`, counted from 0 in the order given, on `n_i` variables, enters with weight
 /// `γ^i`. The batched polynomial is `Σ_i γ^i·P_i`, where `P_i` is instance `i`'s product
@@ -858,13 +887,14 @@ impl<'a, F: PolyField> State<'a, F> {
 ///
 /// # Errors
 ///
-/// A [`SumcheckError`] when the degree is outside `1..=MAX_DEGREE`, there is no instance, an
-/// instance has no table, a product has more tables than the degree, a sum of products has no
+/// A [`SumcheckError`] when the degree is outside `1..=protocol.max_degree(prefix)`
+/// ([`SumcheckError::Degree`]), there is no instance, an instance has no table, a product has more tables than the degree, a sum of products has no
 /// term or a term with no factor, more factors than the degree or a factor that names no table,
 /// or a table's length is not a power of two or differs from its instance's first table's. The
 /// inputs are checked before the transcript moves.
 pub fn prove_batch<F, T>(
     transcript: &mut T,
+    protocol: Protocol,
     prefix: Prefix,
     degree: usize,
     instances: &[Instance<'_, F>],
@@ -873,7 +903,7 @@ where
     F: PolyField,
     T: SumcheckTranscript<F> + ?Sized,
 {
-    let (nodes, vars) = check_batch(degree, instances)?;
+    let (nodes, vars) = check_batch(protocol.max_degree(prefix), degree, instances)?;
     let mut labels = Labels::new(prefix);
     let gamma = transcript.challenge(labels.gamma());
     Ok(prove_checked(
@@ -897,7 +927,7 @@ where
     F: PolyField,
     T: SumcheckTranscript<F> + ?Sized,
 {
-    let (nodes, vars) = check_batch(degree, instances)?;
+    let (nodes, vars) = check_batch(Protocol::One.max_degree(prefix), degree, instances)?;
     Ok(prove_checked(
         transcript,
         Labels::new(prefix),
@@ -911,7 +941,7 @@ where
 /// [`prove_batch`] with every instance's weight 1 and no `γ`, for a batch whose weights its
 /// tables already carry, as RFC-0054's merge carries `β^h·γ_h^k` in its `W_i`: rounds and final
 /// evaluations only, under `<prefix>/round/{j}`, `<prefix>/r/{j}` and `<prefix>/evals`. The
-/// result's `γ` is 1.
+/// result's `γ` is 1. Its degree is at most 7, the merge's bound in either protocol.
 pub(crate) fn prove_batch_unweighted<F, T>(
     transcript: &mut T,
     prefix: Prefix,
@@ -922,7 +952,7 @@ where
     F: PolyField,
     T: SumcheckTranscript<F> + ?Sized,
 {
-    let (nodes, vars) = check_batch(degree, instances)?;
+    let (nodes, vars) = check_batch(Protocol::One.max_degree(prefix), degree, instances)?;
     Ok(prove_checked(
         transcript,
         Labels::new(prefix),
@@ -934,12 +964,17 @@ where
 }
 
 /// The degree's loops and each instance's number of variables, or the first check the batch
-/// fails, in the order of [`SumcheckError`].
+/// fails, in the order of [`SumcheckError`]: first the degree, between 1 and `max`, the bound of
+/// the batch's protocol and kind ([`Protocol::max_degree`]).
 fn check_batch<F: PolyField>(
+    max: usize,
     degree: usize,
     instances: &[Instance<'_, F>],
 ) -> Result<(Degree, Vec<usize>), SumcheckError> {
-    let nodes = Degree::new(degree).ok_or(SumcheckError::Degree { degree })?;
+    let nodes = (degree <= max)
+        .then(|| Degree::new(degree))
+        .flatten()
+        .ok_or(SumcheckError::Degree { degree, max })?;
     if instances.is_empty() {
         return Err(SumcheckError::NoInstances);
     }
@@ -1034,7 +1069,7 @@ mod tests {
     use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
     use tv_core::sumcheck as tv;
 
-    use super::{Instance, Prefix, Table, prove_batch};
+    use super::{Instance, Prefix, Protocol, Table, prove_batch};
     use crate::SumcheckProof;
 
     thread_local! {
@@ -1085,6 +1120,7 @@ mod tests {
         OMIT_SCALING.with(|omits| omits.set(omit));
         let proven = prove_batch(
             &mut Transcript::new(&context),
+            Protocol::One,
             Prefix::Stage(2),
             3,
             &instances,
@@ -1167,7 +1203,7 @@ mod tests {
         };
         let mut scratch = Scratch::<Fp2>::new();
         let entries = 1 << 10;
-        for d in 1..=7 {
+        for d in 1..=crate::MAX_DEGREE {
             let degree = Degree::new(d).expect("a degree");
             for k in 1..=d {
                 for kinds in 0..3 {

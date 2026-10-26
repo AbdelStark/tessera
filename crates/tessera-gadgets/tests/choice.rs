@@ -9,7 +9,7 @@ use common::{Fp, Fp2, Session, SplitMix64, TvFp2, mle_fp, tv_fp2, tv_fp2s};
 use tessera_codec::SecretBuf;
 use tessera_field::{F65537, Field, PrimeField, QuadraticExtension};
 use tessera_gadgets::{Argmax, ArgmaxWitness, OneHot, OneHotWitness, suffix_kernel};
-use tessera_sumcheck::{Elementwise, Prefix, prove_batch};
+use tessera_sumcheck::{Elementwise, Prefix, Protocol, prove_batch};
 use tessera_tables::{GeneratedTable, Table, TableId, TableKind};
 use tv_core::sumcheck as tv;
 
@@ -48,6 +48,7 @@ fn subproof(
     let degree = relation.degree();
     let proven = prove_batch(
         &mut transcript,
+        Protocol::One,
         Prefix::Stage(0),
         degree,
         &[tables.instance()],
@@ -507,6 +508,7 @@ fn suffix_dot_product_is_proved_against_the_independent_triangular_kernel() {
     let mut transcript = session.transcript();
     let p = prove_batch(
         &mut transcript,
+        Protocol::One,
         Prefix::Stage(0),
         2,
         &[Instance::new(vec![

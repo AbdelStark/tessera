@@ -10,7 +10,7 @@ use tessera_gadgets::{OneHot, OneHotWitness};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_ir::IntegerModel;
 use tessera_scoring::{ExactGreedy, GreedyInputs, OutputRow};
-use tessera_sumcheck::{Elementwise, Instance, Prefix, Table, prove_batch};
+use tessera_sumcheck::{Elementwise, Instance, Prefix, Protocol, Table, prove_batch};
 use tessera_tables::{GeneratedTable, Table as _, TableId, TableKind};
 use tessera_witness::{Engine, Witness};
 use tv_core::{gadgets::argmax::Argmax as TvArgmax, sumcheck as tv, validation::GadgetId};
@@ -93,7 +93,14 @@ fn component(
     assert!(relation.degree() <= degree);
     let tables = relation.tables(point).unwrap();
     let (mut p, mut v) = sessions(marker, target);
-    let proved = prove_batch(&mut p, Prefix::Stage(1), degree, &[tables.instance()]).unwrap();
+    let proved = prove_batch(
+        &mut p,
+        Protocol::One,
+        Prefix::Stage(1),
+        degree,
+        &[tables.instance()],
+    )
+    .unwrap();
     let proof = proof_of(&proved);
     let checked = tv::verify_batch(
         &mut v,
@@ -246,6 +253,7 @@ fn actual_tiny_model_exact_requests_prove_zero_and_one_altered_output_refuses() 
         let (mut p, mut v) = sessions(3, suffix);
         let proved = prove_batch(
             &mut p,
+            Protocol::One,
             Prefix::Stage(2),
             2,
             &[Instance::new(vec![

@@ -15,7 +15,7 @@ use common::{Session, SplitMix64, TestInstance, TestTable, tv_fp2s};
 use tessera_codec::SecretBuf;
 use tessera_field::Field;
 use tessera_sumcheck::{
-    MatMulActShape, MatMulWeightShape, MatMulWeightTables, Operand, Prefix, RightLayout,
+    MatMulActShape, MatMulWeightShape, MatMulWeightTables, Operand, Prefix, Protocol, RightLayout,
     SumcheckError, prove_batch,
 };
 
@@ -407,8 +407,14 @@ fn a_folded_weight_table_proves_the_stage_contracting_w_proves() {
         let tables = MatMulWeightTables::folded(contracted(&case), &case.x, shape, &case.point)
             .expect("a table of the shape");
         let mut transcript = session.transcript();
-        let proven =
-            prove_batch(&mut transcript, prefix, degree, &[tables.instance()]).expect("a stage");
+        let proven = prove_batch(
+            &mut transcript,
+            Protocol::One,
+            prefix,
+            degree,
+            &[tables.instance()],
+        )
+        .expect("a stage");
         assert!(
             proven.proof() == reference.proven.proof(),
             "{shape:?}: the same messages"

@@ -34,7 +34,7 @@ use tessera_codec::Ascii;
 use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_poly::{bind_lowest, bind_lowest_in_place, eq_table};
-use tessera_sumcheck::{Forest, Instance, Prefix, Table, prove_batch, prove_forests};
+use tessera_sumcheck::{Forest, Instance, Prefix, Protocol, Table, prove_batch, prove_forests};
 
 type Fp = Goldilocks;
 type Fp2 = GoldilocksExt2;
@@ -108,8 +108,14 @@ fn report_per(what: &str, count: usize, unit: &str, time: Duration) {
 /// A batch of degree `degree` over `instances`, on a fresh transcript.
 fn prove(degree: usize, instances: &[Instance<'_, Fp2>]) {
     let mut transcript = Transcript::new(&context());
-    let proven = prove_batch(&mut transcript, Prefix::Stage(0), degree, instances)
-        .expect("a well-formed batch");
+    let proven = prove_batch(
+        &mut transcript,
+        Protocol::One,
+        Prefix::Stage(0),
+        degree,
+        instances,
+    )
+    .expect("a well-formed batch");
     black_box(proven.into_proof());
 }
 

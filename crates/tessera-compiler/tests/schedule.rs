@@ -1251,7 +1251,7 @@ fn dot(a: &[F], b: &[F]) -> F {
 
 #[test]
 fn composed_native_metadata_requires_legal_original_graph_replacements() {
-    use tessera_compiler::schedule::{Native, NativeOutput, derive_composed_schedule};
+    use tessera_compiler::schedule::{Native, NativeKind, NativeOutput, derive_composed_schedule};
     let low = lowering(Profile::Servable, 3, 5, (2, 1), Sites::Pot);
     let layers = tessera_compiler::schedule::LayerMap::new(&low).unwrap();
     let node = low
@@ -1267,6 +1267,7 @@ fn composed_native_metadata_requires_legal_original_graph_replacements() {
         .sum::<u32>();
     let spec = Native {
         tag: 7,
+        kind: NativeKind::Key,
         node: node.id,
         vars: vars + layers.vars,
         degree: 3,
@@ -1341,7 +1342,7 @@ fn composed_native_metadata_requires_legal_original_graph_replacements() {
 
 #[test]
 fn one_hot_index_is_removed_only_for_the_exact_native_token_binding() {
-    use tessera_compiler::schedule::{Native, NativeOutput, derive_composed_schedule};
+    use tessera_compiler::schedule::{Native, NativeKind, NativeOutput, derive_composed_schedule};
     let low = lowering(Profile::Servable, 3, 5, (2, 1), Sites::Pot);
     let node = low
         .graph
@@ -1360,6 +1361,7 @@ fn one_hot_index_is_removed_only_for_the_exact_native_token_binding() {
     let time = variables(node.inputs[0]);
     let native = Native {
         tag: 97,
+        kind: NativeKind::Tokens,
         node: node.id,
         vars: total,
         degree: 2,

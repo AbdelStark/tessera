@@ -32,7 +32,7 @@ use tessera_codec::Ascii;
 use tessera_field::{Field, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_poly::{RoundPoly, eq_table};
-use tessera_sumcheck::{Forest, Instance, Prefix, Table, prove_batch, prove_forests};
+use tessera_sumcheck::{Forest, Instance, Prefix, Protocol, Table, prove_batch, prove_forests};
 
 use common::{Fp, Fp2, TvFp2, tv_fp2, tv_fp2s, tv_proof};
 use tv_core::sumcheck as tv;
@@ -246,8 +246,14 @@ fn stages_with_tables_are_reproduced_message_by_message() {
                 .map(|ts| Instance::new(ts.iter().map(|t| Table::ext(t)).collect()))
                 .collect();
             let degree = number(&stage["degree"]);
-            let proven = prove_batch(&mut t, prefix(&stage["prefix"]), degree, &instances)
-                .expect("a well-formed stage");
+            let proven = prove_batch(
+                &mut t,
+                Protocol::One,
+                prefix(&stage["prefix"]),
+                degree,
+                &instances,
+            )
+            .expect("a well-formed stage");
             assert_eq!(*proven.gamma(), fp2(&stage["gamma"]), "{at}: γ");
             let rounds: Vec<Vec<Fp2>> = list(&stage["rounds"]).iter().map(fp2s).collect();
             assert!(proven.proof().rounds == rounds, "{at}: the round messages");
@@ -350,8 +356,14 @@ fn tree_levels_are_reproduced_from_the_leaves() {
                     ])
                 })
                 .collect();
-            let proven = prove_batch(&mut t, Prefix::Tree(level as u32), 3, &instances)
-                .expect("a well-formed level");
+            let proven = prove_batch(
+                &mut t,
+                Protocol::One,
+                Prefix::Tree(level as u32),
+                3,
+                &instances,
+            )
+            .expect("a well-formed level");
             assert_eq!(*proven.gamma(), fp2(&record["gamma"]), "{at}: γ");
             let rounds: Vec<Vec<Fp2>> = list(&record["rounds"]).iter().map(fp2s).collect();
             assert!(proven.proof().rounds == rounds, "{at}: the round messages");

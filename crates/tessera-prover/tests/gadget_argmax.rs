@@ -6,7 +6,7 @@ use tessera_codec::{Ascii, SecretBuf};
 use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField, QuadraticExtension};
 use tessera_gadgets::{Argmax, ArgmaxWitness, OneHot};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
-use tessera_sumcheck::{Instance, Prefix, Table, Term, prove_batch};
+use tessera_sumcheck::{Instance, Prefix, Protocol, Table, Term, prove_batch};
 use tessera_tables::{GeneratedTable, Table as _, TableId, TableKind};
 
 fn array(v: &Value) -> &[Value] {
@@ -177,7 +177,8 @@ fn actual_argmax_columns_and_cpu_key_selected_suffix_proofs_match_independent_ve
                 },
             ),
         ];
-        let first = prove_batch::<F, _>(&mut t, Prefix::Stage(1), 3, &instances).unwrap();
+        let first =
+            prove_batch::<F, _>(&mut t, Protocol::One, Prefix::Stage(1), 3, &instances).unwrap();
         check(&first, &t, &record["first"]);
         let target = first.point();
         let prefix = producer.suffix_weights::<F>(&target[..vbits]).unwrap();
@@ -197,7 +198,8 @@ fn actual_argmax_columns_and_cpu_key_selected_suffix_proofs_match_independent_ve
                 vec![Term::new(F::ONE, vec![0, 1])]
             },
         );
-        let second = prove_batch::<F, _>(&mut t, Prefix::Stage(2), 2, &[instance]).unwrap();
+        let second =
+            prove_batch::<F, _>(&mut t, Protocol::One, Prefix::Stage(2), 2, &[instance]).unwrap();
         check(&second, &t, &record["second"]);
         if failed.is_some() {
             alternatives += 1

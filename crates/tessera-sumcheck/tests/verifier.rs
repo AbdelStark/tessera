@@ -11,7 +11,10 @@
 mod common;
 
 use common::{Session, SplitMix64, TestInstance, TestTable, prove_and_verify};
-use tessera_sumcheck::{MAX_DEGREE, Prefix};
+use tessera_sumcheck::{Prefix, Protocol};
+
+/// `tessera-protocol/1`'s bound, RFC-0014's `d ≤ 7`, which `tv-core`'s checks hold.
+const MAX_DEGREE: usize = Protocol::One.max_degree(Prefix::Stage(1));
 
 /// Whether table `t` of an instance is over the prime field, by pattern: all of them, none, or
 /// alternately.
@@ -123,7 +126,7 @@ fn instances_on_no_variable_verify() {
     }
 }
 
-/// Degree 7, every node of RFC-0014's largest degree, with instances of 1 to 7 tables.
+/// Degree 7, every node of `tessera-protocol/1`'s largest degree, with instances of 1 to 7 tables.
 #[test]
 fn degree_7_batches_with_fewer_tables_than_the_degree_verify() {
     let mut rng = SplitMix64::new(0x53_0004);

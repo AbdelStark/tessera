@@ -2,7 +2,7 @@
 
 //! Round polynomials in the evaluation form of RFC-0010 'Sumcheck messages': polynomials drawn by
 //! their coefficients and sent as their values at `0, 2, …, d` come back exactly at any challenge,
-//! from the round's claim, at every degree from 1 to 7; a wrong claim moves `p(1)` and with it
+//! from the round's claim, at every degree from 1 to 10; a wrong claim moves `p(1)` and with it
 //! `p(r)`. Over Goldilocks and `F65537` and their extensions.
 
 mod common;
@@ -74,7 +74,7 @@ fn evaluation_recovers_the_polynomial<F: TestField>(seed: u64) {
 }
 
 #[test]
-fn a_round_polynomial_round_trips_at_every_degree_from_1_to_7() {
+fn a_round_polynomial_round_trips_at_every_degree_from_1_to_10() {
     over_every_field!(evaluation_recovers_the_polynomial);
 }
 

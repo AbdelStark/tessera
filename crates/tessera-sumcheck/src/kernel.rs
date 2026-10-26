@@ -47,8 +47,8 @@ use crate::terms::Plan;
 /// The most nodes a product is evaluated at: `0, 1, …, MAX_DEGREE`.
 pub(crate) const NODES: usize = MAX_DEGREE + 1;
 
-/// Pairs per block of the row loop. A block's rows, 128 bytes per pair over `Fp2` and 64 over
-/// `Fp`, stay in the first-level cache while each table multiplies into them.
+/// Pairs per block of the row loop. A block's rows, `NODES` values per pair, 176 bytes over `Fp2`
+/// and 88 over `Fp`, stay in the first-level cache while each table multiplies into them.
 const BLOCK: usize = 128;
 
 /// The most nodes at which tables over the extension field are zipped: beyond, the values they

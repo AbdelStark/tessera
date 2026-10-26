@@ -34,8 +34,8 @@ use tessera_compiler::anchor::{
 };
 use tessera_compiler::schedule::{
     Coord, Factor, Kind, Layers, PublicSource, PublicTerm, Relation, Site as LeafSite,
-    StageSchedule, derive_graph_schedule, nonzero_at_padding, public_tensors,
-    tensors_nonzero_at_padding,
+    StageSchedule, derive_graph_schedule, nonzero_at_padding, protocol2_degree, protocol2_stages,
+    public_tensors, tensors_nonzero_at_padding,
 };
 use tessera_compiler::{CompileError, PublicModel, lower, stage_count};
 use tessera_ir::{
@@ -2667,4 +2667,206 @@ fn sha256s_figures_at_three_messages_are_the_independent_counts() {
             4825
         )
     );
+}
+
+// ----- tessera-protocol/2's degrees (RFC-0013 'Masked extensions' 'Degree', #565) -------------
+
+/// An instance's relation string, with its constant class, its public pattern and its `d`.
+type RowOf = (String, Vec<bool>, usize);
+
+/// Each instance's relation string, public pattern and constant class with its `d`, over every
+/// reduction stage of `schedule`, and each stage's degree.
+fn degrees(graph: &Graph, schedule: &StageSchedule) -> (Vec<RowOf>, Vec<usize>) {
+    let stages = protocol2_stages(graph, schedule, 10).expect("every instance has a row");
+    let rows = stages
+        .iter()
+        .flat_map(|s| &s.instances)
+        .map(|i| {
+            let constant = i
+                .key
+                .constant
+                .map_or(String::new(), |c| format!(" {}", c.name()));
+            (
+                format!("{}{constant}", i.key.relation.name()),
+                i.key.public.clone(),
+                i.row.d,
+            )
+        })
+        .collect();
+    (rows, stages.iter().map(|s| s.d).collect())
+}
+
+/// The distinct rows `rows` reaches: relation string, public pattern and `d`.
+fn reached(rows: &[RowOf]) -> Vec<(&str, Vec<bool>, usize)> {
+    let mut seen: Vec<(&str, Vec<bool>, usize)> = rows
+        .iter()
+        .map(|(r, p, d)| (r.as_str(), p.clone(), *d))
+        .collect();
+    seen.sort();
+    seen.dedup();
+    seen
+}
+
+/// RFC-0013 'Testing Strategy' ('Its cases, later'): every instance of the anchor's circuits,
+/// SHA-256 at three layouts and AES-128-CTR at `B = 3`, keyed from the schedule and the graph,
+/// matches one row. SHA-256's stage of `Xor3` and `Maj` records 10, and every other stage at most
+/// 7. The rows reached are those the RFC says: SHA-256 misses `Xor` with neither input public,
+/// `And`, `Xor3` with an input public, every equality zero-check, `AssertEqual` with neither or
+/// both sides public, and `InputPadding` at one message; AES has `ScaleChannels`.
+#[test]
+fn the_circuits_instances_each_match_a_row_of_rfc_0013s_degree_table() {
+    let t = true;
+    let f = false;
+    let sha: Vec<(&str, Vec<bool>, usize)> = vec![
+        ("BitPadding", vec![f], 5),
+        ("Booleanity", vec![f], 7),
+        ("Ch", vec![f, f, f], 7),
+        ("Ch", vec![f, f, t], 7),
+        ("Ch", vec![f, t, t], 5),
+        ("Maj", vec![f, f, f], 10),
+        ("Maj", vec![f, f, t], 8),
+        ("Maj", vec![f, t, t], 6),
+        ("Mul", vec![f, t], 5),
+    ];
+    let public_bytes = [
+        ("Recomposition", vec![f, f, f], 5),
+        ("Recomposition", vec![t, f, f], 5),
+        ("Selection", vec![f], 4),
+        ("Xor3", vec![f, f, f], 10),
+    ];
+    let committed_bytes = [
+        ("AssertEqual", vec![f, t], 5),
+        ("Recomposition", vec![f, f], 5),
+        ("Recomposition", vec![f, f, f], 5),
+        ("Selection", vec![f], 4),
+        ("Xor", vec![t, f], 5),
+        ("Xor3", vec![f, f, f], 10),
+    ];
+    let mut layouts = [
+        (
+            sha256_graph(1, 1, Vec::new(), false),
+            [&sha[..], &public_bytes].concat(),
+        ),
+        (
+            sha256_graph(1, 1, (8..24).collect(), true),
+            [&sha[..], &committed_bytes].concat(),
+        ),
+        (
+            sha256_graph(1, 3, (21..53).collect(), true),
+            [&sha[..], &committed_bytes, &[("InputPadding", vec![f], 5)]].concat(),
+        ),
+    ];
+    for (i, (graph, expected)) in layouts.iter_mut().enumerate() {
+        let schedule = layerless(graph, &[]).expect("a schedule");
+        let (rows, stages) = degrees(graph, &schedule);
+        expected.sort();
+        assert_eq!(reached(&rows), *expected, "layout {i}");
+        assert_eq!(stages.iter().filter(|&&d| d == 10).count(), 1, "{stages:?}");
+        assert!(stages.iter().all(|&d| d == 10 || d <= 7), "{stages:?}");
+    }
+    let (graph, specs) = aes_graph(3, true);
+    let schedule = layerless(&graph, &specs).expect("a schedule");
+    let (rows, stages) = degrees(&graph, &schedule);
+    assert_eq!(
+        reached(&rows),
+        [
+            ("Booleanity", vec![f], 7),
+            ("InputPadding", vec![f], 5),
+            ("Recomposition", vec![f, f], 5),
+            ("ScaleChannels", vec![f], 5),
+            ("Selection", vec![f], 4),
+        ]
+    );
+    assert_eq!(stages, [7, 4]);
+}
+
+/// A `BitFn`'s public inputs set its row: `Xor3` with none, one and two public inputs is keyed
+/// `d = 10`, 8 and 6 from the schedule and the graph (RFC-0013 'Degree'), its inputs committed
+/// bits or public ones.
+#[test]
+fn a_bit_functions_public_inputs_key_its_row() {
+    for public in 0..3usize {
+        let mut g = GraphBuilder::new();
+        let inputs: Vec<TensorId> = (0..3)
+            .map(|i| {
+                let kind = if i < public { NodeKind::Public } else { ADVICE };
+                g.input(decl(&[8], kind, 0, 1)).expect("a bit")
+            })
+            .collect();
+        let z = one(&mut g, Op::BitFn { f: BoolFn::Xor3 }, &inputs, virt(&[8]));
+        requant(&mut g, z, &[8], -128, 127);
+        let graph = g.finish();
+        let schedule = layerless(&graph, &[]).expect("a schedule");
+        let (rows, stages) = degrees(&graph, &schedule);
+        let pattern: Vec<bool> = (0..3).map(|i| i < public).collect();
+        assert_eq!(rows, [("Xor3".to_owned(), pattern, 10 - 2 * public)]);
+        assert_eq!(stages, [10 - 2 * public]);
+    }
+}
+
+/// RFC-0013 'Testing Strategy' 'The no-row refusal': the degree's derivation refuses, with
+/// `ERR-INTERNAL`, an instance that matches no row. A `MatMulAct` with one public operand and an
+/// `Xor3` whose three inputs are public come from no derived schedule (RFC-0072 'Public tensors'),
+/// so each is fabricated: a schedule derived from the graph, read against the graph with the
+/// instance's inputs replaced by a public tensor.
+#[test]
+fn an_instance_that_matches_no_row_is_refused() {
+    let internal = |graph: &Graph, schedule: &StageSchedule| {
+        let instance = &schedule.stages[1].instances[0];
+        match protocol2_degree(graph, schedule, instance) {
+            Err(e @ CompileError::Schedule { .. }) => assert_eq!(e.code(), ErrorCode::Internal),
+            other => panic!("refused, not {other:?}"),
+        }
+        assert!(protocol2_stages(graph, schedule, 10).is_err());
+    };
+    // `requant(A·B)`, `A` and `B` committed, and a public tensor `p` beside them.
+    let mut g = GraphBuilder::new();
+    let a = g.input(decl(&[2, 3, 4], ADVICE, -100, 100)).expect("a");
+    let b = g.input(decl(&[2, 4, 3], ADVICE, -100, 100)).expect("b");
+    let p = g
+        .input(decl(&[2, 3, 4], NodeKind::Public, -100, 100))
+        .expect("p");
+    let op = Op::MatMulAct {
+        transpose_rhs: false,
+    };
+    let z = one(&mut g, op, &[a, b], virt(&[2, 3, 3]));
+    requant(&mut g, z, &[2, 3, 3], -128, 127);
+    let graph = g.finish();
+    let schedule = layerless(&graph, &[]).expect("a schedule");
+    let instance = &schedule.stages[1].instances[0];
+    assert_eq!(
+        protocol2_degree(&graph, &schedule, instance)
+            .map(|i| (i.key.stacked, i.row.d))
+            .ok(),
+        Some((true, 7)),
+        "two heads stack a MatMulAct"
+    );
+    let node = graph
+        .nodes
+        .iter()
+        .position(|n| n.inputs == [a, b])
+        .expect("the product");
+    for operand in 0..2 {
+        let mut forged = graph.clone();
+        forged.nodes[node].inputs[operand] = p;
+        internal(&forged, &schedule);
+    }
+    // `requant(Xor3(a, b, c))` of committed bits, and a public bit `p`.
+    let mut g = GraphBuilder::new();
+    let bits: Vec<TensorId> = (0..3)
+        .map(|_| g.input(decl(&[8], ADVICE, 0, 1)).expect("a bit"))
+        .collect();
+    let p = g.input(decl(&[8], NodeKind::Public, 0, 1)).expect("p");
+    let z = one(&mut g, Op::BitFn { f: BoolFn::Xor3 }, &bits, virt(&[8]));
+    requant(&mut g, z, &[8], -128, 127);
+    let graph = g.finish();
+    let schedule = layerless(&graph, &[]).expect("a schedule");
+    let node = graph
+        .nodes
+        .iter()
+        .position(|n| n.inputs == bits)
+        .expect("the Xor3");
+    let mut forged = graph.clone();
+    forged.nodes[node].inputs = vec![p; 3];
+    internal(&forged, &schedule);
 }

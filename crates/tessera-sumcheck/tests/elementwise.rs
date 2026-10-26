@@ -491,7 +491,8 @@ fn malformed_relations_are_refused_in_order() {
             vec![term(vec![0; MAX_DEGREE])]
         ),
         Err(SumcheckError::Degree {
-            degree: MAX_DEGREE + 1
+            degree: MAX_DEGREE + 1,
+            max: MAX_DEGREE
         }),
         "the term's factors and eq"
     );
@@ -504,12 +505,18 @@ fn malformed_relations_are_refused_in_order() {
             vec![Input::Operand(&a)],
             vec![term(vec![0; MAX_DEGREE]), term(vec![])]
         ),
-        Err(SumcheckError::Degree { degree: 0 }),
+        Err(SumcheckError::Degree {
+            degree: 0,
+            max: MAX_DEGREE
+        }),
         "a term of no factor without eq"
     );
     assert_eq!(
         new(shape, vec![Input::Operand(&a)], vec![]),
-        Err(SumcheckError::Degree { degree: 0 }),
+        Err(SumcheckError::Degree {
+            degree: 0,
+            max: MAX_DEGREE
+        }),
         "no term"
     );
     // The tables check the input point, and the claims the instance's point and evaluations.

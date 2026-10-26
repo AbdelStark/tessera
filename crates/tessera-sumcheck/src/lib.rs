@@ -5,8 +5,10 @@
 //! This version holds the generic batched sumcheck prover of RFC-0010 'Batching within a stage'
 //! and 'Sumcheck messages': [`prove_batch`] proves the sums of products of up to
 //! [`MAX_DEGREE`] multilinear tables, and sums of weighted products over one shared table list,
-//! over many instances of different sizes, in one round sequence. On it, [`prove_trees`] proves
-//! the levels of the leaf stage, where product forests of stacked trees and LogUp fraction trees
+//! over many instances of different sizes, in one round sequence. A batch's degree is at most its
+//! [`Protocol`]'s bound at its [`Prefix`]: 10 at a reduction stage of `tessera-protocol/2`, 7
+//! everywhere else ([`Protocol::max_degree`], RFC-0013 'Masked extensions' 'Degree'). On it,
+//! [`prove_trees`] proves the levels of the leaf stage, where product forests of stacked trees and LogUp fraction trees
 //! run together (RFC-0010 'Tree levels', RFC-0008 'Fraction tree'), and returns the leaf claims
 //! later checks owe; [`prove_forests`] is its batch of forests alone. [`MatMulWeight`] and
 //! [`MatMulAct`] build the instances of the matmul relations of RFC-0010 'Relations', stacked
@@ -46,7 +48,7 @@
 //! use tessera_codec::Ascii;
 //! use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField};
 //! use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
-//! use tessera_sumcheck::{Instance, Prefix, Table, prove_batch};
+//! use tessera_sumcheck::{Instance, Prefix, Protocol, Table, prove_batch};
 //!
 //! let context = SessionContext {
 //!     protocol: Ascii::new("tessera-protocol/1").expect("ASCII"),
@@ -65,7 +67,13 @@
 //!     Instance::new(vec![Table::base(&c)]),
 //! ];
 //! let mut transcript = Transcript::new(&context);
-//! let proven = prove_batch::<GoldilocksExt2, _>(&mut transcript, Prefix::Stage(0), 2, &instances)?;
+//! let proven = prove_batch::<GoldilocksExt2, _>(
+//!     &mut transcript,
+//!     Protocol::One,
+//!     Prefix::Stage(0),
+//!     2,
+//!     &instances,
+//! )?;
 //! assert_eq!(proven.proof().rounds.len(), 3);
 //! assert!(proven.proof().rounds.iter().all(|round| round.len() == 2));
 //! assert_eq!(proven.instance_point(1), Some(&proven.point()[1..]));
@@ -197,7 +205,7 @@
 //! use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 //! use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 //! use tessera_poly::evaluate_base;
-//! use tessera_sumcheck::{MatMulWeight, MatMulWeightShape, Prefix, prove_batch};
+//! use tessera_sumcheck::{MatMulWeight, MatMulWeightShape, Prefix, Protocol, prove_batch};
 //!
 //! let context = SessionContext {
 //!     protocol: Ascii::new("tessera-protocol/1").expect("ASCII"),
@@ -219,7 +227,8 @@
 //! let tables = matmul.tables(&point)?;
 //! let mut transcript = Transcript::new(&context);
 //! let degree = matmul.degree();
-//! let proven = prove_batch(&mut transcript, Prefix::Stage(1), degree, &[tables.instance()])?;
+//! let instances = [tables.instance()];
+//! let proven = prove_batch(&mut transcript, Protocol::One, Prefix::Stage(1), degree, &instances)?;
 //! let at = proven.instance_point(0).expect("one instance");
 //! let claims = tables.claims(at, proven.instance_evals(0).expect("one instance"))?;
 //! // W at r_i ‖ r_o ‖ ρ_ℓ and X at r_i ‖ r_t ‖ ρ_ℓ, each its operand's extension there.
@@ -246,7 +255,7 @@
 //! use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField};
 //! use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 //! use tessera_poly::evaluate_base;
-//! use tessera_sumcheck::{Elementwise, Input, Prefix, prove_batch, zero_check_point};
+//! use tessera_sumcheck::{Elementwise, Input, Prefix, Protocol, prove_batch, zero_check_point};
 //!
 //! let context = SessionContext {
 //!     protocol: Ascii::new("tessera-protocol/1").expect("ASCII"),
@@ -273,7 +282,7 @@
 //! let point: Vec<GoldilocksExt2> = (1..=5).map(|k| GoldilocksExt2::from(fp(11 * k))).collect();
 //! let tables = [scaled.tables(&point)?, boolean.tables(&z)?];
 //! let instances = [tables[0].instance(), tables[1].instance()];
-//! let proven = prove_batch(&mut transcript, Prefix::Stage(1), 3, &instances)?;
+//! let proven = prove_batch(&mut transcript, Protocol::One, Prefix::Stage(1), 3, &instances)?;
 //! // R at the high 2 coordinates of the instance's point, PV at all 5.
 //! let at = proven.instance_point(0).expect("an instance");
 //! let claims = tables[0].claims(at, proven.instance_evals(0).expect("an instance"))?;
@@ -346,6 +355,7 @@ compile_error!(
     "the `test-rng` feature pins masking randomness to a seed; it must not be enabled in a release build (RFC-0001 'Cargo features')"
 );
 
+mod bound;
 mod claim;
 mod contract;
 mod elementwise;
@@ -365,6 +375,7 @@ mod terms;
 mod transcript;
 mod trees;
 
+pub use bound::Protocol;
 pub use claim::Claim;
 pub use elementwise::{Elementwise, ElementwiseShape, ElementwiseTables, Input, zero_check_point};
 pub use error::SumcheckError;
@@ -384,6 +395,8 @@ pub use recompose::{Recomposition, RecompositionTables};
 pub use rotate::{Rotate, RotateTables};
 pub use select::{Selected, Selection, SelectionTables};
 pub use terms::Term;
+/// The largest degree of any sumcheck, 10, `tessera-protocol/2`'s at a reduction stage: a
+/// sumcheck's own bound is [`Protocol::max_degree`].
 pub use tessera_poly::MAX_DEGREE;
 pub use transcript::SumcheckTranscript;
 pub use trees::{

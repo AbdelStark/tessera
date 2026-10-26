@@ -23,7 +23,7 @@
 use tessera_field::Field;
 use tessera_sumcheck::{
     Claim, Instance, MatMulAct, MatMulActShape, MatMulActTables, MatMulWeight, MatMulWeightShape,
-    MatMulWeightTables, Prefix, ProvenBatch, RightLayout, Table, prove_batch,
+    MatMulWeightTables, Prefix, Protocol, ProvenBatch, RightLayout, Table, prove_batch,
 };
 use tv_core::sumcheck as tv;
 
@@ -438,8 +438,8 @@ pub fn prove_stage(
         })
         .collect();
     let mut transcript = session.transcript();
-    let proven =
-        prove_batch(&mut transcript, prefix, degree, &instances).expect("a well-formed stage");
+    let proven = prove_batch(&mut transcript, Protocol::One, prefix, degree, &instances)
+        .expect("a well-formed stage");
     let claims = built
         .iter()
         .enumerate()
@@ -566,8 +566,14 @@ pub fn next_stage(
         .zip(&eqs)
         .map(|(&(table, _), eq)| Instance::new(vec![Table::ext(eq).public(), Table::base(table)]))
         .collect();
-    let proven =
-        prove_batch(&mut session.transcript(), prefix, 2, &instances).expect("a well-formed stage");
+    let proven = prove_batch(
+        &mut session.transcript(),
+        Protocol::One,
+        prefix,
+        2,
+        &instances,
+    )
+    .expect("a well-formed stage");
     let tv_claims: Vec<tv::Instance> = claims
         .iter()
         .map(|(_, claim)| tv::Instance {

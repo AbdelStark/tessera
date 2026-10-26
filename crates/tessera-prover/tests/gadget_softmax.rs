@@ -6,7 +6,7 @@ use tessera_codec::{Ascii, Rational, SecretBuf};
 use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField, QuadraticExtension};
 use tessera_gadgets::{Slack, SoftmaxColumn as C, SoftmaxRow};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
-use tessera_sumcheck::{Instance, Prefix, Table, Term, prove_batch};
+use tessera_sumcheck::{Instance, Prefix, Protocol, Table, Term, prove_batch};
 use tessera_tables::{GeneratedTable, Table as _, TableId, TableKind};
 
 fn array(v: &Value) -> &[Value] {
@@ -305,7 +305,14 @@ fn actual_softmax_witnesses_and_cpu_proofs_match_every_independent_component_bat
                 }
             })
             .collect();
-        let proven = prove_batch::<F, _>(&mut transcript, Prefix::Stage(1), 3, &instances).unwrap();
+        let proven = prove_batch::<F, _>(
+            &mut transcript,
+            Protocol::One,
+            Prefix::Stage(1),
+            3,
+            &instances,
+        )
+        .unwrap();
         let proof = proven.proof();
         assert_eq!(*proven.gamma(), field(&record["gamma"]));
         assert_eq!(

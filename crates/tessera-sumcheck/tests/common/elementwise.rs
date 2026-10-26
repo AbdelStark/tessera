@@ -25,8 +25,8 @@
 //! verifier's side uses the prover's code.
 
 use tessera_sumcheck::{
-    Claim, Elementwise, ElementwiseShape, ElementwiseTables, Input, Instance, Prefix, ProvenBatch,
-    Term, prove_batch, zero_check_point,
+    Claim, Elementwise, ElementwiseShape, ElementwiseTables, Input, Instance, Prefix, Protocol,
+    ProvenBatch, Term, prove_batch, zero_check_point,
 };
 use tv_core::sumcheck as tv;
 use tv_hash::transcript::Ascii;
@@ -326,8 +326,14 @@ pub fn prove_cases(session: &Session, stage: u32, degree: usize, cases: &[Case])
         .collect();
     let instances: Vec<Instance<'_, Fp2>> =
         tables.iter().map(ElementwiseTables::instance).collect();
-    let proven = prove_batch(&mut transcript, Prefix::Stage(stage), degree, &instances)
-        .expect("a well-formed stage");
+    let proven = prove_batch(
+        &mut transcript,
+        Protocol::One,
+        Prefix::Stage(stage),
+        degree,
+        &instances,
+    )
+    .expect("a well-formed stage");
     let claims = tables
         .iter()
         .enumerate()

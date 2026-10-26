@@ -28,7 +28,7 @@ use tessera_gadgets::{
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_logup::{TreeId, prove_logup};
 use tessera_sumcheck::{
-    Forest, Instance as ScInstance, Prefix as ScPrefix, Table as ScTable, Term as ScTerm,
+    Forest, Instance as ScInstance, Prefix as ScPrefix, Protocol, Table as ScTable, Term as ScTerm,
     prove_batch, prove_forests,
 };
 use tessera_tables::{GeneratedTable, Table as _, TableId, TableKind, TableSpec};
@@ -1294,7 +1294,8 @@ fn softmax_honest_and_alternative_witnesses_reject_with_exact_gadget_id() {
                     vec![ScTerm::new(F::ONE, vec![0, 1, 2])],
                 );
                 let (mut pt, mut vt) = fresh_transcripts();
-                let proven = prove_batch(&mut pt, ScPrefix::Stage(1), 3, &[sc_inst]).unwrap();
+                let proven =
+                    prove_batch(&mut pt, Protocol::One, ScPrefix::Stage(1), 3, &[sc_inst]).unwrap();
                 let tv_zero: Vec<Fp2> = zero_pt.iter().copied().map(to_tv_fp2).collect();
                 let tv_inst = site.padding_instance();
                 let tv_proof = convert_sc_proof(proven.proof());
@@ -1464,7 +1465,7 @@ fn rsqrt_honest_and_alternative_witnesses_reject_with_exact_gadget_id() {
         vec![ScTerm::new(F::ONE, vec![0, 1, 2])],
     );
     let (mut pt, mut vt) = fresh_transcripts();
-    let proven = prove_batch(&mut pt, ScPrefix::Stage(1), 3, &[sc_inst]).unwrap();
+    let proven = prove_batch(&mut pt, Protocol::One, ScPrefix::Stage(1), 3, &[sc_inst]).unwrap();
     let tv_zero: Vec<Fp2> = zero_pt.iter().copied().map(to_tv_fp2).collect();
     let tv_inst = site.padding_instance();
     let tv_proof = convert_sc_proof(proven.proof());
@@ -1571,8 +1572,8 @@ fn onehot_honest_and_alternative_witnesses_reject_with_exact_gadget_id() {
         ];
 
         let (mut pt, mut vt) = fresh_transcripts();
-        let proven =
-            prove_batch(&mut pt, ScPrefix::Stage(1), 3, &instances).map_err(|e| format!("{e}"))?;
+        let proven = prove_batch(&mut pt, Protocol::One, ScPrefix::Stage(1), 3, &instances)
+            .map_err(|e| format!("{e}"))?;
         let tv_instances: Vec<TvScInstance> =
             site.relations().map(|rel| at.instance(rel)).collect();
         let tv_proof = convert_sc_proof(proven.proof());
@@ -1684,8 +1685,8 @@ fn argmax_honest_and_alternative_witnesses_reject_with_exact_gadget_id() {
         ];
 
         let (mut pt, mut vt) = fresh_transcripts();
-        let proven1 =
-            prove_batch(&mut pt, ScPrefix::Stage(1), 3, &instances).map_err(|e| format!("{e}"))?;
+        let proven1 = prove_batch(&mut pt, Protocol::One, ScPrefix::Stage(1), 3, &instances)
+            .map_err(|e| format!("{e}"))?;
         let tv_proof1 = convert_sc_proof(proven1.proof());
         let batch1 = verify_batch(
             &mut vt,
@@ -1720,8 +1721,8 @@ fn argmax_honest_and_alternative_witnesses_reject_with_exact_gadget_id() {
             ],
             vec![ScTerm::new(F::ONE, vec![0, 1])],
         )];
-        let proven2 =
-            prove_batch(&mut pt, ScPrefix::Stage(2), 2, &inst2).map_err(|e| format!("{e}"))?;
+        let proven2 = prove_batch(&mut pt, Protocol::One, ScPrefix::Stage(2), 2, &inst2)
+            .map_err(|e| format!("{e}"))?;
         let tv_proof2 = convert_sc_proof(proven2.proof());
         verify_batch(
             &mut vt,

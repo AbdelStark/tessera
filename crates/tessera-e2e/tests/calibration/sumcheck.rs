@@ -22,7 +22,9 @@
 //! degree `d`, and no message of `d` values can do better, `p_0' − p_0` having at most `d` roots.
 
 use tessera_field::{Field, PrimeField};
-use tessera_sumcheck::{Instance, Prefix, SumcheckProof, SumcheckTranscript, Table, prove_batch};
+use tessera_sumcheck::{
+    Instance, Prefix, Protocol, SumcheckProof, SumcheckTranscript, Table, prove_batch,
+};
 
 use super::{F, FIELD, SplitMix64, Verdict, int, mle, round_value};
 
@@ -128,8 +130,8 @@ fn run(
         excess: F::ZERO,
         sent: Vec::with_capacity(vars),
     };
-    let proven =
-        prove_batch(&mut lying, PREFIX, degree, &[instance]).expect("a well-formed instance");
+    let proven = prove_batch(&mut lying, Protocol::One, PREFIX, degree, &[instance])
+        .expect("a well-formed instance");
     let proof = SumcheckProof {
         rounds: lying.sent,
         final_evals: proven.proof().final_evals.clone(),

@@ -58,7 +58,7 @@ pub enum Request {
 pub struct ModelNatives {
     /// The descriptors, tags from 1.
     pub native: Vec<Native>,
-    /// What each descriptor proves, in the same order.
+    /// What each descriptor proves, in the same order: each one's [`Native::kind`].
     pub kinds: Vec<NativeKind>,
     /// The graph sources the descriptors replace.
     pub deferred: Vec<Deferred>,
@@ -104,6 +104,7 @@ pub fn model_natives(lowering: &Lowering, request: Request) -> Result<ModelNativ
             let tag = u32::try_from(out.native.len() + 1).unwrap_or(u32::MAX);
             out.native.push(Native {
                 tag,
+                kind,
                 node: node.id,
                 vars: local + lambda,
                 degree,
@@ -216,6 +217,7 @@ pub fn model_natives(lowering: &Lowering, request: Request) -> Result<ModelNativ
             let tag = u32::try_from(out.native.len() + 1).unwrap_or(u32::MAX);
             out.native.push(Native {
                 tag,
+                kind,
                 node,
                 vars: nt + nv,
                 degree,

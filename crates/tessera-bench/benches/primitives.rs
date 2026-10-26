@@ -248,8 +248,14 @@ fn benchmarks(s: &Sizes) -> Vec<Bench> {
         n,
         Box::new(move || {
             let instance = Instance::<Fp2>::new(tables.iter().map(|t| Table::base(t)).collect());
-            let proven = prove_batch(&mut transcript(), Prefix::Stage(0), 3, &[instance])
-                .expect("a well-formed batch");
+            let proven = prove_batch(
+                &mut transcript(),
+                tessera_sumcheck::Protocol::One,
+                Prefix::Stage(0),
+                3,
+                &[instance],
+            )
+            .expect("a well-formed batch");
             black_box(proven.into_proof());
         }),
     ));

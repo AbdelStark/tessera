@@ -37,6 +37,7 @@ use tessera_protocol::{
     ParamSet, ProofOfWork, ProtocolError, Rounds, RowKind, SoundnessReport, SoundnessRow,
     StatementSizes, Targets, WeightMatrix,
 };
+use tessera_sumcheck::{Prefix, Protocol};
 
 fn load() -> Value {
     let path = common::vectors().join("soundness/soundness.json");
@@ -567,6 +568,36 @@ fn rfc_0014s_figures_are_lower_bounds_but_80_1_which_is_rounded() {
             "{name}"
         );
     }
+}
+
+/// RFC-0014 'Soundness budget' (#565): a round of degree `d` errs with probability `d/|Fp2|`, and
+/// `tessera-protocol/2`'s largest degree, a reduction stage's 10 (RFC-0013 'Masked extensions'
+/// 'Degree', `Protocol::max_degree`), gives `2·log2 p − log2 10 = 124.678` bits per round, the
+/// "≥ 124 at `d = 10`" of the soundness row. The calculator reads each round's degree from the
+/// statement's sizes; here the sizes take it from the bound.
+#[test]
+fn a_round_of_protocol_2s_reduction_stage_degree_gives_124_68_bits() {
+    let d = Protocol::Two.max_degree(Prefix::Stage(1));
+    assert_eq!((d, Protocol::Two.max_degree(Prefix::Tree(0))), (10, 7));
+    let statement = StatementSizes {
+        protocol: 2,
+        rounds: vec![Rounds {
+            count: 1,
+            degree: u32::try_from(d).expect("a degree"),
+        }],
+        stages: vec![1],
+        tree_levels: Vec::new(),
+        zero_checks: Vec::new(),
+        layer_vars: 0,
+        groups: LeafGroupSizes::NONE,
+        ..StatementSizes::llama_405b_16k()
+    };
+    let rounds = *row(&report(&ParamSet::LIVE_64, &statement), RowKind::Rounds);
+    assert_eq!(rounds.bound, ErrorBound::Field { numerator: 10 });
+    // 256·124.678072… = 31,917.59: the FixedBits lower bound is 31,917, 124.68 rounded.
+    assert_eq!(rounds.bits, Some(FixedBits(31_917)));
+    let hundredths = rounds.bits.map(|b| (b.0 * 100 + 128) / 256);
+    assert_eq!(hundredths, Some(12_468));
 }
 
 /// For every row of RFC-0014's table, a size or parameter that makes exactly that row miss its

@@ -18,7 +18,10 @@ mod common;
 
 use common::{Fp, Fp2, Session, SplitMix64, TestTable, TvFp2, tv_fp2, tv_fp2s, tv_mle, tv_proof};
 use tessera_field::Field;
-use tessera_sumcheck::{Instance, MAX_DEGREE, Prefix, Term, prove_batch};
+use tessera_sumcheck::{Instance, Prefix, Protocol, Term, prove_batch};
+
+/// `tessera-protocol/1`'s bound, RFC-0014's `d ≤ 7`, which `tv-core`'s checks hold.
+const MAX_DEGREE: usize = Protocol::One.max_degree(Prefix::Stage(1));
 use tv_core::sumcheck as tv;
 
 /// One weighted product of a test instance, the weight drawn in `Fp2`.
@@ -99,8 +102,14 @@ impl SopInstance {
 fn prove_and_verify(session: &Session, degree: usize, instances: &[SopInstance]) {
     let borrowed: Vec<Instance<'_, Fp2>> = instances.iter().map(SopInstance::instance).collect();
     let mut transcript = session.transcript();
-    let proven = prove_batch(&mut transcript, Prefix::Stage(3), degree, &borrowed)
-        .expect("a well-formed batch");
+    let proven = prove_batch(
+        &mut transcript,
+        Protocol::One,
+        Prefix::Stage(3),
+        degree,
+        &borrowed,
+    )
+    .expect("a well-formed batch");
     let claims: Vec<tv::Instance> = instances
         .iter()
         .map(|i| tv::Instance {
