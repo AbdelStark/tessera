@@ -38,12 +38,15 @@ These checks establish packet syntax, not proof acceptance.
 including arithmetic and openings, with `--features test-params`. Each allocation
 cap runs in its own process: an infallible allocation abort fails the controller,
 and a worker that exceeds 30 seconds is killed and fails the test. It checks both
-the verifier's memory policy and simulated allocator shortages at powers of two,
+the verifier's memory policy and simulated allocator shortages independently, at powers of two,
 the measured peak's neighbours and 256 seeded allocator budgets. Every shortage
 must return `Inconclusive(ERR-RES-MEMORY)`; uncapped controls must accept before
 and after. The allocator measures additional verification work; caller-owned
 decoded inputs and setup are outside that budget. Historical setup peaks are
-excluded from the measurement. These are one recorded proof's regressions, not
+excluded from the measurement. Policy cases leave the allocator 64 MiB of spare
+capacity and assert that the measured work peak stays within the smaller policy;
+allocator cases keep the verifier's default policy and limit available allocation.
+These are one recorded proof's regressions, not
 a production-size memory bound or a deadline test. The feature inherits
 `tv-core`'s release-build refusal, and test-small acceptance certifies nothing.
 The CI check runs this target explicitly, in addition to the ordinary tests:

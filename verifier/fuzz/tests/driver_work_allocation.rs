@@ -16,18 +16,22 @@ use tv_core::{ErrorCode, Verdict, VerifierConfig};
 #[global_allocator]
 static ALLOCATOR: Cap<System> = Cap::new(System, usize::MAX);
 
-const PROOF: &[u8] = include_bytes!("../../crates/tv-core/tests/fixtures/driver/ni.tnp");
+fn fixture(name: &str) -> Vec<u8> {
+    std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../crates/tv-core/tests/fixtures/driver")
+            .join(name),
+    )
+    .unwrap()
+}
 
 fn worker(policy: bool, budget: usize) {
     let limits = DecodeLimits::MESSAGE;
-    let claims = ClaimList::open(
-        include_bytes!("../../crates/tv-core/tests/fixtures/driver/claims.tcl"),
-        &limits,
-    )
-    .unwrap();
-    let statement = NiProof::open(PROOF, &limits).unwrap().round1.statement;
+    let bytes = fixture("ni.tnp");
+    let claims = ClaimList::open(&fixture("claims.tcl"), &limits).unwrap();
+    let statement = NiProof::open(&bytes, &limits).unwrap().round1.statement;
     let weights = tv_codec::decode(
-        include_bytes!("../../crates/tv-core/tests/fixtures/driver/weights.tce"),
+        &fixture("weights.tce"),
         &limits,
         WeightCommitmentPublic::decode,
     )
@@ -47,10 +51,11 @@ fn worker(policy: bool, budget: usize) {
     let baseline = ALLOCATOR.allocated();
     assert_eq!(baseline, ALLOCATOR.max_allocated());
     let total_before = ALLOCATOR.total_allocated();
+    let allocator_budget = if policy { 64 << 20 } else { budget };
     ALLOCATOR
-        .set_limit(baseline.checked_add(budget).unwrap())
+        .set_limit(baseline.checked_add(allocator_budget).unwrap())
         .unwrap();
-    let verdict = tv_core::verify_non_interactive_bytes(&claims, &statement, PROOF, &cfg);
+    let verdict = tv_core::verify_non_interactive_bytes(&claims, &statement, &bytes, &cfg);
     let peak = ALLOCATOR.max_allocated() - baseline;
     let total = ALLOCATOR.total_allocated() - total_before;
     ALLOCATOR.set_limit(usize::MAX).unwrap();
