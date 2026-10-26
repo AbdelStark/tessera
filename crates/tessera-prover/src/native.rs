@@ -391,7 +391,13 @@ impl<'a> ModelNativeProver<'a> {
             tables: Vec::new(),
             data: Vec::new(),
         };
-        let axes = tokens(lowering).map_err(|_| bad())?;
+        // A claim's point reads its tensor's token axis only in token groups (RFC-0054 'The
+        // stage's outputs'), whose axes RFC-0054 derives; an ungrouped stage needs none, and a
+        // graph holding RFC-0066's operations has none (RFC-0072 'Non-Goals' 'Token groups').
+        let axes = match leaf.token_bits() {
+            0 => Vec::new(),
+            _ => tokens(lowering).map_err(|_| bad())?,
+        };
         for (index, family) in plan.families.iter().enumerate() {
             out.family(index, family, lowering, witness, graph, leaf, &axes)?;
         }

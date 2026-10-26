@@ -186,11 +186,16 @@ pub fn gadget_nodes(lowering: &Lowering, layers: &LayerMap) -> Vec<NodeRef> {
 /// Every tensor's token axis (RFC-0054 'The token axis'), by tensor id, the rule a graph breaks as
 /// [`LeafError::Internal`].
 pub(crate) fn tokens(lowering: &Lowering) -> Result<Vec<Option<u8>>, LeafError> {
-    token_axes(lowering).map_err(|error| LeafError::Internal {
-        rule: match error {
-            CompileError::Schedule { rule, .. } => rule,
-            _ => "the graph's token axes follow RFC-0054",
-        },
+    token_rules(lowering).map_err(|rule| LeafError::Internal { rule })
+}
+
+/// Every tensor's token axis (RFC-0054 'The token axis'), by tensor id, or the rule the graph
+/// breaks. RFC-0054 has no rule for RFC-0066's operations, so a graph that holds one has none:
+/// its leaf stage runs without token groups (RFC-0072 'Non-Goals' 'Token groups').
+pub(crate) fn token_rules(lowering: &Lowering) -> Result<Vec<Option<u8>>, &'static str> {
+    token_axes(lowering).map_err(|error| match error {
+        CompileError::Schedule { rule, .. } => rule,
+        _ => "the graph's token axes follow RFC-0054",
     })
 }
 
@@ -262,6 +267,9 @@ pub struct LeafLayout<T = Term> {
     sites: Vec<Site<T>>,
     instances: Vec<InstanceLayout>,
     reads: Vec<Vec<Vec<Read<T>>>>,
+    /// The rule the graph's token axes break, when RFC-0054 derives none: such a layout runs in
+    /// one group only ([`Self::ungroupable`]).
+    ungroupable: Option<&'static str>,
 }
 
 impl<T: Copy + Eq> LeafLayout<T> {
@@ -353,7 +361,33 @@ impl<T: Copy + Eq> LeafLayout<T> {
             sites,
             instances: instance_layouts(tables)?,
             reads,
+            ungroupable: None,
         })
+    }
+
+    /// The layout of `sites`, as [`new`](Self::new), for a graph whose token axes RFC-0054 does
+    /// not derive, breaking `rule`: its lookups have no token axis, and
+    /// [`GroupedLayout::new`](super::GroupedLayout::new) refuses to group it (RFC-0072
+    /// 'Non-Goals' 'Token groups').
+    ///
+    /// # Errors
+    ///
+    /// As [`new`](Self::new).
+    pub fn ungrouped(
+        layers: &LayerMap,
+        sites: Vec<Site<T>>,
+        rule: &'static str,
+    ) -> Result<Self, LeafError> {
+        let mut layout = Self::new(layers, sites)?;
+        layout.ungroupable = Some(rule);
+        Ok(layout)
+    }
+
+    /// The rule the graph's token axes break, when RFC-0054 derives none, as for a graph that
+    /// holds RFC-0066's operations: the layout's leaf stage runs without token groups (RFC-0072
+    /// 'Non-Goals' 'Token groups'). `None` when every lookup has its token axis.
+    pub fn ungroupable(&self) -> Option<&'static str> {
+        self.ungroupable
     }
 
     /// The sites, in node order.

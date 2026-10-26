@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Current-model lookup sites from the scalar gadgets' canonical constraints.
-use super::layout::{token, tokens};
+use super::layout::{token, token_rules};
 use super::{LeafError, LeafLayout, Site, SiteGadget, SiteLookup, gadget_nodes, internal};
 use tessera_compiler::schedule::{LayerMap, NodeRef};
 use tessera_compiler::{
@@ -304,6 +304,11 @@ impl LeafLayout<ModelColumn> {
     /// The inputs must describe the same validated lowering, selection and claim list.
     /// OneHot contributes no lookup. All root/Softmax virtuals retain native reduction debts.
     ///
+    /// Each lookup's token axis is RFC-0054's, which only a leaf stage in token groups reads. A
+    /// graph whose token axes RFC-0054 does not derive, such as one holding RFC-0066's
+    /// operations, gets a layout whose lookups have none, which runs ungrouped
+    /// ([`LeafLayout::ungroupable`], RFC-0072 'Non-Goals' 'Token groups').
+    ///
     /// # Errors
     /// `Internal` for inconsistent own metadata, `Gadget` for invalid scalar constraints,
     /// and the shape/source errors of `LeafLayout::new`.
@@ -348,7 +353,11 @@ impl LeafLayout<ModelColumn> {
         claims: &ClaimList,
         greedy: Option<tessera_compiler::GreedyCertificate>,
     ) -> Result<Self, LeafError> {
-        let tokens = tokens(lowering)?;
+        // Token axes only a grouped leaf stage reads (RFC-0072 'Non-Goals' 'Token groups').
+        let (tokens, ungroupable) = match token_rules(lowering) {
+            Ok(tokens) => (tokens, None),
+            Err(rule) => (Vec::new(), Some(rule)),
+        };
         let mut sites = Vec::new();
         for site in gadget_nodes(lowering, layers) {
             let nodes: Vec<NodeId> = match site {
@@ -409,6 +418,9 @@ impl LeafLayout<ModelColumn> {
                 }],
             });
         }
-        Self::new(layers, sites)
+        match ungroupable {
+            None => Self::new(layers, sites),
+            Some(rule) => Self::ungrouped(layers, sites, rule),
+        }
     }
 }

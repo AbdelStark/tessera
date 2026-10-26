@@ -222,6 +222,41 @@ pub(super) fn channel_table(constant: &[i64], vars: usize) -> Result<Vec<Goldilo
     Ok(table)
 }
 
+/// The selector `ψ` of a tensor of `shape` over its padded shape, or `1 − ψ` when `outside`: 1 at
+/// its real positions and 0 at its padded ones, the reverse for `1 − ψ` (RFC-0072 'Real
+/// positions'). Its extension is `ψ̃(r) = Π_a LT(r_a, n_a)`: `AssertEqual`'s selector, and the
+/// input padding check's `1 − ψ̃`.
+pub(super) fn selector(shape: &[u32], outside: bool) -> Result<Vec<Goldilocks>, StageError> {
+    let count: usize = shape.iter().map(|&len| len as usize).product();
+    let mut table = public_zeros(1usize << vars_of(shape))?;
+    pad(&vec![1; count], shape, &mut table)?;
+    if outside {
+        for slot in &mut table {
+            *slot = Goldilocks::ONE - *slot;
+        }
+    }
+    Ok(table)
+}
+
+/// `1 − LT(x_bit, bits)` over a tensor of `shape` whose last axis is a bit axis of `bits` bits:
+/// 1 at its padded slots, 0 at its real ones, at every row (RFC-0066 'Padding'). The bit-padding
+/// check's public factor.
+pub(super) fn bit_slots(shape: &[u32], bits: u8) -> Result<Vec<Goldilocks>, StageError> {
+    if shape.last() != Some(&u32::from(bits)) {
+        return Err(StageError::Internal {
+            rule: "a bit axis is its output's last",
+        });
+    }
+    let width = 1usize << axis_vars(u32::from(bits));
+    let mut table = public_zeros(1usize << vars_of(shape))?;
+    for (index, slot) in table.iter_mut().enumerate() {
+        if index % width >= usize::from(bits) {
+            *slot = Goldilocks::ONE;
+        }
+    }
+    Ok(table)
+}
+
 /// A public table of `len` zeros.
 pub(super) fn public_zeros(len: usize) -> Result<Vec<Goldilocks>, StageError> {
     let mut table = Vec::new();

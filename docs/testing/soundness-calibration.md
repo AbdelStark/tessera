@@ -1,13 +1,13 @@
 # Soundness calibration over `F65537`
 
-Over the 17-bit test field, a prover that cheats by guessing a challenge succeeds often enough to measure. [07 §4](../spec/07-testing-strategy.md#4-soundness-and-uniqueness-tests) asks that its empirical rate lie within a 99% binomial interval of the analytic bound: `d/|F|` per sumcheck round ([RFC-0010 'Testing Strategy'](../rfcs/RFC-0010-proof-schedule.md#testing-strategy)), `(N + T)/|F|` for a LogUp instance ([RFC-0008 'Testing Strategy'](../rfcs/RFC-0008-logup-and-tables.md#testing-strategy)). This checks that the analysis and the implementation agree. The harness is [`crates/tessera-e2e/tests/soundness_calibration.rs`](../../crates/tessera-e2e/tests/soundness_calibration.rs), with its parts in [`calibration/`](../../crates/tessera-e2e/tests/calibration/).
+Over the 17-bit test field, a prover that cheats by guessing a challenge succeeds often enough to measure. [07 §4](../spec/07-testing-strategy.md#4-soundness-and-uniqueness-tests) asks that its empirical rate lie within a 99% binomial interval of the analytic bound: `d/|F|` per sumcheck round ([RFC-0010 'Testing Strategy'](../rfcs/RFC-0010-proof-schedule.md#testing-strategy)), `(N + T)/|F|` for a LogUp instance ([RFC-0008 'Testing Strategy'](../rfcs/RFC-0008-logup-and-tables.md#testing-strategy)), and `n/|F|` for a non-Boolean bit in stage 1's booleanity zero-check of `n` variables ([RFC-0072 'Testing Strategy'](../rfcs/RFC-0072-anchor-relations.md#testing-strategy) 'Calibration'). This checks that the analysis and the implementation agree. The harness is [`crates/tessera-e2e/tests/soundness_calibration.rs`](../../crates/tessera-e2e/tests/soundness_calibration.rs), with its parts in [`calibration/`](../../crates/tessera-e2e/tests/calibration/).
 
 ## Running it
 
 ```sh
 # Quick tests, in every `cargo test`: the strategies, the verifiers and the intervals, in about a second.
 cargo test -p tessera-e2e --test soundness_calibration
-# The measurement: about 2·10^7 trials on every core, with the report on stderr.
+# The measurement: about 3·10^7 trials on every core, with the report on stderr.
 cargo test --locked -p tessera-e2e --test soundness_calibration -- --ignored --nocapture
 ```
 
@@ -38,27 +38,36 @@ With the `N` keys `T, …, T + N − 1` outside the rows `0, …, T − 1`, `R` 
 
 The levels' own sumchecks are not attacked. They are honest, so they pass at every challenge and add nothing to the rate, which measures the identity alone. Their per-round error is the degree-3 case of the sumcheck lie above.
 
+### A non-Boolean bit in stage 1's booleanity zero-check
+
+The prover commits a bit table `b` on `n` variables whose entries are bits but one, `v = 2` at a vertex `x_0`: two bits of a decomposition that still recomposes, as RFC-0066's "carry made up by a non-Boolean bit" does (RFC-0072 'Testing Strategy'). Over `F65537` such a decomposition keeps `low + high ≤ 16` (RFC-0066 Lemma 1); the booleanity check reads the bits alone. After the table is bound, the transcript draws the zero-check point `z` under `stage/1/zero/{c}`, and the engine proves RFC-0066's booleanity `0 = Σ_x eq(z, x)·b̃(x)·(1 − b̃(x))` (`tessera_sumcheck::Elementwise::booleanity`) under stage 1's labels. Its true sum is `S(z) = eq(z, x_0)·v·(1 − v)`:
+
+- **At a root.** `eq(z, x_0) = Π_c (z_c·x_{0,c} + (1 − z_c)·(1 − x_{0,c}))` vanishes exactly when some coordinate `z_c` is `1 − x_{0,c}`. Then `S(z) = 0`, and the engine's honest messages prove the claim 0: the proof is accepted.
+- **Otherwise** the verifier's claim, 0, exceeds the honest one by `Δ = −S(z) ≠ 0`, and every round sends the honest values plus `Δ/2`, as after a miss of the round lie above: the excess halves and never vanishes, and the final check fails.
+
+The proof is therefore accepted exactly when `z` has a coordinate at its root: with probability `1 − (1 − 1/|F|)^n`, at most `n/|F|`, RFC-0014's `n_i/|F|` for a zero-check of `n_i` variables, from which it differs by about `n²/(2|F|²)`. Each trial draws a fresh table and vertex.
+
 ## Challenges and verifiers
 
 - **Challenges** come from RFC-0004's transcript (`tessera_hash::Transcript`: BLAKE3, labels as RFC-0014's schedule has them). They are drawn in `F65537` as `challenge_fp` draws in `Fp`, but from 17-bit words: of a squeeze's four little-endian words, each masked to its low 17 bits, the challenge is the first below `P`; if none is, the transcript squeezes again. Every element is drawn with probability `1/P`, if the hash's output is uniform. The engines are generic over `PolyField`, so `r_0` and `α` lie in `F65537` itself, and `|F| = 65537` in every bound. Over `F65537Ext2`, `|F| ≈ 2^32`, and a guess would almost never succeed.
 - **Sessions.** Each trial is a session of its own, with a fresh session id (INV-PROTO-4), in live mode: the prover gets one attempt at its challenge, as in interactive soundness. Grinding, which non-interactive proofs pay for with `g_seed` (RFC-0014 'Grinding'), is outside the measurement.
 - **Order.** The prover's claim and tables, or its lookups and multiplicities, are absorbed under `round1` before any challenge, as their commitments are (RFC-0014 'Transcript schedule', row 2; INV-FS-1).
 - **Verifiers.** `tv-core` checks Goldilocks proofs only, so each proof is checked by a verifier written in the harness from RFC-0010 'Sumcheck messages' and 'Tree levels' and RFC-0008 'Fraction tree': round lengths, `p(1) = claim − p(0)`, the final check, the levels' `γ`, `λ`, front-padding, `eq` and `ρ`, the roots' and leaves' checks. In place of openings, it reads the committed columns directly: the tables, the keys and the multiplicities. Its polynomial arithmetic (multilinear extensions, `eq`, Lagrange interpolation) is written in the harness, not taken from `tessera-poly`; the field's is `tessera-field`'s.
-- **Scripted challenges.** The quick tests also run the provers on a transcript that sets a challenge. At every root of `δ`, and at every value of `α` that the brute force accepts, the verifier accepts; at every pole and at other values, it rejects. The rates themselves come only from the real transcript.
+- **Scripted challenges.** The quick tests also run the provers on a transcript that sets a challenge. At every root of `δ`, and at every value of `α` that the brute force accepts, the verifier accepts; at every pole and at other values, it rejects. For the non-Boolean bit, the script sets the zero-check point: it is accepted with one coordinate at its root, or two, and rejected with none, `0`, `1` and the top of the field among the others; honest bits verify at every point. The rates themselves come only from the real transcript.
 
 ## Statistics
 
 - **Intervals.** Two-sided 99% Clopper–Pearson intervals, which invert the two one-sided binomial tests and cover every rate with probability at least 99%. They are computed in the harness, with no dependency: binomial tails summed in logarithms, endpoints by bisection. A quick test compares them, to `10^-9` relative, with an independent oracle: [`calibration/oracle.py`](../../crates/tessera-e2e/tests/calibration/oracle.py), which sums the tails term by term in mpmath at 50 digits. Its points include the intervals reported below. Another checks, by direct summation for up to 120 trials, that each endpoint leaves 0.5% in its tail and that the intervals cover 99% of the outcomes.
 - **Checks.** For each setting:
   1. the construction attains the analysis's count: `K = d`, or `K = N + T − 1`;
-  2. `K/|F|` lies inside the interval, so that the implementation agrees with the analysis;
-  3. the interval's lower end, a one-sided 99.5% lower bound, is at or below the bound `d/|F|` or `(N + T)/|F|`.
-- **Trials.** Each setting runs `⌈200·|F|/K⌉` trials, for 200 expected accepts. The interval's half-width is then about 18% of the rate, so that an analytic rate off by a factor of 2 falls outside it in every setting.
-- **Seeds** are fixed, so every run gives the same counts. A change to anything a transcript absorbs, such as a label, an encoding or an engine's messages, draws new challenges. With six settings at 99% each, one of them then fails by chance up to about 6% of the time. A fluke lands just outside one interval and goes away with other seeds; a defect persists.
+  2. the exact rate, `K/|F|` or `1 − (1 − 1/|F|)^n`, lies inside the interval, so that the implementation agrees with the analysis;
+  3. the interval's lower end, a one-sided 99.5% lower bound, is at or below the bound `d/|F|`, `(N + T)/|F|` or `n/|F|`.
+- **Trials.** Each setting runs `⌈200·|F|/K⌉` trials, for 200 expected accepts, with `K = n` for the booleanity settings. The interval's half-width is then about 18% of the rate, so that an analytic rate off by a factor of 2 falls outside it in every setting.
+- **Seeds** are fixed, so every run gives the same counts. A change to anything a transcript absorbs, such as a label, an encoding or an engine's messages, draws new challenges. With eight settings at 99% each, one of them then fails by chance up to about 8% of the time. A fluke lands just outside one interval and goes away with other seeds; a defect persists.
 
 ## Results
 
-The nightly job's log has the latest table. This run is from 2026-10-17, in the dev profile, on an Apple M4 Max with 16 threads: 13.3 s, 142 CPU-seconds. The counts do not depend on the number of threads.
+The nightly job's log has the latest table. This run is from 2026-10-26, in the dev profile, on an Apple M4 Max with 16 threads: 21.6 s. The counts do not depend on the number of threads; the first six rows' are those of the run of 2026-10-17, which took 13.3 s.
 
 | Setting | `K` | Trials | Accepted | Rate | 99% interval | `K/\|F\|` | Bound |
 |---|---|---|---|---|---|---|---|
@@ -68,8 +77,10 @@ The nightly job's log has the latest table. This run is from 2026-10-17, in the 
 | LogUp, `N = 1`, `T = 16` | 16 | 819,213 | 194 | 2.3681e-4 | [1.9532e-4, 2.8422e-4] | 2.4414e-4 | 2.5940e-4 |
 | LogUp, `N = 2`, `T = 255` | 256 | 51,201 | 174 | 3.3984e-3 | [2.7723e-3, 4.1186e-3] | 3.9062e-3 | 3.9214e-3 |
 | LogUp, `N = 3`, `T = 1023` | 1,025 | 12,788 | 205 | 1.6031e-2 | [1.3311e-2, 1.9117e-2] | 1.5640e-2 | 1.5655e-2 |
+| booleanity, `n = 2` | — | 6,553,700 | 178 | 2.7160e-5 | [2.2203e-5, 3.2857e-5] | 3.0517e-5 | 3.0517e-5 |
+| booleanity, `n = 4` | — | 3,276,850 | 214 | 6.5307e-5 | [5.4381e-5, 7.7710e-5] | 6.1033e-5 | 6.1034e-5 |
 
-Every interval contains `K/|F|` and starts below the bound. The LogUp bound `(N + T)/|F|` lies inside each interval too. That is not asserted: an instance reaches `(N + T − 1)/|F|` at most, and enough trials would separate the two for a small table.
+Every interval contains `K/|F|`, for the booleanity rows the exact rate `1 − (1 − 1/|F|)^n`, and starts below the bound. The LogUp bound `(N + T)/|F|` lies inside each interval too. That is not asserted: an instance reaches `(N + T − 1)/|F|` at most, and enough trials would separate the two for a small table.
 
 The degrees are the smallest, a tree level's and the largest that RFC-0014 allows (`d ≤ 7`). The tables have 16, 255 and 1,023 rows, with lookup trees of heights 0, 1 and 2, the last padded with row 0.
 
@@ -89,9 +100,11 @@ The harness must be able to fail. Each mutation below was applied to the source,
 | The sumcheck verifier without its final check | Every lie accepted | The quick tests fail: a lie is accepted where `r_0` is no root |
 | The LogUp verifier without the roots' balance | Bad lookups accepted wherever `α` is no pole | The quick tests fail: an `α` that is no root is accepted |
 | The level verifier without the front-padding scale `2^{n_max − n_i}` | Trees of different heights misbatched | The quick tests fail: honest lookups are rejected, and so are bad ones at their roots |
+| The booleanity verifier's final check without `eq(z, r)` | Honest bits, and a bad bit at a root, rejected | The quick tests fail: honest bits are rejected, and so is the scripted bad bit at its roots |
+| The booleanity prover sending the engine's messages after a miss | Acceptance no longer exactly at the roots | The first trials fail: one is accepted with no coordinate of `z` at its root |
 
 ## Limits
 
 - **Small field only.** The bounds of RFC-0014 'Soundness budget' are stated over `|Fp2| ≈ 2^128`. The calibration checks their form, `K/|F|` with the analysis's `K`, where it can be measured, not the production numbers (#103).
-- **One challenge per prover.** Batching over `γ` (`m/|F|`), forests' root claims (`s/|F|`), the compression of tuples by `β`, zero-check points and `tessera-protocol/2`'s masked identity each add terms of their own, which this harness does not measure. A prover that lies in every round reaches about `n·d/|F|`, the union bound.
+- **One challenge per prover.** Batching over `γ` (`m/|F|`), forests' root claims (`s/|F|`), the compression of tuples by `β` and `tessera-protocol/2`'s masked identity each add terms of their own, which this harness does not measure. A prover that lies in every round reaches about `n·d/|F|`, the union bound. Of the zero-checks, the booleanity setting measures one instance alone at its point; stage 1's batch of them, whose union RFC-0014 counts (RFC-0072 OQ-0072-1), is not measured.
 - **Other instances.** Random bad lookups, which accept far below the bound, are measured by `tessera-logup`'s own calibration test ([`crates/tessera-logup/tests/calibration.rs`](../../crates/tessera-logup/tests/calibration.rs)): 4·10^6 trials, which the nightly job's second step runs.

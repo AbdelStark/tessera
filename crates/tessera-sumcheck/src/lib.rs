@@ -12,6 +12,7 @@
 //! [`MatMulAct`] build the instances of the matmul relations of RFC-0010 'Relations', stacked
 //! over layers or heads, and map their sumchecks' results to claims on their operands;
 //! [`Elementwise`] does the same for `Mul`, `SumSquares` and `ZeroCheck`, [`Rotate`] for RoPE,
+//! [`Recomposition`] for a `BitDecompose`'s recomposition zero-check (RFC-0072),
 //! and [`Linear`] propagates claims through linear relations without a sumcheck. Masking (RFC-0013)
 //! and the stage schedule build on them.
 //!
@@ -356,6 +357,7 @@ mod matmul;
 mod merge;
 mod proof;
 mod prover;
+mod recompose;
 mod rotate;
 mod terms;
 mod transcript;
@@ -376,6 +378,7 @@ pub use merge::{
 };
 pub use proof::SumcheckProof;
 pub use prover::{Instance, Prefix, ProvenBatch, Table, TreeScope, prove_batch};
+pub use recompose::{Recomposition, RecompositionTables};
 pub use rotate::{Rotate, RotateTables};
 pub use terms::Term;
 pub use tessera_poly::MAX_DEGREE;

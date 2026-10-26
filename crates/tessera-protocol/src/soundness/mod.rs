@@ -115,7 +115,9 @@ pub struct StatementSizes {
     pub stages: Vec<u64>,
     /// The instances each tree level batches: the fraction trees and product forests at it.
     pub tree_levels: Vec<u64>,
-    /// The variables `n_i` of each `ZeroCheck` (RFC-0035 'Zero-check points').
+    /// The variables `n_i` of each `ZeroCheck` (RFC-0035 'Zero-check points'): its instance's,
+    /// `n_y + k` for a recomposition summed over its bit axis, whose `eq` has `n_y` alone, so the
+    /// entry overcounts it (RFC-0072 'The bit zero-checks').
     pub zero_checks: Vec<u32>,
     /// The coordinates `λ` of stage 1's layer point (RFC-0037 'The layer point'): a false
     /// per-layer value survives its stacking with probability at most `λ/q`. 0 when the schedule

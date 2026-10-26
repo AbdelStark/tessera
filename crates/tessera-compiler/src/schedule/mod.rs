@@ -31,8 +31,11 @@
 //!    sends one value per part ('Splits'). A claim of public terms alone has no part.
 //! 5. **Stages.** Stage `k` proves one instance per virtual part that stage `k − 1` leaves, in
 //!    order, stacked over the layers where its kind is. Stage 1 then adds the equality zero-check
-//!    of each committed output of a linear or degree-2 node ('The committed first checkpoint').
-//!    Each instance's evaluations are the stage's claims, which go to the next stage or the pool.
+//!    of each committed output of a linear or degree-2 node ('The committed first checkpoint'),
+//!    and after them RFC-0066's zero-checks of each `BitDecompose` and `AssertEqual`: its
+//!    committed input's padding, its bits' booleanity and padding, its recomposition summed over
+//!    the bit axis, and `AssertEqual`'s equality (RFC-0072 'The bit zero-checks'). Each
+//!    instance's evaluations are the stage's claims, which go to the next stage or the pool.
 //!
 //! Every point is symbolic: each [`Coord`] names the challenge, or the constant `½`, that sets it.
 //! So the schedule fixes which atoms share a point, and so how claims merge, split and group, before
@@ -299,7 +302,9 @@ pub enum Relation {
     /// The equality zero-check `0 = Σ_x eq(z, x)·(Ỹ(x) − f(x))` of a node's committed output `Y`;
     /// its evaluations are `Y`'s, then those of `f`'s inputs.
     Equality,
-    /// The original OneHot's `0 = sum_x eq(z,x) H(x)(1-H(x))`; one evaluation.
+    /// The booleanity zero-check `0 = Σ_x eq(z, x)·H̃(x)·(1 − H̃(x))` of a committed output `H`:
+    /// the original `OneHot`'s indicator, or a `BitDecompose`'s `b` or `h` (RFC-0066, RFC-0072
+    /// 'The bit zero-checks'), the instance's kind; one evaluation.
     Booleanity,
     /// The original indicator is zero outside the real vocabulary; one H evaluation.
     OneHotVocabulary,
@@ -307,6 +312,29 @@ pub enum Relation {
     OneHotCount,
     /// Zero-check that its weighted sum is the original token; H then token evaluations.
     OneHotIndex,
+    /// RFC-0066's padding check of the committed graph input `u` that a `BitDecompose` reads,
+    /// directly or moved, when `u` has padded positions: `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·ũ(x)`, `ψ` 1
+    /// on `u`'s real positions (RFC-0072 'The bit zero-checks', 'Real positions'). The instance's
+    /// kind is `u`'s; one evaluation, `ũ`'s.
+    InputPadding,
+    /// RFC-0066's bit-padding check of a `BitDecompose`'s output `b` of `low` bits, or `h` of
+    /// `high`, when that count `n` is not a power of two: `0 = Σ_x eq(z, x)·(1 − LT(x_bit, n))·
+    /// b̃(x)` over the bit axis's coordinates `x_bit`, the lowest. The instance's kind is the
+    /// output's; one evaluation.
+    BitPadding,
+    /// RFC-0072's recomposition of a `BitDecompose { low, high }` of `x`, one zero-check over `y`
+    /// summed over the bit axis's `k = max(k_b, k_h)` variables, the lowest of its `n_y + k`:
+    /// `0 = Σ_{(i, y)} eq(z_y, y)·[2^{−k}·x̃(y) − W_b(i)·b̂(i ‖ y) − 2^{low}·W_h(i)·ĥ(i ‖ y)]`.
+    /// The outputs are zero-extended on their high bit coordinates, and `eq` takes the highest
+    /// `n_y` coordinates of the instance's point (RFC-0035 'Zero-check points'). Its evaluations
+    /// are `x̃(r'_y)` unless `x` is public, then `b̃` and `h̃` at the high `k_b` and `k_h` of
+    /// `r'_i` with `r'_y`. The instance's kind is the output whose bit axis has the `k`
+    /// variables: `b`, or `h` when `k_h > k_b`.
+    Recomposition,
+    /// `AssertEqual`'s zero-check `0 = Σ_x eq(z, x)·ψ̃(x)·(ã(x) − b̃(x))`, `ψ` 1 on the tensors'
+    /// real positions (RFC-0066, RFC-0072 'Real positions'); its evaluations are `ã`'s, then
+    /// `b̃`'s, each unless public, none when both are. The instance's kind is `a`'s.
+    AssertEqual,
 }
 
 /// What an instance proves.
@@ -334,10 +362,12 @@ pub struct Instance {
     pub relation: Relation,
     /// The node whose relation it is.
     pub node: NodeRef,
-    /// The kind of the node's output it states.
+    /// The kind of the node's output it states; for a bit zero-check the tensor its
+    /// [`Relation`] names (RFC-0072 'The bit zero-checks').
     pub kind: Kind,
     /// Its claim's point on that output: the virtual part's, or for a zero-check its coordinates
-    /// of the zero-check point.
+    /// of the zero-check point, the last `n_i`. A recomposition's `eq` takes the highest `n_y`
+    /// of them (RFC-0035 'Zero-check points').
     pub point: Vec<Coord>,
     /// Its claim's layer weights: `eq` at the part's layer point, or for a stacked zero-check at
     /// the zero-check point's highest coordinates.
@@ -356,8 +386,9 @@ pub struct Stage {
     /// Its index: 0 for the leaf stage.
     pub index: u16,
     /// Its instances, in order: those of the virtual parts the stage before leaves, then in stage
-    /// 1 the zero-checks in node order. The leaf stage has none here: its fraction trees and
-    /// product trees are RFC-0008's and RFC-0009's.
+    /// 1 the zero-checks in node order, and after them the bit zero-checks of each `BitDecompose`
+    /// and `AssertEqual` in node order (RFC-0072 'The bit zero-checks'). The leaf stage has none
+    /// here: its fraction trees and product trees are RFC-0008's and RFC-0009's.
     pub instances: Vec<Instance>,
     /// Its rounds `n_max`, the most variables among its instances: 0 for the leaf stage.
     pub rounds: u32,
@@ -507,7 +538,6 @@ pub fn derive_schedule(lowering: &Lowering) -> Result<StageSchedule, CompileErro
 ///   `Mul`, which stage 1 does not prove (RFC-0072 'A committed output');
 /// - a `Sum`, `SumSquares` or `MatMulAct` over an axis whose length is not a power of two none of
 ///   whose summed inputs is 0 at its padded positions (RFC-0072 'Summing relations');
-/// - a `BitDecompose` or an `AssertEqual`, whose stage-1 zero-checks are not derived yet;
 /// - logits that no node produces, or a claim that reaches an operation RFC-0037 maps no claim
 ///   through yet, such as `Slice` or `GatherPublic`;
 /// - a matmul with one public operand, which its relations do not read as `Public`;
@@ -845,10 +875,6 @@ fn leaf_sites(graph: &Graph, layers: &LayerMap, logits: bool) -> Vec<Site> {
 ///   `Sum`'s, `SumSquares`'s, `Rotate`'s, `Transpose`'s, `Reshape`'s or `Expand`'s, is refused,
 ///   although the IR admits the declaration, whether or not a claim reaches it.
 /// - **Summing relations** over a padded axis ('Summing relations').
-/// - **The bit operations.** A `BitDecompose`'s and an `AssertEqual`'s relations are stage 1's bit
-///   zero-checks ('The bit zero-checks'), and they have no leaf site: until the schedule derives
-///   those checks (#526), a graph holding one is refused, rather than given a schedule that
-///   proves neither. This refusal comes last, as it lifts with the checks.
 fn check_graph(
     graph: &Graph,
     tables: &[TableSpec],
@@ -884,18 +910,7 @@ fn check_graph(
             );
         }
     }
-    padding::check_sums(graph, tables, producers)?;
-    if let Some(node) = graph
-        .nodes
-        .iter()
-        .find(|node| matches!(node.op, Op::BitDecompose { .. } | Op::AssertEqual))
-    {
-        return refuse(
-            Some(node.id),
-            "the schedule derives no bit zero-check of a BitDecompose or an AssertEqual yet",
-        );
-    }
-    Ok(())
+    padding::check_sums(graph, tables, producers)
 }
 
 /// Input `input` of `node`.

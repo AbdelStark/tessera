@@ -337,8 +337,8 @@ impl CommitmentReport {
 ///
 /// # Errors
 ///
-/// [`CompileError::Usage`] for a graph the report does not count: one with a scoring certificate,
-/// a lowering without its checkpoints, a count that is not a multiple of the sequence's length, or
+/// [`CompileError::Usage`] for a graph the report does not count: one with a scoring certificate
+/// or the anchors' bit operations (RFC-0066), a lowering without its checkpoints, a count that is not a multiple of the sequence's length, or
 /// a policy with limbs of no bits.
 pub fn report(
     model: PublicModel<'_>,
@@ -472,6 +472,11 @@ pub fn report(
             Gadget::Argmax { .. } | Gadget::InverseCdf => {
                 return Err(CompileError::Usage {
                     rule: "the report counts the forward pass, without scoring certificates",
+                });
+            }
+            Gadget::BitDecompose { .. } | Gadget::AssertEqual => {
+                return Err(CompileError::Usage {
+                    rule: "the report counts the forward pass, without the anchors' bit operations",
                 });
             }
         }

@@ -337,6 +337,10 @@ impl Context<'_> {
             s::Relation::OneHotCount => (json!({"OneHotCount":[shape_vars(&out[1..]),out[0]]}), 2),
             s::Relation::OneHotIndex => (json!({"OneHotIndex":[shape_vars(&out[1..])]}), 2),
             s::Relation::ScaleChannels => panic!("no per-channel ConstMul in the Llama lowering"),
+            s::Relation::InputPadding
+            | s::Relation::BitPadding
+            | s::Relation::Recomposition
+            | s::Relation::AssertEqual => panic!("no bit operation in the Llama lowering"),
         }
     }
     fn schedule(&self) -> Value {
@@ -478,6 +482,9 @@ fn selection_snapshot(selection: &tessera_compiler::Selection) -> Value {
                 Gadget::OneHot => json!(["OneHot"]),
                 Gadget::Argmax { .. } | Gadget::InverseCdf => {
                     panic!("scoring gadgets are outside the Llama lowering")
+                }
+                Gadget::BitDecompose { .. } | Gadget::AssertEqual => {
+                    panic!("the anchors' bit gadgets are outside the Llama lowering")
                 }
             };
             let tables: Vec<_> = selection

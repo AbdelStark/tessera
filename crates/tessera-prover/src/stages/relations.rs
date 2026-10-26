@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Each instance's relation over its stage's tables (RFC-0010 'Relations', RFC-0037 'Rotate'),
-//! and the claims its evaluations leave.
+//! Each instance's relation over its stage's tables (RFC-0010 'Relations', RFC-0037 'Rotate',
+//! RFC-0072 'The bit zero-checks'), and the claims its evaluations leave.
 
 use tessera_codec::SecretBuf;
 use tessera_compiler::schedule::{Instance as Planned, Layers, NodeRef, Relation, Stage};
@@ -10,11 +10,13 @@ use tessera_ir::{Broadcast, Node, Op};
 use tessera_sumcheck::{
     Claim, Elementwise, ElementwiseShape, ElementwiseTables, Input, Instance, MatMulAct,
     MatMulActShape, MatMulActTables, MatMulWeight, MatMulWeightShape, MatMulWeightTables,
-    RightLayout, Rotate, RotateTables, Term,
+    Recomposition, RecompositionTables, RightLayout, Rotate, RotateTables, Term,
 };
 use tessera_tables::RopeTable;
 
-use super::public::{channel_table, const_add, constant_and_shape, public_table, public_zeros};
+use super::public::{
+    bit_slots, channel_table, const_add, constant_and_shape, public_table, public_zeros, selector,
+};
 use super::tables::{axis_vars, pad, zeros};
 use super::{StageError, StageProver, WitnessSource};
 
@@ -84,6 +86,18 @@ pub(super) enum Plan {
         bit: usize,
         vars: usize,
     },
+    /// A `BitDecompose`'s recomposition (RFC-0072 'The bit zero-checks'): `x`, an operand or
+    /// public, its `b` and `h`, and its `eq` at the instance's point from `point_from`, the bit
+    /// variables' count `k`, on.
+    Recomposition {
+        x: Read,
+        b: usize,
+        h: Option<usize>,
+        low: u8,
+        high: u8,
+        rows: usize,
+        point_from: usize,
+    },
 }
 
 impl Plan {
@@ -109,6 +123,7 @@ pub(super) enum Built<'a> {
     MatMulAct(MatMulActTables<'a, GoldilocksExt2>),
     Elementwise(ElementwiseTables<'a, GoldilocksExt2>),
     Rotate(RotateTables<'a, GoldilocksExt2>),
+    Recomposition(RecompositionTables<GoldilocksExt2>),
 }
 
 impl Built<'_> {
@@ -119,6 +134,7 @@ impl Built<'_> {
             Self::MatMulAct(t) => t.instance(),
             Self::Elementwise(t) => t.instance(),
             Self::Rotate(t) => t.instance(),
+            Self::Recomposition(t) => t.instance(),
         }
     }
 
@@ -139,6 +155,7 @@ impl Built<'_> {
             }
             Self::Elementwise(t) => t.claims(point, evals)?,
             Self::Rotate(t) => vec![t.claim(point, evals)?],
+            Self::Recomposition(t) => t.claims(point, evals)?,
         })
     }
 }
@@ -211,6 +228,36 @@ pub(super) fn build<'a>(
                 degree = degree.max(relation.degree());
                 Built::Rotate(relation.tables(point)?)
             }
+            Plan::Recomposition {
+                x,
+                b,
+                h,
+                low,
+                high,
+                rows,
+                point_from,
+            } => {
+                let x = match *x {
+                    Read::Operand(t) => Input::Operand(&arena.secret[t][..]),
+                    Read::Public(t) => Input::Public(&arena.public[t][..]),
+                    Read::Spread(_) | Read::Broadcast { .. } => {
+                        return internal("a recomposition reads its integer whole");
+                    }
+                };
+                let relation = Recomposition::new(
+                    x,
+                    &arena.secret[*b],
+                    h.map(|t| &arena.secret[t][..]),
+                    *low,
+                    *high,
+                    *rows,
+                )?;
+                degree = degree.max(relation.degree());
+                let point = point.get(*point_from..).ok_or(StageError::Internal {
+                    rule: "a recomposition's eq takes its point's highest coordinates",
+                })?;
+                Built::Recomposition(relation.tables(point)?)
+            }
         };
         built.push(tables);
     }
@@ -238,7 +285,11 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         };
         let shape = |t: usize| self.graph.tensors[t].shape.as_slice();
         let input_shape = |i: usize| shape(node.inputs[i].0 as usize);
-        let output = shape(node.outputs[0].0 as usize);
+        // `AssertEqual` has no output.
+        let output = node
+            .outputs
+            .first()
+            .map_or(&[][..], |t| shape(t.0 as usize));
         let vars = |s: &[u32]| Self::vars_of(s) as usize;
         Ok(match instance.relation {
             Relation::Native { .. } => {
@@ -439,6 +490,126 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                 }
             }
             Relation::Equality => self.equality(arena, instance, node, &operand, stacked)?,
+            Relation::InputPadding
+            | Relation::BitPadding
+            | Relation::Recomposition
+            | Relation::AssertEqual => {
+                if stacked {
+                    return internal("a bit zero-check is outside the layers");
+                }
+                self.bits(arena, instance, node, claims, &operand)?
+            }
+        })
+    }
+
+    /// RFC-0066's zero-checks of a `BitDecompose` or an `AssertEqual` (RFC-0072 'The bit
+    /// zero-checks'), each at its coordinates of the zero-check point:
+    ///
+    /// - **Input padding**: `ũ·(1 − ψ̃)`, `ψ` the committed input's selector;
+    /// - **Bit padding**: `b̃·(1 − LT(x_bit, n))`, `n` the output's bits;
+    /// - **Recomposition**: [`Recomposition`], `x` read as `Public` when public;
+    /// - **`AssertEqual`**: `ψ̃·ã − ψ̃·b̃`, each side read as `Public` when public, `ψ` the
+    ///   tensors' selector.
+    ///
+    /// Booleanity is `OneHot`'s relation, on the output its claim names.
+    fn bits(
+        &self,
+        arena: &mut Arena,
+        instance: &Planned,
+        node: &Node,
+        claims: &[tessera_compiler::schedule::Claim],
+        operand: &dyn Fn(usize) -> Result<SecretBuf<Goldilocks>, StageError>,
+    ) -> Result<Plan, StageError> {
+        let one = GoldilocksExt2::ONE;
+        let shape = ElementwiseShape::elementwise(instance.vars as usize);
+        // The tensor a padding check reads, its one claim's; `AssertEqual` of two public tensors
+        // has none.
+        let claimed = || {
+            claims.first().ok_or(StageError::Internal {
+                rule: "a padding check claims its tensor",
+            })
+        };
+        Ok(match instance.relation {
+            Relation::InputPadding => {
+                let u = self.shape(claimed()?.kind)?.to_vec();
+                Plan::Elementwise {
+                    point_from: 0,
+                    inputs: vec![
+                        Read::Operand(arena.secret(operand(0)?)),
+                        Read::Public(arena.public(selector(&u, true)?)),
+                    ],
+                    terms: vec![Term::new(one, vec![0, 1])],
+                    shape,
+                }
+            }
+            Relation::BitPadding => {
+                let Op::BitDecompose { low, high } = node.op else {
+                    return internal("a bit-padding check is a BitDecompose's");
+                };
+                let kind = claimed()?.kind;
+                let tensor = self.tensor(kind, 0)?;
+                let bits = if node.outputs.get(1) == Some(&tensor) {
+                    high
+                } else {
+                    low
+                };
+                let output = self.shape(kind)?.to_vec();
+                Plan::Elementwise {
+                    point_from: 0,
+                    inputs: vec![
+                        Read::Operand(arena.secret(operand(0)?)),
+                        Read::Public(arena.public(bit_slots(&output, bits)?)),
+                    ],
+                    terms: vec![Term::new(one, vec![0, 1])],
+                    shape,
+                }
+            }
+            Relation::Recomposition => {
+                let Op::BitDecompose { low, high } = node.op else {
+                    return internal("a recomposition is a BitDecompose's");
+                };
+                let mut next = 0;
+                let x = match self.input(instance, node, 0, operand, &mut next)? {
+                    Operand::Public(table) => Read::Public(arena.public(table)),
+                    Operand::Claimed(table) => Read::Operand(arena.secret(table)),
+                };
+                let b = arena.secret(operand(next)?);
+                let h = match high {
+                    0 => None,
+                    _ => Some(arena.secret(operand(next + 1)?)),
+                };
+                let rows = Self::vars_of(&self.graph.tensors[node.inputs[0].0 as usize].shape);
+                let k = axis_vars(u32::from(low)).max(axis_vars(u32::from(high)));
+                Plan::Recomposition {
+                    x,
+                    b,
+                    h,
+                    low,
+                    high,
+                    rows: rows as usize,
+                    point_from: k as usize,
+                }
+            }
+            Relation::AssertEqual => {
+                let mut next = 0;
+                let mut read = |arena: &mut Arena, i: usize| -> Result<Read, StageError> {
+                    Ok(match self.input(instance, node, i, operand, &mut next)? {
+                        Operand::Public(table) => Read::Public(arena.public(table)),
+                        Operand::Claimed(table) => Read::Operand(arena.secret(table)),
+                    })
+                };
+                let a = read(arena, 0)?;
+                let b = read(arena, 1)?;
+                let tensors = &self.graph.tensors[node.inputs[0].0 as usize].shape;
+                let psi = Read::Public(arena.public(selector(tensors, false)?));
+                Plan::Elementwise {
+                    point_from: 0,
+                    inputs: vec![a, b, psi],
+                    terms: vec![Term::new(one, vec![2, 0]), Term::new(-one, vec![2, 1])],
+                    shape,
+                }
+            }
+            _ => return internal("a bit zero-check is RFC-0066's"),
         })
     }
 

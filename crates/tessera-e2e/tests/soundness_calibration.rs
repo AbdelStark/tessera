@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Soundness calibration over the test field `F65537` (07 §4; RFC-0010 and RFC-0008 'Testing
-//! Strategy'): cheating provers that guess one challenge succeed at the analytic rate, `d/|F|`
-//! for a lie in one sumcheck round and up to `(N + T)/|F|` for lookups outside their table.
+//! Soundness calibration over the test field `F65537` (07 §4; RFC-0010, RFC-0008 and RFC-0072
+//! 'Testing Strategy'): cheating provers that guess one challenge succeed at the analytic rate,
+//! `d/|F|` for a lie in one sumcheck round, up to `(N + T)/|F|` for lookups outside their table,
+//! and `1 − (1 − 1/|F|)^n ≤ n/|F|` for a non-Boolean bit in stage 1's booleanity zero-check of
+//! `n` variables, which passes exactly when the zero-check point zeroes `eq(z, x_0)`.
 //!
 //! Each setting runs a cheating prover on the real engine (`tessera-sumcheck`, `tessera-logup`)
 //! and RFC-0004's transcript, and checks every proof with a verifier written here from RFC-0010
@@ -10,7 +12,8 @@
 //! Goldilocks proofs only. The cheating provers' acceptance depends on one challenge alone, and
 //! is exact: the lie is accepted exactly when `r_0` is one of the `d` roots of the round's
 //! difference polynomial, the bad lookups exactly when `α` is one of the `N + T − 1` roots of
-//! their identity. Every trial checks that the verdict is this event. Over many trials, the rate
+//! their identity, the non-Boolean bit exactly when a coordinate of the zero-check point is its
+//! root. Every trial checks that the verdict is this event. Over many trials, the rate
 //! must contain the roots' share of the field in its 99% Clopper–Pearson interval, and the lower
 //! end must not exceed the analytic bound.
 //!
@@ -29,6 +32,7 @@ mod calibration;
 
 use std::time::Instant;
 
+use calibration::booleanity::NonBoolean;
 use calibration::interval::{binomial_cdf, clopper_pearson};
 use calibration::logup::Lookups;
 use calibration::sumcheck::RoundLie;
@@ -84,6 +88,10 @@ const LOOKUPS: [LookupSetting; 3] = [
         rows: 1023,
     },
 ];
+
+/// The booleanity settings: one non-Boolean bit among the bits of a zero-check on 2 and on 4
+/// variables, whose rates `n/|F|` the interval tells apart.
+const ZERO_CHECKS: [usize; 2] = [2, 4];
 
 /// A setting's seed: the statement digest of its sessions, and its instances' randomness.
 fn seed(kind: u64, index: usize) -> u64 {
@@ -243,6 +251,66 @@ fn bad_lookups_are_accepted_exactly_at_their_roots() {
     }
 }
 
+/// RFC-0072 'Testing Strategy' 'Calibration': a non-Boolean bit passes stage 1's booleanity
+/// zero-check exactly when the zero-check point zeroes `eq(z, x_0)`. Scripted at each
+/// coordinate's root, the others not, and at two roots, it is accepted; at points with no root,
+/// among them 0, 1 and the top of the field, it is rejected. Honest bits verify at every point of
+/// the real transcript.
+#[test]
+fn a_non_boolean_bit_passes_booleanity_exactly_when_z_zeroes_its_eq() {
+    for vars in [1, 2, 4] {
+        let mut rng = SplitMix64::new(0x0526_B001 + vars as u64);
+        for trial in 0..20 {
+            let honest = NonBoolean::honest(vars, &mut rng);
+            let verdict = honest.trial(
+                &mut SmallTranscript::session(seed(7, vars), trial),
+                &mut SmallTranscript::session(seed(7, vars), trial),
+            );
+            assert!(
+                verdict.accepted,
+                "{vars} variables, trial {trial}: honest bits verify"
+            );
+        }
+        let bad = NonBoolean::new(vars, &mut rng);
+        let roots = bad.roots();
+        // Points: one coordinate at its root, then none, then two.
+        let mut points: Vec<Vec<F>> = Vec::new();
+        let others = [2, FIELD - 1, 12_345, 7];
+        let off = |c: usize| F::from_u64_reduced(others[c % others.len()]);
+        for c in 0..vars {
+            points.push(
+                (0..vars)
+                    .map(|j| if j == c { roots[j] } else { off(j) })
+                    .collect(),
+            );
+        }
+        points.push((0..vars).map(off).collect());
+        // 0 and 1 are a root at each coordinate where the other is not.
+        points.push(roots.iter().map(|&r| F::ONE - r).collect());
+        if vars >= 2 {
+            points.push(
+                (0..vars)
+                    .map(|j| if j < 2 { roots[j] } else { off(j) })
+                    .collect(),
+            );
+        }
+        for z in points {
+            let script: Vec<(String, F)> = (0..vars)
+                .map(|c| (format!("stage/1/zero/{c}"), z[c]))
+                .collect();
+            let script: Vec<(&str, F)> = script.iter().map(|(l, x)| (l.as_str(), *x)).collect();
+            let verdict = bad.trial(
+                &mut Scripted::new(&script, 11),
+                &mut Scripted::new(&script, 11),
+            );
+            assert_eq!(verdict.point, z, "the scripted point");
+            let expected = z.iter().zip(&roots).any(|(a, b)| a == b);
+            assert_eq!(verdict.accepted, expected, "{vars} variables, z = {z:?}");
+            assert_eq!(verdict.accepted, bad.accepts(&z));
+        }
+    }
+}
+
 /// The measurement's own code on the first trials of each setting, a twentieth of them or at
 /// most 100,000, on the real transcript: every verdict is the event the analysis predicts, and
 /// where ten accepts are expected, at `d = 7` and in every LogUp setting, some happen.
@@ -260,6 +328,10 @@ fn the_first_trials_of_every_setting_agree_with_the_analysis() {
         let n = (trials(roots) / 20).min(100_000);
         runs.push((n, roots, lookup_trials(&bad, seed(2, index), n)));
     }
+    for (index, &vars) in ZERO_CHECKS.iter().enumerate() {
+        let n = (trials(vars) / 20).min(100_000);
+        runs.push((n, vars, booleanity_trials(vars, seed(3, index), n)));
+    }
     for (n, roots, accepted) in runs {
         let expected = n as f64 * roots as f64 / FIELD as f64;
         assert!(
@@ -271,11 +343,11 @@ fn the_first_trials_of_every_setting_agree_with_the_analysis() {
 
 /// Clopper–Pearson endpoints against an independent oracle, `calibration/oracle.py`: binomial
 /// tails summed term by term in mpmath at 50 digits, endpoints bisected to `10^-40`. The last
-/// three are the reported intervals of the measurement at the scale it runs.
+/// five are reported intervals of the measurement at the scale it runs.
 #[test]
 fn intervals_match_an_independent_oracle() {
     // (accepted, trials, low, high) at 99%, as the oracle prints them.
-    let oracle: [(u64, u64, f64, f64); 12] = [
+    let oracle: [(u64, u64, f64, f64); 14] = [
         (0, 10, 0.0, 0.4112959813475254),
         (1, 10, 0.0005011285754646338, 0.5442870568996868),
         (5, 10, 0.12831055393508325, 0.8716894460649167),
@@ -303,6 +375,18 @@ fn intervals_match_an_independent_oracle() {
         ),
         (174, 51_201, 0.0027723031631403765, 0.004118553907456106),
         (205, 12_788, 0.013311383367968152, 0.019116599721388582),
+        (
+            178,
+            6_553_700,
+            2.2203271716478667e-05,
+            3.285730253156574e-05,
+        ),
+        (
+            214,
+            3_276_850,
+            5.4381165686462664e-05,
+            7.770972431378203e-05,
+        ),
     ];
     for (k, n, low, high) in oracle {
         let (l, h) = clopper_pearson(k, n, CONFIDENCE);
@@ -395,15 +479,36 @@ fn lookup_trials(bad: &Lookups, seed: u64, trials: u64) -> u64 {
     })
 }
 
+/// `trials` trials of a non-Boolean bit among the bits of a zero-check on `vars` variables, each
+/// a fresh table and checked to be accepted exactly when the zero-check point zeroes its `eq`;
+/// the accepted count.
+fn booleanity_trials(vars: usize, seed: u64, trials: u64) -> u64 {
+    count_accepted(trials, |trial| {
+        let mut rng = SplitMix64::new(seed ^ trial.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        let bad = NonBoolean::new(vars, &mut rng);
+        let verdict = bad.trial(
+            &mut SmallTranscript::session(seed, trial),
+            &mut SmallTranscript::session(seed, trial),
+        );
+        assert_eq!(
+            verdict.accepted,
+            bad.accepts(&verdict.point),
+            "trial {trial}: accepted exactly when z zeroes eq(z, x_0)"
+        );
+        verdict.accepted
+    })
+}
+
 /// One setting's measurement.
 struct Row {
     setting: String,
     trials: u64,
     accepted: u64,
-    /// `K`, the accepting challenges: `δ`'s roots, or the identity's.
-    roots: usize,
-    /// The analytic count: `d`, or `N + T`.
-    analytic: usize,
+    /// The rate the analysis predicts exactly: `K/|F|` for `K` accepting challenges, `δ`'s roots
+    /// or the identity's, and `1 − (1 − 1/|F|)^n` for a zero-check point of `n` coordinates.
+    exact: f64,
+    /// The analytic bound: `d/|F|`, `(N + T)/|F|` or `n/|F|`.
+    bound: f64,
     seconds: f64,
 }
 
@@ -412,14 +517,14 @@ impl Row {
         clopper_pearson(self.accepted, self.trials, CONFIDENCE)
     }
 
-    /// `K/|F|`: the rate the analysis predicts exactly.
+    /// The rate the analysis predicts exactly.
     fn exact(&self) -> f64 {
-        self.roots as f64 / FIELD as f64
+        self.exact
     }
 
-    /// `d/|F|` or `(N + T)/|F|`: the analytic bound.
+    /// The analytic bound.
     fn bound(&self) -> f64 {
-        self.analytic as f64 / FIELD as f64
+        self.bound
     }
 
     /// Whether `K/|F|` is inside the interval: the implementation agrees with the analysis.
@@ -439,7 +544,7 @@ impl Row {
 /// construction attains the analytic count, `K/|F|` lies in the 99% interval, and the interval's
 /// lower end does not exceed the bound.
 #[test]
-#[ignore = "long: about 2·10^7 trials; the nightly workflow runs it"]
+#[ignore = "long: about 3·10^7 trials; the nightly workflow runs it"]
 fn cheating_provers_succeed_at_the_analytic_rate() {
     let mut rows = Vec::new();
     for (index, setting) in LIES.iter().enumerate() {
@@ -455,8 +560,8 @@ fn cheating_provers_succeed_at_the_analytic_rate() {
             setting: format!("sumcheck, d = {}, n = {}", setting.degree, setting.vars),
             trials,
             accepted: lie_trials(&lie, seed(1, index), trials),
-            roots,
-            analytic: setting.degree,
+            exact: roots as f64 / FIELD as f64,
+            bound: setting.degree as f64 / FIELD as f64,
             seconds: start.elapsed().as_secs_f64(),
         });
     }
@@ -474,8 +579,22 @@ fn cheating_provers_succeed_at_the_analytic_rate() {
             setting: format!("LogUp, N = {}, T = {}", setting.lookups, setting.rows),
             trials,
             accepted: lookup_trials(&bad, seed(2, index), trials),
-            roots,
-            analytic: setting.lookups + setting.rows,
+            exact: roots as f64 / FIELD as f64,
+            bound: (setting.lookups + setting.rows) as f64 / FIELD as f64,
+            seconds: start.elapsed().as_secs_f64(),
+        });
+    }
+    for (index, &vars) in ZERO_CHECKS.iter().enumerate() {
+        let start = Instant::now();
+        let trials = trials(vars);
+        // `1 − (1 − 1/|F|)^n`: the share of points with a coordinate at its root.
+        let miss = 1.0 - 1.0 / FIELD as f64;
+        rows.push(Row {
+            setting: format!("booleanity, n = {vars}"),
+            trials,
+            accepted: booleanity_trials(vars, seed(3, index), trials),
+            exact: 1.0 - miss.powi(i32::try_from(vars).expect("small")),
+            bound: vars as f64 / FIELD as f64,
             seconds: start.elapsed().as_secs_f64(),
         });
     }
@@ -483,7 +602,8 @@ fn cheating_provers_succeed_at_the_analytic_rate() {
     eprintln!(
         "\nSoundness calibration over F65537 (07 §4): trials of cheating provers that the \
          verifier accepted, with 99% Clopper–Pearson intervals. K/|F| is the accepting \
-         challenges' share of the field, the exact rate; bound is d/|F| or (N + T)/|F|.\n"
+         challenges' share of the field, the exact rate, 1 − (1 − 1/|F|)^n for a zero-check \
+         point; bound is d/|F|, (N + T)/|F| or n/|F|.\n"
     );
     eprintln!(
         "{:<24} {:>10} {:>8} {:>8} {:>10} {:>24} {:>10} {:>6} {:>10} {:>6} {:>7}",

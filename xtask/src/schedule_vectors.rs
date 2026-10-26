@@ -63,7 +63,11 @@ fn relation(relation: Relation) -> &'static str {
         | Relation::Booleanity
         | Relation::OneHotVocabulary
         | Relation::OneHotCount
-        | Relation::OneHotIndex => "ZeroCheck",
+        | Relation::OneHotIndex
+        | Relation::InputPadding
+        | Relation::BitPadding
+        | Relation::Recomposition
+        | Relation::AssertEqual => "ZeroCheck",
     }
 }
 

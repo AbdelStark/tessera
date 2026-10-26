@@ -33,7 +33,8 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             })
     }
 
-    /// `kind`'s tensor in `layer`, padded per dimension with zeros.
+    /// `kind`'s tensor in `layer`, padded per dimension: with zeros, or with the values the
+    /// witness holds there ([`WitnessSource::padded`]).
     pub(super) fn slice(
         &self,
         kind: Kind,
@@ -42,11 +43,33 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         let tensor = self.tensor(kind, layer)?;
         let shape = &self.graph.tensors[tensor.0 as usize].shape;
         let mut table = zeros(1usize << Self::vars_of(shape))?;
+        self.fill(tensor, shape, &mut table)?;
+        Ok(table)
+    }
+
+    /// Writes `tensor`, of `shape`, into `out`, its padded table: the witness's padded values
+    /// when it holds them, else its real values padded per dimension with zeros.
+    fn fill(
+        &self,
+        tensor: TensorId,
+        shape: &[u32],
+        out: &mut [Goldilocks],
+    ) -> Result<(), StageError> {
+        if let Some(values) = self.witness.padded(tensor) {
+            if values.len() != out.len() {
+                return Err(StageError::Internal {
+                    rule: "a tensor's padded values fill its padded shape",
+                });
+            }
+            for (slot, &v) in out.iter_mut().zip(values) {
+                *slot = Goldilocks::from_i64(v);
+            }
+            return Ok(());
+        }
         let values = self.witness.values(tensor).ok_or(StageError::Internal {
             rule: "the witness holds every tensor of the graph",
         })?;
-        pad(values, shape, &mut table)?;
-        Ok(table)
+        pad(values, shape, out)
     }
 
     /// The table a claim on `kind` with `layers` reads: the kind stacked over every layer for a
@@ -75,11 +98,8 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         let mut table = zeros(block << layers.vars)?;
         for layer in 0..layers.count {
             let tensor = self.tensor(kind, layer)?;
-            let values = self.witness.values(tensor).ok_or(StageError::Internal {
-                rule: "the witness holds every tensor of the graph",
-            })?;
             let at = layer as usize * block;
-            pad(values, &shape, &mut table[at..at + block])?;
+            self.fill(tensor, &shape, &mut table[at..at + block])?;
         }
         Ok(table)
     }
