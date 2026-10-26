@@ -114,45 +114,45 @@ Every digest is checked against its source's and `hashlib`'s.
 
 ## Readings
 
-RFC-0066 leaves these to its reader. The oracle reads them so. Each is a place where two implementations could build different graphs.
+The oracle had to choose these twelve readings of RFC-0066, each a place where two implementations could build different graphs. The compiler's builder made the same choices: `crates/tessera-compiler/tests/anchor_vectors.rs` finds the two graphs equal node for node for all five cases. [RFC-0066 'The SHA-256 circuit'](../../../docs/rfcs/RFC-0066-bits-and-sha256.md#the-sha-256-circuit) now states each reading, so that the verifier's builder (#150 S6) has none left to make; each item below quotes the sentence that fixes it.
 
-1. **`start`'s rows.** `start` holds word `j` of `H^{(0)}` on rows `32j` to `32j + 31`, row `32j + i` the bit of weight `2^i`. RFC-0066 states this layout for the digest, and for `start` only "`H^{(0)}`'s bits".
-2. **`masks`' rows.** `SHR^3`'s mask is row 0 and `SHR^{10}`'s row 1, in the order RFC-0066 names them. Step 1 builds `SHR^3`'s mask first.
-3. **No committed bytes.** With no committed byte the graph has no `committed` or `place` input and no step 2. The words are `Slice`s of the `message` input itself.
+1. **`start`'s rows.** `start` holds word `j` of `H^{(0)}` on rows `32j` to `32j + 31`, row `32j + i` the bit of weight `2^i`, and initial word `j` is its `Slice` from row `32j`. RFC-0066 stated this layout for the digest only. 'The output', **Initial values**: "That input, `start`, holds word `j` of `H^{(0)}` on rows `32j` to `32j + 31`, …".
+2. **`masks`' rows.** `SHR^3`'s mask is row 0 and `SHR^{10}`'s row 1, and step 1 builds `SHR^3`'s mask first. 'Layout', **`SHR^r`**: "Row 0 of that input is `SHR^3`'s mask and row 1 `SHR^{10}`'s, …".
+3. **No committed bytes.** With no committed byte the graph has no `committed` or `place` input and no step 2. The words are `Slice`s of the `message` input itself, word `t` of block `n` from row `512n + 32t`. 'The message', **Without committed bytes**: "… the message's bits are the `message` input itself; word `t` of block `n` is the `Slice { axis: 0, start: 512n + 32t, len: 32 }` of the message's bits."
 4. **A function's nodes.** FIPS 180-4's definition order (4.4 to 4.7) orders a function's gathers:
    - `Σ0`: `ROTR^2`, `ROTR^{13}`, `ROTR^{22}`;
    - `Σ1`: `ROTR^6`, `ROTR^{11}`, `ROTR^{25}`;
    - `σ0`: `ROTR^7`, `ROTR^{18}`, `SHR^3`;
    - `σ1`: `ROTR^{17}`, `ROTR^{19}`, `SHR^{10}`.
 
-   An `SHR`'s gather is followed at once by its `Mul`, `Mul(gather, mask)`. The `Xor3` reads the three parts in that order.
-5. **The message schedule's rows.** `W_t`'s `Add`s are `((σ1(W_{t−2}) + W_{t−7}) + σ0(W_{t−15})) + W_{t−16}`, the order of RFC-0066's table.
+   An `SHR`'s gather is followed at once by its `Mul`, `Mul(gather, mask)`. The `Xor3` reads the three parts in that order. 'The functions': "A function's parts follow FIPS 180-4's equations (4.4) to (4.7): …".
+5. **The message schedule's rows.** `W_t`'s `Add`s are `((σ1(W_{t−2}) + W_{t−7}) + σ0(W_{t−15})) + W_{t−16}`, the order of RFC-0066's table. 'The additions', **Operand order**: "A sum's rows are the left fold of its terms in the table's order, `K_t` aside, each `Add` taking the running sum first: …".
 6. **The rounds' rows.**
-   - **Shared rows.** `Add(Add(Add(h, Σ1(e)), Ch(e, f, g)), W_t)`, in the order of the sentence "The two round sums share their first rows".
+   - **Shared rows.** `Add(Add(Add(h, Σ1(e)), Ch(e, f, g)), W_t)`.
    - **`e`'s rows.** `Add(shared, d)`.
    - **`a`'s rows.** `Add(Add(shared, Σ0(a)), Maj(a, b, c))`.
 
-   The oracle follows the sentence "Then `e`'s adds `d`, `a`'s adds `Σ0(a)` and `Maj(a, b, c)`", which adds to the shared rows. RFC-0066's table lists `e`'s terms with `d` first, so a reader who follows the table builds `Add(d, shared)`, another graph. For `a` the table and the sentence agree.
-7. **The chaining sums' rows.** `Add(H_j, v_j)`, the previous chaining word first, as in "`H_j + (a, …, h)_j`". The first block's `H_j` is the `Slice` of `start`.
-8. **The digest's binding.** For each word, the `Slice` of the digest then `AssertEqual(computed word, digest rows)`, reading "`AssertEqual` of the computed word, then the digest's rows" as the operands' order.
-9. **Operand orders that the RFC fixes.**
-   - `Add(even, ConstMul(odd))` at each value level.
-   - `Xor(message, Mul(gather, place))`.
-   - `Ch(e, f, g)` and `Maj(a, b, c)`.
-   - `Mul { Trailing }`, whose broadcast operand comes second.
+   RFC-0066's prose added `d` to the shared rows, while its table listed `e`'s terms with `d` first: a reader who followed the table would have built `Add(d, shared)`, another graph. The table now lists `d` last, `h + Σ1(e) + Ch(e, f, g) + K_t + W_t + d`. 'The additions', **The rounds**: "The shared rows are one tensor, `Add(Add(Add(h, Σ1(e)), Ch(e, f, g)), W_t)`, that both sums read: `e`'s rows are `Add(shared, d)` and `a`'s `Add(Add(shared, Σ0(a)), Maj(a, b, c))`."
+7. **The chaining sums' rows.** `Add(H_j, v_j)`, the previous chaining word first. The first block's `H_j` is the `Slice` of `start`. 'The additions', **The chaining**: "Chaining word `j`'s rows are `Add(H_j, v_j)`: …".
+8. **The digest's binding.** For each word, the `Slice` of the digest, then `AssertEqual(computed word, digest rows)`. 'The output', **The digest**: "Digest word `j`'s nodes are the `Slice { axis: 0, start: 32j, len: 32 }` of `digest`, then the `AssertEqual` of the last block's chaining word `j` and that `Slice`, in this operand order."
+9. **Operand orders that the RFC fixes.** These were not left open; the oracle follows the sentences that fix them:
+   - `Add(even, ConstMul(odd))` at each value level: 'Layout', **The integer value of rows**;
+   - `Xor(message, Mul(gather, place))`: 'The message', **The message's bits**;
+   - `Ch(e, f, g)` and `Maj(a, b, c)`: the inputs of '`BitFn { f }`''s table, and the sums' table;
+   - `Mul { Trailing }`, whose broadcast operand comes second: RFC-0006 'Operation set'.
 10. **Shapes and permutations.**
     - The decomposed bytes are `[K, M, 8]`, moved by `Transpose { perm: [0, 2, 1] }` to `[K, 8, M]`.
     - A sum's result bits `[M, 32]` are moved by `Transpose { perm: [1, 0] }`.
     - A value level's `ConstMul` constant is `[2^{2^ℓ}]`, a scalar.
     - A round's `ConstAdd` constant is `[K_t]`.
-    - The `W_t` and chaining sums have no `ConstAdd`.
-11. **The digest input's id.** It follows the last block's last node, the `Transpose` of chaining word `h`, and precedes the first digest `Slice`.
-12. **Messages of one circuit.** They share `N`, `K` and the committed offsets, but may differ in length. Their padding is public bits, and the graph does not depend on the messages' bytes.
+    - The `W_t` and chaining sums have no `ConstAdd`, their constant being 0 ('A sum is': "its `ConstAdd` when the constant is not 0").
+
+    'The graph', after 'A sum is': "The bytes' bits `[K, M, 8]` move to `[K, 8, M]` by `Transpose { perm: [0, 2, 1] }`, a sum's result bits `[M, 32]` to `[32, M]` by `Transpose { perm: [1, 0] }`, and every `ConstMul` and `ConstAdd` constant holds one value, a level's `2^{2^ℓ}` or a round's `K_t`."
+11. **The digest input's id.** It follows the last block's last node, the `Transpose` of chaining word `h`, and precedes the first digest `Slice`. The RFC fixed it already, 'The graph': "The digest, public bits `[256, M]`, is declared after the circuit's nodes, before its binding's."
+12. **Messages of one circuit.** They share `N`, `K` and the committed offsets, but may differ in length. Their padding is public bits, and the graph does not depend on the messages' bytes. The section's opening: "The `M` messages share `N` and the committed offsets, since `place` and the gather serve them all, and may differ in length, each padded in its own column of `message`, so that the graph depends on `N`, `M` and the offsets alone."
 
 ## Who checks them
 
-- **The verifier's builder** (#150, slice S6) must equal each graph node for node, constant for constant.
-- **The compiler's builder** (`tessera_compiler::anchor::sha256`) must equal them too, through a test that compares its graph with each case's.
-- **Both builders' public inputs from bytes** must equal `sha256-inputs.json`.
-
-No test reads these files yet.
+- **The compiler's builder** (`tessera_compiler::anchor::sha256`) equals each graph node for node: [`crates/tessera-compiler/tests/anchor_vectors.rs`](../../../crates/tessera-compiler/tests/anchor_vectors.rs) compares its inputs, nodes, constants, chaining words, public tensors and counts, the zero-checks from its schedule's stage 1, with each case's, and reports the first differing input and node with its `at`.
+- **The compiler's public inputs from bytes** equal `sha256-inputs.json`: the same test computes them with `sha256_pad`, `Sha256Layout::public_bits` and `place`, and `sha256_bits` of `H^{(0)}` and of the digests, then runs its circuit on every set to FIPS 180-4's chaining words.
+- **The verifier's builder** (#150, slice S6) must equal each graph node for node, constant for constant, and its public inputs from bytes `sha256-inputs.json`.

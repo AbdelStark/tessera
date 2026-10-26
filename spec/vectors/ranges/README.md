@@ -21,12 +21,15 @@ The rows of a sum of `k` words are `[0, k]`, and its value `[0, (2^{32} − 1)·
 - **The domains.**
   - `BitDecompose`: `[0, 2^{low + high})`, or a committed graph input, read directly or moved by `Reshape`, `Slice`, `Transpose`, `GatherPublic` or `Expand`, whose declared range holds that interval.
   - `BitFn`: `[0, 1]`, and not a committed graph input, read directly or moved.
-  - `AssertEqual`: the centered field range `[−(P − 1)/2, (P − 1)/2]`.
+  - `AssertEqual`: the centered field range, the open interval `(−(P − 1)/2, (P − 1)/2)` of RFC-0006's true-integer rule.
 - **The codes.** An unbounded input is `ERR-COMPILE-WRAP`, and one outside its domain `ERR-COMPILE-RANGE`.
+- **The constants** are `i64` values, as the IR's are (RFC-0006 'Operation set').
 - **The cases.**
   - A byte declared `[0, 255]` under nine bits, read directly, reshaped and gathered.
   - A sum of two bytes under eight.
   - `BitFn` on a sum of bits, and on a committed input read directly and reshaped.
-  - `AssertEqual` of an unbounded tensor, and of one just outside the centered range.
+  - `AssertEqual` of an unbounded tensor, and of `[0, (P − 1)/2]`, just outside the centered range.
   - A committed input half read by a `Slice`, and one that nothing reads.
-  - Graphs the analysis admits beside them: a committed input declared `[0, 511]` under nine bits; a byte transposed and gathered under eight; `ConstAdd(−1)` of `[1, 256]` under eight; 62 bits of `[0, 2^{62} − 1]`; `BitFn` on a committed input's bits; `AssertEqual` at the centered range's edges; and a committed input covered by two `Slice`s.
+  - Graphs the analysis admits beside them: a committed input declared `[0, 511]` under nine bits; a byte transposed and gathered under eight; `ConstAdd(−1)` of `[1, 256]` under eight; 62 bits of `[0, 2^{62} − 1]`; `BitFn` on a committed input's bits; `AssertEqual` of `[−(P − 3)/2, (P − 3)/2]`, the centered range's edges; and a committed input covered by two `Slice`s.
+
+**Who checks them.** [`crates/tessera-compiler/tests/anchor_vectors.rs`](../../../crates/tessera-compiler/tests/anchor_vectors.rs) builds each circuit with the compiler's builder: `analyze` gives every tensor its interval, and `settle` writes it into the graph. It builds each small graph through the IR's builder, and `analyze` gives its verdict, and its ranges where it returns them.

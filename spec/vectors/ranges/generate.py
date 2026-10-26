@@ -132,7 +132,7 @@ def main():
 # ----- The anchor circuits (RFC-0066 'Ranges', RFC-0006 'Committed graph inputs') -------------
 
 P = 2**64 - 2**32 + 1
-HALF = (P - 1) // 2  # the centered field range is [-HALF, HALF]
+HALF = (P - 1) // 2  # the centered field range is open, (-HALF, HALF): RFC-0006 'True-integer rule'
 MOVES = ('Reshape', 'Slice', 'Transpose', 'GatherPublic', 'Expand')
 
 
@@ -247,7 +247,7 @@ def analyze_graph(case):
             for r in rs:
                 if r is None:
                     refuse('ERR-COMPILE-WRAP', nid)
-                elif not (-HALF <= r[0] and r[1] <= HALF):
+                elif not (-HALF < r[0] and r[1] < HALF):
                     refuse('ERR-COMPILE-RANGE', nid)
             result = None
         elif op == 'OneHot':
@@ -266,6 +266,8 @@ def analyze_graph(case):
 
 
 def graph(inputs, nodes, constants=()):
+    # The IR's constants are i64 values (RFC-0006 'Operation set').
+    assert all(-2**63 <= v < 2**63 for c in constants for v in c), constants
     tensors = len(inputs) + sum(len(n[4]) for n in nodes)
     return {'inputs': inputs, 'nodes': nodes, 'constants': [list(c) for c in constants], 'tensors': tensors}
 
@@ -343,17 +345,17 @@ RULES = [
             [3, 'AssertEqual', {}, [3, 0], [], 'binding']],
            [[2**62], [2**62], [2**62]]),
      {'code': 'ERR-COMPILE-WRAP', 'node': 3}),
-    ('AssertEqual of [0, 2^63], outside the centered field range',
+    ('AssertEqual of [0, (P - 1)/2], just outside the centered field range',
      graph([[0, 'x', [2], 'P', 'u1', 0, 1]],
            [[0, 'ConstMul', {'c': 0}, [0], [[1, [2], 'v']], 'scale'],
             [1, 'AssertEqual', {}, [0, 1], [], 'binding']],
-           [[2**63]]),
+           [[HALF]]),
      {'code': 'ERR-COMPILE-RANGE', 'node': 1}),
-    ('AssertEqual of [-(P - 1)/2, (P - 1)/2], the centered field range',
+    ('AssertEqual of [-(P - 3)/2, (P - 3)/2], the centered field range\'s edges',
      graph([[0, 'x', [2], 'P', 'i2', -1, 1]],
            [[0, 'ConstMul', {'c': 0}, [0], [[1, [2], 'v']], 'scale'],
             [1, 'AssertEqual', {}, [0, 1], [], 'binding']],
-           [[HALF]]),
+           [[HALF - 1]]),
      None),
     ('a committed input half read by a Slice',
      graph([byte_input()],

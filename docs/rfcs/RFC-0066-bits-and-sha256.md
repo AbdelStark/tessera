@@ -5,6 +5,12 @@
 - Created: 2026-10-25
 - Target milestone: v0.4
 - Amended by: [RFC-0072](RFC-0072-anchor-relations.md) ('`BitDecompose`' and 'Where the zero-checks run': recomposition summed over the bit axis, its claim on `x` at `y`'s coordinates, and the zero-checks' messages; '`BitFn`': `¬a` at padded positions; '`AssertEqual`': a public input pads with zeros, and the selector's example; 'Completeness there is the graph's': a `ConstAdd`'s padded positions; 'Drawbacks': no stacking; OQ-0066-1 and OQ-0066-2, closed)
+- Clarified by: [#150](https://github.com/AbdelStark/tessera/issues/150), whose independent oracle of the SHA-256 graph (`spec/vectors/anchor-graphs/`) and the compiler's builder agree node for node. 'The SHA-256 circuit' now states each reading that oracle's README lists:
+  - the rows of `start` and `masks`, and the words' `Slice`s;
+  - a function's parts and their order;
+  - each sum's operand order, `e`'s `Add(shared, d)` among them, the table listing `d` last;
+  - the digest's binding, the permutations and the constants;
+  - messages of one circuit that differ in length.
 - Amends:
   - [RFC-0006](RFC-0006-compiler-ir.md#operation-set) 'Operation set': three operations join the closed set, `BitDecompose`, `BitFn` and `AssertEqual`, and `Bitwise` is AES's alone;
   - RFC-0006 'Range analysis': the three operations' ranges and integrality rules;
@@ -120,29 +126,33 @@ Every `ZeroCheck` runs in stage 1 (RFC-0010 'Batching within a stage'), at the p
 
 ### The SHA-256 circuit
 
-FIPS 180-4 §6.2 over `M` messages of one block count, in the IR. It is the circuit's builder's (`tessera_compiler::anchor`, #143's implementation).
+FIPS 180-4 §6.2 over `M` messages of one block count, in the IR. It is the circuit's builder's (`tessera_compiler::anchor`, #143's implementation). The `M` messages share `N` and the committed offsets, since `place` and the gather serve them all, and may differ in length, each padded in its own column of `message`, so that the graph depends on `N`, `M` and the offsets alone.
 
 **Layout.**
 - **A word** of the `M` messages is a bit tensor `[32, M]`: row `i` is the word's bit of weight `2^i`.
 - **`ROTR^r`** is `GatherPublic` with row `i` taken from row `(i + r) mod 32`.
-- **`SHR^r`** is the same gather, times a public `[32]` mask that is 1 on rows `i < 32 − r`, through `Mul { broadcast: Trailing }`. The masks of `SHR^3` and `SHR^{10}` are the rows of one public `[2, 32]` input.
+- **`SHR^r`** is the same gather, times a public `[32]` mask that is 1 on rows `i < 32 − r`, through `Mul { broadcast: Trailing }`. The masks of `SHR^3` and `SHR^{10}` are the rows of one public `[2, 32]` input. Row 0 of that input is `SHR^3`'s mask and row 1 `SHR^{10}`'s, and step 1 of 'The graph' builds `SHR^3`'s first.
 - **The integer value of rows** `r_i`, a `[32, M]` tensor, is `Σ_i 2^i·r_i`, built in five levels. Each level gathers the even and the odd rows and adds `2^{2^ℓ}` times the odd ones to the even ones, `Add(even, ConstMul(odd))`, halving the rows. Rows in `[0, k]` reach `[0, (2^{2^{ℓ+1}} − 1)·k]` at level `ℓ`, and `[0, (2^{32} − 1)·k]` at the last, exactly.
   - Range analysis bounds a tensor by one interval. `Sum { axis: 0 }` of the rows times the weights `2^i` would get `[0, 32·2^{31}·k]`, 16 times too wide, and fail `BitDecompose`'s width.
 
 **The functions.**
 - `Σ0`, `Σ1`, `σ0` and `σ1` are `Xor3` of their three rotations and shifts.
 - `Ch` and `Maj` are `BitFn`s.
+- A function's parts follow FIPS 180-4's equations (4.4) to (4.7): `Σ0` reads `ROTR^2`, `ROTR^{13}`, `ROTR^{22}`, `Σ1` `ROTR^6`, `ROTR^{11}`, `ROTR^{25}`, `σ0` `ROTR^7`, `ROTR^{18}`, `SHR^3` and `σ1` `ROTR^{17}`, `ROTR^{19}`, `SHR^{10}`, each `SHR`'s gather followed at once by its `Mul(gather, mask)`, and its `Xor3` reads the three parts in that order.
 
 **The additions.** Each modulo-`2^{32}` sum of `k` words adds their bits row by row (`Add`), into rows in `[0, k]`, takes the rows' value, adds its public constant (`ConstAdd`), then applies `BitDecompose { low: 32, high: c }`. The result word is `b`, transposed to `[32, M]`, and `h` holds the carry. `c` is the least width that bounds the sum:
 
 | Sum | Terms | `c` |
 |---|---|---|
 | Message schedule `W_t`, `16 ≤ t < 64` | `σ1(W_{t−2}) + W_{t−7} + σ0(W_{t−15}) + W_{t−16}` | 2 |
-| Round `e` | `d + h + Σ1(e) + Ch(e, f, g) + K_t + W_t` | 3 |
+| Round `e` | `h + Σ1(e) + Ch(e, f, g) + K_t + W_t + d` | 3 |
 | Round `a` | `h + Σ1(e) + Ch(e, f, g) + K_t + W_t + Σ0(a) + Maj(a, b, c)` | 3 |
 | Chaining | `H_j + (a, …, h)_j` | 1 |
 
 The two round sums share their first rows, `h + Σ1(e) + Ch(e, f, g) + W_t`. Then `e`'s adds `d`, `a`'s adds `Σ0(a)` and `Maj(a, b, c)`, and each adds `K_t` as its constant.
+- **Operand order.** A sum's rows are the left fold of its terms in the table's order, `K_t` aside, each `Add` taking the running sum first: `W_t`'s are `Add(Add(Add(σ1(W_{t−2}), W_{t−7}), σ0(W_{t−15})), W_{t−16})`.
+- **The rounds.** The shared rows are one tensor, `Add(Add(Add(h, Σ1(e)), Ch(e, f, g)), W_t)`, that both sums read: `e`'s rows are `Add(shared, d)` and `a`'s `Add(Add(shared, Σ0(a)), Maj(a, b, c))`.
+- **The chaining.** Chaining word `j`'s rows are `Add(H_j, v_j)`: `H_j` is the chaining word the block starts from, in the first block the `Slice` of `start`, and `v_j` the block's working variable `j`, `a` to `h`, after its last round.
 
 **The message.**
 - **Its bytes**, padding included, are public, except those the prover commits: the ciphertext's, a committed key's or salt's.
@@ -154,12 +164,13 @@ The two round sums share their first rows, `h + Σ1(e) + Ch(e, f, g) + W_t`. The
   - `place` is a public `[512·N]` mask, 1 on the committed bytes' rows. `Mul { broadcast: Trailing }` zeroes the gathered rows elsewhere.
 
   The supports are disjoint, so XOR is the sum, and the range stays `[0, 1]`.
+- **Without committed bytes** the graph has no `committed` or `place` input and no step 2, and the message's bits are the `message` input itself; word `t` of block `n` is the `Slice { axis: 0, start: 512n + 32t, len: 32 }` of the message's bits.
 - **Byte order.** FIPS 180-4's words are big-endian: bit `i` of word `j` is bit `i mod 8` of byte `4j + 3 − ⌊i/8⌋`.
 
 **The output.**
-- **Initial values.** The first block starts from a public `[256, M]` input, `H^{(0)}`'s bits for every message.
+- **Initial values.** The first block starts from a public `[256, M]` input, `H^{(0)}`'s bits for every message. That input, `start`, holds word `j` of `H^{(0)}` on rows `32j` to `32j + 31`, row `32j + i` its bit of weight `2^i`, as the digest holds its words, and initial word `j` is the `Slice { axis: 0, start: 32j, len: 32 }` of `start`.
 - **Later blocks** start from the previous block's chaining words. The builder returns the chaining words after every block.
-- **The digest.** The last block's chaining words, as bits, are bound by `AssertEqual` to the public digest's bits, 256 per message. The digest is one public `[256, M]` tensor, word `j` on rows `32j` to `32j + 31`, and each word's `AssertEqual` reads its rows through a `Slice`.
+- **The digest.** The last block's chaining words, as bits, are bound by `AssertEqual` to the public digest's bits, 256 per message. The digest is one public `[256, M]` tensor, word `j` on rows `32j` to `32j + 31`, and each word's `AssertEqual` reads its rows through a `Slice`. Digest word `j`'s nodes are the `Slice { axis: 0, start: 32j, len: 32 }` of `digest`, then the `AssertEqual` of the last block's chaining word `j` and that `Slice`, in this operand order.
 
 **The graph.** Its inputs are, in this order:
 - `message`, public bits `[512·N, M]`;
@@ -183,6 +194,8 @@ A function is its rotations' gathers, each `SHR` a gather and a `Mul`, in its de
 - the value's five levels, each an even gather, an odd gather, the odd rows' `ConstMul` and the `Add` of the even rows and that product, then a `Reshape` to `[M]`;
 - its `ConstAdd` when the constant is not 0;
 - the `BitDecompose`, then the `Transpose` of its result bits.
+
+The bytes' bits `[K, M, 8]` move to `[K, 8, M]` by `Transpose { perm: [0, 2, 1] }`, a sum's result bits `[M, 32]` to `[32, M]` by `Transpose { perm: [1, 0] }`, and every `ConstMul` and `ConstAdd` constant holds one value, a level's `2^{2^ℓ}` or a round's `K_t`.
 
 `tessera_compiler::anchor::sha256` builds exactly this graph.
 

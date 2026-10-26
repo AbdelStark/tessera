@@ -84,4 +84,12 @@ The conventions are those of [`../poly/`](../poly/README.md):
 
 ## Who checks them
 
-The prover's and the verifier's tests of the anchor relations (#526, #150) read this file. Each implementation evaluates every value with its own closed forms and compares it with the case. No test reads it yet: the verifier's relations land in #150's later slices.
+The prover's and the verifier's tests of the anchor relations (#526, #150) read this file. Each implementation evaluates every value with its own closed forms and compares it with the case.
+- **The prover.** [`crates/tessera-prover/tests/anchor_relations.rs`](../../../crates/tessera-prover/tests/anchor_relations.rs) checks what the prover exposes:
+  - `lt`, through `tessera_poly::less_than`;
+  - `ĉ` of every `const_add` case, through `tessera_prover::public_value`, and `wrong` beside it;
+  - `ψ̃` of every `psi` case and every `const_add` case's `psi`, as the shift of a `ConstAdd` of 1;
+  - the `bitfn` truth tables, through `BoolFn::eval`.
+
+  The selection kernels, recomposition's weights and zero-extensions, the `BitFn` polynomials over `Fp2` and recomposition's final value live inside the stage prover's relations, which no public function returns. The stage tests (`crates/tessera-prover/tests/selections/`, `bits/`) prove them and check each proof with closed forms of their own.
+- **The verifier.** Its relations land in #150's later slices.
