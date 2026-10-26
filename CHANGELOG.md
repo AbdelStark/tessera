@@ -6,6 +6,20 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Conformance vectors for the anchor circuits, from independent oracles written from RFC-0066 and RFC-0072 alone, by an author who read neither implementation ([#150](https://github.com/AbdelStark/tessera/issues/150), slice S1). No test reads them yet:
+  - **`spec/vectors/anchor-relations/`.** RFC-0072's public factors, each checked against the direct multilinear extension of its table over the padded cube:
+    - `ψ̃` and `LT`;
+    - `ConstAdd`'s shift `ĉ`, scalar and per channel, with the wrong `c̃(r_c)·ψ̃(r)` beside it on last axes of 3 and 5;
+    - the selection kernels `S̃` and `K̃` of the rotations, the value levels' even and odd rows alone and combined, the message assembly, and `Slice`s on three axes and of lengths that are not powers of two, each with its relation on a random tensor;
+    - recomposition's weights and zero-extensions for nine widths, two of them with a carry wider in bit variables than the result, the only ones where the result's zero-extension is not 1;
+    - the `BitFn` polynomials against their truth tables;
+    - recomposition's bit-axis sums, zero-check sum and final value on honest witnesses and on one bit flipped.
+  - **`spec/vectors/anchor-graphs/`.**
+    - **The graphs.** RFC-0066's SHA-256 graph node by node, in the lowering vectors' format, for the key commitment at `M = 1` and `M = 3`, one and three public messages, and two blocks whose committed bytes cross into the second. Each graph carries its public tensors and per-block counts, which reproduce RFC-0072's sizes table.
+    - **The inputs.** The circuit's public inputs from bytes for 81 message sets: FIPS 180-4's examples, CAVP's messages, and `anchor/`'s key commitments and frames.
+    - **The check.** An interpreter runs a graph on every set and gives FIPS 180-4's chaining words.
+    - **The README** records the twelve readings the graph had to choose. Among them, RFC-0066's table lists `e`'s terms with `d` first, while its prose adds `d` to the shared rows, `Add(shared, d)`, which the oracle follows.
+  - **`spec/vectors/ranges/anchor.json`.** RFC-0006's ranges of those graphs, and eighteen small graphs that each break one of RFC-0066's and #527's range rules, or none, with the verdict. `ranges.json` is unchanged.
 - The anchor circuits' schedule, fourth part: AES's lookups, padded shapes and public lookup inputs; AES-128-CTR proves end to end on the CPU prover ([#526](https://github.com/AbdelStark/tessera/issues/526), RFC-0072 'Migration' slice 4):
   - **Padded positions.** `tessera_prover::PaddedWitness` gives a witness the padded positions of every tensor that a lookup non-zero at padding reaches (`schedule::tensors_nonzero_at_padding`): what each operation computes there from its inputs' padded positions, such as a padded AES block's `AesSbox(0) = 0x63` and its key-independent consequences, committed with the block's other lookup outputs. It computes over the engine's real values, which each of its tables must hold at its real positions. The stage tables (`WitnessSource::padded`) and the leaf stage's blocks read the same tables, and the stage prover refuses a witness without them, where it refused any lookup non-zero at padding with padded positions. The leaf stage's multiplicities count every block's padded positions.
   - **A gadget reading such values.** The schedule refuses (`ERR-INTERNAL`), before any claim, a gadget other than a lookup, `BitDecompose` or `AssertEqual` (`schedule::reads_padding`), such as a `OneHot`, `SoftmaxRow`, `RsqrtRow`, `Argmax` or `InverseCdf`, that reads a tensor with padded positions which a lookup non-zero at padding reaches: RFC-0035's row relations take a padded row's input as 0. `PaddedWitness` refuses the same graph by the same rule. RFC-0072 'Padded positions' states it, and that it relies on range analysis to pin committed inputs; no Llama graph meets it.
