@@ -25,3 +25,35 @@ fn seeded_inputs_meet_the_oracle() {
         "{stages} stages, {trees} trees"
     );
 }
+
+#[test]
+fn protocol_two_high_degrees_and_all_changes_meet_the_oracle() {
+    use tv_core::sumcheck::Protocol;
+    for degree in 8..=10u8 {
+        let mut base = vec![
+            2,
+            degree - 1,
+            2,
+            3,
+            degree - 1,
+            1,
+            degree - 1,
+            0,
+            degree - 1,
+            0,
+        ];
+        base.extend(u64::from(degree).to_le_bytes());
+        let Case::Stage(stage) = case(&base) else {
+            panic!("a stage")
+        };
+        assert_eq!(stage.protocol, Protocol::Two);
+        assert_eq!(stage.degree, usize::from(degree));
+        stage.check();
+        for change in 0..16 {
+            let mut changed = base.clone();
+            changed.extend([change, 1, 0, 2, 0, 3, 0]);
+            changed.extend(5u128.to_le_bytes());
+            check(&changed);
+        }
+    }
+}

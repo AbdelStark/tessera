@@ -5,12 +5,9 @@
 //! (RFC-0013 'Masked extensions' 'Degree'), over Goldilocks; `errors.rs` refuses 11 there and 8 in
 //! `tessera-protocol/1` and at a tree level.
 //!
-//! `tv-core`'s checks hold `tessera-protocol/1`'s bound until the verifier's half of #565 raises
-//! it, so each proof here is checked as RFC-0010 'Sumcheck messages' says a verifier does, with
-//! arithmetic of this file's own: the batched claim from the tables' sums over their hypercubes,
-//! round by round `d` values, `p(1) = claim − p(0)` and `p(r)` by Lagrange interpolation over the
-//! nodes `0, …, d` with field inverses, the challenges squeezed on a transcript of the session,
-//! and each final evaluation against its table's multilinear extension at the instance's point.
+//! Each batch is checked by `tv-core`'s independent Newton interpolation, and by a second,
+//! test-local arithmetic checker: Lagrange interpolation, explicit multilinear extensions,
+//! and direct enumeration of the batched claims.
 //!
 //! A batch of a degree both protocols allow has the same messages in both: the protocol sets the
 //! bound and nothing else.
@@ -19,7 +16,7 @@ mod common;
 
 use common::{Fp, Fp2, SplitMix64};
 use tessera_codec::Ascii;
-use tessera_field::{Field, PrimeField};
+use tessera_field::{Field, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_sumcheck::{
     Instance, MAX_DEGREE, Prefix, Protocol, SumcheckProof, SumcheckTranscript, Table, Term,
@@ -105,7 +102,7 @@ impl Case {
     }
 
     /// The summand at one vertex, or at a point from the tables' values there.
-    fn summand(&self, value: impl Fn(&Values) -> Fp2) -> Fp2 {
+    fn summand(&self, value: impl FnMut(&Values) -> Fp2) -> Fp2 {
         let values: Vec<Fp2> = self.tables.iter().map(value).collect();
         match &self.terms {
             None => values.iter().fold(Fp2::ONE, |p, &v| p * v),
@@ -231,6 +228,7 @@ fn degree_8_to_10_batches_verify_at_a_reduction_stage_of_protocol_2() {
             .expect("a batch within the bound");
             assert!(proven.proof().rounds.iter().all(|r| r.len() == degree));
             check(Protocol::Two, stage, degree, &cases, proven.proof());
+            check_independent_verifier(stage, degree, &cases, proven.proof());
         }
     }
 }
@@ -255,4 +253,65 @@ fn a_degree_both_protocols_allow_has_the_same_messages() {
         assert_eq!(one.1, prove(Protocol::Two).1, "degree {degree}");
         check(Protocol::One, 1, degree, &cases, &one.0);
     }
+}
+
+/// Actual producer messages through the independently implemented protocol/2 verifier.
+fn check_independent_verifier(
+    stage: u32,
+    degree: usize,
+    cases: &[Case],
+    proof: &SumcheckProof<Fp2>,
+) {
+    use tv_core::sumcheck as tv;
+    use tv_hash::transcript as hash;
+    let context = hash::SessionContext {
+        protocol: hash::Ascii::new("tessera-protocol/2").unwrap(),
+        mode: hash::Mode::NonInteractive,
+        params: hash::ParamSetId(hash::Ascii::new("test-small/1").unwrap()),
+        statement_digest: [0x65; 32],
+        session_id: [0x13; 16],
+    };
+    let from_tv = |v: tv_field::Fp2| {
+        Fp2::new(
+            Fp::from_canonical_u64(v.c0.to_canonical()).unwrap(),
+            Fp::from_canonical_u64(v.c1.to_canonical()).unwrap(),
+        )
+    };
+    let instances: Vec<_> = cases
+        .iter()
+        .map(|case| tv::Instance {
+            claim: common::tv_fp2(
+                (0..1 << case.vars).fold(Fp2::ZERO, |s, x| s + case.summand(|t| t.entries[x])),
+            ),
+            vars: case.vars,
+            evals: case.tables.iter().filter(|t| !t.public).count(),
+        })
+        .collect();
+    let accepted = tv::verify_batch_in(
+        &mut hash::Transcript::new(&context),
+        tv::Protocol::Two,
+        tv::Prefix::Stage(stage),
+        degree,
+        &instances,
+        &common::tv_proof(proof),
+        |i, point, values| {
+            let case = &cases[i];
+            let point: Vec<Fp2> = point.iter().copied().map(from_tv).collect();
+            let mut sent = values.iter();
+            let value = case.summand(|t| {
+                if t.public {
+                    t.mle(&point)
+                } else {
+                    from_tv(*sent.next().expect("one value per sent table"))
+                }
+            });
+            assert!(sent.next().is_none());
+            Some(common::tv_fp2(value))
+        },
+    )
+    .expect("the independent verifier accepts the degree-8..10 producer batch");
+    assert_eq!(
+        accepted.point.len(),
+        cases.iter().map(|c| c.vars).max().unwrap()
+    );
 }

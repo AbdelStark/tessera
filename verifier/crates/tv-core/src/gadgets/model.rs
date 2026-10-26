@@ -7,7 +7,7 @@ use super::{GadgetError, Plan as Gadgets, greedy, root, runtime, softmax, stacke
 use crate::advice::Source;
 use crate::leaf::{self, split};
 use crate::lowering::{Graph, NodeId, Op, Role as GraphRole, TensorId};
-use crate::schedule::{self, Native, NativeOutput, Schedule, ScheduleError};
+use crate::schedule::{self, Native, NativeKind, NativeOutput, Schedule, ScheduleError};
 use crate::stages::{
     self, Composed, LeafValues, NativeChecks, NativeContext, NativeFinal, StageError,
 };
@@ -105,6 +105,24 @@ enum Relation {
     GreedyKey,
     GreedySelected,
     ObserveLogits,
+}
+impl Relation {
+    fn kind(self) -> NativeKind {
+        match self {
+            Self::Product(_) => NativeKind::Product,
+            Self::RootPadding => NativeKind::RootPad,
+            Self::ResidualPadding => NativeKind::ResidualPad,
+            Self::Key => NativeKind::Key,
+            Self::Forest => NativeKind::Forest,
+            Self::Reciprocal => NativeKind::Reciprocal,
+            Self::MaximumPadding => NativeKind::MaxPad,
+            Self::ReciprocalPadding => NativeKind::ReciprocalPad,
+            Self::Tokens => NativeKind::Tokens,
+            Self::GreedyKey => NativeKind::GreedyKey,
+            Self::GreedySelected => NativeKind::GreedySelected,
+            Self::ObserveLogits => NativeKind::Observe,
+        }
+    }
 }
 enum Family<'p> {
     Root(stacked::RootStack<'p>),
@@ -319,6 +337,7 @@ impl<'p> Plan<'p> {
                         outputs,
                     },
                     Native {
+                        kind: relation.kind(),
                         tag: 0,
                         node,
                         vars,
@@ -466,6 +485,7 @@ impl<'p> Plan<'p> {
                     ])?,
                 },
                 Native {
+                    kind: NativeKind::Tokens,
                     tag: 0,
                     node,
                     vars,
@@ -505,6 +525,7 @@ impl<'p> Plan<'p> {
                             )?])?,
                         },
                         Native {
+                            kind: relation.kind(),
                             tag: 0,
                             node,
                             vars,
@@ -538,6 +559,7 @@ impl<'p> Plan<'p> {
                         )?])?,
                     },
                     Native {
+                        kind: NativeKind::Observe,
                         tag: 0,
                         node,
                         vars,

@@ -76,7 +76,7 @@ MAX_ENTRIES = 260
 SUMCHECK_CHANGES = 16
 SUMCHECK_MAX_INSTANCES = 4
 SUMCHECK_MAX_VARS = 6
-SUMCHECK_MAX_DEGREE = 7
+SUMCHECK_MAX_DEGREE = 10
 SUMCHECK_MAX_HEIGHT = 5
 
 
@@ -159,6 +159,14 @@ def sumcheck_seeds():
         base = bytes([0, degree - 1, len(shapes) - 1])
         base += b"".join(bytes([vars, tables - 1]) for vars, tables in shapes)
         base += bytes([index % 256]) + number.to_bytes(8, "little")
+        yield base
+        for change in range(SUMCHECK_CHANGES):
+            yield base + bytes([change]) + tail
+    # RFC-0013: protocol/2 reduction stages of every newly admitted degree. Header bit 1
+    # selects the protocol without changing the legacy protocol/1 seeds (header 0).
+    for degree in range(8, SUMCHECK_MAX_DEGREE + 1):
+        base = bytes([2, degree - 1, 2, 3, degree - 1, 1, degree - 1, 0, degree - 1, 0])
+        base += degree.to_bytes(8, "little")
         yield base
         for change in range(SUMCHECK_CHANGES):
             yield base + bytes([change]) + tail

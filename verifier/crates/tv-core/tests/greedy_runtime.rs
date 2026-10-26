@@ -373,6 +373,7 @@ fn only_the_exact_native_token_descriptor_can_replace_the_weighted_onehot_check(
     let nt = 2;
     let vars = nv + nt;
     let own = Native {
+        kind: schedule::NativeKind::Product,
         tag: 1,
         node: NodeId(0),
         vars,

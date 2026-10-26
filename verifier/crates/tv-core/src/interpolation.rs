@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The claim a round leaves (RFC-0010 'Sumcheck messages'): the round polynomial `p`, of degree
-//! at most `d ≤ 7`, known at the nodes `0, 1, …, d`, evaluated at the round's challenge.
+//! at most `d ≤ 10`, known at the nodes `0, 1, …, d`, evaluated at the round's challenge.
 //!
 //! The prover may evaluate it with Lagrange's basis; this module takes Newton's forward
 //! differences instead (SP-6: the two should not share a structural bug). With
@@ -19,10 +19,10 @@ use tv_field::{Fp, Fp2};
 
 use crate::sumcheck::MAX_DEGREE;
 
-/// The nodes of a round polynomial of the largest degree: `0, 1, …, 7`.
+/// The nodes of a round polynomial of the largest degree: `0, 1, …, 10`.
 const NODES: usize = MAX_DEGREE + 1;
 
-/// The nodes `k = 0, 1, …, 7` in `Fp2`.
+/// The nodes `k = 0, 1, …, 10` in `Fp2`.
 const NODE: [Fp2; NODES] = [
     Fp2::new(Fp::reduce(0), Fp::ZERO),
     Fp2::new(Fp::reduce(1), Fp::ZERO),
@@ -32,9 +32,12 @@ const NODE: [Fp2; NODES] = [
     Fp2::new(Fp::reduce(5), Fp::ZERO),
     Fp2::new(Fp::reduce(6), Fp::ZERO),
     Fp2::new(Fp::reduce(7), Fp::ZERO),
+    Fp2::new(Fp::reduce(8), Fp::ZERO),
+    Fp2::new(Fp::reduce(9), Fp::ZERO),
+    Fp2::new(Fp::reduce(10), Fp::ZERO),
 ];
 
-/// `1/(k + 1)` in `Fp` for `k = 0, 1, …, 7`, the unique `x < P` with `(k + 1)·x ≡ 1 (mod P)`;
+/// `1/(k + 1)` in `Fp` for `k = 0, 1, …, 10`, the unique `x < P` with `(k + 1)·x ≡ 1 (mod P)`;
 /// a unit test checks each.
 const INVERSE_OF_NEXT: [Fp; NODES] = [
     Fp::reduce(0x0000_0000_0000_0001),
@@ -45,6 +48,9 @@ const INVERSE_OF_NEXT: [Fp; NODES] = [
     Fp::reduce(0xD555_5554_8000_0001),
     Fp::reduce(0x2492_4924_6DB6_DB6E),
     Fp::reduce(0xDFFF_FFFF_2000_0001),
+    Fp::reduce(0x38E38E38AAAAAAAB),
+    Fp::reduce(0xE666666580000001),
+    Fp::reduce(0x745D17455D1745D2),
 ];
 
 /// The claim after a round whose message is `p(0) = p0` and `p(2), …, p(d) = rest`, the claim

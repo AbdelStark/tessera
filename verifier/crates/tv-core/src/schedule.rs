@@ -138,6 +138,9 @@ use tv_field::Fp;
 use crate::claims::WeightType;
 use crate::lowering::{Broadcast, Graph, Kind, Node, NodeId, Op, Role, TensorId};
 
+pub mod degree;
+pub use degree::NativeKind;
+
 /// Where a run of coordinates comes from. The stage checks fill each source as the stages run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Source {
@@ -428,6 +431,8 @@ pub struct NativeOutput {
 pub struct Native {
     /// Unique verifier-owned callback identity.
     pub tag: u32,
+    /// Semantic relation, fixed by the native plan (RFC-0013 'Degree / The keys').
+    pub kind: NativeKind,
     /// Owning first-layer gadget node, or a node outside the template.
     pub node: NodeId,
     /// Total natural variables, INCLUDING the layer axis for a template site.
@@ -466,6 +471,8 @@ pub enum Relation {
     Native {
         /// Unique verifier-owned identity, never selected by proof bytes.
         tag: u32,
+        /// Semantic relation from the verifier-owned native plan, never inferred from arity.
+        kind: NativeKind,
         /// Raw proof evaluations, before transformation to outgoing graph claims.
         evaluations: usize,
         /// Whether its incoming claim must be zero.
@@ -771,7 +778,8 @@ pub fn derive_composed(
             .iter()
             .any(|n| n.tag == spec.tag)
             || spec.vars > 63
-            || !(1..=crate::sumcheck::MAX_DEGREE).contains(&spec.degree)
+            || !(1..=crate::sumcheck::Protocol::One.max_degree(crate::sumcheck::Prefix::Stage(1)))
+                .contains(&spec.degree)
             || spec.evaluations == 0
         {
             return Err(ScheduleError::Internal);
@@ -1495,6 +1503,7 @@ impl Deriving<'_, '_> {
         Ok(Shaped {
             relation: Relation::Native {
                 tag: spec.tag,
+                kind: spec.kind,
                 evaluations: spec.evaluations,
                 zero: spec.zero,
             },
@@ -1632,6 +1641,7 @@ impl Deriving<'_, '_> {
                 evals,
             });
         }
+        let degree = degree::stage_degree(crate::sumcheck::Protocol::One, k, &[degree])?;
         let stage = Stage {
             index: k,
             degree,

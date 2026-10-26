@@ -47,9 +47,30 @@ use tv_hash::transcript::{NotAscii, Transcript, TranscriptError};
 use crate::fiat_shamir::{self, FiatShamir, Step};
 use crate::interpolation;
 
-/// The largest degree of a round polynomial: 7 (RFC-0014 'Soundness budget', `d ≤ 7`). The
-/// smallest is 1, whose message is `p(0)` alone.
-pub const MAX_DEGREE: usize = 7;
+/// Interpolation capacity: 10 (RFC-0013 'Degree'). The selected protocol and prefix impose the
+/// actual bound through [`Protocol::max_degree`].
+pub const MAX_DEGREE: usize = 10;
+
+/// The protocol whose independently derived sumcheck is being checked (RFC-0013 'Degree').
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Protocol {
+    /// The non-hiding protocol, with degrees at most seven.
+    One,
+    /// The masked protocol, whose reduction stages reach degree ten.
+    Two,
+}
+
+impl Protocol {
+    /// Maximum admissible degree. Only reduction stages (indices starting at one) of
+    /// protocol/2 gain capacity; tree levels, the layer sumcheck and merge retain seven.
+    pub const fn max_degree(self, prefix: Prefix) -> usize {
+        if let (Self::Two, Prefix::Stage(1..)) = (self, prefix) {
+            MAX_DEGREE
+        } else {
+            7
+        }
+    }
+}
 
 /// Which sumcheck of the protocol a check runs: the prefix of its labels (RFC-0014 'Transcript
 /// schedule').
@@ -182,10 +203,12 @@ pub enum SumcheckError {
         /// The number of rounds: the check follows the last.
         round: u32,
     },
-    /// The degree is not between 1 and [`MAX_DEGREE`].
+    /// The degree is outside the selected protocol and sumcheck's bound.
     Degree {
         /// The degree asked for.
         degree: usize,
+        /// The maximum allowed by the protocol and prefix.
+        max: usize,
     },
     /// The batch has no instance.
     NoInstances,
@@ -249,9 +272,9 @@ impl fmt::Display for SumcheckError {
             SumcheckError::FinalMismatch { .. } => {
                 f.write_str("the final evaluations do not give the last claim")
             }
-            SumcheckError::Degree { degree } => write!(
+            SumcheckError::Degree { degree, max } => write!(
                 f,
-                "degree {degree} asked for; round polynomials have degree 1 to {MAX_DEGREE}"
+                "degree {degree} asked for; round polynomials have degree 1 to {max}"
             ),
             SumcheckError::NoInstances => f.write_str("the batch has no instance"),
             SumcheckError::EvaluationTotal => {
@@ -273,7 +296,7 @@ impl std::error::Error for SumcheckError {}
 
 /// Checks the rounds of one sumcheck of degree `degree` over `vars` variables that starts from
 /// `claim`, under `prefix`, and returns the point and the last claim. The checks, in order, are
-/// those of the crate documentation ('Rounds'): the degree is between 1 and [`MAX_DEGREE`];
+/// those of the crate documentation ('Rounds'): protocol/1's degree is between 1 and 7;
 /// round by round, the round is present and holds `degree` evaluations; no round follows the
 /// last.
 ///
@@ -288,12 +311,36 @@ pub fn reduce(
     claim: Fp2,
     rounds: &[Vec<Fp2>],
 ) -> Result<Reduction, SumcheckError> {
-    check_degree(degree)?;
+    reduce_in(
+        transcript,
+        Protocol::One,
+        prefix,
+        degree,
+        vars,
+        claim,
+        rounds,
+    )
+}
+
+/// [`reduce`] with the protocol selected from the validated session. Checks the protocol/prefix degree bound before any
+/// transcript operation; its errors and remaining checks are those of [`reduce`]. The caller
+/// must still check the returned claim against its independently derived relation.
+pub fn reduce_in(
+    transcript: &mut Transcript,
+    protocol: Protocol,
+    prefix: Prefix,
+    degree: usize,
+    vars: usize,
+    claim: Fp2,
+    rounds: &[Vec<Fp2>],
+) -> Result<Reduction, SumcheckError> {
+    check_degree(protocol.max_degree(prefix), degree)?;
     reduce_with(transcript, prefix, degree, vars, claim, rounds)
 }
 
 /// Checks a batched sumcheck of degree `degree` under `prefix` and returns its batching
-/// challenge and point; the checks, in order, are those of the crate documentation ('Batches').
+/// challenge and point under protocol/1 (degree at most seven); the checks, in order, are those
+/// of the crate documentation ('Batches').
 ///
 /// `instances` come in schedule order. `relation(i, point, evaluations)` gives instance `i`'s
 /// relation at its point, the last `n_i` challenges, from its evaluations, the next `k_i` of
@@ -314,7 +361,35 @@ pub fn verify_batch<F>(
 where
     F: FnMut(usize, &[Fp2], &[Fp2]) -> Option<Fp2>,
 {
-    verify_batch_with(transcript, prefix, degree, instances, proof, relation)
+    verify_batch_in(
+        transcript,
+        Protocol::One,
+        prefix,
+        degree,
+        instances,
+        proof,
+        relation,
+    )
+}
+
+/// [`verify_batch`] with the protocol selected from the validated session. The degree is checked against
+/// [`Protocol::max_degree`] before squeezing the batching challenge; all other checks,
+/// transcript labels and error classifications are unchanged.
+pub fn verify_batch_in<F>(
+    transcript: &mut Transcript,
+    protocol: Protocol,
+    prefix: Prefix,
+    degree: usize,
+    instances: &[Instance],
+    proof: &SumcheckProof,
+    relation: F,
+) -> Result<Batch, SumcheckError>
+where
+    F: FnMut(usize, &[Fp2], &[Fp2]) -> Option<Fp2>,
+{
+    verify_batch_with(
+        transcript, protocol, prefix, degree, instances, proof, relation,
+    )
 }
 
 /// `eq(a, b) = Π_i (a_i·b_i + (1 − a_i)·(1 − b_i))` (RFC-0010 'Multilinear extensions'), or
@@ -369,6 +444,7 @@ pub(crate) fn reduce_with(
 /// [`verify_batch`] on any transcript.
 pub(crate) fn verify_batch_with<F>(
     transcript: &mut impl FiatShamir,
+    protocol: Protocol,
     prefix: Prefix,
     degree: usize,
     instances: &[Instance],
@@ -380,6 +456,7 @@ where
 {
     // 1. The caller's inputs, before the transcript moves.
     let shape = Shape::of(
+        protocol.max_degree(prefix),
         degree,
         instances
             .iter()
@@ -404,10 +481,11 @@ impl Shape {
     /// in schedule order, or the first of `Degree`, `NoInstances` and `EvaluationTotal` that
     /// they fail.
     pub(crate) fn of(
+        max: usize,
         degree: usize,
         sizes: impl IntoIterator<Item = (usize, usize)>,
     ) -> Result<Self, SumcheckError> {
-        check_degree(degree)?;
+        check_degree(max, degree)?;
         let mut n_max: Option<usize> = None;
         let mut evals: usize = 0;
         for (vars, count) in sizes {
@@ -487,12 +565,12 @@ where
     Ok(Batch { gamma, point })
 }
 
-/// The degree check of every sumcheck: `1 ≤ degree ≤ MAX_DEGREE`.
-fn check_degree(degree: usize) -> Result<(), SumcheckError> {
-    if (1..=MAX_DEGREE).contains(&degree) {
+/// The degree check of every sumcheck, before the transcript changes.
+fn check_degree(max: usize, degree: usize) -> Result<(), SumcheckError> {
+    if (1..=max).contains(&degree) {
         Ok(())
     } else {
-        Err(SumcheckError::Degree { degree })
+        Err(SumcheckError::Degree { degree, max })
     }
 }
 
@@ -587,8 +665,15 @@ mod tests {
             final_evals: evals.clone(),
         };
         let mut stub = Stub::default();
-        let outcome =
-            verify_batch_with(&mut stub, Prefix::Stage(4), 2, &instances, &proof, product);
+        let outcome = verify_batch_with(
+            &mut stub,
+            Protocol::One,
+            Prefix::Stage(4),
+            2,
+            &instances,
+            &proof,
+            product,
+        );
         assert_eq!(outcome, Err(SumcheckError::FinalMismatch { round: 2 }));
         assert_eq!(
             stub.script(),
@@ -627,8 +712,15 @@ mod tests {
                 final_evals: vec![fp2(4, 0); found],
             };
             let mut stub = Stub::default();
-            let outcome =
-                verify_batch_with(&mut stub, Prefix::Stage(2), 2, &[instance], &proof, product);
+            let outcome = verify_batch_with(
+                &mut stub,
+                Protocol::One,
+                Prefix::Stage(2),
+                2,
+                &[instance],
+                &proof,
+                product,
+            );
             assert_eq!(
                 outcome,
                 Err(SumcheckError::EvaluationCount {
@@ -678,8 +770,15 @@ mod tests {
         };
         for fail_at in 0..4 {
             let mut stub = Stub::failing_at(fail_at);
-            let outcome =
-                verify_batch_with(&mut stub, Prefix::Stage(1), 1, &[instance], &proof, product);
+            let outcome = verify_batch_with(
+                &mut stub,
+                Protocol::One,
+                Prefix::Stage(1),
+                1,
+                &[instance],
+                &proof,
+                product,
+            );
             assert_eq!(
                 outcome,
                 Err(SumcheckError::Transcript(TranscriptError::Exhausted)),
@@ -722,7 +821,7 @@ mod tests {
             assert_eq!(error.rejected_round(), Some(3), "{error}");
         }
         let verifier_faults = [
-            SumcheckError::Degree { degree: 8 },
+            SumcheckError::Degree { degree: 8, max: 7 },
             SumcheckError::NoInstances,
             SumcheckError::EvaluationTotal,
             SumcheckError::Relation { instance: 0 },

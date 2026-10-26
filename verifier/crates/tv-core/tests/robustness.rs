@@ -56,8 +56,8 @@ fn structural(
     instances: &[Instance],
     proof: &SumcheckProof,
 ) -> Option<SumcheckError> {
-    if degree == 0 || degree > MAX_DEGREE {
-        return Some(SumcheckError::Degree { degree });
+    if degree == 0 || degree > 7 {
+        return Some(SumcheckError::Degree { degree, max: 7 });
     }
     let Some(n_max) = instances.iter().map(|i| i.vars).max() else {
         return Some(SumcheckError::NoInstances);

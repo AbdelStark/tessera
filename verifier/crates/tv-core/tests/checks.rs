@@ -435,7 +435,7 @@ fn faults_of_the_caller_are_not_verdicts_on_the_proof() {
         outcome
     };
     for degree in [0, MAX_DEGREE + 1, usize::MAX] {
-        let expected = Err(SumcheckError::Degree { degree });
+        let expected = Err(SumcheckError::Degree { degree, max: 7 });
         assert_eq!(attempt(degree, &stage.instances), expected);
         let mut transcript = session.context.transcript();
         assert_eq!(
@@ -482,7 +482,7 @@ fn faults_of_the_caller_are_not_verdicts_on_the_proof() {
 fn every_degree_from_one_to_seven_is_accepted() {
     let session = sessions().remove(0);
     let claim = Fp2::new(Fp::reduce(5), Fp::reduce(9));
-    for degree in 1..=MAX_DEGREE {
+    for degree in 1..=7 {
         let mut transcript = session.context.transcript();
         let proof = SumcheckProof {
             rounds: vec![],
