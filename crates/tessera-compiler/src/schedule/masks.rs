@@ -104,9 +104,9 @@
 //!    prover assembles outside the schedule;
 //! 5. the native relations' raw evaluations, on graph tensors and on auxiliary columns at the
 //!    natives' own points: the root's bytes and input limbs in each coefficient product,
-//!    `SoftmaxRow`'s maximum in its key, forest and padding relations, and the greedy certificate's
-//!    reads of the one-hot tokens at their carry points, whose `tessera-protocol/2` form RFC-0053
-//!    disclaims;
+//!    `SoftmaxRow`'s maximum in its key, forest and padding relations, the greedy certificate's
+//!    reads of the one-hot tokens at their carry points, and the greedy maximum `M`, a certificate
+//!    source, in its key and selected relations; RFC-0053 disclaims their `tessera-protocol/2` form;
 //! 6. the multiplicities' claims;
 //! 7. the tree levels' masks, the identity sumcheck's root levels (RFC-0032) and the `SoftmaxRow`
 //!    leaf mask;
