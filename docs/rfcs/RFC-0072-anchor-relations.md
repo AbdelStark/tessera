@@ -26,7 +26,7 @@ RFC-0015's anchor proves the transcript with two circuits: AES-128-CTR (#142) an
 
 This RFC fills each gap with RFC-0010's existing machinery and adds no new kind of message, label or opening group:
 - **A graph with no checkpoint has no layers.** Every node is outside them, as a model's prologue and epilogue are.
-- **Public tensors.** A tensor computed from public tensors alone is public: the verifier evaluates its claims itself.
+- **Public tensors.** A tensor computed from public tensors alone, by a node that is not gadget-backed, is public: the verifier evaluates its claims itself.
 - **The selection relation.** `GatherPublic` and `Slice` reduce a claim through one sumcheck over the selected axis, against a public 0/1 kernel, of degree 2 (OQ-0066-2).
 - **`ConstMul` by a constant per channel** is RFC-0010's `Elementwise` with the constant a public operand.
 - **Combined selections.** Within one claim, selections of one tensor along one axis at one point are one selection, whose kernel weighs theirs by their coefficients. Without that, the two selections that read each level of a SHA-256 sum's value, its even and odd rows, would double the instances below it at every level. Claims are never merged across a stage, so no claim goes unchecked and no Llama schedule changes.
@@ -58,7 +58,7 @@ A SHA-256 block of a message with committed bytes holds 680 zero-checks, 2,528 s
 
 ## Non-Goals
 
-- **`tessera-protocol/2`.** The circuits' committed bits are advice, masked as any other tensor. Their virtual tensors take RFC-0013's masks and folds, in #145's argument. The selection relation leaves its claims at random points, so it adds no Boolean coordinate that R8 forbids.
+- **`tessera-protocol/2`.** The circuits' committed bits are advice, masked under RFC-0013's rules. Their carries and sums at `M ≤ 2` have fewer than the two variables a masked tensor needs, so #145 pads them, or R10's check refuses the schedule (#488). Their virtual tensors take RFC-0013's masks and folds, in #145's argument. The selection relation leaves its claims at random points, so it adds no Boolean coordinate that R8 forbids.
 - **The anchor's wiring.** #146 puts the circuits into a batch's graph, its inputs taken from the log and the session, and its statement's sizes; #163 tests it end to end.
 - **The verifier's mirror** of these relations is #150's and #159's.
 - **Token groups.** RFC-0054 refuses a `Bitwise` site, and the other operations its token axis lists, in a leaf stage in token groups. A batch that carries AES-128-CTR runs its leaf stage in one batch, or #146 amends RFC-0054.
@@ -90,7 +90,11 @@ A SHA-256 block of a message with committed bytes holds 680 zero-checks, 2,528 s
 
 ### Padded positions
 
-Every tensor's padded positions hold what its operation computes from its inputs' padded positions, as RFC-0035 'What a padded row holds' says, with one exception. That holds for virtual and public tensors too:
+**Real positions.** A tensor's real positions are those inside its shape `(n_a)`. Its selector `ψ(x) = Π_a [x_a < n_a]` is 1 on them, with extension `ψ̃(r) = Π_a LT(r_a, n_a)`: the selector of `ConstAdd`, of `AssertEqual` and of the input padding check alike.
+- **In a batch of several requests** (RFC-0071), the rows of each slot past its request's length are padded rows too, inside the token axis's shape ('Real and padded rows'). So a tensor computed from the tokens or the positions would need RFC-0071's row factor on that axis.
+- **Refused until #146.** A `ConstAdd` or an `AssertEqual` that reads such a tensor in a graph of more than one request is refused when the schedule is derived (`ERR-INTERNAL`). #146 binds the anchor to the tokens and states that selector. The circuits read neither the tokens nor the positions, and Llama has neither operation.
+
+Every tensor's padded positions hold what its operation computes from its inputs' padded positions, as RFC-0035 'What a padded row holds' says. The exception is `ConstAdd`; and selections, `Expand` and `Rotate` are 0 on their padded rows by their relations. That holds for virtual and public tensors too:
 - graph inputs and constants pad with zeros, and a per-channel constant is 0 at padded channels;
 - **a `ConstAdd` adds its constant at real positions only**, `y = x + ψ·c` with `ψ` 1 on the tensor's real positions, so its padded positions are its input's;
 - a selection's padded rows on its selected axis are 0, and its other padded positions are its input's;
@@ -108,17 +112,17 @@ So a padded position is non-zero only downstream of a lookup node that is **non-
 
 So the prover's witness and stage tables, and the verifier's public tensors, are computed over the padded shapes. With `M` messages or `B` blocks not a power of two:
 - SHA-256's padded messages are 0 throughout: their bits, sums and carries.
-- AES's padded blocks run on zero counters under zero round keys, since each round key's `Expand` is 0 past `B`. Their S-box outputs are then `AesSbox(0) = 0x63` and its consequences, a public constant per position, not `AES_k(0)`.
+- AES's padded blocks run on zero counters under zero round keys, since each round key's `Expand` is 0 past `B`. Their S-box outputs are then `AesSbox(0) = 0x63` and its consequences, key-independent constants, committed with the block's other lookup outputs, not `AES_k(0)`.
 
 A committed graph input's padded positions are computed by nothing. RFC-0006 'Committed graph inputs' admits a graph only when a `BitDecompose` or a `OneHot` reads each committed advice input, and their checks pin its padded positions: RFC-0066's input padding check, or `OneHot`'s row selector. AES-128-CTR alone is a fragment, whose key and plaintext a larger graph proves (#146).
 
 ### Linear operations that are not coordinate maps
 
 - **`ConstAdd`** moves its constant into the claim's value: `ỹ(r) = x̃(r) + ĉ(r)`, where `ĉ` is the multilinear extension of `ψ·c`, the constant at real positions only ('Padded positions'). Its constant is a public atom: a claim `a·ỹ(r) = v` becomes `a·x̃(r) = v − a·ĉ(r)`. A `ConstAdd` is never inside a layer ('Graphs without layers'), so no layer weights arise.
-  - **The selector.** `ψ̃(r) = Π_a ψ̃_a(r_a)`, one factor per axis: `LT(r_a, n_a)` on an axis of length `n_a`, and on a batch's token axis RFC-0071's `Σ_{r<R} eq(r_β, r)·LT(r_p, n_r)`, whose real rows are its requests' positions ([RFC-0071](RFC-0071-request-slots.md#the-public-selectors)).
+  - **The selector.** `ψ̃(r) = Π_a ψ̃_a(r_a)` with `ψ̃_a = LT(r_a, n_a)`, one factor per axis of length `n_a` ('Real positions').
   - **A constant of one value** contributes `ĉ(r) = c·ψ̃(r)`.
   - **A constant per channel**, one value per position of the last axis, contributes `ĉ(r) = c̃(r_c)·Π_{a≠last} ψ̃_a(r_a)`, with `r_c` the last axis's coordinates and `c̃` the constant's extension, zero at padded channels. The constant is already 0 at padded channels, so the last axis's factor does not appear: `c̃(r_c)·ψ̃(r)` agrees with `ĉ` on the cube only, and is not multilinear when the last axis's length is not a power of two.
-  - The verifier evaluates each `LT` factor in `O(log)` time, RFC-0071's in `O(R·log S)`, and `c̃(r_c)` in `O(channels)`.
+  - The verifier evaluates each `LT` factor in `O(log)` time, and `c̃(r_c)` in `O(channels)`.
 - **`ConstMul` by a constant per channel** is RFC-0010's `Elementwise`: `Ỹ(r) = Σ_x eq(r, x)·c̃(x_c)·X̃(x)`, degree 3, the constant a public operand broadcast over the other axes. It leaves one claim on `X`. A scalar `ConstMul` stays a coefficient.
 - **Scalar or per channel.** A constant of one value is a scalar, whatever the last axis's length: a `ConstMul` or `ConstAdd` on a last axis of length 1, such as SHA-256's value levels at `M = 1`, is a scalar's. A constant per channel has as many values as the last axis, and more than one.
 - **`Slice` and `GatherPublic`** are selections, below.
@@ -153,7 +157,7 @@ Each level of a SHA-256 sum's value is `Add(even, ConstMul(odd))`: two selection
 - **Its value.** When the combination is the claim's only part, the claim is ready. Otherwise its split sends one value for it, weighted by 1, at its first atom's place (RFC-0037 'Splits').
 - **The verifier's evaluation.** `K̃(r_a, r'_k) = Σ_t a_t·S̃_t(r_a, r'_k)`, each term as above.
 - **Soundness.** The combination is a linear functional of `x`, so its identity is one sumcheck, of degree 2. The members' own values are never sent and never needed.
-- **No merging across claims.** Two claims on one tensor at one point stay two claims, each with its instance. One instance for both would prove one claim's value and leave the other's unchecked: AES's `Gf256Mul { 2 }` and `Gf256Mul { 3 }` lookups read one tensor, ShiftRows' output, at one leaf point, and SHA-256's first round reduces three claims on its first message word to one point. Llama's composed schedule holds such pairs too, so a merge would also change `tessera-protocol/1`'s messages.
+- **No merging across claims.** Two claims on one tensor at one point stay two claims, each with its instance. One instance for both would prove one claim's value and leave the other's unchecked: AES's `Gf256Mul { 2 }` and `Gf256Mul { 3 }` lookups read one tensor, ShiftRows' output, at one leaf point, and SHA-256's round 0 leaves two claims on its first message word at one point. Llama's composed schedule holds such pairs too, so a merge would also change `tessera-protocol/1`'s messages.
 - **Llama** has no selection, so this rule never applies to it.
 
 ### The bit zero-checks (OQ-0066-1)
@@ -164,11 +168,11 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
 |---|---|---|---|---|---|
 | Input padding, of the committed graph input `u` a `BitDecompose` reads, directly or moved (RFC-0066), when `u` has padded positions | `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·ũ(x)`, `ψ` 1 on `u`'s real positions | `n_u` | `n_u` | `ũ` | 3 |
 | Booleanity of `b`, of `h` | `0 = Σ_x eq(z, x)·b̃(x)·(1 − b̃(x))` | `n_y + k_b`, `n_y + k_h` | all | `b̃`, `h̃` | 3 |
-| Bit padding of `b`, of `h`, when its `n` bits are not a power of two | `0 = Σ_x eq(z, x)·(1 − LT(x_bit, n))·b̃(x)` | `n_y + k_b`, `n_y + k_h` | all | `b̃`, `h̃` | 3 |
+| Bit padding of `b`, of `h`, when its `low` or `high` bits are not a power of two | `0 = Σ_x eq(z, x)·(1 − LT(x_bit, low))·b̃(x)`, `high` for `h̃` | `n_y + k_b`, `n_y + k_h` | all | `b̃`, `h̃` | 3 |
 | Recomposition | below | `n_y + k` | `n_y` | `x̃` unless public, `b̃`, `h̃` | 2 |
-| `AssertEqual` | `0 = Σ_x eq(z, x)·ψ̃(x)·(ã(x) − b̃(x))` | `n` | `n` | `ã`, `b̃`, each unless public; none when both are | 3 |
+| `AssertEqual` | `0 = Σ_x eq(z, x)·ψ̃(x)·(ã(x) − b̃(x))` | `n_a` | `n_a` | `ã`, `b̃`, each unless public; none when both are | 3 |
 
-`n_y` is the variables of `x`'s shape, and `n_u` those of `u`'s. `k_b = ⌈log2 low⌉` and `k_h = ⌈log2 high⌉` are the bit axes' variables, which are the lowest.
+`n_y` is the variables of `x`'s shape, `n_u` those of `u`'s, and `n_a` those of `AssertEqual`'s tensors. Every `ψ̃` is that of 'Real positions'. `k_b = ⌈log2 low⌉` and `k_h = ⌈log2 high⌉` are the bit axes' variables, which are the lowest.
 
 **Recomposition.** It is one zero-check over `y`, summed over the bit axis, `k = max(k_b, k_h)` variables, `k_b` when `high = 0`:
 
@@ -281,10 +285,10 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
 
 1. **This RFC.**
 2. **#526, in slices:**
-   - graphs without layers, public tensors, `ConstAdd`, a per-channel `ConstMul`, the summing-relation and committed-output refusals, and the witness and stage tables over padded shapes, in the schedule and the stage prover. The commitment report's stage count follows 'Messages, rejections and stages', tested equal to the schedule's on graphs of these operations;
+   - graphs without layers, public tensors, `ConstAdd`, a per-channel `ConstMul`, the non-zero-at-padding analysis, and the summing-relation, committed-output and layer-template refusals, in the schedule and the stage prover. The commitment report's stage count follows 'Messages, rejections and stages', tested equal to the schedule's on graphs of these operations. Their padded positions are the zero padding the witness and stage tables already use: no graph of this slice is non-zero at padding;
    - the bit zero-checks: gadget selection, stage 1's instances and their alternative witnesses;
    - the selection relation, combined selections, `BitFn` and the SHA-256 block, whose stage count the report then matches;
-   - AES's lookups and its block, its padded blocks' S-box values in both the leaf stage's lookups and the stage tables.
+   - AES's lookups and its block, with the witness and stage tables over padded shapes: a padded block's `AesSbox(0)` and its consequences, as the leaf stage's multiplicities already count them.
 3. **#146** puts the circuits into a batch's graph and statement, and **#150** and **#159** mirror the relations in the verifier.
 
 ## Testing Strategy
@@ -314,7 +318,7 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
   - An S-box output off its table is `Reject(Lookup { table })`.
 - **Calibration.** Over F65537, a witness with one non-Boolean bit passes stage 1's booleanity check at the rate `n/|F|`, within confidence bounds, with scripted challenges. There `low + high ≤ 16` (RFC-0066 Lemma 1).
 - **No change elsewhere.** The Llama schedules' vectors (`spec/vectors/schedule/`), each Llama stage's evaluation count, `cargo xtask gen-vectors --check` and the verifier's stage tests are unchanged, and no Llama schedule meets the summing-relation, committed-output or layer refusals.
-- **The refusals.** Each is `ERR-INTERNAL` when the schedule is derived: a `Sum` over a padded axis downstream of a `TableMap` into `AesSbox`; a `MatMulAct` whose two inputs both have one upstream, while one with a single such input is admitted; a layer template holding a `BitDecompose`, an `AssertEqual`, a `ConstAdd`, a selection or a per-channel `ConstMul`; a committed output of a `Slice` and of a `Sum`.
+- **The refusals.** Each is `ERR-INTERNAL` when the schedule is derived: a `Sum` over a padded axis downstream of a `TableMap` into `AesSbox`; a `MatMulAct` whose two inputs both have one upstream, while one with a single such input is admitted; a layer template holding a `BitDecompose`, an `AssertEqual`, a `ConstAdd`, a selection or a per-channel `ConstMul`; a committed output of a `Slice` and of a `Sum`; in a graph of two requests, a `ConstAdd` and an `AssertEqual` on a tensor computed from the tokens.
 
 ## Open Questions
 
