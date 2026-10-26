@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Padded positions (RFC-0072 'Padded positions'): which lookups are non-zero at padding, and the
-//! sums over a padded axis the schedule refuses ('Summing relations').
+//! Padded positions (RFC-0072 'Padded positions'): which lookups are non-zero at padding, the
+//! sums over a padded axis the schedule refuses ('Summing relations'), and the gadgets that may
+//! not read a tensor non-zero at its padded positions.
 //!
 //! A padded position holds what its operation computes from its inputs' padded positions, and
 //! every operation maps zeros there to zeros but a lookup whose function does not. So a tensor is
@@ -143,6 +144,29 @@ fn pinned(graph: &Graph, producers: &[Option<(NodeId, u32)>]) -> Vec<bool> {
     pinned
 }
 
+/// Whether a lookup node non-zero at padding ([`nonzero_at_padding`]) lies upstream of each tensor
+/// of `graph`, its own producer included, by tensor id (RFC-0072 'Padded positions'): the
+/// tensors whose padded positions may hold a value other than 0. Every other tensor is 0 at its
+/// padded positions, so its padded table is its values padded per dimension with zeros.
+///
+/// A tensor marked here holds, at each padded position, what its operation computes from its
+/// inputs' padded positions: the prover's witness and stage tables compute it there
+/// (`tessera_prover::stages::PaddedWitness`). A selection's or an `Expand`'s padded rows along its
+/// axis are 0 whatever its input, but its other padded positions are its input's, so it is
+/// marked with its input. No public tensor is marked: a lookup is a gadget, which no public
+/// tensor has upstream ([`public_tensors`](super::public_tensors)). Committed graph inputs are
+/// not marked: the honest prover pads them with zeros, which RFC-0006's checks pin.
+///
+/// # Errors
+///
+/// As [`nonzero_at_padding`].
+pub fn tensors_nonzero_at_padding(
+    graph: &Graph,
+    tables: &[TableSpec],
+) -> Result<Vec<bool>, CompileError> {
+    reach(graph, tables, &super::producers(graph), false)
+}
+
 /// Whether a lookup node non-zero at padding, or a committed advice graph input that nothing pins
 /// ([`pinned`]), lies upstream of each tensor of `graph`, its own producer or itself included, by
 /// tensor id. Each table is evaluated once.
@@ -150,6 +174,18 @@ fn upstream(
     graph: &Graph,
     tables: &[TableSpec],
     producers: &[Option<(NodeId, u32)>],
+) -> Result<Vec<bool>, CompileError> {
+    reach(graph, tables, producers, true)
+}
+
+/// Whether a lookup node non-zero at padding lies upstream of each tensor of `graph`, its own
+/// producer included, by tensor id, and, when `unpinned`, a committed advice graph input that
+/// nothing pins ([`pinned`]) too. Each table is evaluated once.
+fn reach(
+    graph: &Graph,
+    tables: &[TableSpec],
+    producers: &[Option<(NodeId, u32)>],
+    unpinned: bool,
 ) -> Result<Vec<bool>, CompileError> {
     let advice = NodeKind::Committed {
         commitment: CommitmentClass::Advice,
@@ -160,7 +196,9 @@ fn upstream(
         .iter()
         .zip(producers)
         .zip(&pinned)
-        .map(|((spec, producer), &pinned)| producer.is_none() && spec.kind == advice && !pinned)
+        .map(|((spec, producer), &pinned)| {
+            unpinned && producer.is_none() && spec.kind == advice && !pinned
+        })
         .collect();
     let mut by_table: HashMap<TableId, bool> = HashMap::new();
     for node in &graph.nodes {
@@ -260,6 +298,54 @@ pub(super) fn check_sums(
                 "a Sum, SumSquares or MatMulAct over an axis whose length is not a power of two \
                  sums an input that is 0 at its padded positions",
             );
+        }
+    }
+    Ok(())
+}
+
+/// The rule of [`check_gadgets`], which the prover's padded witness states alike
+/// (`tessera_prover::stages::PaddedWitness`).
+pub(super) const GADGET_INPUT: &str = "no gadget but a lookup, BitDecompose or AssertEqual reads a \
+                                       tensor non-zero at its padded positions: RFC-0035's row \
+                                       relations take a padded row's input as 0";
+
+/// Whether a gadget's padded positions are specified for an input non-zero there (RFC-0072
+/// 'Padded positions'): a lookup's are the lookup of what its key packs there, `BitDecompose`'s
+/// the bits of its input there, and `AssertEqual` weighs its sides by `ψ`, 0 there. Every other
+/// gadget, `OneHot`, `SoftmaxRow`, `RsqrtRow`, `Argmax`, `InverseCdf` and any gadget added later,
+/// is not: RFC-0035's row relations take a padded row's input as 0.
+pub fn reads_padding(op: &Op) -> bool {
+    matches!(
+        op,
+        Op::Requant { .. }
+            | Op::TableMap { .. }
+            | Op::Bitwise { .. }
+            | Op::BitDecompose { .. }
+            | Op::AssertEqual
+    )
+}
+
+/// Refuses a gadget whose padded positions are not specified for an input non-zero there
+/// ([`reads_padding`]) that reads a tensor with padded positions which a lookup non-zero at
+/// padding reaches ([`tensors_nonzero_at_padding`], RFC-0072 'Padded positions'). Decided from
+/// the graph and the tables alone, before any claim.
+pub(super) fn check_gadgets(
+    graph: &Graph,
+    tables: &[TableSpec],
+    producers: &[Option<(NodeId, u32)>],
+) -> Result<(), CompileError> {
+    let reached = reach(graph, tables, producers, false)?;
+    let padded = |t: &TensorId| {
+        reached.get(t.0 as usize).copied().unwrap_or(false)
+            && graph
+                .tensors
+                .get(t.0 as usize)
+                .is_some_and(|spec| spec.shape.iter().any(|len| !len.is_power_of_two()))
+    };
+    for node in &graph.nodes {
+        let gadget = node.op.class() == tessera_ir::OpClass::Gadget;
+        if gadget && !reads_padding(&node.op) && node.inputs.iter().any(padded) {
+            return refuse(Some(node.id), GADGET_INPUT);
         }
     }
     Ok(())

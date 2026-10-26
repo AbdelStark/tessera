@@ -30,10 +30,15 @@
 //! 3. **The pool** ends with every committed part's value, [`StageProver::pool`]: what the
 //!    openings prove (RFC-0011, RFC-0012).
 //!
+//! Every table is a tensor over its padded shape (RFC-0011 rule 1): its values padded with
+//! zeros, or, for a tensor a lookup non-zero at padding reaches, what its operation computes at
+//! its padded positions, which [`PaddedWitness`] gives (RFC-0072 'Padded positions').
+//!
 //! Every claim an instance leaves is checked against the schedule's point for it, so a relation
 //! and the schedule cannot disagree silently. The witness's tables are secret-class (05 §3): this
 //! module borrows them, and keeps what it derives in `SecretBuf`s that clear their memory.
 
+mod padded;
 mod public;
 mod relations;
 mod tables;
@@ -45,8 +50,8 @@ use tessera_codec::error::ErrorCode;
 use tessera_compiler::CompileError;
 use tessera_compiler::Lowering;
 use tessera_compiler::schedule::{
-    Atom, Claim, Coord, Factor, Layers, NodeRef, Part, Relation, Source, StageSchedule,
-    nonzero_at_padding, producers,
+    Atom, Claim, Coord, Factor, Layers, NodeRef, Part, Relation, Source, StageSchedule, producers,
+    tensors_nonzero_at_padding,
 };
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
 use tessera_ir::{Graph, Node, NodeId, Op, TensorId};
@@ -58,6 +63,7 @@ use tessera_tables::TableSpec;
 
 use relations::{Arena, build};
 
+pub use padded::PaddedWitness;
 pub use public::{PublicTensors, public_value};
 
 /// Public points drawn once for a complete mixed stage, before its gamma.
@@ -125,10 +131,11 @@ pub trait WitnessSource {
     /// The values of `tensor` over its padded shape, each axis padded to a power of two, flat
     /// and row-major over that shape: the stage tables' layout, the last axis's index the lowest
     /// bits (RFC-0011 rule 1). `None`, the default, for a source of the real positions alone,
-    /// whose padded positions the stage tables take as 0 (RFC-0072 'Padded positions'): what the
-    /// CPU engine's witness computes for every graph the stages prove today. A source that
-    /// returns them makes the stage tables hold them, as a prover that commits its padded
-    /// positions does.
+    /// whose padded positions the stage tables take as 0 (RFC-0072 'Padded positions'). That is
+    /// right for every tensor but those a lookup non-zero at padding reaches, which
+    /// [`PaddedWitness`] computes over any source, and the stage prover refuses a source that
+    /// lacks them. A source that returns them makes the stage tables hold them, as a prover that
+    /// commits its padded positions does.
     fn padded(&self, tensor: TensorId) -> Option<&[i64]> {
         let _ = tensor;
         None
@@ -240,9 +247,10 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
     /// without layers'). It proves what [`new`](Self::new) proves for a lowering of that graph.
     ///
     /// **Precondition.** As for the schedule, `graph` has passed RFC-0006 range analysis
-    /// ([`analyze`](tessera_compiler::analyze)), and `witness` holds every tensor of it. Its tables
-    /// pad every tensor with zeros, so [`leaf`](Self::leaf) refuses a graph that holds a lookup
-    /// non-zero at padding with padded positions (RFC-0072 'Padded positions').
+    /// ([`analyze`](tessera_compiler::analyze)), and `witness` holds every tensor of it, with the
+    /// padded positions of those a lookup non-zero at padding reaches, such as AES's after its
+    /// S-box: a [`PaddedWitness`] computes them (RFC-0072 'Padded positions'). [`leaf`](Self::leaf)
+    /// refuses a witness without them.
     pub fn for_graph(
         graph: &'a Graph,
         tables: &'a [TableSpec],
@@ -276,9 +284,9 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
     ///
     /// # Errors
     ///
-    /// [`StageError::Internal`] when the graph holds a lookup non-zero at padding with padded
-    /// positions, a point has the wrong number of coordinates or the leaf stage was proven already;
-    /// [`StageError::Memory`] when a table does not fit.
+    /// [`StageError::Internal`] when the witness lacks the padded positions of a tensor a lookup
+    /// non-zero at padding reaches, a point has the wrong number of coordinates or the leaf stage
+    /// was proven already; [`StageError::Memory`] when a table does not fit.
     pub fn leaf(
         &mut self,
         points: &[Vec<GoldilocksExt2>],
@@ -309,31 +317,25 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
         Ok(values)
     }
 
-    /// Refuses a graph holding a lookup non-zero at padding whose output has padded positions
-    /// (RFC-0072 'Padded positions'): they hold its table's value at the zero key, such as
-    /// `AesSbox(0) = 0x63`, where the stage tables, padded with zeros, hold 0. #526's fourth slice
-    /// computes the tables over padded shapes.
+    /// Refuses a witness without the padded positions of a tensor that a lookup non-zero at
+    /// padding reaches and that has padded positions (RFC-0072 'Padded positions'): they hold what
+    /// its operation computes there, such as `AesSbox(0) = 0x63`, where tables padded with zeros
+    /// hold 0. [`PaddedWitness`] computes them.
     fn check_padding(&self) -> Result<(), StageError> {
-        for node in &self.graph.nodes {
-            let padded = node.outputs.iter().any(|t| {
-                self.graph
-                    .tensors
-                    .get(t.0 as usize)
-                    .is_some_and(|spec| spec.shape.iter().any(|len| !len.is_power_of_two()))
-            });
-            if !padded {
-                continue;
-            }
-            match nonzero_at_padding(self.graph, self.tables, node) {
-                Ok(false) => {}
-                Ok(true) => {
-                    return internal(
-                        "a lookup non-zero at padding has no padded positions while the stage \
-                         tables pad with zeros",
-                    );
-                }
-                Err(CompileError::Schedule { rule, .. }) => return internal(rule),
-                Err(_) => return internal("a lookup's padding is decided from public data"),
+        let reached =
+            tensors_nonzero_at_padding(self.graph, self.tables).map_err(|error| match error {
+                CompileError::Schedule { rule, .. } => StageError::Internal { rule },
+                _ => StageError::Internal {
+                    rule: "a lookup's padding is decided from public data",
+                },
+            })?;
+        for (spec, &reached) in self.graph.tensors.iter().zip(&reached) {
+            let padded = spec.shape.iter().any(|len| !len.is_power_of_two());
+            if reached && padded && self.witness.padded(spec.id).is_none() {
+                return internal(
+                    "the witness holds the padded positions of every tensor a lookup non-zero at \
+                     padding reaches",
+                );
             }
         }
         Ok(())

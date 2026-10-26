@@ -102,7 +102,7 @@ The lookup tree's leaf `i` holds column entry `σ_h(i)`, where `σ_h` keeps bit 
 
 **What is sent.**
 - The values go under `stage/0/split`, after `logup/values`, followed in the same `Vec<Fp2>` (`TreeProof.splits`) by the atom split values of any split leaf claim ([RFC-0037](RFC-0037-stage-schedule.md#splits)).
-- For each site in node order, and each of its real layers in order (once for a site outside the layers), the prover sends one value per tensor its lookups read. It sends none for a public tensor, which the verifier evaluates at the block's point ([RFC-0072](RFC-0072-anchor-relations.md#public-tensors)).
+- For each site in node order, and each of its real layers in order (once for a site outside the layers), the prover sends one value per tensor its lookups read. It sends none for a public tensor, which the verifier evaluates at its point `π_t(P[0..k])`, the block's for a tensor read over all of the block's axes ([RFC-0072](RFC-0072-anchor-relations.md#public-tensors)).
 - Each value is the tensor's evaluation at its point.
 - The tensors of a site at a layer come in this order:
   1. lookup by lookup, in RFC-0009's order;
@@ -120,7 +120,7 @@ The lookup tree's leaf `i` holds column entry `σ_h(i)`, where `σ_h` keeps bit 
 **The result.** Each value is a per-layer claim of RFC-0037 'The layer point'.
 - Stage 1 stacks a site's tensor over its layers under `ρ_1`.
 - The stacked claim of a virtual tensor is a stage-1 instance.
-- The stacked claim of a committed tensor goes to the pool.
+- The stacked claim of a committed tensor goes to the opening pool (INV-SCH-3): a site's committed input through the schedule's pool, where its leaf claim is ready; a lookup's output, on which the schedule leaves no claim, as a fixed non-native leaf claim in RFC-0037 'The claim pool's order ([RFC-0072](RFC-0072-anchor-relations.md#messages-rejections-and-stages) 'Openings').
 
 **One claim per input.**
 - Every tensor a site's lookups read is read over one set of axes, so it has one point and one value per layer.

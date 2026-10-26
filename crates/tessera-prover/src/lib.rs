@@ -5,7 +5,8 @@
 //!
 //! [`StageProver`] proves a stage schedule's reduction stages over a [`WitnessSource`]: each
 //! stage's batched sumcheck, its split values and the claim pool's values (RFC-0010 'Stages',
-//! RFC-0037).
+//! RFC-0037). [`PaddedWitness`] gives a source the padded positions of the tensors a lookup
+//! non-zero at padding reaches, such as AES's after its S-box (RFC-0072 'Padded positions').
 //!
 //! [`leaf`] lays out the leaf stage's lookups (RFC-0045): each LogUp instance's column of blocks,
 //! its lookup tree's leaf order, the leaf point `P`, and the split values that turn its leaf
@@ -53,9 +54,11 @@ pub use cpu::{
 };
 pub use leaf::{LeafError, LeafLayout, PreparedLeaf, ProvenLeaf, prepare_leaf, prove_leaf};
 pub use model::{ModelSchedule, derive_model_schedule, derive_runtime_schedule};
-pub use openings::ModelOpenings;
+pub use openings::{GraphOpenings, ModelOpenings, OpeningTarget};
 pub use release::{Release, ReleaseSchedule, ScheduleError};
-pub use stages::{PublicTensors, StageError, StageProof, StageProver, WitnessSource, public_value};
+pub use stages::{
+    PaddedWitness, PublicTensors, StageError, StageProof, StageProver, WitnessSource, public_value,
+};
 
 // Test-only features cannot reach a release build (RFC-0001 'Cargo features').
 #[cfg(all(feature = "test-rng", not(debug_assertions)))]

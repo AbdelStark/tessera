@@ -25,6 +25,12 @@
 //! combined selections and `BitFn` (RFC-0072 'The selection relation', 'Combined selections';
 //! RFC-0066 '`BitFn`', #526's third slice) are checked by the closed forms in [`selections`],
 //! which holds theirs. [`sha256`] proves the SHA-256 circuit end to end through all of them.
+//!
+//! #526's fourth slice: [`padding`] proves each operation over the padded tables of a lookup
+//! non-zero at padding (RFC-0072 'Padded positions'); [`lookups`] proves a graph's lookups
+//! through the real leaf stage, checked by a verifier of LogUp and RFC-0045's split that
+//! evaluates public lookup inputs itself, then by the stage verifier here on the same transcript
+//! ([`verify_from_leaf`]); and [`aes`] proves AES-128-CTR end to end through all of it.
 
 use std::collections::HashMap;
 use std::fs;
@@ -48,7 +54,7 @@ use tessera_ir::{
 use tessera_poly::{eq, eq_table, evaluate_base, less_than};
 use tessera_prover::leaf::gadget_nodes;
 use tessera_prover::{
-    PublicTensors, StageError, StageProof, StageProver, WitnessSource, public_value,
+    PaddedWitness, PublicTensors, StageError, StageProof, StageProver, WitnessSource, public_value,
 };
 use tessera_sumcheck::SumcheckTranscript;
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableId, TableKind, TableSpec};
@@ -56,7 +62,10 @@ use tessera_witness::{Engine, Witness};
 
 type F = GoldilocksExt2;
 
+mod aes;
 mod bits;
+mod lookups;
+mod padding;
 mod selections;
 mod sha256;
 
@@ -363,6 +372,78 @@ fn verify_public(
         .collect()
 }
 
+/// What a verifier holds when it has checked a real leaf stage itself (RFC-0045, RFC-0008): the
+/// leaf point `P`, each leaf claim's values, which it derived from the split's values or from
+/// public data, and the graph atoms' split values, absorbed with the lookups' under
+/// `stage/0/split`.
+struct LeafOutcome {
+    point: Vec<F>,
+    claims: Vec<Vec<F>>,
+    atoms: Vec<F>,
+}
+
+/// The pool's values and the verifier's coordinates of a schedule of `graph` whose verifier holds
+/// `publics`, once every stage's checks pass after the leaf stage it checked itself on `t`
+/// ([`LeafOutcome`]): each leaf claim at its site's prefix of `P`, its atoms' splits checked
+/// (their message already absorbed), then each reduction stage on the same transcript.
+fn verify_from_leaf<T: SumcheckTranscript<F> + ?Sized>(
+    graph: &Graph,
+    tables: &[TableSpec],
+    schedule: &StageSchedule,
+    publics: Publics<'_>,
+    leaf: LeafOutcome,
+    stages: &[StageProof],
+    t: &mut T,
+) -> Result<(Vec<F>, HashMap<Coord, F>), Reject> {
+    let mut v = Verifier {
+        graph,
+        tables,
+        schedule,
+        publics,
+        public: PublicTensors::of(graph),
+        coords: HashMap::new(),
+        claims: Vec::new(),
+        parts: Vec::new(),
+        pool: vec![None; schedule.pool.len()],
+    };
+    let reject = |stage, round| Reject { stage, round };
+    let claims = &schedule.stages[0].claims;
+    for ((s, claim), values) in (0u32..).zip(claims).zip(&leaf.claims) {
+        for (index, c) in (0u32..).zip(&claim.point) {
+            let &x = leaf.point.get(index as usize).ok_or(reject(0, 0))?;
+            assert_eq!(*c, Coord::Leaf { site: s, index }, "a leaf claim's point");
+            v.coords.insert(Coord::Leaf { site: s, index }, x);
+        }
+        if values.len() != v.layers_of(claim).len() {
+            return Err(reject(0, 0));
+        }
+    }
+    if leaf.claims.len() != claims.len() {
+        return Err(reject(0, 0));
+    }
+    v.claims.push(leaf.claims);
+    v.check_splits(0, &leaf.atoms)?;
+    if schedule.stages.len() == 1 {
+        v.fill_pool(0);
+    }
+    if stages.len() + 1 != schedule.stages.len() {
+        return Err(reject(u16::try_from(stages.len()).unwrap_or(0), 0));
+    }
+    for (i, stage) in stages.iter().enumerate() {
+        let k = u16::try_from(i + 1).expect("small");
+        if stage.stage != k {
+            return Err(reject(k, 0));
+        }
+        v.stage(k, stage, t)?;
+    }
+    let pool = v
+        .pool
+        .iter()
+        .map(|value| value.ok_or(reject(0, 0)))
+        .collect::<Result<_, _>>()?;
+    Ok((pool, v.coords))
+}
+
 impl Verifier<'_> {
     fn coord(&self, c: Coord) -> F {
         if c == Coord::Half {
@@ -463,10 +544,23 @@ impl Verifier<'_> {
         e[*next - 1]
     }
 
-    /// The splits of stage `index` (RFC-0037 'Splits'): each claim's public terms move to its
-    /// value; then each split claim's parts' values must add up to the rest, layer by layer for a
-    /// leaf claim in the layers, and a claim with no part must have no rest.
-    fn splits(&mut self, index: usize, values: &[F], t: &mut Transcript) -> Result<(), Reject> {
+    /// The splits of stage `index` (RFC-0037 'Splits'), checked, then absorbed under
+    /// `stage/{index}/split`.
+    fn splits<T: SumcheckTranscript<F> + ?Sized>(
+        &mut self,
+        index: usize,
+        values: &[F],
+        t: &mut T,
+    ) -> Result<(), Reject> {
+        self.check_splits(index, values)?;
+        t.absorb_message(&format!("stage/{index}/split"), values);
+        Ok(())
+    }
+
+    /// The checks of stage `index`'s splits (RFC-0037 'Splits'): each claim's public terms move to
+    /// its value; then each split claim's parts' values must add up to the rest, layer by layer
+    /// for a leaf claim in the layers, and a claim with no part must have no rest.
+    fn check_splits(&mut self, index: usize, values: &[F]) -> Result<(), Reject> {
         let stage = &self.schedule.stages[index];
         let fail = Reject {
             stage: u16::try_from(index).expect("small"),
@@ -512,7 +606,6 @@ impl Verifier<'_> {
         if next != values.len() {
             return Err(fail);
         }
-        t.absorb_message(&format!("stage/{index}/split"), values);
         self.parts.push(parts);
         // The leaf stage's committed parts are stacked at ρ_1, which stage 1 draws.
         if index > 0 {
@@ -539,7 +632,12 @@ impl Verifier<'_> {
 
     /// Stage `k`: its points, its batched sumcheck checked round by round and at the end, its
     /// claims, then its splits.
-    fn stage(&mut self, k: u16, proof: &StageProof, t: &mut Transcript) -> Result<(), Reject> {
+    fn stage<T: SumcheckTranscript<F> + ?Sized>(
+        &mut self,
+        k: u16,
+        proof: &StageProof,
+        t: &mut T,
+    ) -> Result<(), Reject> {
         let stage = &self.schedule.stages[usize::from(k)];
         if k == 1 {
             for c in 0..self.schedule.layers.vars {
@@ -1659,59 +1757,68 @@ fn the_bit_operations_take_no_leaf_site() {
     assert_eq!(sites, expected);
 }
 
-/// A witness of zeros, each tensor of its own size.
-struct Zeros(Vec<Vec<i64>>);
-
-impl WitnessSource for Zeros {
-    fn values(&self, tensor: TensorId) -> Option<&[i64]> {
-        self.0.get(tensor.0 as usize).map(Vec::as_slice)
-    }
-}
-
 /// RFC-0072 'Padded positions': an S-box, a lookup non-zero at padding, holds `AesSbox(0) =
-/// 0x63` at its padded positions, which the stage tables, padded with zeros, do not hold until
-/// #526's fourth slice computes them over padded shapes. The stage prover refuses such a graph at
-/// its leaf stage. An S-box with no padded position, and a `Gf256Mul` lookup with padded
-/// positions, which maps 0 to 0, prove their leaf stage.
+/// 0x63` at its padded positions, which the engine's witness of the real positions, padded with
+/// zeros, does not hold. The stage prover refuses that witness at its leaf stage, and takes a
+/// [`PaddedWitness`] of it, whose S-box table holds the S-box of each real byte and `0x63` at
+/// each padded position. An S-box with no padded position, and a `Gf256Mul` lookup with padded
+/// positions, which maps 0 to 0, need none.
 #[test]
-fn a_lookup_non_zero_at_padding_with_padded_positions_is_refused() {
-    let leaf = |kind: TableKind, shape: &[u32]| {
+fn a_witness_without_the_padded_positions_of_a_lookup_non_zero_there_is_refused() {
+    let leaf = |kind: TableKind, shape: &[u32], padded: bool| {
         let mut g = GraphBuilder::new();
         let mut input = decl(shape, ADVICE);
         input.range = IntRange { lo: 0, hi: 255 };
         let x = g.input(input).expect("bytes");
         let output = decl(shape, NodeKind::LookupOutput { table: TableId(0) });
-        g.node(Op::TableMap { table: TableId(0) }, &[x], vec![output])
-            .expect("a lookup");
+        let s = g
+            .node(Op::TableMap { table: TableId(0) }, &[x], vec![output])
+            .expect("a lookup")[0];
         let graph = g.finish();
-        let tables = vec![
-            GeneratedTable::new(TableId(0), kind)
-                .expect("a table")
-                .spec()
-                .clone(),
-        ];
+        let generated = GeneratedTable::new(TableId(0), kind).expect("a table");
+        let tables = vec![generated.spec().clone()];
         let schedule = derive_graph_schedule(&graph, &tables, &[], None).expect("a schedule");
-        let witness = Zeros(
-            graph
-                .tensors
+        let witness = Engine::for_graph(&graph, &tables)
+            .expect("an engine")
+            .evaluate(random_inputs(&graph, &[x], 0x0526_0002))
+            .expect("a witness");
+        let points = leaf_points(&schedule, 0x0526_0002);
+        if !padded {
+            let mut prover = StageProver::for_graph(&graph, &tables, &schedule, &witness);
+            return prover.leaf(&points).map(|_| ());
+        }
+        let source = PaddedWitness::new(&graph, &tables, &witness).expect("padded tables");
+        // The S-box's table: each real byte's S-box, and the table's value at 0 elsewhere.
+        if let Some(table) = source.padded(s) {
+            let cube: Vec<usize> = shape
                 .iter()
-                .map(|t| vec![0; t.shape.iter().map(|&d| d as usize).product()])
-                .collect(),
-        );
-        let mut prover = StageProver::for_graph(&graph, &tables, &schedule, &witness);
-        prover
-            .leaf(&leaf_points(&schedule, 0x0526_0002))
-            .map(|_| ())
+                .map(|&d| d.next_power_of_two() as usize)
+                .collect();
+            let bytes = witness.tensor(x).expect("the bytes");
+            for (index, &value) in table.iter().enumerate() {
+                let (row, column) = (index / cube[1], index % cube[1]);
+                let real = row < shape[0] as usize && column < shape[1] as usize;
+                let key = if real {
+                    bytes[row * shape[1] as usize + column]
+                } else {
+                    0
+                };
+                assert_eq!(Some(value), generated.lookup(key, 0), "entry {index}");
+            }
+        }
+        let mut prover = StageProver::for_graph(&graph, &tables, &schedule, &source);
+        prover.leaf(&points).map(|_| ())
     };
     assert_eq!(
-        leaf(TableKind::AesSbox, &[4, 3]),
+        leaf(TableKind::AesSbox, &[4, 3], false),
         Err(StageError::Internal {
-            rule: "a lookup non-zero at padding has no padded positions while the stage tables \
-                   pad with zeros"
+            rule: "the witness holds the padded positions of every tensor a lookup non-zero at \
+                   padding reaches"
         })
     );
-    leaf(TableKind::AesSbox, &[4, 4]).expect("no padded position");
-    leaf(TableKind::Gf256Mul { c: 2 }, &[4, 3]).expect("a lookup that maps 0 to 0");
+    leaf(TableKind::AesSbox, &[4, 3], true).expect("the padded witness");
+    leaf(TableKind::AesSbox, &[4, 4], false).expect("no padded position");
+    leaf(TableKind::Gf256Mul { c: 2 }, &[4, 3], false).expect("a lookup that maps 0 to 0");
 }
 
 // ----- Public terms, ConstAdd and the per-channel ConstMul (RFC-0072) ---------------------------
@@ -2197,8 +2304,8 @@ enum Reaching {
     Product,
     /// `requant(x + Expand(p))`, `x` committed: the pool claim on `x` is `v − Ẽ(r)`.
     Committed,
-    /// `requant(Expand(p))`: the leaf site reads the public tensor, and is refused until the
-    /// leaf layout leaves its value out of the split (RFC-0045 'The split').
+    /// `requant(Expand(p))`: the leaf site reads the public tensor, whose claim is one public
+    /// term with no part: nothing is sent or proven for it (RFC-0045 'The split').
     Alone,
 }
 
@@ -2207,8 +2314,9 @@ enum Reaching {
 /// maps to the public tensor `Expand(p)`, which the verifier computes from `p`, moves it to the
 /// claim's value ([`Reaching`]). Each proves and verifies, and a `p` changed on the verifier's side
 /// fails the check that reads it: stage 1's or the opening's. A requantization of `Expand(p)`
-/// alone reads the public tensor at its leaf site, which the schedule refuses, since the leaf
-/// layout would send its value.
+/// alone reads the public tensor at its leaf site: its claim has no part, and a changed `p` fails
+/// the leaf stage's own check of it, `Reject(Sumcheck { stage: 0, round: 0 })`, which a real leaf
+/// stage makes on the split's key identity instead.
 #[test]
 fn a_claim_reaching_a_public_tensor_proves_and_verifies() {
     for reaching in [Reaching::Product, Reaching::Committed, Reaching::Alone] {
@@ -2247,24 +2355,15 @@ fn a_claim_reaching_a_public_tensor_proves_and_verifies() {
             }
         }
         let graph = g.finish();
-        if reaching == Reaching::Alone {
-            let refused = derive_graph_schedule(&graph, &[], &[], None);
-            assert!(
-                matches!(
-                    refused,
-                    Err(CompileError::Schedule {
-                        rule: PUBLIC_SITE,
-                        ..
-                    })
-                ),
-                "{refused:?}"
-            );
-            continue;
-        }
         let run = Run::of(&graph, &[a, b, p], 0x0526_0D00);
         let leaf = &run.schedule.stages[0].claims[0];
         assert_eq!(leaf.public.len(), 1);
         assert_eq!(leaf.public[0].source, PublicSource::Tensor(wide));
+        assert_eq!(
+            leaf.parts.is_empty(),
+            reaching == Reaching::Alone,
+            "{reaching:?}: a part unless the claim is public alone"
+        );
         run.accepted(&graph);
         let mut changed = run.public.clone();
         changed[0].1[2] += 1;
@@ -2281,14 +2380,10 @@ fn a_claim_reaching_a_public_tensor_proves_and_verifies() {
                     "the opening rejects"
                 );
             }
-            Reaching::Alone => unreachable!("refused"),
+            Reaching::Alone => assert_eq!(verdict, Err(run.end(0)), "{reaching:?}"),
         }
     }
 }
-
-/// RFC-0045 'The split' sends no value for a lookup's public input; the leaf layout still does.
-const PUBLIC_SITE: &str = "a leaf site reads no public tensor: the leaf layout does not leave its value out of the split \
-     yet";
 
 // ----- Public terms' coefficients, shapes and points (the slice-1b review) -----------------------
 

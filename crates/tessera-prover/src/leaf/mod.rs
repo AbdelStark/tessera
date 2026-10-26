@@ -7,7 +7,9 @@
 //! - **Blocks.** A block is one lookup of one gadget site at one layer, over its domain padded
 //!   per dimension: `2^k` entries. [`LeafLayout::new`] derives every block from public data, the
 //!   sites in node order ([`gadget_nodes`], [`Site::requant`]), and groups them by table, one
-//!   instance per table in table order.
+//!   instance per table in table order. [`LeafLayout::graph`] lays out a graph without a
+//!   lowering, such as AES-128-CTR, whose `TableMap` and `Bitwise` nodes are its sites
+//!   (RFC-0072 'Gadgets and leaf sites'), and [`GraphLeafWitness`] lends their tensors.
 //! - **The column.** An instance's blocks come by site, layer and lookup, then a stable sort puts
 //!   larger ones first. Offsets are prefix sums, so a block of `2^k` entries starts at a multiple
 //!   of `2^k`. With `m` the total, the column has `2^h` entries, `h = ⌈log2 m⌉`, the last
@@ -26,9 +28,10 @@
 //!   at `P[0..k]` is its forms at the tensors' values `X̃_t(π_t(P[0..k]))`, `π_t` the coordinates
 //!   of the axes `X_t` is read over. The prover sends those values under `stage/0/split`, after
 //!   `logup/values`: site by site in node order, layer by layer, tensor by tensor in the order the
-//!   lookups first read them ([`split_values`]). The verifier checks each instance's key and value
-//!   claims by the identity above, `Reject(Sumcheck { stage: 0, round: 0 })` on a mismatch, and
-//!   each value is then RFC-0037's per-layer claim on its tensor.
+//!   lookups first read them ([`split_values`]), but none for a public tensor, which the verifier
+//!   evaluates itself ([`Read::public`], RFC-0072 'Public tensors'). The verifier checks each
+//!   instance's key and value claims by the identity above, `Reject(Sumcheck { stage: 0, round:
+//!   0 })` on a mismatch, and each value is then RFC-0037's per-layer claim on its tensor.
 //!
 //! - **Token groups.** A leaf stage larger than memory is proven in groups (RFC-0054): group `h`
 //!   holds the blocks of its layers, restricted to its tokens, with the token axis's low bits set
@@ -44,11 +47,13 @@
 //! lends the tensors in [`SiteTensors`], and what is computed from them lives in `SecretBuf`s.
 
 mod claims;
+mod graph;
 mod grouped;
 mod groups;
 mod layout;
 mod model;
 mod model_witness;
+pub use graph::GraphLeafWitness;
 pub use model::ModelColumn;
 pub use model_witness::ModelWitness;
 mod prove;

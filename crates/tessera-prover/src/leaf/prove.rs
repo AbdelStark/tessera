@@ -286,7 +286,8 @@ pub fn leaf_point<F: Copy>(proven: &ProvenLogUp<F>) -> Vec<F> {
 
 /// The split values (RFC-0045 'What is sent'): for each site in node order, each of its real
 /// layers in order and each tensor its lookups read, in the order they first read them, the
-/// tensor's extension at its point `π_t(P[0..k])`, `point` being `P`.
+/// tensor's extension at its point `π_t(P[0..k])`, `point` being `P`. A public tensor has none:
+/// the verifier evaluates it there ([`Read::public`]).
 ///
 /// # Errors
 ///
@@ -305,7 +306,7 @@ pub fn split_values<S: Copy + Eq>(
             let reads = layout.reads(s, l).ok_or(LeafError::Internal {
                 rule: "the layout reads every site's tensors",
             })?;
-            for read in reads {
+            for read in reads.iter().filter(|read| !read.public) {
                 let entries = tensors.of(read)?;
                 let at = read
                     .coords

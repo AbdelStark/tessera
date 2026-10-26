@@ -135,7 +135,8 @@ impl GroupedLayout {
     ///
     /// [`LeafError::Internal`] (`ERR-INTERNAL`) for the first rule broken, in this order: more than
     /// 14 group bits, or more layer bits than the layer index has; groups of a stage whose token
-    /// axes RFC-0054 does not derive ([`LeafLayout::ungroupable`]), with that rule; then site by site, layer by
+    /// axes RFC-0054 does not derive ([`LeafLayout::ungroupable`]), with that rule; a stage that
+    /// reads a public tensor ([`Read::public`](super::Read::public)); then site by site, layer by
     /// layer and lookup by lookup, a token axis shorter than `2^{g_T}` padded; then tensor by
     /// tensor, lookups that read one tensor with different group variables or, outside them,
     /// different coordinates in their groups' blocks.
@@ -156,6 +157,18 @@ impl GroupedLayout {
             && let Some(rule) = stage.ungroupable()
         {
             return internal(rule);
+        }
+        // RFC-0054's merge sends one polynomial per read; a public read, which RFC-0045 leaves
+        // out of the split (RFC-0072 'Public tensors' 'In the leaf stage'), has no rule there.
+        let public = (0..stage.sites().len()).any(|s| {
+            (0..stage.sites()[s].layers.len()).any(|l| {
+                stage
+                    .reads(s, l)
+                    .is_some_and(|r| r.iter().any(|read| read.public))
+            })
+        });
+        if public {
+            return internal("a grouped leaf stage reads no public tensor");
         }
         let g_t = u32::from(groups.token_bits);
         let mut fixed = Vec::with_capacity(stage.sites().len());
