@@ -318,7 +318,7 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
   - An S-box output off its table is `Reject(Lookup { table })`.
 - **Calibration.** Over F65537, a witness with one non-Boolean bit passes stage 1's booleanity check at the rate `n/|F|`, within confidence bounds, with scripted challenges. There `low + high ≤ 16` (RFC-0066 Lemma 1).
 - **No change elsewhere.** The Llama schedules' vectors (`spec/vectors/schedule/`), each Llama stage's evaluation count, `cargo xtask gen-vectors --check` and the verifier's stage tests are unchanged, and no Llama schedule meets the summing-relation, committed-output or layer refusals.
-- **The refusals.** Each is `ERR-INTERNAL` when the schedule is derived: a `Sum` over a padded axis downstream of a `TableMap` into `AesSbox`; a `MatMulAct` whose two inputs both have one upstream, while one with a single such input is admitted; a layer template holding a `BitDecompose`, an `AssertEqual`, a `ConstAdd`, a selection or a per-channel `ConstMul`; a committed output of a `Slice` and of a `Sum`; in a graph of two requests, a `ConstAdd` and an `AssertEqual` downstream of the tokens, once #551 builds one.
+- **The refusals.** Each is `ERR-INTERNAL` when the schedule is derived: a `Sum` over a padded axis downstream of a `TableMap` into `AesSbox`; a `MatMulAct` whose two inputs both have one upstream, while one with a single such input is admitted; a layer template holding a `BitDecompose`, an `AssertEqual`, a `ConstAdd`, a selection, a per-channel `ConstMul` or a node whose output is public; a committed output of a `Slice` and of a `Sum`; in a graph of two requests, a `ConstAdd` and an `AssertEqual` downstream of the tokens, once #551 builds one.
 
 ## Open Questions
 
