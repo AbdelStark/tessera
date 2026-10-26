@@ -8,7 +8,8 @@
 //!   them. One checkpoint, which bounds no layer, is refused.
 //! - **Public tensors.** A public input, and the output of a node that is not gadget-backed whose
 //!   inputs are all public, unless it is declared committed. No Llama lowering has one but its
-//!   public inputs.
+//!   public inputs. A claim that reaches one, and a `ConstAdd`'s shift, are public terms the
+//!   verifier moves to the claim's value; a relation's public operand leaves no claim.
 //! - **The stage count.** The commitment report's is the schedule's on every graph without layers
 //!   built here.
 //! - **The refusals**, each `ERR-INTERNAL` with its rule, and the case each admits: a layer
@@ -30,8 +31,8 @@ use tessera_compiler::anchor::{
     sha256_digest_input, sha256_inputs,
 };
 use tessera_compiler::schedule::{
-    Coord, Layers, Site as LeafSite, StageSchedule, derive_graph_schedule, nonzero_at_padding,
-    public_tensors,
+    Coord, Factor, Kind, Layers, PublicSource, PublicTerm, Relation, Site as LeafSite,
+    StageSchedule, derive_graph_schedule, nonzero_at_padding, public_tensors,
 };
 use tessera_compiler::{CompileError, PublicModel, lower, stage_count};
 use tessera_ir::{
@@ -52,9 +53,6 @@ const SUMS: &str = "a Sum, SumSquares or MatMulAct over an axis whose length is 
                     two sums an input that is 0 at its padded positions";
 /// Stage 1's bit zero-checks are #526's second slice.
 const BITS: &str = "the schedule derives no bit zero-check of a BitDecompose or an AssertEqual yet";
-/// A committed `ConstAdd`'s shift `ĉ` is the first slice's second half.
-const SHIFT: &str = "a committed ConstAdd's equality zero-check takes its shift ĉ, which the schedule does not \
-     derive yet";
 /// A claim through a selection waits for the selection relation (#526's third slice).
 const MAPS: &str = "RFC-0037 maps a claim through Add, Sub, ConstMul, Sum, Reshape, Transpose and \
                     Expand only";
@@ -253,31 +251,47 @@ fn no_llama_lowering_has_a_derived_public_tensor_or_a_lookup_non_zero_at_padding
     }
 }
 
+/// The leaf point of site `site`, of `vars` coordinates.
+fn leaf_point(site: u32, vars: u32) -> Vec<Coord> {
+    (0..vars).map(|index| Coord::Leaf { site, index }).collect()
+}
+
+/// A public term of `source` at `point` with the coefficient `coefficient`, one product.
+fn term(source: PublicSource, point: Vec<Coord>, coefficient: Vec<Factor>) -> PublicTerm {
+    PublicTerm {
+        source,
+        point,
+        coefficient: vec![coefficient],
+    }
+}
+
+/// A key a test computes from the public inputs `p` and `q`.
+type PublicKey = fn(&mut GraphBuilder, TensorId, TensorId) -> TensorId;
+
 /// RFC-0072 'Public tensors' 'Their claims': a claim on a public tensor is the verifier's to
-/// evaluate, as a public atom, which the schedule does not derive yet. Until it does, the claim is
-/// refused at the public tensor itself, by the closure, not at a relation below it: a product or a
-/// selection of public inputs, and a public input read directly.
+/// evaluate. The walk stops at the public tensor itself, by the closure, not at a relation below
+/// it: a product or a selection of public inputs, and a public input read directly, are each one
+/// public term, with no atom, no part and no instance. The leaf stage is then the schedule.
 #[test]
-fn a_claim_on_a_public_tensor_is_refused_until_public_atoms() {
-    // The schedule of `requant(key(p, q))`, `key` of `shape`.
-    let schedule = |key: fn(&mut GraphBuilder, TensorId, TensorId) -> TensorId, shape: &[u32]| {
+fn a_claim_on_a_public_tensor_is_a_public_term() {
+    // The schedule of `requant(key(p, q))`, `key` of `shape`, and `key`.
+    let schedule = |key: PublicKey, shape: &[u32]| {
         let mut g = GraphBuilder::new();
         let p = g.input(decl(&[4, 8], NodeKind::Public, 0, 1)).expect("p");
         let q = g.input(decl(&[4, 8], NodeKind::Public, 0, 1)).expect("q");
         let k = key(&mut g, p, q);
         requant(&mut g, k, shape, -128, 127);
-        layerless(&g.finish(), &[])
+        let graph = g.finish();
+        (layerless(&graph, &[]).expect("a schedule"), graph, k)
     };
-    assert_eq!(
-        refusal(schedule(
+    let keys: [(&str, PublicKey, Vec<u32>); 3] = [
+        (
+            "a Mul of public inputs",
             |g, p, q| one(g, mul(), &[p, q], virt(&[4, 8])),
-            &[4, 8]
-        )),
-        "a claim reaches a public tensor",
-        "a Mul of public inputs"
-    );
-    assert_eq!(
-        refusal(schedule(
+            vec![4, 8],
+        ),
+        (
+            "a Slice of a public input",
             |g, p, _| {
                 let op = Op::Slice {
                     axis: 0,
@@ -286,14 +300,268 @@ fn a_claim_on_a_public_tensor_is_refused_until_public_atoms() {
                 };
                 one(g, op, &[p], virt(&[2, 8]))
             },
-            &[2, 8]
-        )),
-        "a claim reaches a public tensor",
-        "a Slice of a public input"
-    );
+            vec![2, 8],
+        ),
+        ("a public input", |_, p, _| p, vec![4, 8]),
+    ];
+    for (name, key, shape) in keys {
+        let (schedule, graph, k) = schedule(key, &shape);
+        let vars = if shape[0] == 4 { 5 } else { 4 };
+        let [claim] = schedule.stages[0].claims.as_slice() else {
+            panic!("{name}: one leaf claim");
+        };
+        assert!(claim.atoms.is_empty(), "{name}: {:?}", claim.atoms);
+        assert_eq!(
+            claim.public,
+            [term(
+                PublicSource::Tensor(k),
+                leaf_point(0, vars),
+                Vec::new()
+            )],
+            "{name}"
+        );
+        assert!(claim.parts.is_empty() && !claim.split, "{name}: no part");
+        assert_eq!(schedule.stage_count(), 1, "{name}: no instance");
+        assert_eq!(stage_count(&graph), 1, "{name}: the report's count");
+    }
+}
+
+/// RFC-0010 'Relations' ('A public input, an offset's constants, is evaluated by the verifier and
+/// moves to the claim's value'): a claim that reaches a public tensor through linear maps keeps
+/// its other atoms, and the public tensor, here an `Expand` of a public input, is a public term
+/// with the coefficient the maps give it. The claim is then ready on its one virtual atom. A
+/// second path to the same tensor at the same point merges into one term.
+#[test]
+fn a_claim_through_linear_maps_reaches_a_public_tensor() {
+    let mut g = GraphBuilder::new();
+    let a = g.input(decl(&[4, 3], ADVICE, -100, 100)).expect("a");
+    let b = g.input(decl(&[4, 3], ADVICE, -100, 100)).expect("b");
+    let p = g.input(decl(&[3], NodeKind::Public, -100, 100)).expect("p");
+    let wide = one(&mut g, Op::Expand { axis: 0, len: 4 }, &[p], virt(&[4, 3]));
+    let m = one(&mut g, mul(), &[a, b], virt(&[4, 3]));
+    let s = one(&mut g, Op::Sub, &[m, wide], virt(&[4, 3]));
+    let t = one(&mut g, Op::Add, &[s, wide], virt(&[4, 3]));
+    requant(&mut g, s, &[4, 3], -128, 127);
+    requant(&mut g, t, &[4, 3], -128, 127);
+    let graph = g.finish();
+    let schedule = layerless(&graph, &[]).expect("a schedule");
+    let leaf = &schedule.stages[0].claims;
+    assert_eq!(leaf[0].atoms.len(), 1);
+    assert_eq!(leaf[0].atoms[0].kind, Kind::Tensor(m));
     assert_eq!(
-        refusal(schedule(|_, p, _| p, &[4, 8])),
-        "a claim reaches a public graph input"
+        leaf[0].public,
+        [term(
+            PublicSource::Tensor(wide),
+            leaf_point(0, 4),
+            vec![Factor::Minus]
+        )],
+        "the subtrahend's coefficient"
+    );
+    assert!(!leaf[0].split, "ready on its virtual atom");
+    // `m − wide + wide`: one term of two products, which the verifier adds.
+    assert_eq!(leaf[1].public.len(), 1);
+    assert_eq!(
+        leaf[1].public[0].coefficient,
+        [vec![Factor::Minus], Vec::new()]
+    );
+    // Each leaf claim's product is one instance of stage 1.
+    assert_eq!(schedule.stages[1].instances.len(), 2);
+    assert_eq!(schedule.stage_count(), stage_count(&graph) as usize);
+}
+
+/// A `ConstAdd` of the constant `c`, one value or one per channel, on `[5, 3]`.
+fn constant(g: &mut GraphBuilder, per_channel: bool) -> tessera_ir::ConstRef {
+    let values = if per_channel { vec![7, -2, 5] } else { vec![9] };
+    g.constant(values).expect("a constant")
+}
+
+/// RFC-0072 'Linear operations that are not coordinate maps' (`ConstAdd`), RFC-0037 'Claims and
+/// atoms': a claim `ỹ(r) = v` on a `ConstAdd`'s output becomes `x̃(r) = v − ĉ(r)`, the shift a
+/// public term of the node at the claim's point, for a constant of one value and one per channel
+/// of a last axis of 3 alike. The claim is ready on its one virtual atom, and no stage is added.
+#[test]
+fn a_const_add_moves_its_shift_into_the_claims_value() {
+    for per_channel in [false, true] {
+        let mut g = GraphBuilder::new();
+        let a = g.input(decl(&[5, 3], ADVICE, -100, 100)).expect("a");
+        let b = g.input(decl(&[5, 3], ADVICE, -100, 100)).expect("b");
+        let m = one(&mut g, mul(), &[a, b], virt(&[5, 3]));
+        let c = constant(&mut g, per_channel);
+        let y = one(&mut g, Op::ConstAdd { c }, &[m], virt(&[5, 3]));
+        requant(&mut g, y, &[5, 3], -128, 127);
+        let graph = g.finish();
+        let node = graph.nodes[1].id;
+        let schedule = layerless(&graph, &[]).expect("a schedule");
+        let [claim] = schedule.stages[0].claims.as_slice() else {
+            panic!("one leaf claim");
+        };
+        assert_eq!(claim.atoms.len(), 1);
+        assert_eq!(claim.atoms[0].kind, Kind::Tensor(m));
+        assert!(claim.atoms[0].is_unit());
+        assert_eq!(
+            claim.public,
+            [term(
+                PublicSource::Shift(node),
+                leaf_point(0, 5),
+                Vec::new()
+            )],
+            "per channel: {per_channel}"
+        );
+        assert!(!claim.split);
+        assert_eq!(schedule.stages[1].instances.len(), 1, "the product");
+        assert_eq!(schedule.stage_count(), 2);
+        assert_eq!(schedule.stage_count(), stage_count(&graph) as usize);
+    }
+}
+
+/// RFC-0072 'A committed output', RFC-0037 'The committed first checkpoint': a committed
+/// `ConstAdd`'s equality zero-check `0 = Σ_x eq(z, x)·(Ỹ(x) − X̃(x) − ĉ(x))` sends `Y`'s
+/// evaluation, then `X`'s; with `X` public, `Y`'s alone, `X` read as `Public`. A committed
+/// `ConstMul` by a constant per channel sends `Y`'s, then `X`'s.
+#[test]
+fn a_committed_const_add_or_channel_scale_is_one_zero_check() {
+    for per_channel in [false, true] {
+        for public in [false, true] {
+            let mut g = GraphBuilder::new();
+            let kind = if public { NodeKind::Public } else { ADVICE };
+            let x = g.input(decl(&[5, 3], kind, -100, 100)).expect("x");
+            let c = constant(&mut g, per_channel);
+            let y = one(&mut g, Op::ConstAdd { c }, &[x], out(&[5, 3], ADVICE));
+            let graph = g.finish();
+            let schedule = layerless(&graph, &[]).expect("a schedule");
+            let stage = &schedule.stages[1];
+            let [instance] = stage.instances.as_slice() else {
+                panic!("one zero-check");
+            };
+            assert_eq!(instance.relation, Relation::Equality);
+            let kinds: Vec<Kind> = stage.claims[instance.claims.clone()]
+                .iter()
+                .map(|c| c.kind)
+                .collect();
+            let expected = if public {
+                vec![Kind::Tensor(y)]
+            } else {
+                vec![Kind::Tensor(y), Kind::Tensor(x)]
+            };
+            assert_eq!(
+                kinds, expected,
+                "per channel {per_channel}, public {public}"
+            );
+            assert_eq!(schedule.stage_count(), 2);
+            assert_eq!(schedule.stage_count(), stage_count(&graph) as usize);
+        }
+    }
+    let mut g = GraphBuilder::new();
+    let x = g.input(decl(&[5, 3], ADVICE, -100, 100)).expect("x");
+    let c = constant(&mut g, true);
+    let y = one(&mut g, Op::ConstMul { c }, &[x], out(&[5, 3], ADVICE));
+    let schedule = layerless(&g.finish(), &[]).expect("a schedule");
+    let stage = &schedule.stages[1];
+    assert_eq!(stage.instances[0].relation, Relation::Equality);
+    let kinds: Vec<Kind> = stage.claims.iter().map(|c| c.kind).collect();
+    assert_eq!(kinds, [Kind::Tensor(y), Kind::Tensor(x)]);
+}
+
+/// RFC-0072 'Public tensors' 'As an operand', RFC-0010 'Relations': a relation's public operand
+/// is read as `Public`, so the proof sends nothing for it and the instance leaves no claim on it.
+/// A `Mul` by a public row scale (`Trailing`), a public channel scale (`Leading`) or a public
+/// first operand leaves one claim, on its other operand, at that operand's coordinates; a
+/// committed `Mul`'s zero-check leaves `Y`'s and its other operand's. A product of public
+/// operands is public, and leaves no instance.
+#[test]
+fn a_mul_with_a_public_operand_leaves_no_claim_on_it() {
+    // `requant(a·b)` with the operands' shapes and kinds, then the stage-1 instance's claims.
+    let product = |a: (&[u32], NodeKind), b: (&[u32], NodeKind), broadcast: Broadcast| {
+        let mut g = GraphBuilder::new();
+        let x = g.input(decl(a.0, a.1, -100, 100)).expect("a");
+        let w = g.input(decl(b.0, b.1, -100, 100)).expect("b");
+        let y = one(&mut g, Op::Mul { broadcast }, &[x, w], virt(a.0));
+        requant(&mut g, y, a.0, -128, 127);
+        let graph = g.finish();
+        let schedule = layerless(&graph, &[]).expect("a schedule");
+        assert_eq!(schedule.stage_count(), stage_count(&graph) as usize);
+        (schedule, x, w)
+    };
+    let public = NodeKind::Public;
+    for (name, a, b, broadcast, claimed, coords) in [
+        (
+            "a public row scale",
+            (&[5u32, 3][..], ADVICE),
+            (&[5u32][..], public),
+            Broadcast::Trailing,
+            0,
+            0..5,
+        ),
+        (
+            "a public channel scale",
+            (&[5, 3][..], ADVICE),
+            (&[3][..], public),
+            Broadcast::Leading,
+            0,
+            0..5,
+        ),
+        (
+            "a public first operand",
+            (&[5, 3][..], public),
+            (&[5][..], ADVICE),
+            Broadcast::Trailing,
+            1,
+            2..5,
+        ),
+    ] {
+        let (schedule, x, w) = product(a, b, broadcast);
+        let stage = &schedule.stages[1];
+        let [instance] = stage.instances.as_slice() else {
+            panic!("{name}: one product");
+        };
+        assert_eq!(instance.relation, Relation::Mul(broadcast), "{name}");
+        let [claim] = &stage.claims[instance.claims.clone()] else {
+            panic!("{name}: one claim");
+        };
+        let operand = if claimed == 0 { x } else { w };
+        assert_eq!(claim.kind, Kind::Tensor(operand), "{name}");
+        assert_eq!(claim.point, instance.challenges[coords].to_vec(), "{name}");
+    }
+    // Both public: the product is public, a public term of the leaf claim.
+    let (schedule, ..) = product(
+        (&[5, 3][..], public),
+        (&[5][..], public),
+        Broadcast::Trailing,
+    );
+    assert_eq!(schedule.stage_count(), 1);
+    assert_eq!(schedule.stages[0].claims[0].public.len(), 1);
+    // A committed product with a public scale: `Y`'s claim, then `a`'s.
+    let mut g = GraphBuilder::new();
+    let x = g.input(decl(&[5, 3], ADVICE, -100, 100)).expect("a");
+    let w = g.input(decl(&[3], public, -100, 100)).expect("b");
+    let op = Op::Mul {
+        broadcast: Broadcast::Leading,
+    };
+    let y = one(&mut g, op, &[x, w], out(&[5, 3], ADVICE));
+    let schedule = layerless(&g.finish(), &[]).expect("a schedule");
+    let kinds: Vec<Kind> = schedule.stages[1].claims.iter().map(|c| c.kind).collect();
+    assert_eq!(kinds, [Kind::Tensor(y), Kind::Tensor(x)]);
+}
+
+/// A matmul's relations read their operands as tables of the witness, not as `Public`: a matmul
+/// with a public operand is refused (`ERR-INTERNAL`), rather than given a claim on it. No graph
+/// of the circuits or the lowering has one.
+#[test]
+fn a_matmul_with_a_public_operand_is_refused() {
+    let mut g = GraphBuilder::new();
+    let x = g
+        .input(decl(&[3, 8], NodeKind::Public, -100, 100))
+        .expect("x");
+    let weight = WeightRef {
+        ty: WeightType::Q,
+        layer: 0,
+    };
+    let w = g.weight(weight, 8, 8).expect("a weight");
+    let y = one(&mut g, Op::MatMulWeight { weight }, &[x, w], virt(&[3, 8]));
+    requant(&mut g, y, &[3, 8], -128, 127);
+    assert_eq!(
+        refusal(layerless(&g.finish(), &[])),
+        "a matmul's operands are not public"
     );
 }
 
@@ -698,10 +966,14 @@ fn the_template_rule_reads_the_layers_alone() {
     };
     let schedule = build(false).expect("the prologue and epilogue pass the template rule");
     assert_eq!(schedule.layers.count, 2);
-    assert_eq!(
-        refusal(build(true)),
-        MAPS,
-        "a claim through the epilogue's ConstAdd"
+    // A claim through the epilogue's `ConstAdd` maps onto its input and its shift.
+    let read = build(true).expect("a claim through the epilogue's ConstAdd");
+    assert!(
+        read.stages[0]
+            .claims
+            .iter()
+            .any(|claim| !claim.public.is_empty()),
+        "the ConstAdd's shift is a public term"
     );
 }
 
@@ -782,12 +1054,22 @@ fn a_committed_output_stage_1_does_not_prove_is_refused() {
         let schedule = layerless(&graph(node), &[]).unwrap_or_else(|e| panic!("{name}: {e:?}"));
         assert_eq!(schedule.stage_count(), 2, "{name}: its zero-check");
     }
-    // A committed `ConstAdd` passes this rule; its zero-check's shift comes with `ConstAdd`'s.
-    let shifted = graph(|g, x, _| {
-        let c = g.constant(vec![5]).expect("a constant");
-        one(g, Op::ConstAdd { c }, &[x], out(&[4, 3], ADVICE));
-    });
-    assert_eq!(refusal(layerless(&shifted, &[])), SHIFT);
+    // A committed `ConstAdd`, by one value and by one per channel: its zero-check takes its
+    // shift.
+    let shifted: [(&str, Committed); 2] = [
+        ("ConstAdd", |g, x, _| {
+            let c = g.constant(vec![5]).expect("a constant");
+            one(g, Op::ConstAdd { c }, &[x], out(&[4, 3], ADVICE));
+        }),
+        ("ConstAdd per channel", |g, x, _| {
+            let c = g.constant(vec![5, -1, 2]).expect("a constant");
+            one(g, Op::ConstAdd { c }, &[x], out(&[4, 3], ADVICE));
+        }),
+    ];
+    for (name, node) in shifted {
+        let schedule = layerless(&graph(node), &[]).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        assert_eq!(schedule.stage_count(), 2, "{name}: its zero-check");
+    }
 }
 
 /// The key a test computes from the S-box's output `s`, and its shape.

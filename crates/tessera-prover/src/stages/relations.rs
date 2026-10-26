@@ -14,7 +14,8 @@ use tessera_sumcheck::{
 };
 use tessera_tables::RopeTable;
 
-use super::tables::{axis_vars, zeros};
+use super::public::{channel_table, const_add, constant_and_shape, public_table, public_zeros};
+use super::tables::{axis_vars, pad, zeros};
 use super::{StageError, StageProver, WitnessSource};
 
 /// A stage's tables: the witness's, secret, and public ones such as RoPE's constants.
@@ -47,6 +48,13 @@ pub(super) enum Read {
         low_vars: usize,
     },
     Public(usize),
+}
+
+/// An input of a relation's node: public, read as `Public` from its table over its own variables,
+/// or the table of the instance's claim on it (RFC-0072 'Public tensors' 'As an operand').
+enum Operand {
+    Public(Vec<Goldilocks>),
+    Claimed(SecretBuf<Goldilocks>),
 }
 
 /// An instance's relation, its tables named in the arena.
@@ -274,11 +282,17 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                     shape,
                 }
             }
+            // A public operand is read as `Public`, a broadcast one laid out over the product's
+            // variables, and leaves no claim (RFC-0072 'Public tensors' 'As an operand').
             Relation::Mul(broadcast) => {
-                let a = arena.secret(operand(0)?);
-                let b = self.broadcast(
+                let mut next = 0;
+                let a = match self.input(instance, node, 0, &operand, &mut next)? {
+                    Operand::Public(table) => Read::Public(arena.public(table)),
+                    Operand::Claimed(table) => Read::Operand(arena.secret(table)),
+                };
+                let b = self.mul_operand(
                     arena,
-                    operand(1)?,
+                    self.input(instance, node, 1, &operand, &mut next)?,
                     input_shape(0),
                     input_shape(1),
                     broadcast,
@@ -286,7 +300,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                 )?;
                 Plan::Elementwise {
                     point_from: 0,
-                    inputs: vec![Read::Operand(a), b],
+                    inputs: vec![a, b],
                     terms: vec![Term::new(GoldilocksExt2::ONE, vec![0, 1])],
                     shape: ElementwiseShape::elementwise(vars(output) + lambda),
                 }
@@ -316,8 +330,21 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                     vars: vars(x) + lambda,
                 }
             }
+            // RFC-0010's `Elementwise` `Ỹ(r) = Σ_x eq(r, x)·c̃(x_c)·X̃(x)`, degree 3, the constant a
+            // public operand broadcast over the other axes, 0 at padded channels; one claim on
+            // `X` (RFC-0072 'ConstMul by a constant per channel'). No layer template holds one.
             Relation::ScaleChannels => {
-                return internal("the stages do not prove a ConstMul by one constant per channel");
+                if stacked {
+                    return internal("a ConstMul by a constant per channel is outside the layers");
+                }
+                let x = Read::Operand(arena.secret(operand(0)?));
+                let c = Read::Public(arena.public(self.channels(node)?));
+                Plan::Elementwise {
+                    point_from: 0,
+                    inputs: vec![x, c],
+                    terms: vec![Term::new(GoldilocksExt2::ONE, vec![0, 1])],
+                    shape: ElementwiseShape::elementwise(vars(output)),
+                }
             }
             Relation::Booleanity => {
                 let h = Read::Operand(arena.secret(operand(0)?));
@@ -422,6 +449,102 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             NodeRef::Position(position) => self.schedule.layers.node(position, 0),
         };
         &self.graph.nodes[id.0 as usize]
+    }
+
+    /// Input `i` of `instance`'s node `node` as its relation reads it: a public input's table, the
+    /// tensor padded per dimension (RFC-0072 'Public tensors' 'As an operand'); any other's, the
+    /// table of the instance's claim `*next`, which then advances. A template position's inputs
+    /// are never public: the schedule refuses a claim in a layer on a tensor every layer shares.
+    fn input(
+        &self,
+        instance: &Planned,
+        node: &Node,
+        i: usize,
+        operand: &dyn Fn(usize) -> Result<SecretBuf<Goldilocks>, StageError>,
+        next: &mut usize,
+    ) -> Result<Operand, StageError> {
+        let tensor = *node.inputs.get(i).ok_or(StageError::Internal {
+            rule: "a relation's node has its inputs",
+        })?;
+        let public = matches!(instance.node, NodeRef::Node(_))
+            && self.public.get(tensor.0 as usize).copied().unwrap_or(false);
+        if public {
+            return Ok(Operand::Public(public_table(
+                self.graph,
+                self.witness,
+                tensor,
+            )?));
+        }
+        let table = operand(*next)?;
+        *next += 1;
+        Ok(Operand::Claimed(table))
+    }
+
+    /// `Mul`'s second operand as its relation reads it: a claimed one as [`Self::broadcast`]
+    /// lays it out, a public one laid out over every variable of the product, the first operand's,
+    /// since `Elementwise` has no public broadcast: `Trailing` on the highest, `Leading` on the
+    /// lowest.
+    fn mul_operand(
+        &self,
+        arena: &mut Arena,
+        b: Operand,
+        a_shape: &[u32],
+        b_shape: &[u32],
+        broadcast: Broadcast,
+        stacked: bool,
+    ) -> Result<Read, StageError> {
+        let table = match b {
+            Operand::Claimed(table) => {
+                return self.broadcast(arena, table, a_shape, b_shape, broadcast, stacked);
+            }
+            Operand::Public(table) => table,
+        };
+        let (a_vars, b_vars) = (Self::vars_of(a_shape), Self::vars_of(b_shape));
+        let low = match broadcast {
+            Broadcast::Trailing => a_vars.checked_sub(b_vars).ok_or(StageError::Internal {
+                rule: "a Mul's second operand is its first's leading axes",
+            })?,
+            Broadcast::Leading => 0,
+        };
+        let mask = (1usize << b_vars) - 1;
+        let mut full = public_zeros(1usize << a_vars)?;
+        for (i, slot) in full.iter_mut().enumerate() {
+            *slot = table[(i >> low) & mask];
+        }
+        Ok(Read::Public(arena.public(full)))
+    }
+
+    /// The constant per channel of the `ConstMul` `node`, broadcast over the other axes of its
+    /// output, 0 at padded channels: `c̃(x_c)` as a public table of every variable.
+    fn channels(&self, node: &Node) -> Result<Vec<Goldilocks>, StageError> {
+        let Op::ConstMul { c } = node.op else {
+            return internal("a constant per channel is a ConstMul's");
+        };
+        let (constant, shape) = constant_and_shape(self.graph, node, c)?;
+        let low = shape.last().map_or(0, |&len| axis_vars(len)) as usize;
+        let channels = channel_table(constant, low)?;
+        let mut table = public_zeros(1usize << Self::vars_of(shape))?;
+        for (i, slot) in table.iter_mut().enumerate() {
+            *slot = channels[i & ((1usize << low) - 1)];
+        }
+        Ok(table)
+    }
+
+    /// The table of `ψ·c` of the `ConstAdd` `node`: its constant at each real position of its
+    /// output, 0 at padded ones (RFC-0072 'Padded positions'), whose extension is the shift `ĉ`.
+    fn shifted(&self, node: &Node) -> Result<Vec<Goldilocks>, StageError> {
+        let (constant, shape) = const_add(self.graph, node.id)?;
+        let count: usize = shape.iter().map(|&len| len as usize).product();
+        let channels = shape.last().map_or(1, |&len| len as usize).max(1);
+        let values: Vec<i64> = (0..count)
+            .map(|i| match constant {
+                [scalar] => *scalar,
+                _ => constant[i % channels],
+            })
+            .collect();
+        let mut table = public_zeros(1usize << Self::vars_of(shape))?;
+        pad(&values, shape, &mut table)?;
+        Ok(table)
     }
 
     /// `Mul`'s second operand as its relation reads it: a broadcast window of the product's
@@ -531,7 +654,10 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
     }
 
     /// The equality zero-check `0 = Σ_x eq(z, x)·(Ỹ(x) − f(x))` of `node`'s committed output
-    /// (RFC-0037 'The committed first checkpoint'), its evaluations `Y`'s then `f`'s inputs'.
+    /// (RFC-0037 'The committed first checkpoint', RFC-0072 'A committed output'), its evaluations
+    /// `Y`'s then those of `f`'s inputs that are not public: a public input is read as `Public`.
+    /// A `ConstAdd`'s `f = x̃ + ĉ` reads the table of `ψ·c`, and a per-channel `ConstMul`'s
+    /// `f = c̃(x_c)·x̃` its constant broadcast over the rows, both public.
     fn equality(
         &self,
         arena: &mut Arena,
@@ -546,58 +672,51 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         let shape = ElementwiseShape::elementwise(Self::vars_of(output) as usize + lambda);
         let one = GoldilocksExt2::ONE;
         let y = Read::Operand(arena.secret(operand(0)?));
+        // `f`'s claimed inputs take the instance's claims after `Y`'s, in `f`'s order.
+        let mut next = 1;
+        let mut read = |arena: &mut Arena, i: usize| -> Result<Read, StageError> {
+            Ok(match self.input(instance, node, i, operand, &mut next)? {
+                Operand::Public(table) => Read::Public(arena.public(table)),
+                Operand::Claimed(table) => Read::Operand(arena.secret(table)),
+            })
+        };
         let (inputs, terms) = match node.op {
-            Op::ConstMul { .. } => {
-                let x = Read::Operand(arena.secret(operand(1)?));
-                let constant = |layer: u32| -> Result<i64, StageError> {
-                    let id = match instance.node {
-                        NodeRef::Node(id) => id,
-                        NodeRef::Position(position) => layers.node(position, layer),
-                    };
-                    match self.graph.nodes[id.0 as usize].op {
-                        Op::ConstMul { c } => self
-                            .graph
-                            .constants
-                            .get(c.0 as usize)
-                            .and_then(|v| match v[..] {
-                                [scalar] => Some(scalar),
-                                _ => None,
-                            })
-                            .ok_or(StageError::Internal {
-                                rule: "a committed ConstMul's constant is one scalar",
-                            }),
-                        _ => internal("a template position has one operation"),
+            Op::ConstMul { c } => {
+                let x = read(arena, 0)?;
+                let (constant, _) = constant_and_shape(self.graph, node, c)?;
+                if constant.len() > 1 {
+                    if stacked {
+                        return internal(
+                            "a ConstMul by a constant per channel is outside the layers",
+                        );
                     }
-                };
-                let uniform = match instance.node {
-                    NodeRef::Node(_) => true,
-                    NodeRef::Position(position) => layers.uniform(position),
-                };
-                if uniform {
-                    let c = GoldilocksExt2::from(Goldilocks::from_i64(constant(0)?));
-                    (
-                        vec![y, x],
-                        vec![Term::new(one, vec![0]), Term::new(-c, vec![1])],
-                    )
-                } else {
-                    // Each layer's own constant: a public table constant within each layer.
-                    let block = 1usize << Self::vars_of(output);
-                    let mut table = vec![Goldilocks::ZERO; block << layers.vars];
-                    for layer in 0..layers.count {
-                        let value = Goldilocks::from_i64(constant(layer)?);
-                        let at = layer as usize * block;
-                        table[at..at + block].fill(value);
-                    }
-                    let c = Read::Public(arena.public(table));
+                    let c = Read::Public(arena.public(self.channels(node)?));
                     (
                         vec![y, x, c],
                         vec![Term::new(one, vec![0]), Term::new(-one, vec![2, 1])],
                     )
+                } else {
+                    self.scaled(arena, instance, y, x, output)?
                 }
             }
+            Op::ConstAdd { .. } => {
+                if stacked {
+                    return internal("a ConstAdd is outside the layers");
+                }
+                let x = read(arena, 0)?;
+                let shift = Read::Public(arena.public(self.shifted(node)?));
+                (
+                    vec![y, x, shift],
+                    vec![
+                        Term::new(one, vec![0]),
+                        Term::new(-one, vec![1]),
+                        Term::new(-one, vec![2]),
+                    ],
+                )
+            }
             Op::Add | Op::Sub => {
-                let a = Read::Operand(arena.secret(operand(1)?));
-                let b = Read::Operand(arena.secret(operand(2)?));
+                let a = read(arena, 0)?;
+                let b = read(arena, 1)?;
                 let sign = if node.op == Op::Sub { one } else { -one };
                 (
                     vec![y, a, b],
@@ -611,8 +730,9 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             Op::Mul { broadcast } => {
                 let a_shape = &self.graph.tensors[node.inputs[0].0 as usize].shape;
                 let b_shape = &self.graph.tensors[node.inputs[1].0 as usize].shape;
-                let a = Read::Operand(arena.secret(operand(1)?));
-                let b = self.broadcast(arena, operand(2)?, a_shape, b_shape, broadcast, stacked)?;
+                let a = read(arena, 0)?;
+                let b = self.input(instance, node, 1, operand, &mut next)?;
+                let b = self.mul_operand(arena, b, a_shape, b_shape, broadcast, stacked)?;
                 (
                     vec![y, a, b],
                     vec![Term::new(one, vec![0]), Term::new(-one, vec![1, 2])],
@@ -620,7 +740,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             }
             _ => {
                 return internal(
-                    "a committed output's zero-check is of a ConstMul, Add, Sub or Mul",
+                    "a committed output's zero-check is of a ConstMul, ConstAdd, Add, Sub or Mul",
                 );
             }
         };
@@ -630,6 +750,64 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             terms,
             shape,
         })
+    }
+
+    /// The inputs and terms of `Y − c·X` for a `ConstMul` by one constant: `c` a coefficient, or
+    /// at a template position whose layers' constants differ, each layer's own as a public table
+    /// constant within each layer.
+    fn scaled(
+        &self,
+        arena: &mut Arena,
+        instance: &Planned,
+        y: Read,
+        x: Read,
+        output: &[u32],
+    ) -> Result<(Vec<Read>, Vec<Term<GoldilocksExt2>>), StageError> {
+        let layers = &self.schedule.layers;
+        let one = GoldilocksExt2::ONE;
+        let constant = |layer: u32| -> Result<i64, StageError> {
+            let id = match instance.node {
+                NodeRef::Node(id) => id,
+                NodeRef::Position(position) => layers.node(position, layer),
+            };
+            match self.graph.nodes[id.0 as usize].op {
+                Op::ConstMul { c } => self
+                    .graph
+                    .constants
+                    .get(c.0 as usize)
+                    .and_then(|v| match v[..] {
+                        [scalar] => Some(scalar),
+                        _ => None,
+                    })
+                    .ok_or(StageError::Internal {
+                        rule: "a committed ConstMul's constant is one scalar in every layer",
+                    }),
+                _ => internal("a template position has one operation"),
+            }
+        };
+        let uniform = match instance.node {
+            NodeRef::Node(_) => true,
+            NodeRef::Position(position) => layers.uniform(position),
+        };
+        if uniform {
+            let c = GoldilocksExt2::from(Goldilocks::from_i64(constant(0)?));
+            return Ok((
+                vec![y, x],
+                vec![Term::new(one, vec![0]), Term::new(-c, vec![1])],
+            ));
+        }
+        let block = 1usize << Self::vars_of(output);
+        let mut table = vec![Goldilocks::ZERO; block << layers.vars];
+        for layer in 0..layers.count {
+            let value = Goldilocks::from_i64(constant(layer)?);
+            let at = layer as usize * block;
+            table[at..at + block].fill(value);
+        }
+        let c = Read::Public(arena.public(table));
+        Ok((
+            vec![y, x, c],
+            vec![Term::new(one, vec![0]), Term::new(-one, vec![2, 1])],
+        ))
     }
 }
 

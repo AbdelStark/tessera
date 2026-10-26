@@ -6,7 +6,7 @@ use tessera_ir::{CommitmentClass, Graph, Node, NodeId, Op, OpClass, TensorId};
 
 use super::{
     Atom, AtomClass, Claim, Coord, Factor, Kind, LayerMap, Layers, NodeRef, Part, PoolClaim,
-    axis_vars, blocks, committed, public_tensors, refuse,
+    PublicSource, PublicTerm, axis_vars, blocks, committed, public_tensors, refuse,
 };
 use crate::CompileError;
 
@@ -35,6 +35,15 @@ impl<'a> Derivation<'a> {
             public: public_tensors(graph),
             pool: Vec::new(),
             instances: Vec::new(),
+        }
+    }
+
+    /// Whether a claim on `kind` is on a public tensor ([`public_tensors`]): a tensor outside the
+    /// layers, since no layer template holds one ([`LayerMap`]).
+    pub(super) fn is_public(&self, kind: Kind) -> bool {
+        match kind {
+            Kind::Tensor(tensor) => self.public.get(tensor.0 as usize).copied().unwrap_or(false),
+            _ => false,
         }
     }
 
@@ -96,7 +105,8 @@ impl<'a> Derivation<'a> {
     }
 
     /// The claim of stage `stage` on `kind` at `point` with layer weights `layers`, its `index`-th:
-    /// its atoms, and its parts, which take the next stage's instances and the pool's claims.
+    /// its atoms and public terms, and its parts, which take the next stage's instances and the
+    /// pool's claims.
     pub(super) fn claim(
         &mut self,
         stage: u16,
@@ -105,28 +115,30 @@ impl<'a> Derivation<'a> {
         point: Vec<Coord>,
         layers: Layers,
     ) -> Result<Claim, CompileError> {
-        let mut atoms = Vec::new();
-        self.substitute(kind, point.clone(), layers.clone(), Vec::new(), &mut atoms)?;
-        let (split, parts) = self.parts(stage, index, &atoms)?;
+        let mut terms = Terms::default();
+        self.substitute(kind, point.clone(), layers.clone(), Vec::new(), &mut terms)?;
+        let (split, parts) = self.parts(stage, index, &terms.atoms)?;
         Ok(Claim {
             kind,
             point,
             layers,
-            atoms,
+            atoms: terms.atoms,
+            public: terms.public,
             split,
             parts,
         })
     }
 
-    /// Maps a claim on `kind` at `point`, its coefficient `product` so far, onto atoms through the
-    /// linear nodes (RFC-0037 'Claims and atoms', 'Head layouts'; RFC-0010 'Relations').
+    /// Maps a claim on `kind` at `point`, its coefficient `product` so far, onto atoms and public
+    /// terms through the linear nodes (RFC-0037 'Claims and atoms', 'Head layouts'; RFC-0010
+    /// 'Relations'; RFC-0072 'Public tensors').
     fn substitute(
         &self,
         kind: Kind,
         point: Vec<Coord>,
         layers: Layers,
         product: Vec<Factor>,
-        atoms: &mut Vec<Atom>,
+        terms: &mut Terms,
     ) -> Result<(), CompileError> {
         let spec = self.layers.spec(self.graph, kind);
         let class = match kind {
@@ -135,7 +147,7 @@ impl<'a> Derivation<'a> {
         };
         if let Some(commitment) = class {
             merge(
-                atoms,
+                &mut terms.atoms,
                 Atom {
                     kind,
                     point,
@@ -146,19 +158,35 @@ impl<'a> Derivation<'a> {
             );
             return Ok(());
         }
-        let Some((node, graph_node)) = self.producer(kind) else {
-            return refuse(None, "a claim reaches a public graph input");
-        };
-        // A public tensor's atom is the verifier's to evaluate (RFC-0072 'Public tensors'), which
-        // the schedule does not derive yet (#526).
+        // A public tensor's atom is public: the verifier computes the tensor and moves the atom
+        // to the claim's value, so the walk stops at it (RFC-0072 'Public tensors' 'Their
+        // claims'). No layer template holds one, and a claim in a layer on a tensor every layer
+        // shares is refused before it, so it is a tensor outside the layers.
         if self
             .public
             .get(spec.id.0 as usize)
             .copied()
             .unwrap_or(false)
         {
-            return refuse(Some(graph_node.id), "a claim reaches a public tensor");
+            let (Kind::Tensor(tensor), Layers::None) = (kind, &layers) else {
+                return refuse(None, "a claim on a public tensor is outside the layers");
+            };
+            merge_public(
+                &mut terms.public,
+                PublicTerm {
+                    source: PublicSource::Tensor(tensor),
+                    point,
+                    coefficient: vec![product],
+                },
+            );
+            return Ok(());
         }
+        let Some((node, graph_node)) = self.producer(kind) else {
+            return refuse(
+                None,
+                "a claim reaches a graph input that is neither committed nor public",
+            );
+        };
         let id = Some(graph_node.id);
         let input = |i: usize| self.input(node, graph_node, i, &layers);
         let shape =
@@ -174,7 +202,7 @@ impl<'a> Derivation<'a> {
                     );
                 }
                 let (kind, layers) = input(0)?;
-                self.substitute(kind, point, layers, product, atoms)
+                self.substitute(kind, point, layers, product, terms)
             }
             Op::Transpose { perm } => {
                 let offsets = offsets(output);
@@ -189,7 +217,7 @@ impl<'a> Derivation<'a> {
                     mapped.extend_from_slice(&point[offsets[k]..offsets[k] + block]);
                 }
                 let (kind, layers) = input(0)?;
-                self.substitute(kind, mapped, layers, product, atoms)
+                self.substitute(kind, mapped, layers, product, terms)
             }
             Op::Expand { axis, len } => {
                 let offsets = offsets(output);
@@ -206,7 +234,7 @@ impl<'a> Derivation<'a> {
                     });
                 }
                 let (kind, layers) = input(0)?;
-                self.substitute(kind, kept, layers, product, atoms)
+                self.substitute(kind, kept, layers, product, terms)
             }
             Op::Sum { axis } => {
                 let x = shape(0);
@@ -220,26 +248,45 @@ impl<'a> Derivation<'a> {
                     product.push(Factor::Pow2(block));
                 }
                 let (kind, layers) = input(0)?;
-                self.substitute(kind, placed, layers, product, atoms)
+                self.substitute(kind, placed, layers, product, terms)
             }
             Op::Add | Op::Sub => {
                 if shape(0) != output || shape(1) != output {
                     return refuse(id, "the operands of an add have its output's shape");
                 }
                 let (a, a_layers) = input(0)?;
-                self.substitute(a, point.clone(), a_layers, product.clone(), atoms)?;
+                self.substitute(a, point.clone(), a_layers, product.clone(), terms)?;
                 let mut product = product;
                 if graph_node.op == Op::Sub {
                     product.push(Factor::Minus);
                 }
                 let (b, b_layers) = input(1)?;
-                self.substitute(b, point, b_layers, product, atoms)
+                self.substitute(b, point, b_layers, product, terms)
             }
             Op::ConstMul { c } if self.scalar(*c) => {
                 let mut product = product;
                 product.push(Factor::Constant(node));
                 let (kind, layers) = input(0)?;
-                self.substitute(kind, point, layers, product, atoms)
+                self.substitute(kind, point, layers, product, terms)
+            }
+            // `ỹ(r) = x̃(r) + ĉ(r)`: `a·ỹ(r) = v` becomes `a·x̃(r) = v − a·ĉ(r)`, the shift a public
+            // term at the claim's point (RFC-0072 'Linear operations that are not coordinate
+            // maps'). No layer template holds a `ConstAdd`, so no layer weights arise.
+            Op::ConstAdd { .. } => {
+                let NodeRef::Node(shifted) = node else {
+                    return refuse(id, "a ConstAdd is outside the layers");
+                };
+                let (kind, layers) = input(0)?;
+                self.substitute(kind, point.clone(), layers, product.clone(), terms)?;
+                merge_public(
+                    &mut terms.public,
+                    PublicTerm {
+                        source: PublicSource::Shift(shifted),
+                        point,
+                        coefficient: vec![product],
+                    },
+                );
+                Ok(())
             }
             Op::MatMulWeight { .. }
             | Op::MatMulAct { .. }
@@ -248,7 +295,7 @@ impl<'a> Derivation<'a> {
             | Op::Rotate { .. }
             | Op::ConstMul { .. } => {
                 merge(
-                    atoms,
+                    &mut terms.atoms,
                     Atom {
                         kind,
                         point,
@@ -279,15 +326,20 @@ impl<'a> Derivation<'a> {
     /// The parts of the claim `index` of stage `stage` with `atoms` (RFC-0037 'Splits'), and
     /// whether the stage splits it.
     ///
-    /// A claim is ready when it is one virtual atom of coefficient 1, or committed atoms of one
+    /// The claim's public terms take no part: the verifier moves them to its value first. A claim
+    /// is then ready when it is one virtual atom of coefficient 1, or committed atoms of one
     /// commitment at one point. Otherwise each virtual atom is a part, and each group of committed
-    /// atoms of one commitment at one point, in the place of its first atom.
+    /// atoms of one commitment at one point, in the place of its first atom. A claim with no atom,
+    /// public terms alone, has no part and is not split.
     fn parts(
         &mut self,
         stage: u16,
         index: usize,
         atoms: &[Atom],
     ) -> Result<(bool, Vec<Part>), CompileError> {
+        if atoms.is_empty() {
+            return Ok((false, Vec::new()));
+        }
         for atom in atoms {
             self.check_uniform(atom)?;
         }
@@ -405,6 +457,26 @@ impl<'a> Derivation<'a> {
             claim: index,
         });
         self.pool.len() - 1
+    }
+}
+
+/// A claim's atoms and public terms, as substitution reaches them.
+#[derive(Default)]
+struct Terms {
+    atoms: Vec<Atom>,
+    public: Vec<PublicTerm>,
+}
+
+/// Adds `term` to `public`, merged into a term of its source at its point, in the first one's
+/// place: the verifier evaluates each source once per point (RFC-0072 'Public tensors' 'Once per
+/// point').
+fn merge_public(public: &mut Vec<PublicTerm>, term: PublicTerm) {
+    match public
+        .iter_mut()
+        .find(|t| t.source == term.source && t.point == term.point)
+    {
+        Some(existing) => existing.coefficient.extend(term.coefficient),
+        None => public.push(term),
     }
 }
 

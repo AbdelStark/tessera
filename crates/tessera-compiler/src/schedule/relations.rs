@@ -437,6 +437,29 @@ fn evaluations(
         let (kind, layers) = input(i)?;
         Ok((kind, point, layers))
     };
+    // The claim on input `i` at `point`, or none for a public input: the relation reads it as
+    // `Public`, the verifier evaluates it at the instance's point, a broadcast operand at its own
+    // coordinates of it, and the proof sends nothing for it (RFC-0072 'Public tensors' 'As an
+    // operand', RFC-0010 'Relations'). A claim in a layer on a tensor every layer shares is
+    // refused first, by `input`.
+    let operand = |i: usize, point: Vec<Coord>| -> Result<Vec<_>, CompileError> {
+        let (kind, layers) = input(i)?;
+        Ok(if derivation.is_public(kind) {
+            Vec::new()
+        } else {
+            vec![(kind, point, layers)]
+        })
+    };
+    if matches!(
+        plan.relation,
+        Relation::MatMulWeight | Relation::MatMulAct { .. }
+    ) {
+        for i in 0..node.inputs.len() {
+            if derivation.is_public(input(i)?.0) {
+                return refuse(id, "a matmul's operands are not public");
+            }
+        }
+    }
     let target = plan.point.as_slice();
     Ok(match plan.relation {
         Relation::Native { .. } => {
@@ -464,10 +487,10 @@ fn evaluations(
             };
             vec![at(0, [r_j, r_a, r_h].concat())?, at(1, right)?]
         }
-        Relation::Mul(broadcast) => vec![
-            at(0, own.to_vec())?,
-            at(1, broadcast_point(shape(0), shape(1), broadcast, own, id)?)?,
-        ],
+        Relation::Mul(broadcast) => {
+            let b = broadcast_point(shape(0), shape(1), broadcast, own, id)?;
+            [operand(0, own.to_vec())?, operand(1, b)?].concat()
+        }
         Relation::SumSquares | Relation::Rotate | Relation::ScaleChannels => {
             vec![at(0, own.to_vec())?]
         }
@@ -488,40 +511,29 @@ fn evaluations(
                 at(0, own[width..].to_vec())?,
             ]
         }
+        // `Y`'s evaluation, then those of `f`'s inputs that are not public, in `f`'s order. A
+        // `ConstAdd`'s `f = x̃ + ĉ` and a per-channel `ConstMul`'s `f = c̃(x_c)·x̃` take their
+        // constants as public factors (RFC-0072 'A committed output').
         Relation::Equality => {
             let output = (plan.kind, own.to_vec(), layers.clone());
-            let mut claims = vec![output];
-            match &node.op {
-                Op::ConstMul { .. } => claims.push(at(0, own.to_vec())?),
-                // Its `f = x̃ + ĉ` moves the constant at real positions into the claim
-                // (RFC-0072 'Linear operations that are not coordinate maps'), as a public term
-                // the schedule does not derive yet (#526).
-                Op::ConstAdd { .. } => {
-                    return refuse(
-                        id,
-                        "a committed ConstAdd's equality zero-check takes its shift ĉ, which the \
-                         schedule does not derive yet",
-                    );
-                }
+            let inputs = match &node.op {
+                Op::ConstMul { .. } | Op::ConstAdd { .. } => operand(0, own.to_vec())?,
                 Op::Add | Op::Sub => {
-                    claims.push(at(0, own.to_vec())?);
-                    claims.push(at(1, own.to_vec())?);
+                    [operand(0, own.to_vec())?, operand(1, own.to_vec())?].concat()
                 }
                 Op::Mul { broadcast } => {
-                    claims.push(at(0, own.to_vec())?);
-                    claims.push(at(
-                        1,
-                        broadcast_point(shape(0), shape(1), *broadcast, own, id)?,
-                    )?);
+                    let b = broadcast_point(shape(0), shape(1), *broadcast, own, id)?;
+                    [operand(0, own.to_vec())?, operand(1, b)?].concat()
                 }
                 _ => {
                     return refuse(
                         id,
-                        "a committed output's equality zero-check is of a ConstMul, Add, Sub or Mul",
+                        "a committed output's equality zero-check is of a ConstMul, ConstAdd, Add, \
+                         Sub or Mul",
                     );
                 }
-            }
-            claims
+            };
+            [vec![output], inputs].concat()
         }
     })
 }

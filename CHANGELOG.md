@@ -19,7 +19,9 @@ All notable changes to the prover release train are recorded here: the crates un
 
     A committed advice graph input counts as non-zero at padding unless a `OneHot` or a `BitDecompose` pins it (RFC-0006). The stage prover refuses a lookup non-zero at padding whose output has padded positions, since its tables pad with zeros until RFC-0072's AES slice.
 
-    Until their zero-checks land, the schedule also refuses `BitDecompose` and `AssertEqual`, and a claim on a public tensor. No Llama graph is affected.
+    Until their zero-checks land, the schedule also refuses `BitDecompose` and `AssertEqual`, and a matmul with a public operand. No Llama graph is affected.
+  - **Public terms.** A claim that reaches a public tensor, and one through a `ConstAdd`, carries `Claim.public` terms (`PublicSource::Tensor`, `PublicSource::Shift`), which the verifier evaluates and subtracts from the claim's value: a ready claim's instance or pool claim, and a split's check, are on the rest, and a claim of public terms alone has no part. `tessera_prover::public_value` evaluates them, the shift `ĉ` as the extension of `ψ·c`: `c·ψ̃(r)` for a scalar, `c̃(r_c)·Π_{a≠last} LT(r_a, n_a)` per channel.
+  - **Relations.** A `Mul`'s public operand is read as `Public` and leaves no claim, as is a committed output's in its zero-check. The stage prover proves a `ConstMul` by a constant per channel (`ScaleChannels`) and the zero-checks of a committed `ConstAdd` and a committed per-channel `ConstMul`. A schedule with no reduction stage fills the leaf stage's pool claims after its splits.
   - **Leaf sites.** `BitDecompose` and `AssertEqual` take none, in the schedule (`has_leaf_site`) and in the prover's leaf layout alike.
   - **The commitment report's stage count** follows RFC-0072: selections and `BitFn` are relations, public tensors cost none, and the bit operations' zero-checks count themselves. AES-128-CTR takes 3 stages, and SHA-256 10 per block of public bytes and 14 with committed bytes. Llama's counts are unchanged.
 - The anchor circuits' relations, specified ([#526](https://github.com/AbdelStark/tessera/issues/526)):
