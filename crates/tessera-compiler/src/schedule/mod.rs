@@ -23,10 +23,12 @@
 //!    interface to the rest of the schedule. The gadgets' own relations, such as `SoftmaxRow`'s
 //!    masked keys and the padding zero-checks of RFC-0035, enter with the gadgets (#118).
 //! 4. **Claims.** A claim maps through the linear nodes onto atoms: virtual, the output of a
-//!    sumcheck relation, or committed ('Claims and atoms'). A claim that is one virtual atom of
-//!    coefficient 1, or committed atoms of one commitment at one point, is ready. Any other is
-//!    split: the stage sends one value per part ('Splits'). A claim that reaches a public tensor
-//!    ([`public_tensors`]) is refused until the verifier evaluates public atoms (#526).
+//!    sumcheck relation, or committed ('Claims and atoms'). What reaches a public tensor
+//!    ([`public_tensors`]), and a `ConstAdd`'s constant, is a [`PublicTerm`], which the verifier
+//!    evaluates and moves to the claim's value (RFC-0072 'Public tensors', 'Linear operations
+//!    that are not coordinate maps'). A claim that is then one virtual atom of coefficient 1, or
+//!    committed atoms of one commitment at one point, is ready. Any other is split: the stage
+//!    sends one value per part ('Splits'). A claim of public terms alone has no part.
 //! 5. **Stages.** Stage `k` proves one instance per virtual part that stage `k − 1` leaves, in
 //!    order, stacked over the layers where its kind is. Stage 1 then adds the equality zero-check
 //!    of each committed output of a linear or degree-2 node ('The committed first checkpoint').
@@ -187,6 +189,37 @@ impl Atom {
     }
 }
 
+/// What a [`PublicTerm`] evaluates: a value both parties compute from public data, the public
+/// graph inputs and the graph's constants (RFC-0072 'Public tensors').
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PublicSource {
+    /// The extension of a public tensor ([`public_tensors`]) over its padded shape: the verifier
+    /// computes the tensor from the public graph inputs and constants through the nodes that are
+    /// not gadget-backed, in `O(size)`.
+    Tensor(TensorId),
+    /// The shift `ĉ` of a `ConstAdd` node, the multilinear extension of `ψ·c` over its output's
+    /// shape `(n_a)`, the constant at real positions only (RFC-0072 'Padded positions'). With the
+    /// selector `ψ̃(r) = Π_a LT(r_a, n_a)`, it is `c·ψ̃(r)` for a constant of one value, a scalar
+    /// whatever the last axis's length, and `c̃(r_c)·Π_{a≠last} LT(r_a, n_a)` for one per channel
+    /// of the last axis, `c̃` the constant's extension, 0 at padded channels ('Linear operations
+    /// that are not coordinate maps'). `c̃(r_c)·ψ̃(r)` agrees with it on the cube only.
+    Shift(NodeId),
+}
+
+/// A public term of a claim, `c·s(r)` for a [`PublicSource`] `s` at the point `r` with the
+/// coefficient `c`: the verifier evaluates it and moves it to the claim's value (RFC-0037 'Claims
+/// and atoms', 'Splits'). It reaches no instance and no pool, and the proof sends nothing for it.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PublicTerm {
+    /// What it evaluates.
+    pub source: PublicSource,
+    /// The point `r`, on the source's tensor's variables: a `ConstAdd`'s output's for a shift.
+    pub point: Vec<Coord>,
+    /// The coefficient `c`, as an [`Atom`]'s: a sum of products, one per term merged into this
+    /// one. A public term is outside the layers, so it has no layer weights.
+    pub coefficient: Vec<Vec<Factor>>,
+}
+
 /// Where a part of a claim goes (RFC-0037 'Splits').
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Part {
@@ -220,9 +253,15 @@ pub struct Claim {
     /// order. Atoms on one kind at one point with the same layer weights merge, in the first one's
     /// place.
     pub atoms: Vec<Atom>,
+    /// Its public terms, in the order substitution reaches them: the public tensors it reaches
+    /// and the shifts of the `ConstAdd`s it maps through. Terms of one source at one point merge,
+    /// in the first one's place. The verifier subtracts their sum `p` from the claim's value `v`:
+    /// a ready claim's instance or pool claim is `v − p`, and a split's values must give `v − p`
+    /// (RFC-0037 'Splits'). A claim with no atom has no part, and its check is `v = p`.
+    pub public: Vec<PublicTerm>,
     /// Whether the stage splits it, sending one value per part under `stage/{k}/split`.
     pub split: bool,
-    /// Its parts, in atom order: one when the claim is ready.
+    /// Its parts, in atom order: one when the claim is ready, none when it has no atom.
     pub parts: Vec<Part>,
 }
 
@@ -436,8 +475,8 @@ impl StageSchedule {
 ///
 /// [`CompileError::Schedule`] (`ERR-INTERNAL`) for a graph the lowering does not emit: layers that
 /// are not one template ([`LayerMap`]), one of the graph's refusals ([`derive_graph_schedule`]), or
-/// a claim that reaches an operation RFC-0037 maps no claim through yet, such as `ConstAdd`, `Slice`
-/// or `GatherPublic`.
+/// a claim that reaches an operation RFC-0037 maps no claim through yet, such as `Slice` or
+/// `GatherPublic`.
 pub fn derive_schedule(lowering: &Lowering) -> Result<StageSchedule, CompileError> {
     derive_composed_schedule(lowering, &[], &[])
 }
@@ -469,8 +508,16 @@ pub fn derive_schedule(lowering: &Lowering) -> Result<StageSchedule, CompileErro
 /// - a `Sum`, `SumSquares` or `MatMulAct` over an axis whose length is not a power of two none of
 ///   whose summed inputs is 0 at its padded positions (RFC-0072 'Summing relations');
 /// - a `BitDecompose` or an `AssertEqual`, whose stage-1 zero-checks are not derived yet;
-/// - logits that no node produces, or a claim that reaches a public tensor or an operation
-///   RFC-0037 maps no claim through yet, such as `ConstAdd`, `Slice` or `GatherPublic`.
+/// - logits that no node produces, or a claim that reaches an operation RFC-0037 maps no claim
+///   through yet, such as `Slice` or `GatherPublic`;
+/// - a matmul with one public operand, which its relations do not read as `Public`;
+/// - a leaf site that reads a public tensor, whose value the leaf layout still sends in the split
+///   (RFC-0045 'The split' sends none);
+/// - a graph with layers whose schedule has no stage 1, which draws the layer point.
+///
+/// A claim that reaches a public tensor takes it as a [`PublicTerm`], and so does one through a
+/// `ConstAdd` its shift; a relation's public operand leaves no claim (RFC-0072 'Public tensors'
+/// 'As an operand').
 pub fn derive_graph_schedule(
     graph: &Graph,
     tables: &[TableSpec],
@@ -675,6 +722,31 @@ fn derive(
                 rule: "a logits site reads the graph's logits",
             })?),
         };
+        // RFC-0045 'The split' sends no value for a lookup's public input, which the verifier
+        // evaluates itself (RFC-0072 'Public tensors' 'In the leaf stage'). The leaf layout still
+        // sends one value per read, so until it leaves public reads out (#526's AES slice), such a
+        // site is refused rather than given a split message the RFC does not have.
+        let (site_node, tensor) = match site {
+            Site::Gadget {
+                node: NodeRef::Position(position),
+                input,
+            } => {
+                let node = layers.node(position, 0);
+                (Some(node), input_of(graph, node, input))
+            }
+            Site::Gadget {
+                node: NodeRef::Node(node),
+                input,
+            } => (Some(node), input_of(graph, node, input)),
+            Site::Logits => (lm, logits.unwrap_or(TensorId(u32::MAX))),
+        };
+        if derivation.is_public(Kind::Tensor(tensor)) {
+            return refuse(
+                site_node,
+                "a leaf site reads no public tensor: the leaf layout does not leave its value out \
+                 of the split yet",
+            );
+        }
         let vars = derivation.vars(kind);
         let point = (0..vars)
             .map(|index| Coord::Leaf { site: s, index })
@@ -708,6 +780,15 @@ fn derive(
             }
         }
         stages.push(stage);
+    }
+    // Stage 1 draws the layer point `ρ_1` at which the leaf stage's per-layer claims stack
+    // (RFC-0037 'The layer point'). A graph with no virtual leaf part and no zero-check has no
+    // stage 1 (RFC-0072 'No reduction stage'), which only a graph without layers may lack.
+    if layers.count > 0 && stages.len() == 1 {
+        return refuse(
+            None,
+            "a graph with layers has a stage 1, which draws its layer point",
+        );
     }
     let pool = derivation.into_pool();
     Ok(StageSchedule {
@@ -755,6 +836,9 @@ fn leaf_sites(graph: &Graph, layers: &LayerMap, logits: bool) -> Vec<Site> {
 /// RFC-0072's refusals that read the graph alone, before any claim (`ERR-INTERNAL`), in this
 /// order:
 ///
+/// - **A matmul with one public operand** ('Public tensors' 'As an operand'): its relations read
+///   no operand as `Public`, whether or not a claim reaches it. With both operands public, its
+///   output is public, and no instance arises.
 /// - **A committed output** of a node that is not a gadget is proven by stage 1's equality
 ///   zero-check only for a pointwise `ConstMul`, `ConstAdd`, `Add`, `Sub` or `Mul` ('Linear
 ///   operations that are not coordinate maps' 'A committed output'): any other's, a selection's,
@@ -770,7 +854,19 @@ fn check_graph(
     tables: &[TableSpec],
     producers: &[Option<(NodeId, u32)>],
 ) -> Result<(), CompileError> {
+    let public = public_tensors(graph);
+    let is_public = |t: &TensorId| public.get(t.0 as usize).copied().unwrap_or(false);
     for node in &graph.nodes {
+        // A matmul's relations read their operands as witness tables, never as `Public` (RFC-0072
+        // 'Public tensors' 'As an operand'). With both operands public its output is public and
+        // no instance arises; with one, the relation would need a public read it does not have.
+        let matmul = matches!(node.op, Op::MatMulWeight { .. } | Op::MatMulAct { .. });
+        if matmul && node.inputs.iter().any(is_public) && !node.inputs.iter().all(is_public) {
+            return refuse(
+                Some(node.id),
+                "a matmul's operands are not public, unless both are",
+            );
+        }
         let committed = node.outputs.iter().any(|t| {
             graph
                 .tensors

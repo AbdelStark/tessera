@@ -15,8 +15,13 @@
 //!    - Each instance is its relation over the witness's tables at its claim's point:
 //!      `MatMulWeight`, `MatMulAct`, `Elementwise` for products, sums of squares and the equality
 //!      zero-checks, and `Rotate`'s kernel. Stacked instances stack their kinds' layers.
+//!    - A relation's public operand is read as `Public` and leaves no claim (RFC-0072 'Public
+//!      tensors' 'As an operand'): a `Mul`'s by a public tensor, the constants of a `ConstMul` by
+//!      one constant per channel and of a committed `ConstAdd`'s zero-check.
 //!    - After the evaluations, the stage sends its split claims' values under `stage/{k}/split`,
-//!      claim by claim and part by part (RFC-0037 'Splits').
+//!      claim by claim and part by part (RFC-0037 'Splits'). A claim's public terms, which
+//!      [`public_value`] evaluates, move to its value first: a ready claim's instance or pool
+//!      claim is its value less them, and a claim of public terms alone has no part.
 //!    - [`StageProver::prove_stage_composed`] interleaves native tables in that same batch and
 //!      routes their transformed original graph sources through those same splits and pool.
 //! 3. **The pool** ends with every committed part's value, [`StageProver::pool`]: what the
@@ -26,6 +31,7 @@
 //! and the schedule cannot disagree silently. The witness's tables are secret-class (05 §3): this
 //! module borrows them, and keeps what it derives in `SecretBuf`s that clear their memory.
 
+mod public;
 mod relations;
 mod tables;
 
@@ -48,6 +54,8 @@ use tessera_sumcheck::{
 use tessera_tables::TableSpec;
 
 use relations::{Arena, build};
+
+pub use public::{PublicTensors, public_value};
 
 /// Public points drawn once for a complete mixed stage, before its gamma.
 pub struct NativeContext<'a> {
@@ -182,6 +190,8 @@ pub struct StageProver<'a, W: WitnessSource + ?Sized> {
     tables: &'a [TableSpec],
     schedule: &'a StageSchedule,
     witness: &'a W,
+    /// The graph's public tensors (RFC-0072 'Public tensors').
+    public: PublicTensors,
     /// The challenges drawn so far, by coordinate.
     coords: HashMap<Coord, GoldilocksExt2>,
     /// Each stage's claims' values: one per layer for a leaf claim in the layers, else one.
@@ -227,6 +237,7 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
             tables,
             schedule,
             witness,
+            public: PublicTensors::of(graph),
             coords: HashMap::new(),
             claims: Vec::new(),
             parts: Vec::new(),
@@ -341,7 +352,15 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
         if self.claims.len() != 1 || !self.parts.is_empty() {
             return internal("the leaf stage's splits follow its claims");
         }
-        self.split_values(0)
+        let splits = self.split_values(0)?;
+        // With no reduction stage, as for a graph whose leaf claims all reach committed or
+        // public tensors, no stage 1 draws `ρ_1` after the leaf stage: its pool values are final
+        // here (RFC-0072 'No reduction stage'). The schedule refuses a graph with layers and no
+        // stage 1, so none of them is stacked.
+        if self.schedule.stages.len() == 1 {
+            self.fill_pool(0)?;
+        }
+        Ok(splits)
     }
 
     /// Proves stage `k`, from 1: its points in stage 1, its batched sumcheck, then its splits.
@@ -549,6 +568,9 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
             let layers = self.layers_of(claim);
             let mut values: Vec<Vec<GoldilocksExt2>> =
                 vec![Vec::with_capacity(layers.len()); claim.parts.len()];
+            // Its public terms move to its value (RFC-0037 'Splits'): a ready claim's one part is
+            // the rest. They are outside the layers, so the same in every layer.
+            let public = self.public_sum(claim)?;
             for (l, &layer) in layers.iter().enumerate() {
                 for (p, part) in claim.parts.iter().enumerate() {
                     let value = if claim.split {
@@ -556,7 +578,7 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
                         splits.push(value);
                         value
                     } else {
-                        self.claims[index][c][l]
+                        self.claims[index][c][l] - public
                     };
                     values[p].push(value);
                 }
@@ -634,6 +656,19 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
             value += w * self.extension(claim.kind, l, &claim.point)?;
         }
         Ok(value)
+    }
+
+    /// The sum of `claim`'s public terms at their points, each with its coefficient: what the
+    /// verifier computes and moves to the claim's value (RFC-0037 'Splits', RFC-0072 'Public
+    /// tensors'). The witness holds every tensor, the public ones among them.
+    fn public_sum(&self, claim: &Claim) -> Result<GoldilocksExt2, StageError> {
+        let mut sum = GoldilocksExt2::ZERO;
+        for term in &claim.public {
+            let point = self.point(&term.point)?;
+            let value = public_value(self.graph, &self.public, term.source, self.witness, &point)?;
+            sum += self.coefficient(&term.coefficient, 0)? * value;
+        }
+        Ok(sum)
     }
 
     /// A part's value: a virtual atom's without its coefficient, a committed group's with them.

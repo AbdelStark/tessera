@@ -55,7 +55,7 @@ pub use leaf::{LeafError, LeafLayout, PreparedLeaf, ProvenLeaf, prepare_leaf, pr
 pub use model::{ModelSchedule, derive_model_schedule, derive_runtime_schedule};
 pub use openings::ModelOpenings;
 pub use release::{Release, ReleaseSchedule, ScheduleError};
-pub use stages::{StageError, StageProof, StageProver, WitnessSource};
+pub use stages::{PublicTensors, StageError, StageProof, StageProver, WitnessSource, public_value};
 
 // Test-only features cannot reach a release build (RFC-0001 'Cargo features').
 #[cfg(all(feature = "test-rng", not(debug_assertions)))]

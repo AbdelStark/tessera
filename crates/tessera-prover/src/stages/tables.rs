@@ -99,7 +99,7 @@ pub(super) fn zeros(len: usize) -> Result<SecretBuf<Goldilocks>, StageError> {
 
 /// Writes `values`, row-major of `shape`, into `out` padded per dimension: the last axis the
 /// lowest bits, each axis its own block of `⌈log2 len⌉` bits.
-fn pad(values: &[i64], shape: &[u32], out: &mut [Goldilocks]) -> Result<(), StageError> {
+pub(super) fn pad(values: &[i64], shape: &[u32], out: &mut [Goldilocks]) -> Result<(), StageError> {
     let count: usize = shape.iter().map(|&d| d as usize).product();
     if values.len() != count {
         return Err(StageError::Internal {

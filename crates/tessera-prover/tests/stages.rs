@@ -11,6 +11,14 @@
 //! A graph without layers (RFC-0072 'Graphs without layers'), with no checkpoint and no logits,
 //! proves with the same relations through a prover of the graph alone, and a committed input
 //! changed under the honest values is rejected.
+//!
+//! The verifier holds the public tensors, which it computes from the public graph inputs alone
+//! (RFC-0072 'Public tensors'). It moves each claim's public terms to the claim's value before its
+//! split check, evaluates a `ConstAdd`'s shift `ĉ` and reads a relation's public operand itself,
+//! and checks a `ConstMul` by a constant per channel as RFC-0010's `Elementwise`. Its evaluation
+//! of a public term is the prover's, [`public_value`]; the tests check the shift against an
+//! extension of `ψ·c` they enumerate over the padded cube, and that a verifier taking
+//! `c̃(r_c)·ψ̃(r)` in its place rejects an honest proof.
 
 use std::collections::HashMap;
 use std::fs;
@@ -18,10 +26,13 @@ use std::path::{Path, PathBuf};
 
 use tessera_codec::{Ascii, DecodeLimits, Secret, SecretBuf, envelope, schema};
 use tessera_compiler::schedule::LayerMap;
+use tessera_compiler::schedule::public_tensors;
 use tessera_compiler::schedule::{
-    Claim, Coord, Factor, Layers, NodeRef, Part, Relation, Source, StageSchedule,
+    Claim, Coord, Factor, Layers, NodeRef, Part, PublicSource, Relation, Source, StageSchedule,
 };
-use tessera_compiler::{Lowering, PublicModel, derive_graph_schedule, derive_schedule, lower};
+use tessera_compiler::{
+    CompileError, Lowering, PublicModel, derive_graph_schedule, derive_schedule, lower,
+};
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_ir::{
@@ -30,7 +41,9 @@ use tessera_ir::{
 };
 use tessera_poly::{eq, eq_table, evaluate_base, less_than};
 use tessera_prover::leaf::gadget_nodes;
-use tessera_prover::{StageError, StageProof, StageProver, WitnessSource};
+use tessera_prover::{
+    PublicTensors, StageError, StageProof, StageProver, WitnessSource, public_value,
+};
 use tessera_sumcheck::SumcheckTranscript;
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableId, TableKind, TableSpec};
 use tessera_witness::{Engine, Witness};
@@ -198,12 +211,48 @@ struct Reject {
     round: u32,
 }
 
-/// The verifier's state: the graph and its tables, the challenges, each stage's claims' and parts'
-/// values, and the pool.
+/// How a verifier evaluates a `ConstAdd`'s shift.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Shift {
+    /// RFC-0072's `ĉ`, the extension of `ψ·c`: [`public_value`].
+    Extension,
+    /// `c̃(r_c)·ψ̃(r)`, which agrees with `ĉ` on the cube only: a wrong verifier.
+    ChannelsTimesSelector,
+    /// None: a wrong verifier that ignores the shift.
+    Omitted,
+}
+
+/// What a verifier holds beside the proof: the graph's public tensors, which it computes from
+/// public data, and how it evaluates a shift.
+#[derive(Clone, Copy)]
+struct Publics<'a> {
+    values: &'a dyn WitnessSource,
+    shift: Shift,
+}
+
+/// A graph with no public tensor but its inputs, which no claim reaches: the Llama templates'.
+struct NoPublic;
+
+impl WitnessSource for NoPublic {
+    fn values(&self, _: TensorId) -> Option<&[i64]> {
+        None
+    }
+}
+
+const NO_PUBLIC: Publics<'static> = Publics {
+    values: &NoPublic,
+    shift: Shift::Extension,
+};
+
+/// The verifier's state: the graph and its tables, its public data, the challenges, each stage's
+/// claims' and parts' values, and the pool.
 struct Verifier<'a> {
     graph: &'a Graph,
     tables: &'a [TableSpec],
     schedule: &'a StageSchedule,
+    publics: Publics<'a>,
+    /// The graph's public tensors (RFC-0072 'Public tensors').
+    public: PublicTensors,
     coords: HashMap<Coord, F>,
     claims: Vec<Vec<Vec<F>>>,
     parts: Vec<Vec<Vec<Vec<F>>>>,
@@ -229,10 +278,25 @@ fn verify_graph(
     proof: &Proof,
     points: &[Vec<F>],
 ) -> Result<Vec<F>, Reject> {
+    verify_public(graph, tables, schedule, proof, points, NO_PUBLIC)
+}
+
+/// The pool's values of a schedule of `graph` whose verifier holds `publics`, once every stage's
+/// checks pass.
+fn verify_public(
+    graph: &Graph,
+    tables: &[TableSpec],
+    schedule: &StageSchedule,
+    proof: &Proof,
+    points: &[Vec<F>],
+    publics: Publics<'_>,
+) -> Result<Vec<F>, Reject> {
     let mut v = Verifier {
         graph,
         tables,
         schedule,
+        publics,
+        public: PublicTensors::of(graph),
         coords: HashMap::new(),
         claims: Vec::new(),
         parts: Vec::new(),
@@ -258,6 +322,10 @@ fn verify_graph(
     v.claims.push(proof.leaf.clone());
     absorb_leaf(&mut t, &proof.leaf);
     v.splits(0, &proof.leaf_splits, &mut t)?;
+    // With no reduction stage, no stage 1 stacks the leaf stage's pool claims at `ρ_1`.
+    if schedule.stages.len() == 1 {
+        v.fill_pool(0);
+    }
     if proof.stages.len() + 1 != schedule.stages.len() {
         return Err(reject(u16::try_from(proof.stages.len()).unwrap_or(0), 0));
     }
@@ -341,8 +409,42 @@ impl Verifier<'_> {
             .fold(F::ZERO, |s, x| s + x)
     }
 
-    /// The splits of stage `index` (RFC-0037 'Splits'): each split claim's parts' values, which
-    /// must add up to its value, layer by layer for a leaf claim in the layers.
+    /// The value at `point` of a public term's source, which the verifier computes from public
+    /// data (RFC-0072 'Public tensors'), a shift by the verifier's rule.
+    fn public_term(&self, source: PublicSource, point: &[F]) -> F {
+        match (source, self.publics.shift) {
+            (PublicSource::Shift(_), Shift::Omitted) => F::ZERO,
+            (PublicSource::Shift(node), Shift::ChannelsTimesSelector) => {
+                channels_times_selector(self.graph, node, point)
+            }
+            _ => public_value(self.graph, &self.public, source, self.publics.values, point)
+                .expect("the verifier's public values"),
+        }
+    }
+
+    /// The sum of a claim's public terms, which move to its value (RFC-0037 'Splits').
+    fn public_sum(&self, claim: &Claim) -> F {
+        claim.public.iter().fold(F::ZERO, |sum, term| {
+            let value = self.public_term(term.source, &self.point(&term.point));
+            sum + self.coefficient(&term.coefficient, 0) * value
+        })
+    }
+
+    /// The value of input `i` of `node` at `point` in a relation's final check: a public input's
+    /// the verifier computes (RFC-0072 'Public tensors' 'As an operand'), any other's the next of
+    /// the instance's evaluations `e`.
+    fn read(&self, node: &tessera_ir::Node, i: usize, point: &[F], e: &[F], next: &mut usize) -> F {
+        let tensor = node.inputs[i];
+        if self.public.contains(tensor) {
+            return self.public_term(PublicSource::Tensor(tensor), point);
+        }
+        *next += 1;
+        e[*next - 1]
+    }
+
+    /// The splits of stage `index` (RFC-0037 'Splits'): each claim's public terms move to its
+    /// value; then each split claim's parts' values must add up to the rest, layer by layer for a
+    /// leaf claim in the layers, and a claim with no part must have no rest.
     fn splits(&mut self, index: usize, values: &[F], t: &mut Transcript) -> Result<(), Reject> {
         let stage = &self.schedule.stages[index];
         let fail = Reject {
@@ -354,8 +456,15 @@ impl Verifier<'_> {
         for (c, claim) in stage.claims.iter().enumerate() {
             let layers = self.layers_of(claim);
             let mut per_part = vec![Vec::new(); claim.parts.len()];
+            let public = self.public_sum(claim);
             for (l, layer) in layers.iter().enumerate() {
-                let value = self.claims[index][c][l];
+                let value = self.claims[index][c][l] - public;
+                if claim.parts.is_empty() {
+                    if value != F::ZERO {
+                        return Err(fail);
+                    }
+                    continue;
+                }
                 if !claim.split {
                     per_part[0].push(value);
                     continue;
@@ -522,6 +631,8 @@ impl Verifier<'_> {
             Relation::Rotate => 2,
             Relation::Equality => match node.op {
                 Op::Mul { .. } => 3,
+                // `c̃(x_c)·X̃(x)`, the constant per channel a public factor.
+                Op::ConstMul { c } if self.graph.constants[c.0 as usize].len() > 1 => 3,
                 Op::ConstMul { .. } => match instance.node {
                     NodeRef::Position(p) if !self.schedule.layers.uniform(p) => 3,
                     _ => 2,
@@ -567,13 +678,24 @@ impl Verifier<'_> {
                 let inner = axis_vars(shape(0)[2]) as usize;
                 eq(&target[c + a..], &r[inner..]).expect("eq") * e[0] * e[1]
             }
-            Relation::Mul(_) => eq(&target, &r).expect("eq") * e[0] * e[1],
+            // A public operand the verifier reads itself, a broadcast one at its own coordinates.
+            Relation::Mul(broadcast) => {
+                let b = broadcast_coords(&r, shape(0), shape(1), broadcast);
+                let mut next = 0;
+                let a = self.read(node, 0, &r, e, &mut next);
+                let b = self.read(node, 1, &b, e, &mut next);
+                eq(&target, &r).expect("eq") * a * b
+            }
             Relation::SumSquares => {
                 let last = axis_vars(*shape(0).last().expect("an axis")) as usize;
                 eq(&target, &r[last..]).expect("eq") * e[0] * e[0]
             }
             Relation::Rotate => self.kernel(node, &target, &r, stacked) * e[0],
-            Relation::ScaleChannels => panic!("no per-channel ConstMul in the conformance models"),
+            // RFC-0010's `Elementwise` with the constant per channel a public operand, 0 at padded
+            // channels (RFC-0072 'ConstMul by a constant per channel').
+            Relation::ScaleChannels => {
+                eq(&target, &r).expect("eq") * self.channels(node, &r) * e[0]
+            }
             Relation::Booleanity => eq(&target, &r).expect("eq") * e[0] * (F::ONE - e[0]),
             Relation::OneHotVocabulary | Relation::OneHotCount | Relation::OneHotIndex => {
                 let &[positions, vocab] = self.graph.tensors[node.outputs[0].0 as usize]
@@ -611,7 +733,17 @@ impl Verifier<'_> {
                 }
             }
             Relation::Equality => {
+                // `f`'s inputs that are not public are the evaluations after `Y`'s.
+                let mut next = 1;
                 let f = match node.op {
+                    Op::ConstMul { c } if self.graph.constants[c.0 as usize].len() > 1 => {
+                        self.channels(node, &r) * self.read(node, 0, &r, e, &mut next)
+                    }
+                    // `f = x̃ + ĉ` (RFC-0072 'A committed output').
+                    Op::ConstAdd { .. } => {
+                        self.read(node, 0, &r, e, &mut next)
+                            + self.public_term(PublicSource::Shift(node.id), &r)
+                    }
                     Op::ConstMul { .. } => {
                         // The constant of the instance point's layer: a public factor.
                         let c = match instance.node {
@@ -626,16 +758,34 @@ impl Verifier<'_> {
                             }
                             other => self.constant(other, 0),
                         };
-                        c * e[1]
+                        c * self.read(node, 0, &r, e, &mut next)
                     }
-                    Op::Add => e[1] + e[2],
-                    Op::Sub => e[1] - e[2],
-                    Op::Mul { .. } => e[1] * e[2],
+                    Op::Add | Op::Sub => {
+                        let a = self.read(node, 0, &r, e, &mut next);
+                        let b = self.read(node, 1, &r, e, &mut next);
+                        if node.op == Op::Add { a + b } else { a - b }
+                    }
+                    Op::Mul { broadcast } => {
+                        let b = broadcast_coords(&r, shape(0), shape(1), broadcast);
+                        let a = self.read(node, 0, &r, e, &mut next);
+                        a * self.read(node, 1, &b, e, &mut next)
+                    }
                     _ => panic!("an equality zero-check's operation"),
                 };
                 eq(&target, &r).expect("eq") * (e[0] - f)
             }
         }
+    }
+
+    /// `c̃(r_c)` of a `ConstMul` by a constant per channel at the channel coordinates of `r`, the
+    /// lowest, the constant 0 at padded channels.
+    fn channels(&self, node: &tessera_ir::Node, r: &[F]) -> F {
+        let Op::ConstMul { c } = node.op else {
+            panic!("a ConstMul");
+        };
+        let out = &self.graph.tensors[node.outputs[0].0 as usize].shape;
+        let low = axis_vars(*out.last().expect("a channel axis")) as usize;
+        constant_extension(&self.graph.constants[c.0 as usize], &r[..low])
     }
 
     /// RoPE's kernel at the instance's point `r'` for the claim at `r` (RFC-0037 'Rotate'):
@@ -708,6 +858,51 @@ fn round_value(claim: F, message: &[F], r: F) -> F {
         .fold(F::ZERO, |s, x| s + x)
 }
 
+/// The coordinates of `Mul`'s second operand `b` within the point `r` over the first's shape `a`:
+/// its highest for `Trailing`, its lowest for `Leading` (RFC-0010 'Relations' 'Broadcast').
+fn broadcast_coords(r: &[F], a: &[u32], b: &[u32], broadcast: tessera_ir::Broadcast) -> Vec<F> {
+    let vars = |shape: &[u32]| shape.iter().map(|&d| axis_vars(d) as usize).sum::<usize>();
+    match broadcast {
+        tessera_ir::Broadcast::Trailing => r[vars(a) - vars(b)..].to_vec(),
+        tessera_ir::Broadcast::Leading => r[..vars(b)].to_vec(),
+    }
+}
+
+/// `c̃(r_c)` of a constant per channel at `r_c`, zero at the padded channels.
+fn constant_extension(constant: &[i64], r_c: &[F]) -> F {
+    let mut table = vec![Goldilocks::ZERO; 1 << r_c.len()];
+    for (slot, &v) in table.iter_mut().zip(constant) {
+        *slot = Goldilocks::from_i64(v);
+    }
+    evaluate_base::<F>(&table, r_c).expect("a channel point")
+}
+
+/// `c̃(r_c)·ψ̃(r)` of the `ConstAdd` `node`, `ψ̃(r) = Π_a LT(r_a, n_a)` over every axis, the last
+/// among them: what a wrong verifier takes for the shift `ĉ`. For a constant of one value it is
+/// `c·ψ̃(r) = ĉ(r)`.
+fn channels_times_selector(graph: &Graph, node: tessera_ir::NodeId, r: &[F]) -> F {
+    let node = &graph.nodes[node.0 as usize];
+    let Op::ConstAdd { c } = node.op else {
+        panic!("a ConstAdd");
+    };
+    let constant = &graph.constants[c.0 as usize];
+    let shape = &graph.tensors[node.outputs[0].0 as usize].shape;
+    let mut selector = F::ONE;
+    let mut at = 0;
+    for &len in shape.iter().rev() {
+        let vars = axis_vars(len) as usize;
+        selector *= less_than(&r[at..at + vars], u64::from(len)).expect("LT");
+        at += vars;
+    }
+    let low = axis_vars(*shape.last().expect("an axis")) as usize;
+    let c = if constant.len() == 1 {
+        F::from(Goldilocks::from_i64(constant[0]))
+    } else {
+        constant_extension(constant, &r[..low])
+    };
+    c * selector
+}
+
 fn eq_at(rho: &[F], layer: u64) -> F {
     rho.iter().enumerate().fold(F::ONE, |p, (j, &x)| {
         p * if (layer >> j) & 1 == 1 { x } else { F::ONE - x }
@@ -758,6 +953,8 @@ fn pool_of_graph(
         graph,
         tables: &[],
         schedule,
+        publics: NO_PUBLIC,
+        public: PublicTensors::of(graph),
         coords: verifier_coords.clone(),
         claims: Vec::new(),
         parts: Vec::new(),
@@ -1458,4 +1655,1023 @@ fn a_lookup_non_zero_at_padding_with_padded_positions_is_refused() {
     );
     leaf(TableKind::AesSbox, &[4, 4]).expect("no padded position");
     leaf(TableKind::Gf256Mul { c: 2 }, &[4, 3]).expect("a lookup that maps 0 to 0");
+}
+
+// ----- Public terms, ConstAdd and the per-channel ConstMul (RFC-0072) ---------------------------
+
+/// The public tensors a verifier computes from the public graph inputs and constants alone
+/// (RFC-0072 'Public tensors'): the graph run on the public inputs `public`, every other input 0,
+/// of which only the public tensors are kept. By the closure no committed input reaches a public
+/// tensor, so the zeros change none of them.
+struct PublicValues {
+    witness: Witness,
+    public: Vec<bool>,
+}
+
+impl WitnessSource for PublicValues {
+    fn values(&self, tensor: TensorId) -> Option<&[i64]> {
+        if !self.public.get(tensor.0 as usize).copied().unwrap_or(false) {
+            return None;
+        }
+        self.witness.values(tensor)
+    }
+}
+
+fn public_values(graph: &Graph, public: &[(TensorId, Vec<i64>)]) -> PublicValues {
+    let flags = public_tensors(graph);
+    let inputs = graph
+        .tensors
+        .iter()
+        .filter(|t| !graph.nodes.iter().any(|n| n.outputs.contains(&t.id)))
+        .map(|t| {
+            let values: SecretBuf<i64> = match public.iter().find(|(id, _)| *id == t.id) {
+                Some((_, values)) => {
+                    assert!(flags[t.id.0 as usize], "a public input");
+                    values.iter().copied().collect()
+                }
+                None => {
+                    let len: usize = t.shape.iter().map(|&d| d as usize).product();
+                    (0..len).map(|_| 0).collect()
+                }
+            };
+            (t.id, values)
+        })
+        .collect();
+    let witness = Engine::for_graph(graph, &[])
+        .expect("an engine")
+        .evaluate(inputs)
+        .expect("the public tensors");
+    PublicValues {
+        witness,
+        public: flags,
+    }
+}
+
+/// A graph's honest run: its schedule, the witness of random inputs in their declared ranges,
+/// the public inputs' values, the leaf points, the proof and the prover's pool.
+struct Run {
+    schedule: StageSchedule,
+    witness: Witness,
+    public: Vec<(TensorId, Vec<i64>)>,
+    points: Vec<Vec<F>>,
+    proof: Proof,
+    pool: Vec<F>,
+}
+
+impl Run {
+    fn of(graph: &Graph, inputs: &[TensorId], seed: u64) -> Self {
+        let schedule = derive_graph_schedule(graph, &[], &[], None).expect("a schedule");
+        assert_eq!(
+            schedule.stage_count(),
+            tessera_compiler::stage_count(graph) as usize,
+            "the report's count"
+        );
+        let values = random_inputs(graph, inputs, seed);
+        let flags = public_tensors(graph);
+        let public = values
+            .iter()
+            .filter(|(t, _)| flags[t.0 as usize])
+            .map(|(t, v)| (*t, v.to_vec()))
+            .collect();
+        let witness = Engine::for_graph(graph, &[])
+            .expect("an engine")
+            .evaluate(values)
+            .expect("a witness");
+        let points = leaf_points(&schedule, seed);
+        let (proof, pool) = prove_graph(graph, &[], &schedule, &witness, &points);
+        let pool = pool.into_iter().map(|v| v.expect("a value")).collect();
+        Self {
+            schedule,
+            witness,
+            public,
+            points,
+            proof,
+            pool,
+        }
+    }
+
+    /// The verifier's verdict on `proof`, with the public inputs `public` and the shift `shift`.
+    fn verify_with(
+        &self,
+        graph: &Graph,
+        proof: &Proof,
+        public: &[(TensorId, Vec<i64>)],
+        shift: Shift,
+    ) -> Result<Vec<F>, Reject> {
+        let values = public_values(graph, public);
+        let publics = Publics {
+            values: &values,
+            shift,
+        };
+        verify_public(graph, &[], &self.schedule, proof, &self.points, publics)
+    }
+
+    /// The honest verifier accepts the honest proof, its pool the prover's and the committed
+    /// tensors' extensions.
+    fn accepted(&self, graph: &Graph) {
+        let pool = self
+            .verify_with(graph, &self.proof, &self.public, Shift::Extension)
+            .expect("the honest proof verifies");
+        assert_eq!(pool, self.pool, "the prover's pool");
+        let coords = coords_after(&self.schedule, &self.proof, &self.points);
+        assert_eq!(
+            pool,
+            pool_of_graph(&coords, graph, &self.schedule, &self.witness),
+            "the pool is the committed tensors' extensions"
+        );
+    }
+
+    /// The proof of a prover whose committed input `tensor` has entry `entry` changed under the
+    /// honest values.
+    fn tampered(&self, graph: &Graph, tensor: TensorId, entry: usize) -> Proof {
+        let mut values = self.witness.tensor(tensor).expect("the input").to_vec();
+        values[entry] += 1;
+        let tampered = Tampered {
+            witness: &self.witness,
+            tensor,
+            values,
+        };
+        prove_graph(graph, &[], &self.schedule, &tampered, &self.points).0
+    }
+
+    /// The final check of stage `k`.
+    fn end(&self, k: u16) -> Reject {
+        Reject {
+            stage: k,
+            round: self.schedule.stages[usize::from(k)].rounds,
+        }
+    }
+}
+
+/// The extension of `ψ·c` at `r` by enumeration over the padded cube of `shape`: the constant at
+/// each real position, one value or one per channel of the last axis, 0 at every padded one,
+/// weighted by `eq(r, x)` (RFC-0072 'Padded positions', 'Linear operations that are not
+/// coordinate maps').
+fn shift_by_enumeration(shape: &[u32], constant: &[i64], r: &[F]) -> F {
+    let vars: Vec<u32> = shape.iter().map(|&d| axis_vars(d)).collect();
+    let n: u32 = vars.iter().sum();
+    assert_eq!(r.len(), n as usize);
+    let mut sum = F::ZERO;
+    for x in 0..1u64 << n {
+        let (mut rest, mut real, mut channel) = (x, true, 0);
+        for (axis, &len) in shape.iter().enumerate().rev() {
+            let k = rest & ((1 << vars[axis]) - 1);
+            rest >>= vars[axis];
+            real &= k < u64::from(len);
+            if axis + 1 == shape.len() {
+                channel = k as usize;
+            }
+        }
+        if real {
+            let c = if constant.len() == 1 {
+                constant[0]
+            } else {
+                constant[channel]
+            };
+            sum += F::from(Goldilocks::from_i64(c)) * eq_at(r, x);
+        }
+    }
+    sum
+}
+
+/// Random points of `n` coordinates.
+fn random_points(n: usize, count: usize, seed: u64) -> Vec<Vec<F>> {
+    let mut rng = seed;
+    let mut next = || {
+        rng = rng.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+        Goldilocks::from_u64_reduced(rng >> 11)
+    };
+    (0..count)
+        .map(|_| (0..n).map(|_| F::new(next(), next())).collect())
+        .collect()
+}
+
+const PUBLIC: NodeKind = NodeKind::Public;
+
+/// An input of `shape` and `kind` with values in `[−3, 3]`.
+fn small(g: &mut GraphBuilder, shape: &[u32], kind: NodeKind) -> TensorId {
+    let mut input = decl(shape, kind);
+    input.range = IntRange { lo: -3, hi: 3 };
+    g.input(input).expect("an input")
+}
+
+fn product(broadcast: tessera_ir::Broadcast) -> Op {
+    Op::Mul { broadcast }
+}
+
+/// Where a test's `ConstAdd` sits, and so which check reads its shift.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Shifted {
+    /// `requant(a·b + c)`: the leaf claim on the sum becomes `a·b`'s at `v − ĉ(r)`, which stage
+    /// 1's product proves.
+    Virtual,
+    /// `requant(x + c)`, `x` committed: the leaf claim is ready on `x`, whose pool claim is
+    /// `v − ĉ(r)`, which the opening checks.
+    Pooled,
+    /// `y = x + c` committed: stage 1's zero-check `Ỹ − X̃ − ĉ`, `ĉ` at its final point.
+    Committed,
+}
+
+/// The shapes a test's `ConstAdd` runs on: RFC-0072's last axis of 3, and the degenerate ones a
+/// selector can get wrong, an axis of length 1, a single axis, three axes, and lengths that are
+/// powers of two, where `c̃(r_c)·ψ̃(r)` is `ĉ`.
+const SHIFT_SHAPES: [&[u32]; 10] = [
+    &[3],
+    &[3, 1],
+    &[1, 3],
+    &[5, 3],
+    &[2, 3, 6],
+    &[7, 5],
+    &[4],
+    &[2, 1, 3],
+    &[4, 4],
+    &[1],
+];
+
+/// The constant of a test's `ConstAdd` on a last axis of `channels`: one value, or one per
+/// channel, which a last axis of 1 does not have ('Scalar or per channel').
+fn shift_constant(channels: u32, per_channel: bool) -> Option<Vec<i64>> {
+    match (per_channel, channels) {
+        (false, _) => Some(vec![9]),
+        (true, 1) => None,
+        (true, _) => Some((0..i64::from(channels)).map(|i| 3 * i - 7).collect()),
+    }
+}
+
+/// RFC-0072 'Linear operations that are not coordinate maps' (`ConstAdd`), RFC-0037 'Claims and
+/// atoms', 'Splits'; RFC-0072 'Testing Strategy' 'Relations': a `ConstAdd` by a scalar and by a
+/// constant per channel, virtual and committed ([`Shifted`] says where each test's sits), proves
+/// and verifies on every shape of [`SHIFT_SHAPES`], the last axis of 3 among them.
+///
+/// The verifier's shift is the extension of `ψ·c` enumerated over the padded cube. A verifier
+/// taking `c̃(r_c)·ψ̃(r)` in its place, or no shift, rejects the honest proof at the check that
+/// reads it, stage 1's final check, or else the opening, whose pool value it gets wrong; `c̃·ψ̃`
+/// is `ĉ`, and accepts, for a scalar and for a last axis whose length is a power of two. A changed
+/// committed entry is rejected at stage 1.
+#[test]
+fn a_const_add_proves_and_verifies() {
+    for shape in SHIFT_SHAPES {
+        let channels = *shape.last().expect("an axis");
+        for per_channel in [false, true] {
+            let Some(values) = shift_constant(channels, per_channel) else {
+                continue;
+            };
+            // `c̃(r_c)·ψ̃(r)` differs from `ĉ` off the cube exactly then.
+            let differs = per_channel && !channels.is_power_of_two();
+            for mode in [Shifted::Virtual, Shifted::Pooled, Shifted::Committed] {
+                const_add_case(shape, &values, mode, differs);
+            }
+        }
+    }
+}
+
+/// One case of [`a_const_add_proves_and_verifies`].
+fn const_add_case(shape: &[u32], values: &[i64], mode: Shifted, differs: bool) {
+    let name = format!("{shape:?}, constant {values:?}, {mode:?}");
+    let mut g = GraphBuilder::new();
+    let c = g.constant(values.to_vec()).expect("a constant");
+    let virt = decl(shape, NodeKind::Virtual);
+    // The committed inputs, and the operands of the product, if any.
+    let (inputs, operands) = match mode {
+        Shifted::Virtual => {
+            let a = small(&mut g, shape, ADVICE);
+            let b = small(&mut g, shape, ADVICE);
+            let mul = product(tessera_ir::Broadcast::Trailing);
+            let m = one(&mut g, mul, &[a, b], virt.clone());
+            let y = one(&mut g, Op::ConstAdd { c }, &[m], virt);
+            requant(&mut g, y, shape, 100);
+            (vec![a, b], Some((a, b)))
+        }
+        Shifted::Pooled => {
+            let x = small(&mut g, shape, ADVICE);
+            let y = one(&mut g, Op::ConstAdd { c }, &[x], virt);
+            requant(&mut g, y, shape, 100);
+            (vec![x], None)
+        }
+        Shifted::Committed => {
+            let x = small(&mut g, shape, ADVICE);
+            one(&mut g, Op::ConstAdd { c }, &[x], decl(shape, ADVICE));
+            (vec![x], None)
+        }
+    };
+    let graph = g.finish();
+    let node = graph
+        .nodes
+        .iter()
+        .find(|n| matches!(n.op, Op::ConstAdd { .. }))
+        .expect("the ConstAdd");
+    let (node, output) = (node.id, &graph.tensors[node.outputs[0].0 as usize].shape);
+    let run = Run::of(&graph, &inputs, 0x0526_0A00 + u64::from(values.len() > 1));
+    // The verifier's shift is the extension of `ψ·c`; `c̃·ψ̃` is not, when it differs.
+    let public = PublicTensors::of(&graph);
+    let vars = output.iter().map(|&d| axis_vars(d) as usize).sum();
+    for r in random_points(vars, 4, 0x0526_0A10) {
+        let shift = public_value(&graph, &public, PublicSource::Shift(node), &NoPublic, &r)
+            .expect("a shift");
+        assert_eq!(shift, shift_by_enumeration(output, values, &r), "{name}");
+        let product = channels_times_selector(&graph, node, &r);
+        assert_eq!(product != shift, differs, "{name}: c̃·ψ̃");
+    }
+    run.accepted(&graph);
+    // A wrong verifier's verdict: stage 1's final check, or a pool claim the opening rejects,
+    // since it is not the committed tensors' extension.
+    let wrong = |shift| match run.verify_with(&graph, &run.proof, &run.public, shift) {
+        Ok(pool) => {
+            let coords = coords_after(&run.schedule, &run.proof, &run.points);
+            let opened = pool_of_graph(&coords, &graph, &run.schedule, &run.witness);
+            (pool != opened).then_some("the opening")
+        }
+        Err(reject) => (reject == run.end(1)).then_some("stage 1"),
+    };
+    let expected = if mode == Shifted::Pooled {
+        "the opening"
+    } else {
+        "stage 1"
+    };
+    assert_eq!(wrong(Shift::Omitted), Some(expected), "{name}: no shift");
+    let product = wrong(Shift::ChannelsTimesSelector);
+    assert_eq!(product, differs.then_some(expected), "{name}: c̃(r_c)·ψ̃(r)");
+    if mode == Shifted::Pooled {
+        return;
+    }
+    // A committed entry changed under the honest values: the zero-check's `X`, or one of the
+    // product's operands where the other is not 0.
+    let (changed, entry) = match operands {
+        None => (inputs[0], 0),
+        Some((a, b)) => {
+            let at = |t: TensorId| run.witness.tensor(t).expect("an operand").to_vec();
+            let (va, vb) = (at(a), at(b));
+            match vb.iter().position(|&v| v != 0) {
+                Some(i) => (a, i),
+                None => (
+                    b,
+                    va.iter().position(|&v| v != 0).expect("a non-zero entry"),
+                ),
+            }
+        }
+    };
+    let bad = run.tampered(&graph, changed, entry);
+    assert_eq!(
+        run.verify_with(&graph, &bad, &run.public, Shift::Extension),
+        Err(run.end(1)),
+        "{name}: a changed input entry"
+    );
+}
+
+/// RFC-0072 'Public tensors' 'As an operand', RFC-0010 'Relations': a `Mul` with a public operand
+/// reads it as `Public`, so the instance sends one evaluation, its other operand's, and the
+/// verifier evaluates the public one at its own coordinates of the instance's point. A public row
+/// scale (`Trailing`), channel scale (`Leading`) and first operand each prove and verify, and so
+/// does a committed product's zero-check with a public channel scale. A public operand changed on
+/// the verifier's side, and a changed committed entry, are rejected at stage 1's final check.
+#[test]
+fn a_mul_with_a_public_operand_proves_and_verifies() {
+    use tessera_ir::Broadcast::{Leading, Trailing};
+    // The operands' shapes and kinds, the broadcast, and whether the product is committed.
+    let case = |a: &'static [u32], a_kind, b: &'static [u32], b_kind, broadcast, committed| {
+        (a, a_kind, b, b_kind, broadcast, committed)
+    };
+    let cases = [
+        (
+            "a public row scale",
+            case(&[5, 3], ADVICE, &[5], PUBLIC, Trailing, false),
+        ),
+        (
+            "a public channel scale",
+            case(&[5, 3], ADVICE, &[3], PUBLIC, Leading, false),
+        ),
+        (
+            "a public first operand",
+            case(&[5, 3], PUBLIC, &[5], ADVICE, Trailing, false),
+        ),
+        (
+            "a committed product",
+            case(&[5, 3], ADVICE, &[3], PUBLIC, Leading, true),
+        ),
+    ];
+    for (name, (a_shape, a_kind, b_shape, b_kind, broadcast, committed)) in cases {
+        let mut g = GraphBuilder::new();
+        let a = small(&mut g, a_shape, a_kind);
+        let b = small(&mut g, b_shape, b_kind);
+        let kind = if committed { ADVICE } else { NodeKind::Virtual };
+        let y = one(&mut g, product(broadcast), &[a, b], decl(a_shape, kind));
+        if !committed {
+            requant(&mut g, y, a_shape, 100);
+        }
+        let graph = g.finish();
+        let run = Run::of(&graph, &[a, b], 0x0526_0B00);
+        let stage = &run.schedule.stages[1];
+        let instance = &stage.instances[0];
+        let sent = if committed { 2 } else { 1 };
+        assert_eq!(
+            instance.claims.len(),
+            sent,
+            "{name}: the public operand sends nothing"
+        );
+        assert_eq!(
+            run.proof.stages[0].sumcheck.final_evals.len(),
+            sent,
+            "{name}"
+        );
+        run.accepted(&graph);
+        // The verifier's public operand with one entry changed.
+        let (public, committed_input) = if a_kind == PUBLIC { (a, b) } else { (b, a) };
+        let mut changed = run.public.clone();
+        let (_, values) = changed
+            .iter_mut()
+            .find(|(t, _)| *t == public)
+            .expect("the public operand");
+        values[1] += 1;
+        assert_eq!(
+            run.verify_with(&graph, &run.proof, &changed, Shift::Extension),
+            Err(run.end(1)),
+            "{name}: a changed public operand"
+        );
+        let bad = run.tampered(&graph, committed_input, 2);
+        assert_eq!(
+            run.verify_with(&graph, &bad, &run.public, Shift::Extension),
+            Err(run.end(1)),
+            "{name}: a changed committed entry"
+        );
+    }
+}
+
+/// RFC-0072 'ConstMul by a constant per channel', RFC-0010 'Relations': `Ỹ(r) = Σ_x eq(r, x)·
+/// c̃(x_c)·X̃(x)`, degree 3, the constant a public operand broadcast over the other axes, 0 at the
+/// padded channels of a last axis of 3, leaving one claim on `X`; and a committed output's
+/// zero-check `Ỹ − c̃(x_c)·X̃`. Both prove and verify, and a changed input entry is rejected at
+/// stage 1's final check.
+#[test]
+fn a_const_mul_per_channel_proves_and_verifies() {
+    for committed in [false, true] {
+        let mut g = GraphBuilder::new();
+        let x = small(&mut g, &[5, 3], ADVICE);
+        let c = g.constant(vec![3, -1, 4]).expect("a constant");
+        let kind = if committed { ADVICE } else { NodeKind::Virtual };
+        let y = one(&mut g, Op::ConstMul { c }, &[x], decl(&[5, 3], kind));
+        if !committed {
+            requant(&mut g, y, &[5, 3], 100);
+        }
+        let graph = g.finish();
+        let run = Run::of(&graph, &[x], 0x0526_0C00);
+        let relation = run.schedule.stages[1].instances[0].relation;
+        let expected = if committed {
+            Relation::Equality
+        } else {
+            Relation::ScaleChannels
+        };
+        assert_eq!(relation, expected);
+        assert_eq!(run.proof.stages[0].sumcheck.rounds[0].len(), 3, "degree 3");
+        run.accepted(&graph);
+        let bad = run.tampered(&graph, x, 7);
+        assert_eq!(
+            run.verify_with(&graph, &bad, &run.public, Shift::Extension),
+            Err(run.end(1)),
+            "committed {committed}: a changed input entry"
+        );
+    }
+}
+
+/// Where a test's claim meets the public tensor `Expand(p)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Reaching {
+    /// `requant(a·b + Expand(p))`: the claim is `a·b`'s at `v − Ẽ(r)`, which stage 1 proves.
+    Product,
+    /// `requant(x + Expand(p))`, `x` committed: the pool claim on `x` is `v − Ẽ(r)`.
+    Committed,
+    /// `requant(Expand(p))`: the leaf site reads the public tensor, and is refused until the
+    /// leaf layout leaves its value out of the split (RFC-0045 'The split').
+    Alone,
+}
+
+/// RFC-0010 'Relations' ('A public input, an offset's constants, is evaluated by the verifier and
+/// moves to the claim's value'), RFC-0072 'Public tensors' 'Their claims': a claim through linear
+/// maps to the public tensor `Expand(p)`, which the verifier computes from `p`, moves it to the
+/// claim's value ([`Reaching`]). Each proves and verifies, and a `p` changed on the verifier's side
+/// fails the check that reads it: stage 1's or the opening's. A requantization of `Expand(p)`
+/// alone reads the public tensor at its leaf site, which the schedule refuses, since the leaf
+/// layout would send its value.
+#[test]
+fn a_claim_reaching_a_public_tensor_proves_and_verifies() {
+    for reaching in [Reaching::Product, Reaching::Committed, Reaching::Alone] {
+        let mut g = GraphBuilder::new();
+        let a = small(&mut g, &[4, 3], ADVICE);
+        let b = small(&mut g, &[4, 3], ADVICE);
+        let p = small(&mut g, &[3], PUBLIC);
+        let wide = one(
+            &mut g,
+            Op::Expand { axis: 0, len: 4 },
+            &[p],
+            decl(&[4, 3], NodeKind::Virtual),
+        );
+        match reaching {
+            Reaching::Product | Reaching::Committed => {
+                let m = if reaching == Reaching::Product {
+                    one(
+                        &mut g,
+                        product(tessera_ir::Broadcast::Trailing),
+                        &[a, b],
+                        decl(&[4, 3], NodeKind::Virtual),
+                    )
+                } else {
+                    a
+                };
+                let s = one(
+                    &mut g,
+                    Op::Add,
+                    &[m, wide],
+                    decl(&[4, 3], NodeKind::Virtual),
+                );
+                requant(&mut g, s, &[4, 3], 100);
+            }
+            Reaching::Alone => {
+                requant(&mut g, wide, &[4, 3], 100);
+            }
+        }
+        let graph = g.finish();
+        if reaching == Reaching::Alone {
+            let refused = derive_graph_schedule(&graph, &[], &[], None);
+            assert!(
+                matches!(
+                    refused,
+                    Err(CompileError::Schedule {
+                        rule: PUBLIC_SITE,
+                        ..
+                    })
+                ),
+                "{refused:?}"
+            );
+            continue;
+        }
+        let run = Run::of(&graph, &[a, b, p], 0x0526_0D00);
+        let leaf = &run.schedule.stages[0].claims[0];
+        assert_eq!(leaf.public.len(), 1);
+        assert_eq!(leaf.public[0].source, PublicSource::Tensor(wide));
+        run.accepted(&graph);
+        let mut changed = run.public.clone();
+        changed[0].1[2] += 1;
+        assert_eq!(changed[0].0, p);
+        let verdict = run.verify_with(&graph, &run.proof, &changed, Shift::Extension);
+        match reaching {
+            Reaching::Product => assert_eq!(verdict, Err(run.end(1)), "{reaching:?}"),
+            Reaching::Committed => {
+                let coords = coords_after(&run.schedule, &run.proof, &run.points);
+                let opened = pool_of_graph(&coords, &graph, &run.schedule, &run.witness);
+                assert_ne!(
+                    verdict.expect("the stages pass"),
+                    opened,
+                    "the opening rejects"
+                );
+            }
+            Reaching::Alone => unreachable!("refused"),
+        }
+    }
+}
+
+/// RFC-0045 'The split' sends no value for a lookup's public input; the leaf layout still does.
+const PUBLIC_SITE: &str = "a leaf site reads no public tensor: the leaf layout does not leave its value out of the split \
+     yet";
+
+// ----- Public terms' coefficients, shapes and points (the slice-1b review) -----------------------
+
+/// A wrong verifier's verdict on an honest run: `Some(where)` when it rejects, at a stage or at the
+/// opening, whose pool value it gets wrong.
+fn rejected(run: &Run, graph: &Graph, shift: Shift) -> Option<&'static str> {
+    match run.verify_with(graph, &run.proof, &run.public, shift) {
+        Ok(pool) => {
+            let coords = coords_after(&run.schedule, &run.proof, &run.points);
+            let opened = pool_of_graph(&coords, graph, &run.schedule, &run.witness);
+            (pool != opened).then_some("the opening")
+        }
+        Err(_) => Some("a stage"),
+    }
+}
+
+/// RFC-0037 'Claims and atoms', RFC-0010 'Relations': a `Sum` over an axis places its input at
+/// `½` with the coefficient `2^j`, which a `ConstAdd` below it passes to its shift. A sum over a
+/// `ConstAdd`, by a scalar and per channel, proves and verifies on axis 0 of `[4, 3]`, axis 1 of
+/// `[5, 4]` and axis 0 of `[2, 3, 6]`, each summed axis a power of two; a verifier with no shift
+/// rejects.
+#[test]
+fn a_sum_through_a_const_add_proves_and_verifies() {
+    let cases: [(&[u32], u8, &[u32]); 3] = [
+        (&[4, 3], 0, &[3]),
+        (&[5, 4], 1, &[5]),
+        (&[2, 3, 6], 0, &[3, 6]),
+    ];
+    for (shape, axis, out) in cases {
+        let channels = *shape.last().expect("an axis");
+        for per_channel in [false, true] {
+            let name = format!("Sum over axis {axis} of {shape:?}, per channel {per_channel}");
+            let values = if per_channel {
+                (0..i64::from(channels)).map(|i| 3 * i - 4).collect()
+            } else {
+                vec![9]
+            };
+            let mut g = GraphBuilder::new();
+            let c = g.constant(values).expect("a constant");
+            let a = small(&mut g, shape, ADVICE);
+            let b = small(&mut g, shape, ADVICE);
+            let virt = decl(shape, NodeKind::Virtual);
+            let mul = product(tessera_ir::Broadcast::Trailing);
+            let m = one(&mut g, mul, &[a, b], virt.clone());
+            let y = one(&mut g, Op::ConstAdd { c }, &[m], virt);
+            let s = one(&mut g, Op::Sum { axis }, &[y], decl(out, NodeKind::Virtual));
+            requant(&mut g, s, out, 1000);
+            let graph = g.finish();
+            let run = Run::of(&graph, &[a, b], 0x0526_0F00);
+            run.accepted(&graph);
+            assert!(
+                rejected(&run, &graph, Shift::Omitted).is_some(),
+                "{name}: no shift"
+            );
+        }
+    }
+}
+
+/// RFC-0072 'Public tensors' 'As an operand': the layouts of a public `Mul` operand on three axes,
+/// on a last axis of 1, of a public operand of the product's own shape, and in committed products'
+/// zero-checks, both operands public among them, prove and verify; the public operand changed on
+/// the verifier's side is rejected at stage 1's final check.
+#[test]
+fn a_public_mul_operand_proves_on_every_layout() {
+    use tessera_ir::Broadcast::{Leading, Trailing};
+    let case = |a: &'static [u32], a_kind, b: &'static [u32], b_kind, broadcast, committed| {
+        (a, a_kind, b, b_kind, broadcast, committed)
+    };
+    let cases = [
+        (
+            "a row scale on three axes",
+            case(&[2, 3, 6], ADVICE, &[2, 3], PUBLIC, Trailing, false),
+        ),
+        (
+            "a channel scale on three axes",
+            case(&[2, 3, 6], ADVICE, &[6], PUBLIC, Leading, false),
+        ),
+        (
+            "a public first operand, Leading",
+            case(&[2, 3, 6], PUBLIC, &[6], ADVICE, Leading, false),
+        ),
+        (
+            "a row scale on a last axis of 1",
+            case(&[3, 1], ADVICE, &[3], PUBLIC, Trailing, false),
+        ),
+        (
+            "a public first operand on [7, 5]",
+            case(&[7, 5], PUBLIC, &[7], ADVICE, Trailing, false),
+        ),
+        (
+            "a public operand of one shape",
+            case(&[5, 3], ADVICE, &[5, 3], PUBLIC, Trailing, false),
+        ),
+        (
+            "a committed row scale",
+            case(&[2, 3, 6], ADVICE, &[2, 3], PUBLIC, Trailing, true),
+        ),
+        (
+            "a committed public first operand",
+            case(&[5, 3], PUBLIC, &[5], ADVICE, Trailing, true),
+        ),
+        (
+            "a committed product of public operands",
+            case(&[5, 3], PUBLIC, &[3], PUBLIC, Leading, true),
+        ),
+    ];
+    for (name, (a_shape, a_kind, b_shape, b_kind, broadcast, committed)) in cases {
+        let mut g = GraphBuilder::new();
+        let a = small(&mut g, a_shape, a_kind);
+        let b = small(&mut g, b_shape, b_kind);
+        let kind = if committed { ADVICE } else { NodeKind::Virtual };
+        let y = one(&mut g, product(broadcast), &[a, b], decl(a_shape, kind));
+        if !committed {
+            requant(&mut g, y, a_shape, 100);
+        }
+        let graph = g.finish();
+        let run = Run::of(&graph, &[a, b], 0x0526_1000);
+        run.accepted(&graph);
+        let public = if a_kind == PUBLIC { a } else { b };
+        let mut changed = run.public.clone();
+        let (_, values) = changed
+            .iter_mut()
+            .find(|(t, _)| *t == public)
+            .expect("the public operand");
+        values[1] += 1;
+        assert_eq!(
+            run.verify_with(&graph, &run.proof, &changed, Shift::Extension),
+            Err(run.end(1)),
+            "{name}: a changed public operand"
+        );
+    }
+}
+
+/// RFC-0072 'A committed output', 'Public tensors' 'As an operand': committed outputs whose inputs
+/// are public prove and verify, each public input read as `Public` in the zero-check: a
+/// `ConstAdd` (a verifier with no shift rejecting it) and a `ConstMul` of a public tensor, by a
+/// scalar and per channel, and an `Add` or a `Sub` with either or both inputs public.
+#[test]
+fn a_committed_output_of_public_inputs_proves_and_verifies() {
+    for per_channel in [false, true] {
+        let values = if per_channel { vec![7, -2, 5] } else { vec![9] };
+        for add in [true, false] {
+            let name = format!(
+                "a committed {} of a public tensor, per channel {per_channel}",
+                if add { "ConstAdd" } else { "ConstMul" }
+            );
+            let mut g = GraphBuilder::new();
+            let c = g.constant(values.clone()).expect("a constant");
+            let x = small(&mut g, &[5, 3], PUBLIC);
+            let op = if add {
+                Op::ConstAdd { c }
+            } else {
+                Op::ConstMul { c }
+            };
+            one(&mut g, op, &[x], decl(&[5, 3], ADVICE));
+            let graph = g.finish();
+            let run = Run::of(&graph, &[x], 0x0526_1100);
+            assert_eq!(
+                run.proof.stages[0].sumcheck.final_evals.len(),
+                1,
+                "{name}: Y's alone"
+            );
+            run.accepted(&graph);
+            if add {
+                assert!(
+                    rejected(&run, &graph, Shift::Omitted).is_some(),
+                    "{name}: no shift"
+                );
+            }
+        }
+    }
+    for (name, op, a_kind, b_kind) in [
+        ("an Add, its first input public", Op::Add, PUBLIC, ADVICE),
+        ("a Sub, its second input public", Op::Sub, ADVICE, PUBLIC),
+        ("a Sub, its first input public", Op::Sub, PUBLIC, ADVICE),
+        ("a Sub of public inputs", Op::Sub, PUBLIC, PUBLIC),
+    ] {
+        let mut g = GraphBuilder::new();
+        let a = small(&mut g, &[5, 3], a_kind);
+        let b = small(&mut g, &[5, 3], b_kind);
+        one(&mut g, op, &[a, b], decl(&[5, 3], ADVICE));
+        let graph = g.finish();
+        let run = Run::of(&graph, &[a, b], 0x0526_1300);
+        run.accepted(&graph);
+        let sent = 1 + usize::from(a_kind != PUBLIC) + usize::from(b_kind != PUBLIC);
+        assert_eq!(
+            run.proof.stages[0].sumcheck.final_evals.len(),
+            sent,
+            "{name}"
+        );
+    }
+}
+
+/// RFC-0072 'ConstMul by a constant per channel': virtual and committed, on three axes, an axis of
+/// length 1, a last axis of 5 and one of 4, each proves and verifies, and a changed input entry, at
+/// a channel whose constant is not 0, is rejected at stage 1's final check.
+#[test]
+fn a_const_mul_per_channel_proves_on_every_shape() {
+    let shapes: [&[u32]; 4] = [&[2, 3, 6], &[1, 3], &[7, 5], &[4, 4]];
+    for shape in shapes {
+        for committed in [false, true] {
+            let name = format!("{shape:?}, committed {committed}");
+            let channels = *shape.last().expect("an axis");
+            let mut g = GraphBuilder::new();
+            let x = small(&mut g, shape, ADVICE);
+            let c = g
+                .constant((0..i64::from(channels)).map(|i| 2 * i - 3).collect())
+                .expect("a constant");
+            let kind = if committed { ADVICE } else { NodeKind::Virtual };
+            let y = one(&mut g, Op::ConstMul { c }, &[x], decl(shape, kind));
+            if !committed {
+                requant(&mut g, y, shape, 100);
+            }
+            let graph = g.finish();
+            let run = Run::of(&graph, &[x], 0x0526_1400);
+            run.accepted(&graph);
+            // Entry 1 is channel 1, whose constant is −1.
+            let bad = run.tampered(&graph, x, 1);
+            assert_eq!(
+                run.verify_with(&graph, &bad, &run.public, Shift::Extension),
+                Err(run.end(1)),
+                "{name}: a changed input entry"
+            );
+        }
+    }
+}
+
+/// RFC-0037 'Splits': a split claim with a public term, `requant(a·b + Expand(p) − x + Expand(p))`
+/// with `x` committed, sends `a·b`'s and `x`'s values, which must give the claim's value less the
+/// term, two products of one source at one point. It proves and verifies, and a `p` changed on the
+/// verifier's side fails the leaf stage's split check.
+#[test]
+fn a_split_claim_with_a_public_term_proves_and_verifies() {
+    let mut g = GraphBuilder::new();
+    let a = small(&mut g, &[4, 3], ADVICE);
+    let b = small(&mut g, &[4, 3], ADVICE);
+    let x = small(&mut g, &[4, 3], ADVICE);
+    let p = small(&mut g, &[3], PUBLIC);
+    let virt = decl(&[4, 3], NodeKind::Virtual);
+    let wide = one(&mut g, Op::Expand { axis: 0, len: 4 }, &[p], virt.clone());
+    let mul = product(tessera_ir::Broadcast::Trailing);
+    let m = one(&mut g, mul, &[a, b], virt.clone());
+    let s = one(&mut g, Op::Add, &[m, wide], virt.clone());
+    let t = one(&mut g, Op::Sub, &[s, x], virt.clone());
+    let u = one(&mut g, Op::Add, &[t, wide], virt);
+    requant(&mut g, u, &[4, 3], 100);
+    let graph = g.finish();
+    let run = Run::of(&graph, &[a, b, x, p], 0x0526_1500);
+    let claim = &run.schedule.stages[0].claims[0];
+    assert!(claim.split, "split");
+    assert_eq!(claim.public.len(), 1);
+    assert_eq!(claim.public[0].coefficient.len(), 2, "two products");
+    run.accepted(&graph);
+    let mut changed = run.public.clone();
+    changed[0].1[0] += 1;
+    assert_eq!(
+        run.verify_with(&graph, &run.proof, &changed, Shift::Extension),
+        Err(Reject { stage: 0, round: 0 }),
+        "a changed public input"
+    );
+}
+
+/// RFC-0072 'Public tensors' 'Once per point': terms of one public tensor merge only at one point.
+/// In `requant(Transpose(a·b + P) + P)`, `P` public, the claim reads `P` at its point with the axes
+/// swapped and at its point: two terms, which prove and verify.
+#[test]
+fn one_public_tensor_at_two_points_is_two_terms() {
+    let mut g = GraphBuilder::new();
+    let a = small(&mut g, &[3, 3], ADVICE);
+    let b = small(&mut g, &[3, 3], ADVICE);
+    let p = small(&mut g, &[3, 3], PUBLIC);
+    let virt = decl(&[3, 3], NodeKind::Virtual);
+    let mul = product(tessera_ir::Broadcast::Trailing);
+    let m = one(&mut g, mul, &[a, b], virt.clone());
+    let s = one(&mut g, Op::Add, &[m, p], virt.clone());
+    let t = one(
+        &mut g,
+        Op::Transpose { perm: vec![1, 0] },
+        &[s],
+        virt.clone(),
+    );
+    let u = one(&mut g, Op::Add, &[t, p], virt);
+    requant(&mut g, u, &[3, 3], 100);
+    let graph = g.finish();
+    let run = Run::of(&graph, &[a, b, p], 0x0526_1600);
+    let public = &run.schedule.stages[0].claims[0].public;
+    assert_eq!(public.len(), 2, "two points");
+    assert_ne!(public[0].point, public[1].point);
+    run.accepted(&graph);
+}
+
+/// RFC-0037 'Claims and atoms': a coefficient reaches the public terms below it. In
+/// `requant(3·(a·b − Expand(p)) + 3·(x + c))`, split, the expansion's term has the coefficient
+/// `−3` and the shift `3`; it proves and verifies.
+#[test]
+fn scaled_public_terms_of_a_split_claim_prove_and_verify() {
+    let mut g = GraphBuilder::new();
+    let a = small(&mut g, &[4, 3], ADVICE);
+    let b = small(&mut g, &[4, 3], ADVICE);
+    let x = small(&mut g, &[4, 3], ADVICE);
+    let p = small(&mut g, &[3], PUBLIC);
+    let three = g.constant(vec![3]).expect("a constant");
+    let c = g.constant(vec![7, -2, 5]).expect("a constant");
+    let virt = decl(&[4, 3], NodeKind::Virtual);
+    let wide = one(&mut g, Op::Expand { axis: 0, len: 4 }, &[p], virt.clone());
+    let mul = product(tessera_ir::Broadcast::Trailing);
+    let m = one(&mut g, mul, &[a, b], virt.clone());
+    let d = one(&mut g, Op::Sub, &[m, wide], virt.clone());
+    let e = one(&mut g, Op::ConstMul { c: three }, &[d], virt.clone());
+    let y = one(&mut g, Op::ConstAdd { c }, &[x], virt.clone());
+    let f = one(&mut g, Op::ConstMul { c: three }, &[y], virt.clone());
+    let s = one(&mut g, Op::Add, &[e, f], virt);
+    requant(&mut g, s, &[4, 3], 1000);
+    let graph = g.finish();
+    let run = Run::of(&graph, &[a, b, x, p], 0x0526_1700);
+    run.accepted(&graph);
+    let claim = &run.schedule.stages[0].claims[0];
+    assert!(claim.split);
+    assert!(
+        claim.public.iter().all(|t| t.coefficient != [Vec::new()]),
+        "no unit coefficient"
+    );
+}
+
+/// RFC-0037 'Splits': a ready claim's pool value is its value less its public terms, each with its
+/// coefficient. `requant(3·(x − Expand(p)))` and `requant(3·(x + c))`, `x` committed, are ready on
+/// `x`, their terms of coefficients `−3` and `3`; both prove and verify, the pool `x`'s extension.
+#[test]
+fn a_ready_claim_with_a_scaled_public_term_proves_and_verifies() {
+    for shift in [false, true] {
+        let mut g = GraphBuilder::new();
+        let x = small(&mut g, &[4, 3], ADVICE);
+        let p = small(&mut g, &[3], PUBLIC);
+        let three = g.constant(vec![3]).expect("a constant");
+        let c = g.constant(vec![7, -2, 5]).expect("a constant");
+        let virt = decl(&[4, 3], NodeKind::Virtual);
+        let d = if shift {
+            one(&mut g, Op::ConstAdd { c }, &[x], virt.clone())
+        } else {
+            let wide = one(&mut g, Op::Expand { axis: 0, len: 4 }, &[p], virt.clone());
+            one(&mut g, Op::Sub, &[x, wide], virt.clone())
+        };
+        let e = one(&mut g, Op::ConstMul { c: three }, &[d], virt);
+        requant(&mut g, e, &[4, 3], 1000);
+        let graph = g.finish();
+        let run = Run::of(&graph, &[x, p], 0x0526_1800);
+        run.accepted(&graph);
+        let claim = &run.schedule.stages[0].claims[0];
+        assert!(!claim.split, "ready");
+        assert_ne!(
+            claim.public[0].coefficient,
+            [Vec::new()],
+            "a coefficient other than 1"
+        );
+    }
+}
+
+// ----- Refusals and the public mask ----------------------------------------------------------------
+
+/// RFC-0072 'No reduction stage', RFC-0037 'The layer point': stage 1 draws the layer point at
+/// which the leaf stage's per-layer claims stack. A graph with layers whose leaf claims all reach
+/// committed tensors, `c_0 = requant(x)` and two layers of `requant(c_ℓ)`, has no stage 1 to draw
+/// it, and is refused when its schedule is derived (`ERR-INTERNAL`), rather than failing in the
+/// leaf stage's splits.
+#[test]
+fn a_graph_with_layers_and_no_stage_1_is_refused() {
+    let mut b = GraphBuilder::new();
+    let mut input = decl(&[4, 4], ADVICE);
+    input.range = IntRange { lo: -100, hi: 100 };
+    let x = b.input(input).expect("an input");
+    let mut c = requant(&mut b, x, &[4, 4], 1000);
+    let mut checkpoints = vec![c];
+    for _ in 0..2 {
+        c = requant(&mut b, c, &[4, 4], 1000);
+        checkpoints.push(c);
+    }
+    let lowering = lowering_of(b.finish(), x, checkpoints);
+    match derive_schedule(&lowering) {
+        Err(error @ CompileError::Schedule { rule, .. }) => {
+            assert_eq!(
+                rule,
+                "a graph with layers has a stage 1, which draws its layer point"
+            );
+            assert_eq!(error.code(), tessera_codec::error::ErrorCode::Internal);
+        }
+        other => panic!("refused, not {other:?}"),
+    }
+}
+
+/// 05 §3 OBS-6: `public_value` reads a tensor only when the graph's [`PublicTensors`] marks it
+/// public, so a caller cannot copy a committed or a virtual tensor's witness values into a public
+/// table; and the mask must be the graph's. A public tensor's value is its padded extension.
+#[test]
+fn public_value_refuses_a_tensor_that_is_not_public() {
+    let mut g = GraphBuilder::new();
+    let x = small(&mut g, &[4, 3], ADVICE);
+    let p = small(&mut g, &[3], PUBLIC);
+    let wide = one(
+        &mut g,
+        Op::Expand { axis: 0, len: 4 },
+        &[p],
+        decl(&[4, 3], NodeKind::Virtual),
+    );
+    let y = one(
+        &mut g,
+        Op::Add,
+        &[x, wide],
+        decl(&[4, 3], NodeKind::Virtual),
+    );
+    let graph = g.finish();
+    let witness = Engine::for_graph(&graph, &[])
+        .expect("an engine")
+        .evaluate(random_inputs(&graph, &[x, p], 0x0526_1900))
+        .expect("a witness");
+    let public = PublicTensors::of(&graph);
+    let r = &random_points(4, 1, 0x0526_1901)[0];
+    for secret in [x, y] {
+        assert_eq!(
+            public_value(&graph, &public, PublicSource::Tensor(secret), &witness, r),
+            Err(StageError::Internal {
+                rule: "a public table is of a public tensor"
+            }),
+            "tensor {}",
+            secret.0
+        );
+    }
+    let value = public_value(&graph, &public, PublicSource::Tensor(wide), &witness, r);
+    let table = padded(&witness, &graph, wide);
+    assert_eq!(value, Ok(evaluate_base::<F>(&table, r).expect("a point")));
+    // The mask of another graph.
+    let other = GraphBuilder::new().finish();
+    assert_eq!(
+        public_value(
+            &graph,
+            &PublicTensors::of(&other),
+            PublicSource::Tensor(wide),
+            &witness,
+            r
+        ),
+        Err(StageError::Internal {
+            rule: "a public mask is its graph's"
+        })
+    );
 }
