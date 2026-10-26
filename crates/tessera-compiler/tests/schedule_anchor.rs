@@ -35,6 +35,7 @@ use tessera_compiler::anchor::{
 use tessera_compiler::schedule::{
     Coord, Factor, Kind, Layers, PublicSource, PublicTerm, Relation, Site as LeafSite,
     StageSchedule, derive_graph_schedule, nonzero_at_padding, public_tensors,
+    tensors_nonzero_at_padding,
 };
 use tessera_compiler::{CompileError, PublicModel, lower, stage_count};
 use tessera_ir::{
@@ -53,9 +54,10 @@ const COMMITTED: &str = "a committed output is of a ConstMul, ConstAdd, Add, Sub
 /// RFC-0072 'Linear operations that are not coordinate maps': 'Summing relations'.
 const SUMS: &str = "a Sum, SumSquares or MatMulAct over an axis whose length is not a power of \
                     two sums an input that is 0 at its padded positions";
-/// RFC-0045 'The split' sends no value for a lookup's public input; the leaf layout still does.
-const PUBLIC_SITE: &str = "a leaf site reads no public tensor: the leaf layout does not leave its \
-                           value out of the split yet";
+/// RFC-0072 'Padded positions': 'A gadget reading such values'.
+const GADGET_INPUT: &str = "no gadget but a lookup, BitDecompose or AssertEqual reads a tensor \
+                            non-zero at its padded positions: RFC-0035's row relations take a \
+                            padded row's input as 0";
 /// RFC-0072 'Public tensors' 'As an operand': a matmul reads no operand as `Public`.
 const MATMUL: &str = "a matmul's operands are not public, unless both are";
 
@@ -249,6 +251,9 @@ fn no_llama_lowering_has_a_derived_public_tensor_or_a_lookup_non_zero_at_padding
                     node.op.name()
                 );
             }
+            // So no tensor is non-zero at padding, and no gadget reads one.
+            let reached = tensors_nonzero_at_padding(graph, &lowering.tables).expect("decided");
+            assert!(reached.iter().all(|r| !r), "{profile:?}");
         }
     }
 }
@@ -271,17 +276,17 @@ fn term(source: PublicSource, point: Vec<Coord>, coefficient: Vec<Factor>) -> Pu
 type PublicKey = fn(&mut GraphBuilder, TensorId, TensorId) -> TensorId;
 
 /// RFC-0072 'Public tensors' 'Their claims', 'In the leaf stage'; RFC-0045 'The split': a
-/// lookup's public input sends no split value, and the verifier evaluates it itself. The leaf
-/// layout still sends one value per read, so a leaf site whose input is public is refused until it
-/// leaves them out: a product or a selection of public inputs, a public input read directly, and
-/// a table lookup of public bytes, as AES's counter blocks would be.
+/// lookup's public input sends no split value, and the verifier evaluates it itself. A leaf site
+/// whose input is public, a product or a selection of public inputs, a public input read
+/// directly, or the public bytes of a table lookup, as AES's counter blocks are, leaves a claim of
+/// that one public term at the leaf point: no atom, no part, nothing split, and no instance.
 ///
-/// A key that adds a committed tensor to the same public tensor reads no public tensor, and is
-/// admitted. The walk then stops at the public tensor itself, by the closure, not at a relation
-/// below it: one public term at the leaf point, beside the committed atom, which the claim is
-/// ready on; no instance arises.
+/// A key that adds a committed tensor to the same public tensor reads no public tensor. The walk
+/// then stops at the public tensor itself, by the closure, not at a relation below it: one public
+/// term at the leaf point, beside the committed atom, which the claim is ready on; no instance
+/// arises.
 #[test]
-fn a_leaf_site_reads_no_public_tensor_and_a_claim_stops_at_one() {
+fn a_leaf_site_of_a_public_tensor_leaves_one_public_term() {
     // The schedule of `requant(key(p, q))`, or `requant(x + key(p, q))` with `x` committed, `key`
     // of `shape`; the key and `x`.
     let schedule = |key: PublicKey, shape: &[u32], plus_committed: bool| {
@@ -320,11 +325,28 @@ fn a_leaf_site_reads_no_public_tensor_and_a_claim_stops_at_one() {
         ("a public input", |_, p, _| p, vec![4, 8]),
     ];
     for (name, key, shape) in keys {
-        let (refused, ..) = schedule(key, &shape, false);
-        assert_eq!(refusal(refused), PUBLIC_SITE, "{name}");
+        let vars = if shape[0] == 4 { 5 } else { 4 };
+        let (alone, graph, k, _) = schedule(key, &shape, false);
+        let alone = alone.unwrap_or_else(|e| panic!("{name} alone: {e:?}"));
+        let [claim] = alone.stages[0].claims.as_slice() else {
+            panic!("{name}: one leaf claim");
+        };
+        assert!(claim.atoms.is_empty(), "{name}: no atom");
+        assert_eq!(
+            claim.public,
+            [term(
+                PublicSource::Tensor(k),
+                leaf_point(0, vars),
+                Vec::new()
+            )],
+            "{name}: the public term"
+        );
+        assert!(!claim.split && claim.parts.is_empty(), "{name}: no part");
+        assert!(alone.pool.is_empty(), "{name}: nothing to open");
+        assert_eq!(alone.stage_count(), 1, "{name}: no instance");
+        assert_eq!(stage_count(&graph), 1, "{name}: the report's count");
         let (admitted, graph, k, x) = schedule(key, &shape, true);
         let admitted = admitted.unwrap_or_else(|e| panic!("{name}: {e:?}"));
-        let vars = if shape[0] == 4 { 5 } else { 4 };
         let [claim] = admitted.stages[0].claims.as_slice() else {
             panic!("{name}: one leaf claim");
         };
@@ -343,16 +365,28 @@ fn a_leaf_site_reads_no_public_tensor_and_a_claim_stops_at_one() {
         assert_eq!(admitted.stage_count(), 1, "{name}: no instance");
         assert_eq!(stage_count(&graph), 1, "{name}: the report's count");
     }
-    // A lookup of public bytes, and one of committed bytes.
+    // A lookup of public bytes leaves its public term alone; one of committed bytes a pool claim.
     for kind in [NodeKind::Public, ADVICE] {
         let mut g = GraphBuilder::new();
         let x = g.input(decl(&[4], kind, 0, 255)).expect("bytes");
         substitute(&mut g, x, &[4]);
-        let result = layerless(&g.finish(), &sbox());
+        let schedule = layerless(&g.finish(), &sbox()).expect("an S-box's schedule");
+        let [claim] = schedule.stages[0].claims.as_slice() else {
+            panic!("one leaf claim");
+        };
         if kind == NodeKind::Public {
-            assert_eq!(refusal(result), PUBLIC_SITE, "an S-box of public bytes");
+            assert!(
+                claim.atoms.is_empty() && claim.parts.is_empty(),
+                "public bytes"
+            );
+            assert_eq!(
+                claim.public,
+                [term(PublicSource::Tensor(x), leaf_point(0, 2), Vec::new())]
+            );
+            assert!(schedule.pool.is_empty());
         } else {
-            result.expect("an S-box of committed bytes");
+            assert!(claim.public.is_empty(), "committed bytes");
+            assert_eq!(schedule.pool.len(), 1, "committed bytes");
         }
     }
 }
@@ -498,8 +532,8 @@ fn a_committed_const_add_or_channel_scale_is_one_zero_check() {
 /// A `Mul` by a public row scale (`Trailing`), a public channel scale (`Leading`) or a public
 /// first operand leaves one claim, on its other operand, at that operand's coordinates; a
 /// committed `Mul`'s zero-check leaves `Y`'s and its other operand's. A product of public
-/// operands is public: no instance proves it, and a leaf site reading it is refused until the
-/// leaf layout leaves its value out.
+/// operands is public: no instance proves it, and a leaf site reading it leaves it as a public
+/// term.
 #[test]
 fn a_mul_with_a_public_operand_leaves_no_claim_on_it() {
     // `requant(a·b)` with the operands' shapes and kinds, then the stage-1 instance's claims.
@@ -554,13 +588,22 @@ fn a_mul_with_a_public_operand_leaves_no_claim_on_it() {
         assert_eq!(claim.kind, Kind::Tensor(operand), "{name}");
         assert_eq!(claim.point, instance.challenges[coords].to_vec(), "{name}");
     }
-    // Both public: the product is public, and the requantization's leaf site reads it.
+    // Both public: the product is public, and the requantization's leaf site reads it as one
+    // public term, with no instance.
     let mut g = GraphBuilder::new();
     let x = g.input(decl(&[5, 3], public, -100, 100)).expect("a");
     let w = g.input(decl(&[5], public, -100, 100)).expect("b");
     let y = one(&mut g, mul(), &[x, w], virt(&[5, 3]));
     requant(&mut g, y, &[5, 3], -128, 127);
-    assert_eq!(refusal(layerless(&g.finish(), &[])), PUBLIC_SITE);
+    let schedule = layerless(&g.finish(), &[]).expect("a schedule");
+    let [claim] = schedule.stages[0].claims.as_slice() else {
+        panic!("one leaf claim");
+    };
+    assert_eq!(
+        claim.public,
+        [term(PublicSource::Tensor(y), leaf_point(0, 5), Vec::new())]
+    );
+    assert!(claim.parts.is_empty() && schedule.stage_count() == 1);
     // A committed product with a public scale: `Y`'s claim, then `a`'s.
     let mut g = GraphBuilder::new();
     let x = g.input(decl(&[5, 3], ADVICE, -100, 100)).expect("a");
@@ -1297,6 +1340,43 @@ fn a_sum_over_a_padded_axis_needs_an_input_zero_there() {
     assert_eq!(refusal(requantized(-128, 127, Bare)), SUMS, "a bare input");
     requantized(-128, 127, Pinned).expect("rq(0) = 0 of a pinned input");
     assert_eq!(refusal(requantized(1, 255, Pinned)), SUMS, "rq(0) = 1");
+}
+
+/// RFC-0072 'Padded positions' ('A gadget reading such values'): a gadget other than a lookup,
+/// `BitDecompose` or `AssertEqual` that reads a tensor with padded positions downstream of a
+/// lookup non-zero at padding is refused when the schedule is derived, before any claim: a
+/// `OneHot` of tokens `requant(AesSbox(x))` of 3, padded to 4. Admitted: the same `OneHot` of 4
+/// tokens, which have no padded position; and on 3, a `BitDecompose` of the S-box, which
+/// decomposes its padded values, and an `AssertEqual` of it, which weighs them by `ψ`, and the
+/// lookups below it.
+#[test]
+fn a_gadget_reads_no_tensor_non_zero_at_padding_unless_its_padding_is_specified() {
+    let tokens = |n: u32, reader: fn(&mut GraphBuilder, TensorId, TensorId, u32)| {
+        let mut g = GraphBuilder::new();
+        let x = bytes(&mut g, &[n]);
+        let s = substitute(&mut g, x, &[n]);
+        let t = requant(&mut g, s, &[n], 0, 3);
+        reader(&mut g, s, t, n);
+        layerless(&g.finish(), &sbox())
+    };
+    let one_hot: fn(&mut GraphBuilder, TensorId, TensorId, u32) = |g, _, t, n| {
+        g.node(Op::OneHot { vocab: 4 }, &[t], vec![out(&[n, 4], ADVICE)])
+            .expect("a one-hot");
+    };
+    assert_eq!(refusal(tokens(3, one_hot)), GADGET_INPUT, "a OneHot of 3");
+    tokens(4, one_hot).expect("a OneHot of 4, no padded position");
+    tokens(3, |g, s, _, n| {
+        let op = Op::BitDecompose { low: 8, high: 0 };
+        g.node(op, &[s], vec![out(&[n, 8], ADVICE)])
+            .expect("the bits");
+    })
+    .expect("a BitDecompose of the S-box");
+    tokens(3, |g, s, _, n| {
+        let y = bytes(g, &[n]);
+        g.node(Op::AssertEqual, &[s, y], Vec::new())
+            .expect("an equality");
+    })
+    .expect("an AssertEqual of the S-box");
 }
 
 /// How a test's operand reaches a relation: a bare committed input; one a `OneHot` reads
@@ -2407,11 +2487,10 @@ fn sha256s_stage_count_is_the_reports_whatever_the_blocks() {
     }
 }
 
-/// AES-128-CTR's schedule maps its claims through its gathers now, and waits for the leaf layout
-/// to leave a lookup's public input out of the split (#526's fourth slice): its key schedule's
-/// round-constant `Bitwise` reads a public row of `rcon`. The report already counts its 3 stages.
-#[test]
-fn aes_ctr_waits_for_public_leaf_reads() {
+/// The AES-128-CTR circuit of `blocks` counter blocks with its four tables, its key and plaintext
+/// range-checked by a `BitDecompose { 8, 0 }` of each when `checked`, as RFC-0072 'Testing
+/// Strategy' ('AES's graphs') runs it: alone, the circuit is a fragment.
+fn aes_graph(blocks: u32, checked: bool) -> (Graph, Vec<TableSpec>) {
     let tables = AesTables {
         sbox: TableId(0),
         mul2: TableId(1),
@@ -2424,17 +2503,130 @@ fn aes_ctr_waits_for_public_leaf_reads() {
         spec(2, TableKind::Gf256Mul { c: 3 }),
         spec(3, TableKind::Bitwise8 { op: BitOp::Xor }),
     ];
+    let mut g = GraphBuilder::new();
+    let inputs = aes128_ctr_inputs(blocks).map(|d| g.input(d).expect("an input"));
+    if checked {
+        let [key, _, _, plaintext] = inputs;
+        for (x, shape) in [(key, vec![16, 8]), (plaintext, vec![16, blocks, 8])] {
+            let op = Op::BitDecompose { low: 8, high: 0 };
+            g.node(op, &[x], vec![decl(&shape, ADVICE, 0, 1)])
+                .expect("a decomposition");
+        }
+    }
+    aes128_ctr(&mut g, &tables, inputs, blocks).expect("the circuit");
+    (g.finish(), specs)
+}
+
+/// The leaf stage's lookup split values (RFC-0045 'What is sent'): per lookup node, each distinct
+/// tensor among its inputs and outputs that is not public, which the verifier evaluates itself.
+fn lookup_values(graph: &Graph) -> usize {
+    let public = public_tensors(graph);
+    graph
+        .nodes
+        .iter()
+        .filter(|n| matches!(n.op, Op::TableMap { .. } | Op::Bitwise { .. }))
+        .map(|n| {
+            let mut seen: Vec<TensorId> = Vec::new();
+            for &t in n.inputs.iter().chain(&n.outputs) {
+                if !public[t.0 as usize] && !seen.contains(&t) {
+                    seen.push(t);
+                }
+            }
+            seen.len()
+        })
+        .sum()
+}
+
+/// RFC-0072 'Messages, rejections and stages' (the circuits' sizes), the AES row: 0 zero-checks,
+/// 97 selections, 30 `ConstMul`s per channel, 127 lookups, 154 instances, 154 evaluations, 332
+/// split values and 3 stages, whatever the block count. The split values are the leaf stage's
+/// 205 non-public lookup inputs and 127 outputs; no claim is split. Stage by stage, the figures
+/// are those of the independent count of RFC-0072's rules (read 11's `r11sched.py`, on the circuit
+/// rebuilt in `circuits.py`'s `aes_graph`), whose pool also counts the 127 lookup outputs' claims,
+/// which the openings take beside the schedule's.
+///
+/// With its key and plaintext range-checked (RFC-0072 'AES's graphs'), stage 1 adds each
+/// decomposition's booleanity and recomposition, and at `B = 3` the plaintext's input padding
+/// check, and the count agrees again. A leaf site reads the public counter blocks and round
+/// constants: 11 public terms, and nothing sent for them.
+#[test]
+fn aes_ctr_s_schedule_is_rfc_0072s_row() {
     for blocks in [1, 3] {
-        let mut g = GraphBuilder::new();
-        let inputs = aes128_ctr_inputs(blocks).map(|d| g.input(d).expect("an input"));
-        aes128_ctr(&mut g, &tables, inputs, blocks).expect("the circuit");
-        let graph = g.finish();
+        let (graph, specs) = aes_graph(blocks, false);
+        let schedule = layerless(&graph, &specs).expect("AES's schedule");
+        let name = format!("{blocks} blocks");
+        assert_eq!(schedule.stage_count(), 3, "{name}");
+        assert_eq!(stage_count(&graph), 3, "{name}: the report's");
+        let figures = Figures::of(&schedule);
         assert_eq!(
-            refusal(layerless(&graph, &specs)),
-            PUBLIC_SITE,
-            "{blocks} blocks"
+            figures,
+            Figures {
+                instances: vec![0, 106, 48],
+                evaluations: vec![0, 106, 48],
+                splits: vec![0, 0, 0],
+                pool: 332 - 127,
+            },
+            "{name}: the independent count"
         );
-        assert_eq!(stage_count(&graph), 3, "{blocks} blocks");
+        let [instances, evaluations, splits] = figures.totals();
+        assert_eq!(
+            [instances, evaluations, splits + lookup_values(&graph)],
+            [154, 154, 332],
+            "{name}: RFC-0072's row"
+        );
+        assert_eq!(lookup_values(&graph), 205 + 127, "{name}");
+        let public = public_tensors(&graph);
+        let count = |pick: fn(&Op, &Graph) -> bool| {
+            graph
+                .nodes
+                .iter()
+                .filter(|n| pick(&n.op, &graph) && n.outputs.iter().all(|t| !public[t.0 as usize]))
+                .count()
+        };
+        let [zero_checks, selections, bit_fns, muls] = node_counts(&graph, &schedule);
+        let per_channel =
+            count(|op, g| matches!(op, Op::ConstMul { c } if g.constants[c.0 as usize].len() > 1));
+        let lookups = count(|op, _| matches!(op, Op::TableMap { .. } | Op::Bitwise { .. }));
+        assert_eq!(
+            [zero_checks, selections, bit_fns, muls, per_channel, lookups],
+            [0, 97, 0, 0, 30, 127],
+            "{name}: RFC-0072's row"
+        );
+        let public_terms: usize = schedule.stages[0]
+            .claims
+            .iter()
+            .filter(|c| c.atoms.is_empty())
+            .map(|c| c.public.len())
+            .sum();
+        assert_eq!(
+            public_terms, 11,
+            "{name}: ten round constants and the counters"
+        );
+        // Range-checked: the independent count's stage 1, and the input padding check at B = 3.
+        let (checked, specs) = aes_graph(blocks, true);
+        let schedule = layerless(&checked, &specs).expect("the checked graph's schedule");
+        let (one, five) = if blocks == 1 { (110, 112) } else { (111, 113) };
+        assert_eq!(
+            Figures::of(&schedule),
+            Figures {
+                instances: vec![0, one, 48],
+                evaluations: vec![0, five, 48],
+                splits: vec![0, 0, 0],
+                pool: 332 - 127 + 6 + usize::from(blocks == 3),
+            },
+            "{name}, range-checked: the independent count"
+        );
+        let padding = schedule.stages[1]
+            .instances
+            .iter()
+            .filter(|i| i.relation == Relation::InputPadding)
+            .count();
+        assert_eq!(
+            padding,
+            usize::from(blocks == 3),
+            "{name}: the plaintext's padding check"
+        );
+        assert_eq!(schedule.stage_count(), 3, "{name}, range-checked");
     }
 }
 

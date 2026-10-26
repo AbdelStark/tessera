@@ -19,9 +19,11 @@
 //! 3. **The leaf stage.** It leaves one claim per input of each gadget but `BitDecompose` and
 //!    `AssertEqual` ([`has_leaf_site`]), and, when the graph has logits, one on them that the
 //!    scoring certificates read (RFC-0017), each at a point of its site. A site in the layers leaves
-//!    one claim per layer, all at that point ('The layer point'). This is the leaf stage's
-//!    interface to the rest of the schedule. The gadgets' own relations, such as `SoftmaxRow`'s
-//!    masked keys and the padding zero-checks of RFC-0035, enter with the gadgets (#118).
+//!    one claim per layer, all at that point ('The layer point'). A claim on a public input, such
+//!    as AES's counter blocks, is that one public term, with no part: the leaf layout sends no
+//!    value for it (RFC-0045 'The split'). This is the leaf stage's interface to the rest of the
+//!    schedule. The gadgets' own relations, such as `SoftmaxRow`'s masked keys and the padding
+//!    zero-checks of RFC-0035, enter with the gadgets (#118).
 //! 4. **Claims.** A claim maps through the linear nodes onto atoms: virtual, the output of a
 //!    sumcheck relation, `Slice`, `GatherPublic` and `BitFn` among them, or committed ('Claims and
 //!    atoms'). What reaches a public tensor ([`public_tensors`]), and a `ConstAdd`'s constant, is
@@ -67,7 +69,7 @@ use crate::{CompileError, Lowering};
 
 pub use layers::LayerMap;
 pub use natives::{ModelNatives, NativeKind, Request, model_natives};
-pub use padding::nonzero_at_padding;
+pub use padding::{nonzero_at_padding, reads_padding, tensors_nonzero_at_padding};
 pub use public::{producers, public_tensors};
 pub use tokens::token_axes;
 
@@ -595,17 +597,22 @@ pub fn derive_schedule(lowering: &Lowering) -> Result<StageSchedule, CompileErro
 ///   `Mul`, which stage 1 does not prove (RFC-0072 'A committed output');
 /// - a `Sum`, `SumSquares` or `MatMulAct` over an axis whose length is not a power of two none of
 ///   whose summed inputs is 0 at its padded positions (RFC-0072 'Summing relations');
+/// - a gadget other than a lookup (`Requant`, `TableMap`, `Bitwise`), `BitDecompose` or
+///   `AssertEqual`, such as a `OneHot`, `SoftmaxRow`, `RsqrtRow`, `Argmax` or `InverseCdf`, that
+///   reads a tensor with padded positions which a lookup non-zero at padding reaches
+///   ([`tensors_nonzero_at_padding`]): RFC-0035's row relations take a padded row's input as 0,
+///   so no witness passes them (RFC-0072 'Padded positions');
 /// - logits that no node produces;
 /// - a matmul with one public operand, which its relations do not read as `Public`;
-/// - a leaf site that reads a public tensor, whose value the leaf layout still sends in the split
-///   (RFC-0045 'The split' sends none);
 /// - a graph with layers whose schedule has no stage 1, which draws the layer point.
 ///
 /// A claim that reaches a public tensor takes it as a [`PublicTerm`], and so does one through a
 /// `ConstAdd` its shift; a relation's public operand leaves no claim (RFC-0072 'Public tensors'
-/// 'As an operand'). A claim through a `Slice` or a `GatherPublic` is a selection's virtual atom,
-/// several of which may combine ([`Atom::combined`]), and one through a `BitFn` a virtual atom
-/// of its `Elementwise` relation.
+/// 'As an operand'). A leaf site that reads a public tensor, such as AES's counter blocks, leaves
+/// a claim of that one public term and no part, since the leaf layout sends no value for it
+/// (RFC-0045 'The split'). A claim through a `Slice` or a `GatherPublic` is a selection's virtual
+/// atom, several of which may combine ([`Atom::combined`]), and one through a `BitFn` a virtual
+/// atom of its `Elementwise` relation.
 ///
 /// It runs no range analysis. The preconditions that rest on ranges are RFC-0006's range
 /// analysis's ([`analyze`](crate::analyze)) and gadget selection's, which a verifier re-derives
@@ -817,31 +824,10 @@ fn derive(
                 rule: "a logits site reads the graph's logits",
             })?),
         };
-        // RFC-0045 'The split' sends no value for a lookup's public input, which the verifier
-        // evaluates itself (RFC-0072 'Public tensors' 'In the leaf stage'). The leaf layout still
-        // sends one value per read, so until it leaves public reads out (#526's AES slice), such a
-        // site is refused rather than given a split message the RFC does not have.
-        let (site_node, tensor) = match site {
-            Site::Gadget {
-                node: NodeRef::Position(position),
-                input,
-            } => {
-                let node = layers.node(position, 0);
-                (Some(node), input_of(graph, node, input))
-            }
-            Site::Gadget {
-                node: NodeRef::Node(node),
-                input,
-            } => (Some(node), input_of(graph, node, input)),
-            Site::Logits => (lm, logits.unwrap_or(TensorId(u32::MAX))),
-        };
-        if derivation.is_public(Kind::Tensor(tensor)) {
-            return refuse(
-                site_node,
-                "a leaf site reads no public tensor: the leaf layout does not leave its value out \
-                 of the split yet",
-            );
-        }
+        // A site that reads a public tensor, such as AES's counter blocks, leaves a claim of one
+        // public term and no part: the leaf layout sends no value for it, and the verifier
+        // evaluates it at the block's point (RFC-0045 'The split', RFC-0072 'Public tensors' 'In
+        // the leaf stage').
         let vars = derivation.vars(kind);
         let point = (0..vars)
             .map(|index| Coord::Leaf { site: s, index })
@@ -940,6 +926,9 @@ fn leaf_sites(graph: &Graph, layers: &LayerMap, logits: bool) -> Vec<Site> {
 ///   `Sum`'s, `SumSquares`'s, `Rotate`'s, `Transpose`'s, `Reshape`'s or `Expand`'s, is refused,
 ///   although the IR admits the declaration, whether or not a claim reaches it.
 /// - **Summing relations** over a padded axis ('Summing relations').
+/// - **A gadget's input non-zero at padding** ('Padded positions'): a gadget other than a lookup,
+///   `BitDecompose` or `AssertEqual` that reads a tensor with padded positions that a lookup
+///   non-zero at padding reaches.
 fn check_graph(
     graph: &Graph,
     tables: &[TableSpec],
@@ -975,7 +964,8 @@ fn check_graph(
             );
         }
     }
-    padding::check_sums(graph, tables, producers)
+    padding::check_sums(graph, tables, producers)?;
+    padding::check_gadgets(graph, tables, producers)
 }
 
 /// Input `input` of `node`.

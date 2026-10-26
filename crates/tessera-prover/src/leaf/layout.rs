@@ -219,6 +219,10 @@ pub struct Read<T = Term> {
     /// the coordinates of its axes, the domain's last axis taking the lowest. Its tensor, padded
     /// per dimension, holds `2^{coords.len()}` entries.
     pub coords: Vec<u32>,
+    /// Whether its tensor is public, such as AES's counter blocks: the split sends no value for
+    /// it, and the verifier evaluates it at its point (RFC-0045 'What is sent', RFC-0072 'Public
+    /// tensors' 'In the leaf stage'). The lookups still read it, so the witness lends it.
+    pub public: bool,
 }
 
 /// One block of an instance's column: one lookup of one site at one layer (RFC-0045 'Blocks').
@@ -406,9 +410,27 @@ impl<T: Copy + Eq> LeafLayout<T> {
         self.reads.get(site)?.get(layer).map(Vec::as_slice)
     }
 
-    /// The number of values the split sends: one per tensor, site and real layer.
+    /// The number of values the split sends: one per tensor, site and real layer, but none for a
+    /// public tensor ([`Read::public`]).
     pub fn split_len(&self) -> usize {
-        self.reads.iter().flatten().map(Vec::len).sum()
+        self.reads
+            .iter()
+            .flatten()
+            .flatten()
+            .filter(|read| !read.public)
+            .count()
+    }
+
+    /// Marks each read whose tensor `public` names as public, by site, layer and read: the split
+    /// sends no value for it ([`Read::public`]). A layout of public reads is ungrouped.
+    pub(super) fn mark_public(&mut self, public: impl Fn(usize, usize, &Read<T>) -> bool) {
+        for (s, per_layer) in self.reads.iter_mut().enumerate() {
+            for (l, reads) in per_layer.iter_mut().enumerate() {
+                for read in reads {
+                    read.public = public(s, l, read);
+                }
+            }
+        }
     }
 
     /// The tree schedule of the instances alone, in table order: each instance's lookup tree, then
@@ -503,6 +525,7 @@ fn reads_of<T: Copy + Eq>(gadget: &SiteGadget<T>) -> Result<Vec<Read<T>>, LeafEr
                     term,
                     coords: point,
                     axes,
+                    public: false,
                 }),
             }
         }

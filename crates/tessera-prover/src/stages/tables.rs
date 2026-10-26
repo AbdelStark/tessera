@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The tables a stage reads, from the witness: each tensor padded per dimension with zeros, a
-//! stacked kind's layers one after another, its padded layers zero (RFC-0011 rule 1, RFC-0035,
-//! RFC-0037 'Layer variables').
+//! The tables a stage reads, from the witness: each tensor padded per dimension with zeros, or
+//! with the padded values the witness holds ([`WitnessSource::padded`], RFC-0072 'Padded
+//! positions'), a stacked kind's layers one after another, its padded layers zero (RFC-0011 rule
+//! 1, RFC-0035, RFC-0037 'Layer variables').
 
 use tessera_codec::SecretBuf;
 use tessera_compiler::schedule::{Kind, Layers};
