@@ -17,7 +17,7 @@
   - [RFC-0040](RFC-0040-weight-commitment-artifacts.md) 'masks_seed': every epoch's seed is derived from the model's refresh key, and the seed's expansion is normative;
   - [RFC-0019](RFC-0019-verifier.md#ledger) 'Ledger': one successor per root, and `weights link`'s claim list;
   - [03 §5](../spec/03-data-model.md#5-artifact-catalog): `WeightLinkProof` is defined here.
-- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('The inputs', 'The transcript', 'The difference row', 'The proximity rows', 'The verifier's checks', 'The budget' and 'One link per epoch': a matrix's own blinding rows `B_T`, `B_CP` for `ChannelParams`)
+- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('The inputs', 'The transcript', 'The difference row', 'The proximity rows', 'The verifier's checks', 'The budget' and 'One link per epoch': a matrix's own blinding rows `B_T`, `B_CP` for `ChannelParams`), [RFC-0073](RFC-0073-weight-mask-expansion.md) ('The inputs' and 'One link per epoch': the expansion of `masks_seed`, the check of a regenerated epoch, and rebuilt states that serve only the link)
 - Origin: [#485](https://github.com/AbdelStark/tessera/issues/485), from the simulator argument ([`docs/zk/simulator.md`](../zk/simulator.md) §6.4, requirement R3)
 
 ## Summary
@@ -56,7 +56,7 @@ The RFC also gives what RFC-0012 left undefined: the transcript, the query count
   - **`K`** is the model's refresh key, 32 bytes drawn from the operating system's CSPRNG when epoch 0 is committed.
   - **Kept apart.** `K` is secret-class and kept apart from every epoch's state file, in the operator's key store, so that a state file alone gives its own epoch's seed and no other.
   - **One model, one key.** `K` is never shared between model entries. Two models under one `K` would take the same masks in each epoch, and at a column both open, the difference of their symbols would reveal the difference of their weights.
-- **The expansion is fixed.** The map from `masks_seed` to an epoch's masks and blinding rows is RFC-0040's, versioned and with a conformance vector. #147, which commits the masks, specifies it. Until it does, a link may be remade only by the build that made it.
+- **The expansion is fixed.** The map from `masks_seed` to an epoch's masks and blinding rows is [RFC-0073](RFC-0073-weight-mask-expansion.md)'s, versioned and with a conformance vector (RFC-0040). Any build that expands by the same version remakes the same link. Before it links an epoch it regenerated from its seed, the prover checks that the regenerated commitment is the epoch's, and a state it rebuilds serves only the link (RFC-0073 'Regenerated commitments and rebuilt states').
 - **The claim list.** The matrices' shapes, which matrices have committed rows, and each matrix's `commitment_id_T` (its row block `B` included, RFC-0031) come from a claim list whose weights the commitment holds. The prover has it, and the verifier takes it as an input.
 - **The matrices.** Every `WeightMatrix` `T` with committed rows, `m_T > 0`, in RFC-0040's order. A matrix with no committed rows is not linked, as it has no proximity row in a proof either ([RFC-0049](RFC-0049-weight-proximity.md#the-schedule)).
 - **Positions.** Committed row `j < m_T` is the `j`-th committed data row in RFC-0040's order, the index RFC-0049's proximity row uses. Both epochs share the layout, so row `j` holds the same weights in both. The blinding rows follow the data rows, `m_T + i` for blinding row `i < B_T`, the matrix's own count ([RFC-0065](RFC-0065-masked-channel-params.md#channelparams-blinding-rows)): `B_W`, and `B_CP` for `ChannelParams`.
@@ -202,13 +202,13 @@ A second link from epoch `e` would reveal what one hides:
 - **The proximity pair.** Both links' old proximity rows would carry the same designated pair. Their difference would reveal a combination of the weights alone, if #394 keeps the blinding rows out of the proximity combination.
 
 So every link from epoch `e` is one link: the same bytes, however many times it is made.
-- **A function of `K`, the epoch and the weights.** Both epochs' seeds come from `K` ('The inputs'). With RFC-0040's expansion they fix both commitments, their rows and both roots. The transcript is then a function of the roots and the rows, and `query_nonce` is the least nonce that meets `g_link`.
+- **A function of `K`, the epoch and the weights.** Both epochs' seeds come from `K` ('The inputs'). With RFC-0073's expansion they fix both commitments, their rows and both roots. The transcript is then a function of the roots and the rows, and `query_nonce` is the least nonce that meets `g_link`.
 - **What it closes.** A remade link opens the same columns with the same pairs, and reveals nothing a first one did not. That holds for each way a second link could otherwise arise:
   - a resend after a crash, before or after the first was sent;
   - a lost or a restored budget record;
   - two nodes that make the link from one epoch;
   - a verifier that claims to hold no link.
-- **Not proofs.** Determinism covers the link alone. Two nodes proving from copies of one epoch's state, or a state restored from a stale backup, still reuse blinding rows: RFC-0012's `reserve` assumes one writer per state. A restored record older than the state's last transition must not `reserve`.
+- **Not proofs.** Determinism covers the link alone. Two nodes proving from copies of one epoch's state, or a state restored from a stale backup, still reuse blinding rows: RFC-0012's `reserve` assumes one writer per state. A restored record older than the state's last transition must not `reserve`, and a state rebuilt from `K` never does: its rows start at `B_T − 4` ([RFC-0073](RFC-0073-weight-mask-expansion.md#regenerated-commitments-and-rebuilt-states)).
 - **Forward secrecy among epochs.** A leaked state file gives its own epoch's seed only, as with fresh seeds, since each seed is derived from `K` and not from the one before. A leaked `K` gives every epoch's.
 
 RFC-0012's state machine gains a transition, for the budget's bookkeeping:

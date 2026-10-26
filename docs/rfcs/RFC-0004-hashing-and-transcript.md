@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.1
-- Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Hash function and domains': `commitment-id`; 'Column digests': what `commitment_id` binds)
+- Amended by: [RFC-0031](RFC-0031-commitment-id.md) ('Hash function and domains': `commitment-id`; 'Column digests': what `commitment_id` binds), [RFC-0064](RFC-0064-weight-linking-proof.md) ('Hash function and domains': `weights-link` and `weights-refresh`), [RFC-0073](RFC-0073-weight-mask-expansion.md) ('Hash function and domains': `weights-mask` and `weights-blinding`, read as streams)
 
 ## Summary
 
@@ -44,6 +44,8 @@ The source sets 30 ps per committed 64-bit element, including rate-1/2 encoding 
 | `weights-root` | `TCE(WeightLayoutParams) ‖ matrix roots ‖ epoch` | Weight root (RFC-0012) |
 | `weights-link` | `old_root: Digest ‖ new_root: Digest` | The linking proof's statement digest (RFC-0064) |
 | `weights-refresh` | `refresh_key: [u8; 32] ‖ epoch: u32`, secret-class | An epoch's `masks_seed`, from the model's refresh key (RFC-0064) |
+| `weights-mask` | `masks_seed: [u8; 32] ‖ commitment_id: Digest ‖ committed_row: u64`, secret-class; a stream | A committed weight row's mask coefficients (RFC-0073) |
+| `weights-blinding` | `masks_seed: [u8; 32] ‖ commitment_id: Digest ‖ blinding_row: u64`, secret-class; a stream | A weight blinding row's values (RFC-0073) |
 | `transcript-init` | `TCE(SessionContext)` | Transcript |
 | `transcript-absorb` | `state ‖ Ascii(label) ‖ TCE(value)` | Transcript |
 | `transcript-squeeze` | `state ‖ Ascii(label) ‖ counter: u64` | Transcript |
@@ -57,7 +59,7 @@ The source sets 30 ps per committed 64-bit element, including rate-1/2 encoding 
 | `claim-list` | `TCE(ClaimList)` | Claim-list digest (RFC-0007) |
 | `statement` | `TCE(PublicStatement)` | `SessionContext.statement_digest` (RFC-0007) |
 
-Context strings are distinct ASCII strings, so outputs of different domains are independent under the standard assumption on BLAKE3's key derivation mode. The prover uses the Rust crate `blake3` 1.x on CPU and a CUDA implementation in `tessera-gpu` for `column-step` and `merkle-node`. The verifier implements BLAKE3 itself, in safe Rust from the BLAKE3 specification ([RFC-0019](RFC-0019-verifier.md#dependencies)), checked against the official test vectors.
+Context strings are distinct ASCII strings, so outputs of different domains are independent under the standard assumption on BLAKE3's key derivation mode. A domain marked "a stream" is read at any length, as BLAKE3's extended output, whose first 32 bytes are `H`. Its 64-bit little-endian words below `P` are its values in `Fp`, in order, and every other word is skipped ([RFC-0073](RFC-0073-weight-mask-expansion.md#the-stream)). The prover uses the Rust crate `blake3` 1.x on CPU and a CUDA implementation in `tessera-gpu` for `column-step` and `merkle-node`, and for the streams of RFC-0073 where the GPUs draw masks. The verifier implements BLAKE3 itself, in safe Rust from the BLAKE3 specification ([RFC-0019](RFC-0019-verifier.md#dependencies)), checked against the official test vectors.
 
 ### Column digests
 
