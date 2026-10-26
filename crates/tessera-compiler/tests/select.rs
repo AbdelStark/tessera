@@ -1100,6 +1100,78 @@ fn the_bit_operations_preconditions_are_checked_against_their_ranges() {
             rule: "a true integer lies in (−(P−1)/2, (P−1)/2)",
         })
     );
+    // Only the second input beyond it: each input is checked.
+    let second = |equal: bool| {
+        let mut g = GraphBuilder::new();
+        let p = g.input(decl(&[2], NodeKind::Public, 0, 255)).expect("p");
+        let q = g
+            .input(decl(&[2], NodeKind::Public, 0, 1 << 63))
+            .expect("q");
+        if equal {
+            g.node(Op::AssertEqual, &[p, q], Vec::new())
+                .expect("an equality");
+        }
+        g.finish()
+    };
+    let ranges = analyze(&second(false), &[]).expect("public inputs need no reader");
+    assert_eq!(
+        select(&second(true), &ranges, &[], &policy).map(|_| ()),
+        Err(CompileError::Range {
+            node: NodeId(0),
+            input: 1,
+            rule: "a true integer lies in (−(P−1)/2, (P−1)/2)",
+        })
+    );
+    // The lower bounds: a committed input declared `[1, 255]` does not hold 0, which its bits
+    // admit; a virtual input of range `[−1, 255]` is not in `[0, 2^8)`. Range analysis refuses
+    // both graphs too, so the ranges are those of a graph without the decomposition: weights
+    // need no reader.
+    let from_one = |decomposed: bool| {
+        let mut g = GraphBuilder::new();
+        let u = g.input(decl(&[3], WEIGHT, 1, 255)).expect("bytes");
+        if decomposed {
+            one(
+                &mut g,
+                Op::BitDecompose { low: 8, high: 0 },
+                &[u],
+                out(&[3, 8], ADVICE),
+            );
+        }
+        g.finish()
+    };
+    let ranges = analyze(&from_one(false), &[]).expect("weights need no reader");
+    assert_eq!(
+        select(&from_one(true), &ranges, &[], &policy).map(|_| ()),
+        Err(CompileError::Range {
+            node: NodeId(0),
+            input: 0,
+            rule: "a committed integer's declared range holds [0, 2^{low + high})",
+        })
+    );
+    let below = |decomposed: bool| {
+        let mut g = GraphBuilder::new();
+        let (u, _) = bytes(&mut g);
+        let v = g.input(decl(&[3], NodeKind::Public, 0, 1)).expect("v");
+        let x = one(&mut g, Op::Sub, &[u, v], virt(&[3]));
+        if decomposed {
+            one(
+                &mut g,
+                Op::BitDecompose { low: 8, high: 0 },
+                &[x],
+                out(&[3, 8], ADVICE),
+            );
+        }
+        g.finish()
+    };
+    let ranges = analyze(&below(false), &[]).expect("analyzes");
+    assert_eq!(
+        select(&below(true), &ranges, &[], &policy).map(|_| ()),
+        Err(CompileError::Range {
+            node: NodeId(2),
+            input: 0,
+            rule: "the integer lies in [0, 2^{low + high})",
+        })
+    );
     // With no range at all, the ranges of a graph without the inputs.
     let empty = analyze(&GraphBuilder::new().finish(), &[]).expect("analyzes");
     let refused = select(&compared(true), &empty, &[], &policy).map(|_| ());

@@ -1045,6 +1045,114 @@ fn equal_tensors_are_the_unique_passing_pair() {
     }
 }
 
+/// RFC-0072 'The bit zero-checks': `AssertEqual` compares real positions only. A committed side
+/// whose padded row holds 7 and 9, against a public side padded with 0, is an honest witness of
+/// RFC-0066's relation and verifies; a real position one off is still rejected. Every other
+/// `AssertEqual` test has the two sides equal on the whole padded cube, so only this one pins the
+/// selector `ψ̃`'s polarity, in the prover and in the verifier.
+#[test]
+fn assert_equal_ignores_padded_positions() {
+    let values = vec![7, 0, 255, 3, 128, 64];
+    let mut g = GraphBuilder::new();
+    let v = declared(&mut g, &[3, 2], ADVICE, U8.0, U8.1);
+    let p = declared(&mut g, &[3, 2], PUBLIC, U8.0, U8.1);
+    g.node(Op::AssertEqual, &[v, p], Vec::new())
+        .expect("an equality");
+    let run = Bits::of(g.finish(), vec![(v, values.clone()), (p, values)]);
+    let padded = verdict_of(&run, &[(v, vec![(vec![3, 0], 7), (vec![3, 1], 9)])]);
+    assert!(
+        padded.is_ok(),
+        "padded positions are not compared: {padded:?}"
+    );
+    let real = verdict_of(&run, &[(v, vec![(vec![2, 1], 65)])]);
+    assert_eq!(real, Err(run.stage_1()), "a real position one off");
+}
+
+/// RFC-0072 'Recomposition': a bit set at a padded row of `x`, where `x` is honestly 0, fails
+/// recomposition alone, with no input padding check involved; a non-Boolean pair there that
+/// recomposes 0 fails booleanity. Three ways for `x` to be 0 there: a committed input's padded
+/// row (pinned), a public input's padded row (the verifier's 0), and the padded column of an
+/// `Expand` of a committed input that has no padded position, so no input padding check.
+#[test]
+fn a_bit_at_a_padded_row_of_x_fails_recomposition() {
+    let (run, _, b) = bytes(&[17, 255, 0, 128, 2, 99]);
+    let one_bit = run.edited(b, &[(&[3, 1, 0], 1)]);
+    let pair = run.edited(b, &[(&[3, 1, 0], 2), (&[3, 1, 1], -1)]);
+    run.caught(&[
+        (
+            "a committed input's padded row: a bit",
+            vec![one_bit],
+            (Relation::Recomposition, b),
+        ),
+        (
+            "a committed input's padded row: a non-Boolean pair",
+            vec![pair],
+            (Relation::Booleanity, b),
+        ),
+    ]);
+
+    let mut g = GraphBuilder::new();
+    let p = declared(&mut g, &[3], PUBLIC, U8.0, U8.1);
+    let (b, _) = decompose(&mut g, p, &[3], 8, 0);
+    let run = Bits::of(g.finish(), vec![(p, vec![1, 2, 3])]);
+    let bit = run.edited(b, &[(&[3, 5], 1)]);
+    run.caught(&[(
+        "a public input's padded row: a bit",
+        vec![bit],
+        (Relation::Recomposition, b),
+    )]);
+
+    let mut g = GraphBuilder::new();
+    let u = declared(&mut g, &[4], ADVICE, U8.0, U8.1);
+    let x = one(&mut g, Op::Expand { axis: 1, len: 3 }, &[u], {
+        let mut d = decl(&[4, 3], NodeKind::Virtual);
+        d.range = IntRange { lo: U8.0, hi: U8.1 };
+        d
+    });
+    let (b, _) = decompose(&mut g, x, &[4, 3], 8, 0);
+    let run = Bits::of(g.finish(), vec![(u, vec![9, 200, 0, 77])]);
+    assert!(
+        !relations(&run)
+            .iter()
+            .any(|(r, _)| *r == Relation::InputPadding),
+        "u has no padded position"
+    );
+    let bit = run.edited(b, &[(&[1, 3, 2], 1)]);
+    run.caught(&[(
+        "an Expand's padded column: a bit",
+        vec![bit],
+        (Relation::Recomposition, b),
+    )]);
+}
+
+/// RFC-0066 Lemma 1 at Goldilocks' boundary (`soundness-review` 'Wrap attacks'): the widest
+/// decomposition, `{61, 1}`, recomposes at most `2^62 − 1 < P`, so no Boolean bits recompose a
+/// committed `u = −1 = P − 1` or `u = 2^62`. With every bit 1 (`2^62 − 1`) both are rejected at
+/// stage 1, while an honest `u = 2^62 − 1` verifies.
+#[test]
+fn the_widest_decomposition_does_not_wrap() {
+    let mut g = GraphBuilder::new();
+    let top = (1i64 << 62) - 1;
+    let u = declared(&mut g, &[2], ADVICE, 0, i128::from(top));
+    let (b, h) = decompose(&mut g, u, &[2], 61, 1);
+    let h = h.expect("one high bit");
+    let run = Bits::of(g.finish(), vec![(u, vec![top, 12_345])]);
+    assert!(verdict_of(&run, &[]).is_ok(), "an honest 2^62 − 1");
+    let ones_b: Edits = (0..61u32).map(|j| (vec![1, j], 1)).collect();
+    let ones_h: Edits = vec![(vec![1, 0], 1)];
+    for (name, value) in [("u = −1", -1i64), ("u = 2^62", 1i64 << 62)] {
+        let verdict = verdict_of(
+            &run,
+            &[
+                (u, vec![(vec![1], value)]),
+                (b, ones_b.clone()),
+                (h, ones_h.clone()),
+            ],
+        );
+        assert_eq!(verdict, Err(run.stage_1()), "{name}");
+    }
+}
+
 // ----- The identity and its closed forms ---------------------------------------------------------
 
 /// RFC-0072 'Recomposition' 'Why it holds': for each `y`, the instance's sum over the bit axis,
