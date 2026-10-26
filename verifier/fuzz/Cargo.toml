@@ -15,6 +15,9 @@ publish = false
 [package.metadata]
 cargo-fuzz = true
 
+[features]
+test-params = ["tv-core/test-params"]
+
 [dependencies]
 libfuzzer-sys = "0.4"
 tv-codec = { path = "../crates/tv-codec" }
@@ -38,6 +41,11 @@ harness = false
 [[test]]
 name = "driver_allocation"
 harness = false
+
+[[test]]
+name = "driver_work_allocation"
+harness = false
+required-features = ["test-params"]
 
 [[test]]
 name = "gadgets_allocation"

@@ -34,6 +34,24 @@ allocate nothing, nested impossible columns reserve only the bounded outer vecto
 insufficient memory for honest stages is a reader failure (`ERR-RES-MEMORY`).
 These checks establish packet syntax, not proof acceptance.
 
+`tests/driver_work_allocation.rs` runs the complete recorded `test-small` NI proof,
+including arithmetic and openings, with `--features test-params`. Each allocation
+cap runs in its own process: an infallible allocation abort fails the controller,
+and a worker that exceeds 30 seconds is killed and fails the test. It checks both
+the verifier's memory policy and simulated allocator shortages at powers of two,
+the measured peak's neighbours and 256 seeded allocator budgets. Every shortage
+must return `Inconclusive(ERR-RES-MEMORY)`; uncapped controls must accept before
+and after. The allocator measures additional verification work; caller-owned
+decoded inputs and setup are outside that budget. Historical setup peaks are
+excluded from the measurement. These are one recorded proof's regressions, not
+a production-size memory bound or a deadline test. The feature inherits
+`tv-core`'s release-build refusal, and test-small acceptance certifies nothing.
+The CI check runs this target explicitly, in addition to the ordinary tests:
+
+```sh
+cargo test --features test-params --test driver_work_allocation --locked
+```
+
 `sumcheck` also reserves the `GDG` prefix for the ten families in `src/gadgets.rs`.
 Its arithmetic oracles enumerate cube equality/public masks, strict triangular sums,
 integer comparison prefixes and literal root-digit triples. Model affine cases use

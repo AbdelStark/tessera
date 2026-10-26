@@ -69,6 +69,10 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Allocation tests
         run: cargo test --locked
+      - name: Complete recorded driver under allocation limits
+        run: |
+          cargo clippy --features test-params --test driver_work_allocation --locked -- -D warnings
+          cargo test --features test-params --test driver_work_allocation --locked
       - name: List the targets, one per fuzz_targets/<name>.rs
         id: targets
         run: |
