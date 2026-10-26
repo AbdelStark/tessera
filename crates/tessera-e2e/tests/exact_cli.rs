@@ -175,7 +175,7 @@ const CANARY: Set = Set {
 struct Fixture {
     dir: Dir,
     set: &'static Set,
-    /// Logging flags given to every producer command.
+    /// Logging flags given to every command, the producer's and the verifier's (05 §2).
     log: &'static [&'static str],
     model: String,
     tokens: String,
@@ -268,13 +268,12 @@ impl Fixture {
         self.dir.0.join(s).display().to_string()
     }
     fn process(&self, verifier: bool, args: &[String]) -> Process {
-        let mut command = if verifier {
-            Command::new(&binaries().1)
+        let mut command = Command::new(if verifier {
+            &binaries().1
         } else {
-            let mut command = Command::new(&binaries().0);
-            command.args(self.log);
-            command
-        };
+            &binaries().0
+        });
+        command.args(self.log);
         Process::start(command.args(args), &self.dir.0)
     }
     fn run(&self, verifier: bool, args: &[String], expected: i32) -> String {
@@ -528,6 +527,254 @@ fn e2e_json_log_lines_follow_their_schema() {
     ] {
         assert!(spans.contains(span), "{span}: {spans:?}");
     }
+}
+
+/// RFC-0019 'Check order', named as the verdict report names them (05 §5's `check{kind}`).
+const CHECKS: [&str; 13] = [
+    "input",
+    "params",
+    "claims",
+    "statement",
+    "weight_reservation",
+    "transcript",
+    "leaf",
+    "stages",
+    "evaluations",
+    "queries",
+    "columns",
+    "exact_bound",
+    "complete",
+];
+
+/// 05 §2, §5 and §6, the verifier's lines, spans and manifest: `tessera-verify`'s JSON lines are
+/// `tessera.log-event/1` objects, its `verify` span names the proof's envelope digest and its
+/// `check` spans every check of RFC-0019 in order, and its run manifest is a
+/// `tessera.run-manifest/1` object naming each input by its digest. A rejection ends its checks
+/// at the check that rejects, and an unreadable proof names no digest.
+#[test]
+fn e2e_verifier_json_log_lines_and_run_manifest() {
+    let f = Fixture::new();
+    let (_, verdict) = f.proved(false);
+    f.accepted(&verdict);
+    let schema = |name: &str| -> Value {
+        let path = root().join(format!("spec/schemas/{name}-v1.schema.json"));
+        let schema: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        assert!(xtask::reports::schema_problems(&schema).is_empty());
+        schema
+    };
+    let (events, manifests) = (schema("log-event"), schema("run-manifest"));
+    let digest = |path: &str| {
+        let bytes = fs::read(path).unwrap();
+        hex(&bytes[bytes.len() - 32..])
+    };
+    let logged = |args: &[String], expected: i32| -> Vec<Value> {
+        let mut full: Vec<String> = ["--log-format", "json", "--log-level", "debug"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        full.extend_from_slice(args);
+        let process = f.process(true, &full);
+        let stderr = process.stderr.clone();
+        process.wait(expected);
+        fs::read_to_string(stderr)
+            .unwrap()
+            .lines()
+            .map(|line| {
+                let value: Value =
+                    serde_json::from_str(line).unwrap_or_else(|e| panic!("{e}: {line}"));
+                let errors = xtask::reports::validate(&events, &events, &value, "");
+                assert!(errors.is_empty(), "{errors:?}: {line}");
+                let event = value["event"].as_str().unwrap();
+                assert!(event.starts_with("tessera.tv_cli."), "{line}");
+                assert!(
+                    value["target"].as_str().unwrap().starts_with("tv_cli::"),
+                    "{line}"
+                );
+                value
+            })
+            .collect()
+    };
+    // Each check's kind, step and outcome, inside the `verify` span.
+    let checks = |lines: &[Value]| -> Vec<(String, u64, String)> {
+        lines
+            .iter()
+            .filter(|l| l["event"] == "tessera.tv_cli.check_completed")
+            .map(|l| {
+                let spans = l["span_path"].as_array().unwrap();
+                assert_eq!(spans.len(), 2, "{l}");
+                assert_eq!(spans[0]["name"], "verify", "{l}");
+                assert_eq!(spans[1]["name"], "check", "{l}");
+                (
+                    spans[1]["fields"]["kind"].as_str().unwrap().to_owned(),
+                    l["fields"]["step"].as_u64().unwrap(),
+                    l["fields"]["outcome"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect()
+    };
+    let verified = |lines: &[Value]| -> Value {
+        let last = lines.last().unwrap().clone();
+        assert_eq!(last["event"], "tessera.tv_cli.verified", "{last}");
+        assert_eq!(last["level"], "info");
+        last
+    };
+
+    // An acceptance, with its manifest.
+    let mut args = f.verify(false);
+    args.extend(["--run-manifest".to_owned(), f.path("verify-manifest.json")]);
+    let lines = logged(&args, 0);
+    let expected: Vec<(String, u64, String)> = CHECKS
+        .iter()
+        .zip(1..)
+        .map(|(&kind, step)| {
+            let outcome = if kind == "weight_reservation" {
+                "not_applicable"
+            } else {
+                "pass"
+            };
+            (kind.to_owned(), step, outcome.to_owned())
+        })
+        .collect();
+    assert_eq!(checks(&lines), expected);
+    let proof = digest(&f.path("proof.tnp"));
+    for line in &lines {
+        assert_eq!(
+            line["span_path"][0]["fields"]["proof_digest"],
+            proof.as_str(),
+            "{line}"
+        );
+    }
+    let accepted = verified(&lines);
+    assert_eq!(accepted["fields"]["status"], "accept");
+    assert_eq!(accepted["fields"]["exit_code"], 0);
+    assert!(accepted["fields"].get("code").is_none());
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(f.path("verify-manifest.json")).unwrap()).unwrap();
+    let errors = xtask::reports::validate(&manifests, &manifests, &manifest, "");
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(manifest["command"], "verify");
+    assert_eq!(manifest["tool"]["name"], "tessera-verify");
+    // The exact CLI suite builds the verifier with `tv-core/test-params` (`binaries`).
+    assert_eq!(
+        manifest["tool"]["features"],
+        serde_json::json!(["tv-core/test-params"])
+    );
+    assert_eq!(manifest["protocol"], "tessera-protocol/1");
+    assert_eq!(manifest["params"], "test-small/1");
+    assert_eq!(manifest["exit_code"], 0);
+    assert_eq!(manifest["error_code"], Value::Null);
+    assert_eq!(manifest["public_seeds"], serde_json::json!([]));
+    let named = |list: &Value| -> Vec<(String, String, String, Value)> {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .map(|a| {
+                (
+                    a["path"].as_str().unwrap().to_owned(),
+                    a["schema"].as_str().unwrap().to_owned(),
+                    a["class"].as_str().unwrap().to_owned(),
+                    a["digest"].clone(),
+                )
+            })
+            .collect()
+    };
+    let (claims, weights) = (f.path("compiled/claims.tcl"), f.path("weights.twr"));
+    assert_eq!(
+        named(&manifest["inputs"]),
+        [
+            (
+                claims.clone(),
+                "ClaimList".into(),
+                "public".into(),
+                digest(&claims).into()
+            ),
+            (
+                weights.clone(),
+                "WeightCommitmentPublic".into(),
+                "public".into(),
+                digest(&weights).into()
+            ),
+            (
+                f.path("proof.tnp"),
+                "NiProof".into(),
+                "protocol".into(),
+                proof.clone().into()
+            ),
+        ]
+    );
+    assert_eq!(
+        named(&manifest["outputs"]),
+        [(
+            f.path("verdict.json"),
+            "tessera.verdict/1".into(),
+            "public".into(),
+            Value::Null
+        )]
+    );
+    let samples: Vec<&str> = manifest["metrics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| {
+            assert_eq!(s["name"], "tessera_verifier_seconds", "{s}");
+            assert_eq!(s["type"], "histogram", "{s}");
+            assert_eq!(s["count"], 1, "{s}");
+            s["labels"]["check"].as_str().unwrap()
+        })
+        .collect();
+    assert_eq!(samples, CHECKS);
+
+    // A rejection: a payload byte changed and the envelope resealed. Its checks pass up to the
+    // one that rejects, and the manifest records the rejection's code.
+    let original = fs::read(f.path("proof.tnp")).unwrap();
+    let mut payload = original[20..original.len() - 32].to_vec();
+    let last = payload.len() - 1;
+    payload[last] ^= 1;
+    fs::write(f.path("tampered.tnp"), reseal(&original, &payload)).unwrap();
+    let mut args = f.verify(false);
+    set(&mut args, "--proof", f.path("tampered.tnp"));
+    set(&mut args, "--out", f.path("tampered.json"));
+    args.extend([
+        "--run-manifest".to_owned(),
+        f.path("tampered-manifest.json"),
+    ]);
+    let lines = logged(&args, 10);
+    let seen = checks(&lines);
+    let (rejecting, passed) = seen.split_last().unwrap();
+    assert_eq!(rejecting.2, "reject", "{seen:?}");
+    assert_eq!(passed, &expected[..passed.len()], "{seen:?}");
+    let rejected = verified(&lines);
+    assert_eq!(rejected["fields"]["status"], "reject");
+    assert_eq!(rejected["fields"]["exit_code"], 10);
+    let code = rejected["fields"]["code"].as_str().unwrap();
+    assert!(code.starts_with("REJ-"), "{rejected}");
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(f.path("tampered-manifest.json")).unwrap()).unwrap();
+    assert!(xtask::reports::validate(&manifests, &manifests, &manifest, "").is_empty());
+    assert_eq!(manifest["exit_code"], 10);
+    assert_eq!(manifest["error_code"], code);
+
+    // A proof whose envelope fails: step 1 is inconclusive, and no digest is named.
+    let mut corrupt = original.clone();
+    corrupt[20] ^= 1;
+    fs::write(f.path("corrupt.tnp"), corrupt).unwrap();
+    let mut args = f.verify(false);
+    set(&mut args, "--proof", f.path("corrupt.tnp"));
+    set(&mut args, "--out", f.path("corrupt.json"));
+    let lines = logged(&args, 65);
+    assert_eq!(
+        checks(&lines),
+        [("input".to_owned(), 1, "inconclusive".to_owned())]
+    );
+    for line in &lines {
+        assert!(
+            line["span_path"][0]["fields"].get("proof_digest").is_none(),
+            "{line}"
+        );
+    }
+    let failed = verified(&lines);
+    assert_eq!(failed["fields"]["status"], "inconclusive");
+    assert_eq!(failed["fields"]["code"], "ERR-CODEC-DIGEST");
 }
 
 #[test]

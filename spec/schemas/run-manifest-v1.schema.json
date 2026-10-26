@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/run-manifest-v1.schema.json",
   "title": "tessera.run-manifest/1",
-  "description": "The run manifest of 05 §6, which every compile, commit-weights, prove and bench model invocation writes. Private-class: its timings depend on secret data and stay on the prover's side of TB-1 (05 §4). A secret-class artifact is named without its digest.",
+  "description": "The run manifest of 05 §6, which every compile, commit-weights, prove and bench model invocation writes, and tessera-verify verify at --run-manifest PATH. A prover's is private-class: its timings depend on secret data and stay on the prover's side of TB-1 (05 §4). A secret-class artifact is named without its digest. A verifier's is public-class, and names every artifact by its envelope digest.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "tool", "toolchain", "host", "command", "arguments", "params", "protocol", "inputs", "outputs", "public_seeds", "started_at", "elapsed_seconds", "metrics", "exit_code", "error_code"],

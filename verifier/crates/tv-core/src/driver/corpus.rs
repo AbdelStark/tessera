@@ -565,3 +565,203 @@ fn every_value_of_the_recorded_live_session_is_bound() {
         "accepted after a change: {accepted:?}; rejections by reason: {codes:?}"
     );
 }
+
+// ----- Observation (05 §2, §5): the observed entry points decide exactly what these do --------
+
+use crate::observe::{CheckEvent, CheckKind, CheckOutcome};
+
+impl Fixture {
+    /// [`run`](Self::run) through the observed entry points the CLI calls, each call's reports
+    /// kept apart under its name. A live session's state is set as each phase leaves it, with
+    /// the recorded seed and queries, since `start` and `on_round2` draw fresh ones.
+    fn run_observed(
+        &self,
+        session: &str,
+        edited: &BTreeMap<String, Vec<u8>>,
+    ) -> (Verdict, Vec<(&'static str, Vec<CheckEvent>)>) {
+        let bytes = |name: &str| edited.get(name).cloned().unwrap_or_else(|| base(name));
+        let mut calls = Vec::new();
+        let mut events = Vec::new();
+        if session == "ni.tnp" {
+            let verdict = verify_non_interactive_bytes_observed(
+                &self.claims,
+                &self.expected,
+                &bytes("ni.tnp"),
+                &self.config,
+                &mut events,
+            );
+            calls.push(("ni", events));
+            return (verdict, calls);
+        }
+        let limits = DecodeLimits::MESSAGE;
+        let session = |state| {
+            LiveVerifier::at(
+                self.claims.clone(),
+                self.expected.clone(),
+                self.config.clone(),
+                state,
+            )
+        };
+        let round1 = open_live_observed::<Round1>(&bytes("live-round1.tce"), &limits, &mut events);
+        calls.push(("open Round1", std::mem::take(&mut events)));
+        let round1 = match round1 {
+            Ok(m) => m,
+            Err(verdict) => return (verdict, calls),
+        };
+        let share = protocol::ProverSeedShare {
+            session_id: round1.session_id,
+            share: [0; 32],
+        };
+        let mut live = session(live::Phase::Round1 {
+            session_id: round1.session_id,
+        });
+        let revealed = live.on_round1_observed(&round1, &share, &mut events);
+        calls.push(("Round1", std::mem::take(&mut events)));
+        if let Err(verdict) = revealed {
+            return (verdict, calls);
+        }
+        let first = round1.to_tce().unwrap();
+        let round2 =
+            open_live_observed::<Round2Response>(&bytes("live-round2.tce"), &limits, &mut events);
+        calls.push(("open Round2Response", std::mem::take(&mut events)));
+        let round2 = match round2 {
+            Ok(m) => m,
+            Err(verdict) => return (verdict, calls),
+        };
+        let mut live = session(live::Phase::Round2 {
+            first: first.clone(),
+            seed: self.seed,
+        });
+        let queried = live.on_round2_observed(&round2, &mut events);
+        calls.push(("Round2Response", std::mem::take(&mut events)));
+        if let Err(verdict) = queried {
+            return (verdict, calls);
+        }
+        let round3 =
+            open_live_observed::<Round3Response>(&bytes("live-round3.tce"), &limits, &mut events);
+        calls.push(("open Round3Response", std::mem::take(&mut events)));
+        let round3 = match round3 {
+            Ok(m) => m,
+            Err(verdict) => return (verdict, calls),
+        };
+        let mut live = session(live::Phase::Round3 {
+            first,
+            second: round2.to_tce().unwrap(),
+            queries: self.queries.to_tce().unwrap(),
+            seed: self.seed,
+        });
+        let verdict = live.on_round3_observed(&round3, &mut events);
+        calls.push(("Round3Response", events));
+        (verdict, calls)
+    }
+}
+
+/// The outcome the last reported check carries for `verdict`.
+fn outcome_of(verdict: &Verdict) -> CheckOutcome {
+    match verdict {
+        Verdict::Accept(_) => CheckOutcome::Pass,
+        Verdict::Reject(_) => CheckOutcome::Reject,
+        Verdict::Inconclusive(_) => CheckOutcome::Inconclusive,
+    }
+}
+
+/// One call's reports: steps 1 to `k` exactly, in order, each the check of its step, step 5
+/// `not_applicable`, every other passed but the last, which carries `last`. Returns `k`.
+fn contiguous(what: &str, events: &[CheckEvent], last: CheckOutcome) -> u8 {
+    assert!(!events.is_empty(), "{what}: no check reported");
+    for (i, e) in events.iter().enumerate() {
+        assert_eq!(e.kind, CheckKind::ALL[i], "{what}: {events:?}");
+        assert_eq!(usize::from(e.kind.step()), i + 1, "{what}");
+        let expected = if e.kind == CheckKind::WeightReservation {
+            CheckOutcome::NotApplicable
+        } else if i + 1 == events.len() {
+            last
+        } else {
+            CheckOutcome::Pass
+        };
+        assert_eq!(e.outcome, expected, "{what}: {events:?}");
+    }
+    events.last().map_or(0, |e| e.kind.step())
+}
+
+/// Every call of a session but the last succeeded, so it reports the steps its phase completes;
+/// the last carries the verdict.
+fn check_calls(id: &str, verdict: &Verdict, calls: &[(&'static str, Vec<CheckEvent>)]) {
+    for (i, (call, events)) in calls.iter().enumerate() {
+        let what = format!("{id}, {call}");
+        let last = i + 1 == calls.len();
+        let outcome = if last {
+            outcome_of(verdict)
+        } else {
+            CheckOutcome::Pass
+        };
+        let k = contiguous(&what, events, outcome);
+        let complete = match *call {
+            "ni" | "Round3Response" => 13,
+            "Round1" => 6,
+            "Round2Response" => 10,
+            _ => 1,
+        };
+        if !last || matches!(verdict, Verdict::Accept(_)) {
+            assert_eq!(k, complete, "{what}");
+        } else {
+            assert!(k <= complete, "{what}");
+        }
+        if call.starts_with("open") {
+            assert_eq!(k, 1, "{what}");
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn observed_sessions_keep_every_verdict_and_end_at_the_deciding_check() {
+    let fixture = Fixture::new();
+    let cases = field(&fixture.corpus, "mutations").as_array().unwrap();
+    let mut runs = vec![
+        ("base NI".to_string(), "ni.tnp", BTreeMap::new()),
+        ("base live".to_string(), "live-round2.tce", BTreeMap::new()),
+    ];
+    for case in cases {
+        let edited = mutate(case);
+        let session = if edited.contains_key("ni.tnp") {
+            "ni.tnp"
+        } else {
+            "live-round2.tce"
+        };
+        runs.push((text(case, "id").to_string(), session, edited));
+    }
+    let mut steps: BTreeMap<u8, usize> = BTreeMap::new();
+    for (id, session, edited) in &runs {
+        let plain = fixture.run(session, edited).to_json().unwrap();
+        let (verdict, calls) = fixture.run_observed(session, edited);
+        assert_eq!(
+            verdict.to_json().unwrap(),
+            plain,
+            "{id}: the verdict changed"
+        );
+        check_calls(id, &verdict, &calls);
+        let last = calls.last().and_then(|(_, e)| e.last()).unwrap();
+        *steps.entry(last.kind.step()).or_default() += 1;
+    }
+    // The corpus decides at many steps, not one: the check above is not vacuous.
+    assert!(steps.len() >= 5, "{steps:?}");
+}
+
+#[test]
+fn an_observed_acceptance_reports_the_checks_of_its_report() {
+    let fixture = Fixture::new();
+    let (verdict, calls) = fixture.run_observed("ni.tnp", &BTreeMap::new());
+    check_calls("base NI", &verdict, &calls);
+    let report = Json::parse(&verdict.to_json().unwrap()).unwrap();
+    let listed = field(&report, "checks").as_array().unwrap();
+    let (_, events) = &calls[0];
+    assert_eq!(listed.len(), events.len());
+    for (check, event) in listed.iter().zip(events) {
+        assert_eq!(number(check, "step"), u64::from(event.kind.step()));
+        assert_eq!(text(check, "check"), event.kind.name());
+        assert_eq!(text(check, "outcome"), event.outcome.name());
+        // The deterministic report keeps its null durations (05 §5).
+        assert_eq!(field(check, "duration_ns"), &Json::Null);
+    }
+}

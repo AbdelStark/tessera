@@ -16,7 +16,7 @@ Tier A is the treaty-facing contract: two parties pin a protocol version, not a 
 
 ## 2. Command-line interface
 
-Every command reads and writes TCE artifacts, prints human-readable progress to stderr, and with `--json` prints one JSON object to stdout describing its result, or `{"command", "error": {"code", "message"}}` when it fails. JSON output is informational and never hashed. With `--log-format json`, stderr's lines are `tessera.log-event/1` objects instead ([05 §2](05-observability.md#2-logging)); `tessera` also takes `--log-level {error,warn,info,debug,trace}`, `info` by default. `compile`, `commit-weights`, `prove` and `bench model --out` write the run manifest of [05 §6](05-observability.md#6-run-manifest), `run-manifest.json` in a directory of the operator's own, or at `--run-manifest PATH`.
+Every command reads and writes TCE artifacts, prints human-readable progress to stderr, and with `--json` prints one JSON object to stdout describing its result, or `{"command", "error": {"code", "message"}}` when it fails. JSON output is informational and never hashed. With `--log-format json`, stderr's lines are `tessera.log-event/1` objects instead ([05 §2](05-observability.md#2-logging)); both tools also take `--log-level {error,warn,info,debug,trace}`, `info` by default. `compile`, `commit-weights`, `prove` and `bench model --out` write the run manifest of [05 §6](05-observability.md#6-run-manifest), `run-manifest.json` in a directory of the operator's own, or at `--run-manifest PATH`; `tessera-verify verify` writes one only at `--run-manifest PATH`.
 
 ### 2.1 `tessera-quant` (Python)
 
@@ -127,7 +127,7 @@ statement before any proof is evaluated:
 tessera-verify verify --claims claims.tcl --weights-root ROOT --weights WEIGHTS.twr
                       --statement-digest HEX --proof PROOF.tnp --bound BITS
                       [--out VERDICT.json] [--json] [--max-artifact-bytes N]
-                      [--max-memory-bytes N] [--timeout-ms N]
+                      [--max-memory-bytes N] [--timeout-ms N] [--run-manifest PATH]
 tessera-verify live --claims claims.tcl --weights-root ROOT --weights WEIGHTS.twr
                     --statement-digest HEX --bound BITS --connect DIR
                     --request-id N --request-session HEX --prompt-len N
@@ -141,6 +141,8 @@ tessera-verify params --params PARAMSET [--lookups N] [--table-rows T] [--json]
 using the proof's own digest supplies no trust anchor. `--bound` is exact bits
 in increments of 1/256. [The reference CLI guide](../verifier/reference-cli.md)
 describes resource allowances, atomic report output and the measured CLI trace.
+Every command also takes `--log-format {human,json}` and `--log-level LEVEL`
+(05 §2, 'The verifier's lines').
 The commands below are the full target interface. `audit plan` and `audit report` are
 implemented ([#151](https://github.com/AbdelStark/tessera/issues/151)); anchor integration
 in `verify` and `live`, the ledger's weight epochs and `weights link`, and authenticated

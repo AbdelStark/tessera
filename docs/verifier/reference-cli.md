@@ -67,6 +67,20 @@ write; it does not invent timings for individual internal verifier checks.
 On a contained panic the core inconclusive report may omit this context. If
 the report itself cannot be allocated, exit 20 is returned without a report.
 
+Logs go to stderr ([05 §2](../spec/05-observability.md#2-logging), 'The
+verifier's lines'). The default human format writes the lines above.
+`--log-format json` writes one `tessera.log-event/1` object per line
+([schema](../../spec/schemas/log-event-v1.schema.json)), even with `--json`.
+`--log-level debug` adds one line per check that runs, inside the
+`verify{proof_digest}` and `check{kind}` spans, with its outcome and measured
+time. Every command takes both options.
+
+`verify --run-manifest PATH` also writes a public-class `tessera.run-manifest/1`
+([05 §6](../spec/05-observability.md#6-run-manifest)): the build, the host, the
+inputs' envelope digests, each check's `tessera_verifier_seconds` and the exit
+code. `PATH` must differ from the inputs and `--out`. It is written after the
+report, and a manifest that cannot be written fails the command.
+
 ```sh
 target/debug/tessera-verify tables --claims claims.tcl --json
 target/debug/tessera-verify params --params ni-100 --json

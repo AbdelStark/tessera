@@ -62,7 +62,9 @@
 //! openings and the mandatory runtime budget. [`verify_non_interactive`] judges typed proofs;
 //! [`verify_non_interactive_bytes`] also checks the canonical envelope. [`LiveVerifier`] owns
 //! fresh coin-toss/query entropy and one-shot state. [`Verdict`] distinguishes proof rejection
-//! from inability to judge. Masking, the drivers' use of the anchor and of the ledger, broader
+//! from inability to judge. Each entry point has an `_observed` twin that reports every check as
+//! it completes, with its outcome and measured time, to the caller's [`observe::Observer`],
+//! deciding nothing (05 §2, §5). Masking, the drivers' use of the anchor and of the ledger, broader
 //! batching and full resource hardening remain their roadmap work. A component result alone is not a verdict.
 //!
 //! # Claim lists
@@ -553,6 +555,12 @@ compile_error!(
     "the `test-params` feature accepts parameter sets that certify nothing; it must not be enabled in a release build (RFC-0001 'Cargo features')"
 );
 
+/// Whether this build has the test-only `test-params` feature (RFC-0001 'Cargo features'), and
+/// so accepts the `test-small` parameter set, which certifies nothing. A run manifest names it
+/// among the build's features (05 §6), so that two runs whose manifests agree were judged by
+/// verifiers that accept the same parameter sets (OBS-5).
+pub const TEST_PARAMS: bool = cfg!(feature = "test-params");
+
 pub mod advice;
 pub mod anchor;
 pub mod audit;
@@ -585,6 +593,8 @@ pub mod verdict;
 pub use verdict::{AcceptReport, ErrorCode, RejectReason, Verdict, VerifierError};
 pub mod driver;
 pub use driver::{
-    LiveVerifier, ResourceLimits, VerifierConfig, open_live, verify_non_interactive,
-    verify_non_interactive_bytes,
+    LiveVerifier, ResourceLimits, VerifierConfig, open_live, open_live_observed,
+    verify_non_interactive, verify_non_interactive_bytes, verify_non_interactive_bytes_observed,
+    verify_non_interactive_observed,
 };
+pub mod observe;

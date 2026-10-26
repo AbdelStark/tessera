@@ -72,26 +72,47 @@ fn read_bounded(
     Ok(out)
 }
 
+/// The file `path` names: its canonical path when it exists, else its directory's joined with
+/// its name. `ERR-RES-IO` when neither resolves.
+fn normalized(path: &Path) -> Result<PathBuf, ErrorCode> {
+    fs::canonicalize(path)
+        .or_else(|_| {
+            let parent = path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new("."));
+            Ok::<_, std::io::Error>(
+                fs::canonicalize(parent)?
+                    .join(path.file_name().ok_or(std::io::ErrorKind::InvalidInput)?),
+            )
+        })
+        .map_err(|_| ErrorCode::Io)
+}
+
 pub(crate) fn output_distinct(out: Option<&str>, inputs: &[&str]) -> Result<(), ErrorCode> {
     if let Some(out) = out {
-        let out = Path::new(out);
-        let normalized = fs::canonicalize(out)
-            .or_else(|_| {
-                let parent = out
-                    .parent()
-                    .filter(|p| !p.as_os_str().is_empty())
-                    .unwrap_or(Path::new("."));
-                Ok::<_, std::io::Error>(
-                    fs::canonicalize(parent)?
-                        .join(out.file_name().ok_or(std::io::ErrorKind::InvalidInput)?),
-                )
-            })
-            .map_err(|_| ErrorCode::Io)?;
+        let normalized = normalized(Path::new(out))?;
         for input in inputs {
             if fs::canonicalize(input).is_ok_and(|p| p == normalized) {
                 return Err(ErrorCode::Usage);
             }
         }
+    }
+    Ok(())
+}
+
+/// The run manifest's `path` names no input and not the report at `out` (05 §6 'The verifier's
+/// manifest'): `ERR-USAGE` otherwise.
+pub(crate) fn manifest_distinct(
+    path: &str,
+    inputs: &[&str],
+    out: Option<&str>,
+) -> Result<(), ErrorCode> {
+    output_distinct(Some(path), inputs)?;
+    if let Some(out) = out
+        && normalized(Path::new(out))? == normalized(Path::new(path))?
+    {
+        return Err(ErrorCode::Usage);
     }
     Ok(())
 }

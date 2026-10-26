@@ -15,6 +15,7 @@ use tv_core::claims::ParamSetId;
 use tv_core::verdict::{ErrorCode, VerifierError};
 
 use crate::json::Value;
+use crate::log::Flags;
 use crate::options::{self, Options};
 use crate::{CommandOutput, EXIT_REJECT, EXIT_SUCCESS, command_error, files};
 
@@ -71,7 +72,8 @@ const ARTIFACT_LIMIT: u64 = 1 << 30;
 /// checked for their lengths once it decodes.
 const MANIFEST_LIMIT: u64 = 1 << 16;
 
-pub(crate) fn run(args: &[String], json_flag: bool) -> CommandOutput {
+/// `json_flag` carries `--json` with the log options, which refusals are written in (05 §2).
+pub(crate) fn run(args: &[String], json_flag: Flags) -> CommandOutput {
     match args.first().map(String::as_str) {
         None | Some("-h" | "--help" | "help") => CommandOutput {
             exit_code: EXIT_SUCCESS,
@@ -99,7 +101,7 @@ pub(crate) fn run(args: &[String], json_flag: bool) -> CommandOutput {
     }
 }
 
-fn fail(command: &str, message: &str, json_flag: bool, code: ErrorCode) -> CommandOutput {
+fn fail(command: &str, message: &str, json_flag: Flags, code: ErrorCode) -> CommandOutput {
     command_error(command, message, json_flag, code.id(), code.exit_code())
 }
 
@@ -111,7 +113,7 @@ fn read_json(path: &str, input: &mut files::Inputs) -> Result<Value, ErrorCode> 
 
 // ----- audit plan ------------------------------------------------------------------------------
 
-fn plan(args: &[String], json_flag: bool) -> CommandOutput {
+fn plan(args: &[String], json_flag: Flags) -> CommandOutput {
     const COMMAND: &str = "audit plan";
     let options = match Options::parse(args, &["--policy", "--traffic", "--mu"]) {
         Ok(o) => o,
@@ -174,7 +176,7 @@ fn plan(args: &[String], json_flag: bool) -> CommandOutput {
         Ok(plan) => plan,
         Err(e) => return fail(COMMAND, &e.to_string(), json_flag, e.code()),
     };
-    let stdout = if json_flag {
+    let stdout = if json_flag.json {
         match plan.to_json() {
             Ok(text) => text,
             Err(e) => return fail(COMMAND, "cannot render the plan", json_flag, e.code),
@@ -297,7 +299,7 @@ fn read_cost_model(v: &Value) -> Option<CostModel> {
 
 // ----- audit report ----------------------------------------------------------------------------
 
-fn report(args: &[String], json_flag: bool) -> CommandOutput {
+fn report(args: &[String], json_flag: Flags) -> CommandOutput {
     const COMMAND: &str = "audit report";
     let options = match Options::parse(args, &["--ledger", "--sample", "--out"]) {
         Ok(o) => o,
@@ -381,7 +383,7 @@ fn report(args: &[String], json_flag: bool) -> CommandOutput {
     } else {
         EXIT_REJECT
     };
-    let stdout = if json_flag {
+    let stdout = if json_flag.json {
         text
     } else {
         format!(
@@ -413,7 +415,7 @@ fn hex_of(bytes: &[u8]) -> String {
 
 /// A failure of the core as the command's output: an error exits with its code, a rejection
 /// with 10.
-fn failure(command: &str, message: &str, json_flag: bool, failure: Failure) -> Refused {
+fn failure(command: &str, message: &str, json_flag: Flags, failure: Failure) -> Refused {
     match failure {
         Failure::Inconclusive(e) => fail(command, message, json_flag, e.code),
         Failure::Rejected(reason) => {
@@ -433,7 +435,7 @@ fn read_input(path: &str, limit: u64) -> Result<Vec<u8>, ErrorCode> {
 
 /// The recorder key the verifier pins (`--recorder-key`, RFC-0015 'Signatures'): the 32 bytes of
 /// its Ed25519 public key, as 64 hexadecimal digits.
-fn recorder_keys(command: &str, key: &str, json_flag: bool) -> Result<RecorderKeys, Refused> {
+fn recorder_keys(command: &str, key: &str, json_flag: Flags) -> Result<RecorderKeys, Refused> {
     options::hex::<32>(key)
         .map(|key| RecorderKeys::new(vec![key]))
         .map_err(|code| {
@@ -452,7 +454,7 @@ fn checked_manifest(
     command: &str,
     path: &str,
     keys: &RecorderKeys,
-    json_flag: bool,
+    json_flag: Flags,
     what: &str,
 ) -> Result<CheckedManifest, Refused> {
     let bytes = read_input(path, MANIFEST_LIMIT)
@@ -486,7 +488,7 @@ fn verified_log(
     command: &str,
     manifest: &CheckedManifest,
     path: &str,
-    json_flag: bool,
+    json_flag: Flags,
     what: &str,
 ) -> Result<VerifiedLog, Refused> {
     let bytes = read_input(path, ARTIFACT_LIMIT)
@@ -507,7 +509,7 @@ fn verified_log(
 
 /// `audit commit` (02 §2.3, RFC-0067 'Before the commitment leaves'): the manifest's signature,
 /// the policy, then the toss written to its file, and only then the commitment printed.
-fn commit(args: &[String], json_flag: bool) -> Result<CommandOutput, Refused> {
+fn commit(args: &[String], json_flag: Flags) -> Result<CommandOutput, Refused> {
     const COMMAND: &str = "audit commit";
     let options = Options::parse(
         args,
@@ -558,7 +560,7 @@ fn commit(args: &[String], json_flag: bool) -> Result<CommandOutput, Refused> {
         fail(COMMAND, message, json_flag, e.code)
     })?;
     let commitment = hex_of(pending.commitment());
-    let stdout = if json_flag {
+    let stdout = if json_flag.json {
         format!(
             "{{\"command\":\"{COMMAND}\",\"manifest_digest\":\"{}\",\"commitment\":\"{commitment}\"}}\n",
             hex_of(pending.manifest_digest())
@@ -589,7 +591,7 @@ fn open_ledger(path: &Path, new: bool) -> Result<LedgerFile, VerifierError> {
 /// RFC-0067 'The pending toss'): both periods' logs checked and bound through the zero-length
 /// periods between them, the toss read and revealed, the sample recorded in the ledger, then
 /// written, then the toss cleared.
-fn reveal(args: &[String], json_flag: bool) -> Result<CommandOutput, Refused> {
+fn reveal(args: &[String], json_flag: Flags) -> Result<CommandOutput, Refused> {
     const COMMAND: &str = "audit reveal";
     let options = Options::parse_with(
         args,
@@ -775,7 +777,7 @@ fn reveal(args: &[String], json_flag: bool) -> Result<CommandOutput, Refused> {
     })?;
     let identity = hex_of(sample.identity());
     let selected = sample.selected().len();
-    let stdout = if json_flag {
+    let stdout = if json_flag.json {
         format!(
             "{{\"command\":\"{COMMAND}\",\"manifest_digest\":\"{}\",\"sample\":\"{identity}\",\"selected\":{selected},\"ledger_created\":{created}}}\n",
             hex_of(sample.manifest_digest())
