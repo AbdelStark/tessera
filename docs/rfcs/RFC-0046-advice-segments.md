@@ -47,6 +47,7 @@ segment j holds layers  j·⌊L/S⌋ + min(j, L mod S)  to  (j+1)·⌊L/S⌋ + m
   - Segment 0 also holds every tile before the first layer's: the tokens and the prologue.
   - Segment `S − 1` also holds every tile after the last layer's: the epilogue and the tables.
   - RFC-0018 assigns the embedding and the LM head the same way.
+  - A graph with no layers, `L = 0`, has every tile in segment 0, and any further segments are empty ([RFC-0072](RFC-0072-anchor-relations.md#graphs-without-layers)).
 - **Rows.** A segment's rows run from its first tile's first row up to the next segment's first row. The alignment gap before a tile therefore belongs to the segment before it. Gap rows are zero rows, which no chain hashes (RFC-0011 rule 4).
 - **An empty segment.** When `S > L`, a segment can hold no tile. Its chain for column `j` hashes nothing, and its digest is `d_j[0]` (RFC-0004).
 - **Example.** At 405B, `L = 126` and `S = 8` give 16, 16, 16, 16, 16, 16, 15 and 15 layers. Segment 7 holds one layer fewer than the first six, beside the LM head.

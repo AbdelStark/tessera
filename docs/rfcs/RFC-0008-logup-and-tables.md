@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.1 (argument), v0.2 (registry)
-- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Fraction tree', in `tessera-protocol/2`: the roots are not sent, and the leaf checks read masked keys, values and multiplicities); [RFC-0054](RFC-0054-token-groups.md) ('Batching' and 'Fraction tree', for a leaf stage larger than memory: a lookup tree per table and token group, their roots and the identity's check)
+- Amended by: [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md) ('Fraction tree', in `tessera-protocol/2`: the roots are not sent, and the leaf checks read masked keys, values and multiplicities); [RFC-0054](RFC-0054-token-groups.md) ('Batching' and 'Fraction tree', for a leaf stage larger than memory: a lookup tree per table and token group, their roots and the identity's check), [RFC-0072](RFC-0072-anchor-relations.md) ('Table kinds': `Bitwise8` serves AES-128 alone)
 
 ## Summary
 
@@ -76,7 +76,7 @@ An instance, with at least one lookup, proves its identity with two fraction tre
 | `Exp { key_bits, sigma, scale }` | `k ∈ [0, 2^{key_bits})` | `round(2^σ · exp(−k · scale))` | `2^{key_bits}` | Softmax, vocabulary softmax |
 | `Exp2Frac { frac_bits, out_bits }` | `f ∈ [0, 2^{frac_bits})` | `⌊2^{f/2^{frac_bits}} · 2^{out_bits}⌋`, from below | `2^{frac_bits}` | Scoring bound (RFC-0017) |
 | `Pow2 { max_exp }` | `i ∈ [0, max_exp)` | `2^i` | `max_exp` | Scoring bound (RFC-0017) |
-| `Bitwise8 { op }` | `(a, b)`, 8-bit each | `a ⊕ b`, `a ∧ b` | 2^16 | SHA-256 |
+| `Bitwise8 { op }` | `(a, b)`, 8-bit each | `a ⊕ b`, `a ∧ b` | 2^16 | AES-128 (SHA-256 uses committed bits, RFC-0066) |
 | `AesSbox`, `Gf256Mul { c }` | `x`, 8-bit | S-box, `c · x` in GF(2^8) | 2^8 | AES-128 |
 | `Rope { theta, factor, low_freq_factor, high_freq_factor, original_max, bits, max_context, d_head }` | `(position, frequency)` | `(C, S)`, 14-bit | `max_context · d_head / 2` | Public constants for `Rotate`, not a lookup table |
 
