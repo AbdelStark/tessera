@@ -11,15 +11,7 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     // Panic payloads can contain protocol values; only the public ERR-INTERNAL is reported.
     std::panic::set_hook(Box::new(|_| {}));
-    let args = env::args_os()
-        .skip(1)
-        .take(65)
-        .map(|a| a.into_string())
-        .collect::<Result<Vec<_>, _>>();
-    let output = match args {
-        Ok(args) => tv_cli::run(args),
-        Err(_) => tv_cli::run(["invalid-utf8-argument"]),
-    };
+    let output = tv_cli::run_os(env::args_os().skip(1).take(65));
     if io::stdout()
         .lock()
         .write_all(output.stdout.as_bytes())

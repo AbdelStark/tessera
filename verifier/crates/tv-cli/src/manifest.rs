@@ -206,29 +206,63 @@ pub(crate) fn render(run: &Run<'_>) -> String {
 }
 
 /// What the platform reports of the host without a crate: Linux's `/proc`, macOS's `sysctl`;
-/// none elsewhere or when it does not answer.
+/// none elsewhere or when it does not answer. Each answer is read up to [`host::CAP`] bytes, so
+/// the probe allocates a few KiB whatever the platform writes.
 mod host {
-    #[cfg(target_os = "linux")]
-    fn proc(file: &str) -> Option<String> {
-        use std::io::Read;
-        let mut text = String::new();
-        std::fs::File::open(file)
-            .ok()?
-            .take(1 << 20)
-            .read_to_string(&mut text)
-            .ok()?;
-        Some(text)
+    use std::io::Read;
+
+    /// The most bytes read from one file or one child's output.
+    pub(super) const CAP: u64 = 4096;
+
+    /// The complete lines among the first `cap` bytes of `reader`: a longer input loses the line
+    /// the cap cuts. `None` when they are not UTF-8.
+    #[cfg_attr(not(any(test, target_os = "linux")), allow(dead_code))]
+    pub(super) fn complete_lines(reader: impl Read, cap: u64) -> Option<String> {
+        let mut bytes = Vec::new();
+        reader.take(cap).read_to_end(&mut bytes).ok()?;
+        if u64::try_from(bytes.len()).ok()? == cap {
+            let end = bytes.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+            bytes.truncate(end);
+        }
+        String::from_utf8(bytes).ok()
     }
 
+    /// All of `reader`, trimmed, when it holds at most `cap` bytes, and is UTF-8 and not empty.
+    #[cfg_attr(not(any(test, target_os = "macos")), allow(dead_code))]
+    pub(super) fn whole(reader: impl Read, cap: u64) -> Option<String> {
+        let mut bytes = Vec::new();
+        reader
+            .take(cap.checked_add(1)?)
+            .read_to_end(&mut bytes)
+            .ok()?;
+        if u64::try_from(bytes.len()).ok()? > cap {
+            return None;
+        }
+        let text = String::from_utf8(bytes).ok()?;
+        let text = text.trim();
+        (!text.is_empty()).then(|| text.to_string())
+    }
+
+    #[cfg(target_os = "linux")]
+    fn proc(file: &str) -> Option<String> {
+        complete_lines(std::fs::File::open(file).ok()?, CAP)
+    }
+
+    /// `sysctl -n name`, from its absolute path, its stdout read up to the cap; the pipe is then
+    /// closed, so a child that writes more stops on it.
     #[cfg(target_os = "macos")]
     fn sysctl(name: &str) -> Option<String> {
-        let out = std::process::Command::new("/usr/sbin/sysctl")
+        use std::process::{Command, Stdio};
+        let mut child = Command::new("/usr/sbin/sysctl")
             .args(["-n", name])
-            .output()
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
             .ok()?;
-        let text = String::from_utf8(out.stdout).ok()?;
-        let text = text.trim();
-        (out.status.success() && !text.is_empty()).then(|| text.to_string())
+        let text = child.stdout.take().and_then(|out| whole(out, CAP));
+        let status = child.wait().ok()?;
+        text.filter(|_| status.success())
     }
 
     /// The first `model name` of `/proc/cpuinfo`, or `machdep.cpu.brand_string`.
@@ -267,6 +301,61 @@ mod host {
         #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         {
             None
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// Counts what is read from it, so the cap is seen to bound the reading itself.
+        struct Counted<R>(R, u64);
+        impl<R: Read> Read for Counted<R> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                let n = self.0.read(buf)?;
+                self.1 += n as u64;
+                Ok(n)
+            }
+        }
+
+        #[test]
+        fn an_endless_answer_is_read_up_to_the_cap() {
+            let mut endless = Counted(std::io::repeat(b'7'), 0);
+            assert_eq!(whole(&mut endless, CAP), None);
+            assert_eq!(endless.1, CAP + 1);
+            let mut endless = Counted(std::io::repeat(b'7'), 0);
+            assert_eq!(complete_lines(&mut endless, CAP).as_deref(), Some(""));
+            assert_eq!(endless.1, CAP);
+            assert_eq!(
+                whole(&b" 51539607552\n"[..], CAP).as_deref(),
+                Some("51539607552")
+            );
+            assert_eq!(whole(&b"\n"[..], CAP), None);
+            assert_eq!(whole(&[0xff][..], CAP), None);
+            let exact = "8".repeat(4096);
+            assert_eq!(
+                whole(exact.as_bytes(), CAP).as_deref(),
+                Some(exact.as_str())
+            );
+        }
+
+        #[test]
+        fn a_long_file_keeps_its_complete_leading_lines() {
+            // A many-core /proc/cpuinfo: its first block's lines, never the one the cap cuts.
+            let block = "processor\t: 0\nmodel name\t: Some CPU @ 3.00GHz\nflags\t\t: fpu vme\n";
+            let file = block.repeat(1000);
+            let mut read = Counted(file.as_bytes(), 0);
+            let lines = complete_lines(&mut read, CAP).unwrap();
+            assert_eq!(read.1, CAP);
+            assert!(lines.len() <= 4096 && lines.ends_with('\n') && file.starts_with(&lines));
+            assert!(
+                lines.lines().all(|l| block.lines().any(|b| b == l)),
+                "{lines}"
+            );
+            assert_eq!(
+                complete_lines(block.as_bytes(), CAP).as_deref(),
+                Some(block)
+            );
         }
     }
 }

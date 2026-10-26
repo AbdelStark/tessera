@@ -90,6 +90,44 @@ OPTIONS:
     -h, --help              Print this help information
 ";
 
+/// [`run`] on the process's arguments (excluding `argv[0]`), which may not be UTF-8.
+///
+/// An argument that is not UTF-8 is refused as before, `ERR-USAGE` with the line ``unknown
+/// command `invalid-utf8-argument` ``, but in the format the valid arguments ask for (05 §2):
+/// their `--log-format`, `--log-level` and `--json` are kept, and a log option whose own value is
+/// not UTF-8 is an invalid value.
+pub fn run_os<I>(args: I) -> CommandOutput
+where
+    I: IntoIterator<Item = std::ffi::OsString>,
+{
+    const PLACEHOLDER: &str = "invalid-utf8-argument";
+    let given: Vec<Option<String>> = args.into_iter().map(|a| a.into_string().ok()).collect();
+    if given.iter().all(Option::is_some) {
+        return run(given.into_iter().flatten());
+    }
+    let mut kept = Vec::new();
+    let mut json = false;
+    let mut given = given.into_iter();
+    while let Some(arg) = given.next() {
+        match arg.as_deref() {
+            Some(option @ ("--log-format" | "--log-level")) => {
+                kept.push(option.to_string());
+                if let Some(value) = given.next() {
+                    kept.push(value.unwrap_or_else(|| PLACEHOLDER.to_string()));
+                }
+            }
+            Some("--json") => json = true,
+            _ => {}
+        }
+    }
+    // The placeholder stands where the command is read; `--json` counts in any position.
+    kept.push(PLACEHOLDER.to_string());
+    if json {
+        kept.push("--json".to_string());
+    }
+    run(kept)
+}
+
 /// Runs the `tessera-verify` CLI on `args` (excluding `argv[0]`) and returns its exit code,
 /// `stdout`, and `stderr`.
 pub fn run<I, S>(args: I) -> CommandOutput

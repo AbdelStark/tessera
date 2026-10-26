@@ -277,14 +277,15 @@ fn json(event: &Event<'_>, at: SystemTime, out: &mut String) {
     out.push_str("}}\n");
 }
 
-/// Appends `event`'s line to `out` when `flags` admit it.
-fn emit(flags: Flags, event: &Event<'_>, out: &mut String) {
+/// Appends `event`'s line to `out` when `flags` admit it, `at` being when the event happened
+/// (05 §2: the lines reach stderr when the command ends, each with the time of its event).
+fn emit(flags: Flags, event: &Event<'_>, at: SystemTime, out: &mut String) {
     if !flags.admits(event.level) {
         return;
     }
     match flags.format {
         Format::Human => human(event, out),
-        Format::Json => json(event, SystemTime::now(), out),
+        Format::Json => json(event, at, out),
     }
 }
 
@@ -348,6 +349,7 @@ pub(crate) fn command_failed(flags: Flags, command: &str, code: &str, detail: &s
             ],
             message: "error ({code}): {detail}",
         },
+        SystemTime::now(),
         &mut out,
     );
     out
@@ -361,13 +363,15 @@ fn nanos(duration: Duration) -> u64 {
 /// verdict, and the checks it saw. It receives tv-core's reports as an [`Observer`] and joins two
 /// consecutive reports of one check whose first passed into one check: the CLI's own reading and
 /// decoding of the inputs with the driver's limits in step 1, and in a live session a message's
-/// decoding with the driver's checks of it. Each check is written once it is complete.
+/// decoding with the driver's checks of it. Each check is written once it is complete, with the
+/// time its last report arrived: when the check completed.
 pub(crate) struct Trail {
     flags: Flags,
     lines: String,
     /// The NI proof's envelope digest, in lowercase hexadecimal, once its envelope verifies.
     proof_digest: Option<String>,
-    pending: Option<CheckEvent>,
+    /// The check whose next report may still join it, and when it completed.
+    pending: Option<(CheckEvent, SystemTime)>,
     completed: Vec<CheckEvent>,
 }
 
@@ -400,9 +404,26 @@ impl Trail {
         });
     }
 
+    /// Takes `event`, which completed `at`: it joins the pending check when both are one check
+    /// and the pending one passed, and completes it again; otherwise the pending check is written
+    /// and `event` waits for its own next report.
+    fn report(&mut self, event: CheckEvent, at: SystemTime) {
+        if let Some((pending, completed)) = &mut self.pending
+            && pending.kind == event.kind
+            && pending.outcome == CheckOutcome::Pass
+        {
+            pending.outcome = event.outcome;
+            pending.duration = pending.duration.saturating_add(event.duration);
+            *completed = at;
+            return;
+        }
+        self.flush();
+        self.pending = Some((event, at));
+    }
+
     /// Writes the check still pending; every check is then in [`checks`](Self::checks).
     pub(crate) fn flush(&mut self) {
-        let Some(event) = self.pending.take() else {
+        let Some((event, at)) = self.pending.take() else {
             return;
         };
         self.completed.push(event);
@@ -431,6 +452,7 @@ impl Trail {
                 ],
                 message: "step {step} {outcome} in {duration_ns} ns",
             },
+            at,
             &mut self.lines,
         );
     }
@@ -486,6 +508,7 @@ impl Trail {
                 fields,
                 message: "verify: completed in {duration_ns} ns; protocol/1, anchor/ledger/ZK unchecked",
             },
+            SystemTime::now(),
             &mut self.lines,
         );
     }
@@ -497,17 +520,9 @@ impl Trail {
 }
 
 impl Observer for Trail {
+    /// tv-core reports each check as it completes, so its time is now.
     fn check_completed(&mut self, event: CheckEvent) {
-        if let Some(pending) = &mut self.pending
-            && pending.kind == event.kind
-            && pending.outcome == CheckOutcome::Pass
-        {
-            pending.outcome = event.outcome;
-            pending.duration = pending.duration.saturating_add(event.duration);
-            return;
-        }
-        self.flush();
-        self.pending = Some(event);
+        self.report(event, SystemTime::now());
     }
 }
 
@@ -576,6 +591,153 @@ mod tests {
             assert!(d <= length[usize::try_from(m - 1).unwrap()], "{y}-{m}-{d}");
             previous = (y, m, d);
         }
+    }
+
+    /// The `ts` of each JSON line, in order.
+    fn stamps(lines: &str) -> Vec<String> {
+        lines
+            .lines()
+            .map(|l| {
+                let j = tv_testkit::Json::parse(l).unwrap();
+                j.get("ts")
+                    .and_then(tv_testkit::Json::as_str)
+                    .unwrap()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    fn stamp(at: SystemTime) -> String {
+        let mut out = String::new();
+        timestamp(at, &mut out);
+        out
+    }
+
+    /// A check's line carries the time its report arrived, not the time it is written: the
+    /// first check's `ts` precedes the second check's start, and both precede the writing.
+    #[test]
+    fn a_line_carries_the_time_of_its_event() {
+        let pause = || std::thread::sleep(Duration::from_millis(3));
+        let mut trail = Trail::new(flags(Format::Json, Level::Debug, false));
+        let before_first = SystemTime::now();
+        trail.check(
+            CheckKind::Input,
+            CheckOutcome::Pass,
+            Duration::from_nanos(1),
+        );
+        let after_first = SystemTime::now();
+        pause();
+        let second_starts = SystemTime::now();
+        trail.check(
+            CheckKind::Params,
+            CheckOutcome::Pass,
+            Duration::from_nanos(1),
+        );
+        let after_second = SystemTime::now();
+        pause();
+        let written = SystemTime::now();
+        trail.flush();
+        pause();
+        trail.verified(
+            &Verdict::Inconclusive(tv_core::VerifierError {
+                code: tv_core::ErrorCode::Io,
+            }),
+            20,
+            Duration::ZERO,
+        );
+        let after_verified = SystemTime::now();
+        let ts = stamps(&trail.into_lines());
+        assert_eq!(ts.len(), 3);
+        assert!(
+            stamp(before_first) <= ts[0] && ts[0] <= stamp(after_first),
+            "{ts:?}"
+        );
+        assert!(ts[0] < stamp(second_starts), "{ts:?}");
+        assert!(
+            stamp(second_starts) <= ts[1] && ts[1] <= stamp(after_second),
+            "{ts:?}"
+        );
+        assert!(ts[1] < stamp(written), "{ts:?}");
+        assert!(
+            stamp(written) < ts[2] && ts[2] <= stamp(after_verified),
+            "{ts:?}"
+        );
+    }
+
+    /// With controlled clocks: a joined check takes the time of its last report, and writing the
+    /// lines later changes no `ts`.
+    #[test]
+    fn a_joined_check_completes_with_its_last_report() {
+        let mut trail = Trail::new(flags(Format::Json, Level::Debug, false));
+        let at = |s: u64| UNIX_EPOCH + Duration::from_secs(s);
+        let event = |kind, outcome| CheckEvent {
+            kind,
+            outcome,
+            duration: Duration::from_nanos(1),
+        };
+        // The CLI's step 1, then the driver's, then step 2 and a step 3 that rejects.
+        trail.report(event(CheckKind::Input, CheckOutcome::Pass), at(100));
+        trail.report(event(CheckKind::Input, CheckOutcome::Pass), at(160));
+        trail.report(event(CheckKind::Params, CheckOutcome::Pass), at(220));
+        trail.report(event(CheckKind::Claims, CheckOutcome::Reject), at(280));
+        trail.flush();
+        assert_eq!(
+            stamps(&trail.into_lines()),
+            [stamp(at(160)), stamp(at(220)), stamp(at(280))]
+        );
+    }
+
+    /// The reports `live` hands the trail in an accepted session, call by call: the CLI's step
+    /// 1, `start`'s step 2, then per message its opening (step 1, twice for Round1 and the
+    /// prover's share) and its call (steps 1 to 6, 10 or 13), as tv-core's corpus test proves
+    /// each call reports them. The log is 1, 2, 1–6, 1–10, 1–13: one step 1 per message.
+    #[test]
+    fn a_live_session_writes_one_step_one_per_message() {
+        let mut trail = Trail::new(flags(Format::Json, Level::Debug, false));
+        let calls: [&[usize]; 9] = [
+            &[1],
+            &[2],
+            &[1],
+            &[1],
+            &[1, 2, 3, 4, 5, 6],
+            &[1],
+            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            &[1],
+            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+        ];
+        for steps in calls {
+            for &step in steps {
+                let (outcome, ns) = if step == 5 {
+                    (CheckOutcome::NotApplicable, 0)
+                } else {
+                    (CheckOutcome::Pass, 10)
+                };
+                trail.check(CheckKind::ALL[step - 1], outcome, Duration::from_nanos(ns));
+            }
+        }
+        trail.flush();
+        let written: Vec<(u8, u64)> = trail
+            .checks()
+            .iter()
+            .map(|e| (e.kind.step(), u64::try_from(e.duration.as_nanos()).unwrap()))
+            .collect();
+        let mut expected = vec![(1, 10), (2, 10)];
+        for (last, first) in [(6, 30), (10, 20), (13, 20)] {
+            expected.push((1, first));
+            expected.extend((2..=last).map(|s| (s, if s == 5 { 0 } else { 10 })));
+        }
+        assert_eq!(written, expected);
+        let lines = trail.into_lines();
+        assert_eq!(lines.lines().count(), 31);
+        let step5: Vec<&str> = lines
+            .lines()
+            .filter(|l| l.contains("\"step\":5,"))
+            .collect();
+        assert_eq!(step5.len(), 3);
+        assert!(
+            step5.iter().all(|l| l.contains("\"duration_ns\":0,")),
+            "{step5:?}"
+        );
     }
 
     #[test]
@@ -677,6 +839,7 @@ mod tests {
                 fields: &[("a", Value::Int(1))],
                 message: "a is {a}",
             },
+            SystemTime::now(),
             &mut out,
         );
         assert_eq!(out, "debug: a is 1\n");
@@ -727,6 +890,7 @@ mod tests {
                 fields: &[("detail", Value::Text("a \"b\"\n"))],
                 message: "error: {detail}",
             },
+            SystemTime::now(),
             &mut out,
         );
         let (ts, rest) = out

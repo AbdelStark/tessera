@@ -98,6 +98,41 @@ impl Drop for Fixture {
     }
 }
 
+/// `payload` in an envelope of `schema` (RFC-0003 'Envelope'): the header, the payload and the
+/// digest of both.
+pub fn seal(schema: tv_codec::Expected, payload: &[u8]) -> Vec<u8> {
+    let mut out = tv_codec::MAGIC.to_vec();
+    out.extend_from_slice(&tv_codec::ENVELOPE_VERSION.to_le_bytes());
+    out.extend_from_slice(&schema.schema_id.to_le_bytes());
+    out.extend_from_slice(&schema.version.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&(payload.len() as u64).to_le_bytes());
+    out.extend_from_slice(payload);
+    let digest = hash(Domain::Envelope, &out);
+    out.extend_from_slice(&digest);
+    out
+}
+
+impl Fixture {
+    /// The claim list resealed under `ni-100/1`, a production set every build accepts, so that
+    /// tv-core runs its own checks in a plain build too. With `layout`, also ni-100's layout:
+    /// the claim list then validates (step 3) and the statement, which names the original
+    /// list, disagrees with it at step 4.
+    pub fn as_ni_100(&self, layout: bool) {
+        let bytes = fs::read(&self.claims).unwrap();
+        let mut claims = tv_core::claims::ClaimList::open(&bytes, &DecodeLimits::MESSAGE).unwrap();
+        claims.params = tv_core::claims::ParamSetId::new("ni-100/1").unwrap();
+        if layout {
+            claims.layout = tv_core::params::ParamSet::Ni100.layout();
+        }
+        fs::write(
+            &self.claims,
+            seal(tv_core::claims::SCHEMA, &claims.to_tce()),
+        )
+        .unwrap();
+    }
+}
+
 /// Whether this build accepts test-small: a plain build refuses it as `REJ-PARAMS` at step 2.
 pub fn accepts_test_small() -> bool {
     tv_core::params::ParamSet::accept(&tv_core::claims::ParamSetId::new("test-small/1").unwrap())

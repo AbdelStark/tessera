@@ -101,6 +101,7 @@ docs/
    - `include_str!` and `include_bytes!` must be direct calls whose literal paths stay inside their own crate.
    - Macro bodies may hold no include macro, no macro call named by a metavariable, and no attribute whose name holds one.
    - It also rejects symlinks anywhere under `verifier/`, and names containing control characters.
+   - It rejects a build script or a procedural macro in a verifier crate: either runs at build time and can read any file.
 4. Checks that `verifier/rust-toolchain.toml` and the root `rust-toolchain.toml` pin the same toolchain.
 5. Checks that the root workspace uses verifier crates only as `dev-dependencies` (DEP-2).
 6. Rejects `[patch]` and `[replace]` in verifier manifests, cargo configuration under `verifier/`, and any alias in the root `.cargo/config.toml` other than the canonical `xtask` alias. Each could redirect the verifier's dependencies or turn the gate into a no-op.

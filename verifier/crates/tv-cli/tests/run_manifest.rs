@@ -354,10 +354,68 @@ fn a_manifest_that_cannot_be_written_fails_the_command_and_the_report_stays() {
     assert_eq!(last.field("status").unwrap().text(), "inconclusive");
     assert_eq!(last.field("code").unwrap().text(), "ERR-RES-IO");
     assert_eq!(last.field("exit_code").unwrap().int(), 20);
-    // A directory that does not exist cannot hold one either.
+}
+
+/// A `PATH` whose directory does not exist fails before verification, `ERR-RES-IO`, as `--out`
+/// does (05 §6): no check runs and neither output is written.
+#[test]
+fn a_manifest_in_a_missing_directory_is_refused_before_verification() {
+    let f = Fixture::new();
+    let out = f.dir.join("verdict.json");
     let missing = f.dir.join("missing").join("run-manifest.json");
-    let result = run(f.with(&["--run-manifest", &missing.display().to_string()]));
+    let result = run(f.with(&[
+        "--out",
+        &out.display().to_string(),
+        "--run-manifest",
+        &missing.display().to_string(),
+        "--json",
+        "--log-format",
+        "json",
+        "--log-level",
+        "debug",
+    ]));
     assert_eq!(result.exit_code, 20);
+    let stdout = Json::parse(&result.stdout).unwrap();
+    assert_eq!(
+        text(get(get(&stdout, "verdict"), "error"), "code"),
+        "ERR-RES-IO"
+    );
+    // The CLI's own trace: no phase ran.
+    assert_eq!(
+        get(get(&stdout, "execution"), "trace"),
+        &Json::Array(vec![])
+    );
+    let logged = lines(&result.stderr);
+    assert_eq!(logged.len(), 1, "{}", result.stderr);
+    assert_eq!(logged[0].event, "tessera.tv_cli.verified");
+    assert_eq!(logged[0].field("code").unwrap().text(), "ERR-RES-IO");
+    assert!(!out.exists() && !missing.exists());
+    assert_eq!(fs::read_dir(&f.dir).unwrap().count(), 3);
+}
+
+/// An `--out` that names an input is refused before verification, and then the manifest, whose
+/// own path is sound, is not written either (05 §6 'Where').
+#[test]
+fn a_refused_report_path_writes_no_manifest() {
+    let f = Fixture::new();
+    let manifest = f.dir.join("run-manifest.json");
+    for input in [&f.claims, &f.weights, &f.proof] {
+        let result = run(f.with(&[
+            "--out",
+            &input.display().to_string(),
+            "--run-manifest",
+            &manifest.display().to_string(),
+            "--json",
+        ]));
+        assert_eq!(result.exit_code, 64);
+        let stdout = Json::parse(&result.stdout).unwrap();
+        assert_eq!(
+            text(get(get(&stdout, "verdict"), "error"), "code"),
+            "ERR-USAGE"
+        );
+        assert!(!manifest.exists(), "{}", input.display());
+        assert_eq!(fs::read_dir(&f.dir).unwrap().count(), 3);
+    }
 }
 
 #[test]
@@ -454,4 +512,70 @@ fn an_artifact_that_fails_to_open_is_named_without_a_digest() {
         assert_eq!(metrics.len(), 1);
         assert_eq!(text(get(&metrics[0], "labels"), "check"), "input");
     }
+}
+
+/// On a case-insensitive filesystem two names that differ only in ASCII case are one file, so
+/// the outputs may not differ from each other, or from an input, only so in one directory (05 §6).
+#[test]
+fn outputs_that_differ_only_in_case_are_refused() {
+    let f = Fixture::new();
+    let dir = |name: &str| f.dir.join(name).display().to_string();
+    for (out, manifest) in [
+        (dir("r.json"), dir("R.json")),
+        (dir("Report.JSON"), dir("report.json")),
+        (dir("CLAIMS.TCL"), dir("run-manifest.json")),
+        (dir("verdict.json"), dir("Ni.Tnp")),
+        (dir("verdict.json"), dir("WEIGHTS.twr")),
+    ] {
+        let result = run(f.with(&["--out", &out, "--run-manifest", &manifest, "--json"]));
+        assert_eq!(result.exit_code, 64, "{out} {manifest}");
+        let stdout = Json::parse(&result.stdout).unwrap();
+        let code = get(get(get(&stdout, "verdict"), "error"), "code");
+        assert_eq!(code.as_str(), Some("ERR-USAGE"));
+        assert_eq!(
+            fs::read_dir(&f.dir).unwrap().count(),
+            3,
+            "nothing is written"
+        );
+    }
+    // `--out` alone against an input, as before, and now in another case.
+    let result = run(f.with(&["--out", &dir("Claims.tcl")]));
+    assert_eq!(result.exit_code, 64);
+    // The same names in two directories are two files.
+    let other = f.dir.join("other");
+    fs::create_dir(&other).unwrap();
+    let out = dir("r.json");
+    let manifest = other.join("R.json").display().to_string();
+    let result = run(f.with(&["--out", &out, "--run-manifest", &manifest]));
+    assert_ne!(result.exit_code, 64, "{}", result.stdout);
+    assert!(Path::new(&out).is_file() && Path::new(&manifest).is_file());
+}
+
+/// Paths and arguments reach the manifest escaped, whatever they hold.
+#[cfg(unix)]
+#[test]
+fn the_manifest_escapes_paths_and_arguments() {
+    let f = Fixture::new();
+    let out = f.dir.join("q\"b\\s\tx.json");
+    let manifest = f.dir.join("run-manifest.json");
+    let args = f.with(&[
+        "--out",
+        &out.display().to_string(),
+        "--run-manifest",
+        &manifest.display().to_string(),
+    ]);
+    run(&args);
+    let text_of = fs::read_to_string(&manifest).unwrap();
+    assert!(text_of.trim_end().chars().all(|c| c >= ' '), "{text_of:?}");
+    let m = Json::parse(&text_of).unwrap();
+    let arguments: Vec<&str> = get(&m, "arguments")
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a.as_str().unwrap())
+        .collect();
+    assert_eq!(arguments, args);
+    let outputs = get(&m, "outputs").as_array().unwrap();
+    assert_eq!(text(&outputs[0], "path"), out.to_str().unwrap());
+    assert!(out.is_file());
 }

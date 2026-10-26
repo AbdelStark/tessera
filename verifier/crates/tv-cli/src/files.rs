@@ -89,11 +89,26 @@ fn normalized(path: &Path) -> Result<PathBuf, ErrorCode> {
         .map_err(|_| ErrorCode::Io)
 }
 
+/// Whether two normalized paths may name one file: the same path, or names in one directory
+/// that differ only in ASCII case, which a case-insensitive filesystem (APFS, HFS+, NTFS by
+/// default) resolves to one entry. An output that does not exist yet keeps its name as given, so
+/// equality alone cannot see that alias.
+fn may_alias(a: &Path, b: &Path) -> bool {
+    a == b
+        || (a.parent() == b.parent()
+            && match (a.file_name(), b.file_name()) {
+                (Some(x), Some(y)) => x
+                    .as_encoded_bytes()
+                    .eq_ignore_ascii_case(y.as_encoded_bytes()),
+                _ => false,
+            })
+}
+
 pub(crate) fn output_distinct(out: Option<&str>, inputs: &[&str]) -> Result<(), ErrorCode> {
     if let Some(out) = out {
         let normalized = normalized(Path::new(out))?;
         for input in inputs {
-            if fs::canonicalize(input).is_ok_and(|p| p == normalized) {
+            if fs::canonicalize(input).is_ok_and(|p| may_alias(&p, &normalized)) {
                 return Err(ErrorCode::Usage);
             }
         }
@@ -101,8 +116,8 @@ pub(crate) fn output_distinct(out: Option<&str>, inputs: &[&str]) -> Result<(), 
     Ok(())
 }
 
-/// The run manifest's `path` names no input and not the report at `out` (05 §6 'The verifier's
-/// manifest'): `ERR-USAGE` otherwise.
+/// The run manifest's `path` names no input and not the report at `out`, in any ASCII case of
+/// its name (05 §6 'The verifier's manifest'): `ERR-USAGE` otherwise.
 pub(crate) fn manifest_distinct(
     path: &str,
     inputs: &[&str],
@@ -110,7 +125,7 @@ pub(crate) fn manifest_distinct(
 ) -> Result<(), ErrorCode> {
     output_distinct(Some(path), inputs)?;
     if let Some(out) = out
-        && normalized(Path::new(out))? == normalized(Path::new(path))?
+        && may_alias(&normalized(Path::new(out))?, &normalized(Path::new(path))?)
     {
         return Err(ErrorCode::Usage);
     }
@@ -209,6 +224,20 @@ fn atomic(path: &Path, bytes: &[u8], replace: bool, next: &AtomicU64) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn names_that_differ_only_in_ascii_case_in_one_directory_may_alias() {
+        for (a, b, alias) in [
+            ("/d/r.json", "/d/r.json", true),
+            ("/d/r.json", "/d/R.JSON", true),
+            ("/d/r.json", "/e/R.json", false),
+            ("/d/r.json", "/d/r.jsonx", false),
+            // Only ASCII letters fold: `é` and `É` are other bytes.
+            ("/d/\u{e9}.json", "/d/\u{c9}.json", false),
+            ("/", "/", true),
+        ] {
+            assert_eq!(may_alias(Path::new(a), Path::new(b)), alias, "{a} {b}");
+        }
+    }
     #[test]
     fn empty_read_terminates_without_retrying_eof() {
         struct Eof(bool);
