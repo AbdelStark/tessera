@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-25
 - Target milestone: v0.4
-- Amended by: [RFC-0072](RFC-0072-anchor-relations.md) ('`BitDecompose`' and 'Where the zero-checks run': recomposition summed over the bit axis, its claim on `x` at `y`'s coordinates, and the zero-checks' messages; OQ-0066-1 and OQ-0066-2, closed)
+- Amended by: [RFC-0072](RFC-0072-anchor-relations.md) ('`BitDecompose`' and 'Where the zero-checks run': recomposition summed over the bit axis, its claim on `x` at `y`'s coordinates, and the zero-checks' messages; '`AssertEqual`': a public input pads with zeros; OQ-0066-1 and OQ-0066-2, closed)
 - Amends:
   - [RFC-0006](RFC-0006-compiler-ir.md#operation-set) 'Operation set': three operations join the closed set, `BitDecompose`, `BitFn` and `AssertEqual`, and `Bitwise` is AES's alone;
   - RFC-0006 'Range analysis': the three operations' ranges and integrality rules;
@@ -61,7 +61,7 @@ BitDecompose { low: u8, high: u8 },   // x → b [.., low], h [.., high]; high m
   - **Elsewhere**, range analysis takes a committed advice input's declared range as given: through any other operation, and at the positions a `Slice` or a gather leaves out, that range is a precondition another operation of the graph must prove. RFC-0006 'Committed graph inputs' states which operations prove it, and range analysis refuses a graph that leaves an element of a committed input unproven (#527).
 - **Relations** (RFC-0010 'Relations'):
   - **Booleanity**, one `ZeroCheck` per output: `0 = Σ_x eq(z, x)·b̃(x)·(1 − b̃(x))`, as `OneHot`'s, and the same for `h`.
-  - **Recomposition**, one `ZeroCheck`: `0 = Σ_y eq(z, y)·x̃(y) − Σ_{(y, i)} eq(z, y)·w(i)·b̃(y ‖ i) − Σ_{(y, j)} eq(z, y)·2^{low}·w(j)·h̃(y ‖ j)`, with `w(i) = 2^i` on real bits and 0 on padded ones. [RFC-0072](RFC-0072-anchor-relations.md#the-bit-zero-checks-oq-0066-1) proves it as one zero-check summed over the bit axis, which leaves its claim on `x` at `y`'s coordinates of its final point. `w` is public: the verifier evaluates `w̃(r) = Σ_{i < n} 2^i·eq(r, i)`, at most 62 terms, or `Π_k (1 − r_k + r_k·2^{2^k})` when the axis's `n` bits are a power of two.
+  - **Recomposition**, one `ZeroCheck`: `0 = Σ_y eq(z, y)·x̃(y) − Σ_{(y, i)} eq(z, y)·w(i)·b̃(i ‖ y) − Σ_{(y, j)} eq(z, y)·2^{low}·w(j)·h̃(j ‖ y)`, with `w(i) = 2^i` on real bits and 0 on padded ones. [RFC-0072](RFC-0072-anchor-relations.md#the-bit-zero-checks-oq-0066-1) proves it as one zero-check summed over the bit axis, which leaves its claim on `x` at `y`'s coordinates of its final point. `w` is public: the verifier evaluates `w̃(r) = Σ_{i < n} 2^i·eq(r, i)`, at most 62 terms, or `Π_k (1 − r_k + r_k·2^{2^k})` when the axis's `n` bits are a power of two.
   - **Padding.** A bit axis pads to the next power of two, 4 for a carry of 3. A padded slot has weight 0 in recomposition, so booleanity alone leaves it 0 or 1, two witnesses. One `ZeroCheck` per output whose `n` bits are not a power of two pins those slots to 0, as `OneHot`'s vocabulary check pins its padded entries (RFC-0009 'OneHot'): `0 = Σ_x eq(z, x)·(1 − LT(x_bit, n))·b̃(x)`, over the bit axis's coordinates `x_bit`, `LT` public.
   - **Padded rows.** The other axes' padded positions hold what the operation computes from their padded inputs, as every gadget's do (RFC-0035 'What a padded row holds').
   - **Completeness there is the graph's.** Range analysis bounds real positions only, so a graph must compute values in `[0, 2^{low + high})` at padded positions too. `BitDecompose(ConstAdd(−1)(p))`, with `p` declared `[1, 256]`, gives `−1` there, which no bits recompose. The SHA-256 circuit's padded inputs are zero bits and zero bytes, and its sums of bits and constants stay within their carries, so its padded positions decompose.
@@ -104,7 +104,7 @@ AssertEqual,   // a, b → none: a = b elementwise
 - **Kind.** A relation with no output, as `Argmax`'s certificate has none.
 - **Integrality.** Both inputs are true integers with ranges inside the centered field range. Equality in `Fp` is then equality as integers.
 - **Relation.** One `ZeroCheck` over the tensors' real positions: `0 = Σ_x eq(z, x)·ψ̃(x)·(ã(x) − b̃(x))`, of degree 3, where `ψ(x) = Π_a LT(x_a, n_a)` is 1 on the positions inside the shape `(n_a)` and 0 on padded ones. The verifier evaluates `ψ̃` in `O(log)` time (RFC-0010 'Multilinear extensions'). The sumcheck leaves a claim on each of `a` and `b`; a public one the verifier evaluates.
-  - The selector is needed: a padded position holds what the computation gives there, such as a digest of padded messages, while a public tensor pads with zeros. Without it, an honest prover of `M` messages fails unless `M` is a power of two.
+  - The selector is needed: a padded position holds what the computation gives there, such as a digest of padded messages, while a public input pads with zeros. Without it, an honest prover of `M` messages fails unless `M` is a power of two.
 
 ### Where the zero-checks run
 
@@ -269,7 +269,7 @@ RFC-0006 'Range analysis' adds:
   - stacking instances of one kind.
 
   They also amend RFC-0010 'Relations', RFC-0037 'Stages and their instances' and RFC-0014's counts. Until #526 lands, gadget selection refuses the three operations (`ERR-QUANT-ARCH`), so no proof contains them.
-- **OQ-0066-2 (resolved): `GatherPublic`'s relation.** [RFC-0072](RFC-0072-anchor-relations.md#the-selection-relation)'s selection relation is this candidate, for `Slice` too. `ROTR`, `SHR` and the message's assembly reduce claims through `GatherPublic`, as AES's `ShiftRows` does. A public-kernel sumcheck `ỹ(r_row ‖ r) = Σ_k G(r_row, k)·x̃(k ‖ r)`, with `G(r, k) = Σ_{j : idx_j = k} eq(r, j)`, of degree 2, is the candidate for #526.
+- **OQ-0066-2 (resolved): `GatherPublic`'s relation.** [RFC-0072](RFC-0072-anchor-relations.md#the-selection-relation)'s selection relation is this candidate, for `Slice` too. `ROTR`, `SHR` and the message's assembly reduce claims through `GatherPublic`, as AES's `ShiftRows` does. A public-kernel sumcheck `ỹ(r ‖ r_row) = Σ_k G(r_row, k)·x̃(r ‖ k)`, with `G(r, k) = Σ_{j : idx_j = k} eq(r, j)`, of degree 2, is the candidate for #526. Its points list low variables first, the outermost axis's `r_row` last.
 
 ## References
 

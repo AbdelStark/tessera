@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.3
-- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('The claim pool' and 'Invariants': `ChannelParams` claims in the pool), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The layer point', `ρ_1` is the leaf stage's layer sumcheck point; 'Splits' and 'Messages and transcript', the leaf stage's values and labels), [RFC-0069](RFC-0069-one-layer-claims.md) ('Layers and kinds' and 'Stages and their instances': the one read at one layer, and no relation proving such a claim; 'The claim pool', in `tessera-protocol/2`: a piece at one layer takes its layer tensor's own mask row), [RFC-0070](RFC-0070-mask-batching.md) (INV-SCH-3, in `tessera-protocol/2`: the mask claims reach the masks' batching), [RFC-0071](RFC-0071-request-slots.md) ('`Rotate`': a row's position in a batch is its place in its request), [RFC-0072](RFC-0072-anchor-relations.md) ('Layers and kinds': a graph with no checkpoint has no layers; 'Claims and atoms': public tensors, `ConstAdd`, and `Slice` and `GatherPublic` as relations; 'Stages and their instances': RFC-0066's zero-checks in stage 1)
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('The claim pool' and 'Invariants': `ChannelParams` claims in the pool), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The layer point', `ρ_1` is the leaf stage's layer sumcheck point; 'Splits' and 'Messages and transcript', the leaf stage's values and labels), [RFC-0069](RFC-0069-one-layer-claims.md) ('Layers and kinds' and 'Stages and their instances': the one read at one layer, and no relation proving such a claim; 'The claim pool', in `tessera-protocol/2`: a piece at one layer takes its layer tensor's own mask row), [RFC-0070](RFC-0070-mask-batching.md) (INV-SCH-3, in `tessera-protocol/2`: the mask claims reach the masks' batching), [RFC-0071](RFC-0071-request-slots.md) ('`Rotate`': a row's position in a batch is its place in its request), [RFC-0072](RFC-0072-anchor-relations.md) ('Layers and kinds': a graph with no checkpoint has no layers; 'Claims and atoms': public tensors, `ConstAdd`, and `Slice` and `GatherPublic` as relations; 'Splits': a value sent once; 'Stages and their instances': RFC-0066's zero-checks in stage 1, equal atoms one instance, the stage count; 'The layer point': the gadgets with leaf sites, and the logits when there are some)
 - Supersedes, on acceptance:
   - [RFC-0010](RFC-0010-proof-schedule.md#relations) 'Relations': `Rotate`'s identity and its one claim on its input, and the claims of the linear maps added here;
   - [RFC-0010](RFC-0010-proof-schedule.md#stages) 'Stages' and 'Batching within a stage': how a stage stacks layers, splits claims and orders its instances, and the layer point;
@@ -135,7 +135,7 @@ A claim names a kind and a point, `X̃_κ(r ‖ ρ) = v` for a stacked kind with
 Through a linear node, a claim on its output becomes terms on its inputs, as [RFC-0010](RFC-0010-proof-schedule.md#relations) 'Relations' places them:
 - `Transpose`, `Expand` and `Reshape` map coordinates as above.
 - A `ConstMul` by one constant multiplies the coefficient. A constant per layer multiplies the layer weights.
-- `ConstAdd` adds its constant's extension to the claim's value. A `ConstMul` by a constant per channel, `Slice` and `GatherPublic` are relations, not maps: their outputs are virtual atoms ([RFC-0072](RFC-0072-anchor-relations.md#linear-operations-that-are-not-coordinate-maps)).
+- `ConstAdd` subtracts its constant's extension from the claim's value: `ỹ(r) = v` becomes `x̃(r) = v − c̃(r)`. A `ConstMul` by a constant per channel, `Slice` and `GatherPublic` are relations, not maps: their outputs are virtual atoms ([RFC-0072](RFC-0072-anchor-relations.md#linear-operations-that-are-not-coordinate-maps)).
 - A claim on the layer input reads its slices: `Σ_ℓ w(ℓ)·X̃_in[ℓ](r) = w(0)·c̃_0(r) + Σ_{ℓ≥1} w(ℓ)·X̃_last[ℓ − 1](r)`, with `X_last` the kind of the layer's last output. Every slice is committed.
 
 **Atoms.** After substitution, a claim is a sum of atoms. An atom is a coefficient, a kind, a point and layer weights.
@@ -147,7 +147,7 @@ Through a linear node, a claim on its output becomes terms on its inputs, as [RF
 
 The verifier computes a claim's public atoms and moves them to its value. The claim is then ready for the next stage when it is one virtual atom of coefficient 1, or committed atoms of one commitment at one point. Otherwise the stage `k` that produced it splits it:
 
-- **What is sent.** The prover sends one value for each virtual atom, and one for each group of committed atoms of one commitment at one point, in atom order. A group takes the place of its first atom.
+- **What is sent.** The prover sends one value for each virtual atom, and one for each group of committed atoms of one commitment at one point, in atom order. A value the stage has already sent is not sent again: a virtual atom of one kind at one point with one set of layer weights, or a group of the same atoms and coefficients at one point, reads the value at its first place ([RFC-0072](RFC-0072-anchor-relations.md#equal-values-in-a-stage)). A group takes the place of its first atom.
   - **A part's value.** A virtual atom's value is its tensor's evaluation, and the check weights it by the atom's coefficient. A committed group's value is its combination `Σ_t a_t·P̃_t(r)`, coefficients included, and the check counts it with weight 1. That combination is the claim the pool receives.
   - **Where.** The values go under `stage/{k}/split`, after the stage's final evaluations, as one `Vec<Fp2>` covering every claim the stage splits, claim by claim.
   - **The order of claims.** A reduction stage's claims come by instance, then by evaluation. The leaf stage's come by site, then by layer, as 'The layer point' orders them.
@@ -162,19 +162,19 @@ The verifier computes a claim's public atoms and moves them to its value. The cl
 
 - **Stage index.** The leaf stage is stage 0, and an instance's stage is one more than its claim's.
 - **Instances.** Stage `k` runs, in order:
-  - one instance per virtual atom that stage `k − 1` leaves after its splits, in atom order: the atom's producing relation, stacked as its kind, at the atom's point, with the atom's value as its claim;
+  - one instance per virtual atom that stage `k − 1` leaves after its splits, equal atoms counting once ('Splits'), in atom order: the atom's producing relation, stacked as its kind, at the atom's point, with the atom's value as its claim;
   - in stage 1, after them, the zero-checks in node order: RFC-0035's padding zero-checks, `OneHot`'s booleanity, and the equality zero-checks of committed outputs. RFC-0066's follow, `BitDecompose`'s then `AssertEqual`'s in node order, as [RFC-0072](RFC-0072-anchor-relations.md#the-bit-zero-checks-oq-0066-1) sends them.
 - **Stacked instances.** A stacked instance takes the atom's layer weights `w` as a public factor over the layer variables, in place of `eq(ρ, ·)`. The verifier evaluates `w̃(ρ') = Σ_ℓ eq(ρ', ℓ)·w(ℓ)` in `O(L)`, the sum running over the whole cube of `2^λ` layers: a padded layer's weight, such as `eq(ρ, ℓ)`, need not be 0.
 - **No claim at one layer is proven by a relation.** A virtual atom with `Layers::One` weights is refused (`ERR-INTERNAL`): in `tessera-protocol/2` it would be revealed at a Boolean layer coordinate, where its kind's mask vanishes. A claim at one layer is a committed atom's, which reaches the pool with its layer tensor's own mask ([RFC-0069](RFC-0069-one-layer-claims.md)).
 - **INV-SCH-2.** Each virtual atom is one instance.
-- **Stage count.** The count is one more than the longest chain of sumcheck relations from a gadget's input or a zero-check down to committed tensors. Linear maps cost no stage, so the count does not depend on `L`, `n` or the batch (INV-SCH-4). The compiler's commitment report counts it the same way.
+- **Stage count.** The count, the leaf stage included, is one more than the longest chain of sumcheck relations from a leaf site's input, or from a zero-check, which counts itself, down to committed or public tensors ([RFC-0072](RFC-0072-anchor-relations.md#messages-rejections-and-stages)). Linear maps cost no stage, so the count does not depend on `L`, `n` or the batch (INV-SCH-4). The compiler's commitment report counts it the same way.
 
 ### The layer point
 
 The leaf stage leaves its gadgets' claims one layer at a time. Each lookup site's layers sit at one point `r_s`: `P[0..k]` for its tensors of `2^k` entries ([RFC-0045](RFC-0045-leaf-layout.md#the-leaf-point)).
 
 - **Its claims on the graph.**
-  - The leaf stage leaves one claim on each input of each gadget, at a point of its site, and one on the logits, which the scoring certificates read (RFC-0017).
+  - The leaf stage leaves one claim on each input of each gadget with a leaf site, a gadget with lookups or product trees, at a point of its site. When the graph has logits it leaves one claim on them, which the scoring certificates read (RFC-0017). `BitDecompose` and `AssertEqual` have no leaf site ([RFC-0072](RFC-0072-anchor-relations.md#gadgets-and-leaf-sites)).
   - Its sites come in node order, a template position once for all its layers, and the logits last.
   - The gadgets' own committed values and relations are RFC-0009's (#118).
 - **Drawing it.** Stage 1 draws the layer point `ρ_1`: `λ` coordinates under `stage/1/layer/{c}`, after the leaf stage's splits and before the zero-check point and `γ_1`.
