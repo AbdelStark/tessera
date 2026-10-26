@@ -344,7 +344,7 @@ At RFC-0012's 461,310 committed rows, 49,144 of them blinding rows (826 fewer wi
 ## Drawbacks
 
 - **Positions move.** A value's word depends on how many words before it were skipped, so a GPU kernel that draws words in parallel must compact them. The fast path, no skipped word, holds for a row with probability about `1 − 2^{-12}` at `2^{20}` values. The conformance vector pins a skip in each domain.
-- **Per-proof draws.** Under RFC-0012's proximity generator a 405B proof draws the whole 654 GB, about 1.2 GPU-s, or reads a store of it. RFC-0012 counts that only for its fallback, and 08 §2 still says the weight column answers add no GPU time, under a weight-pass budget of 0.24 GPU-s that alerts above 0.5. OQ-0073-5 points to the cost-model issue to be filed.
+- **Per-proof draws.** Under RFC-0012's proximity generator a 405B proof draws the whole 654 GB, about 1.2 GPU-s, or reads a store of it. RFC-0012 counts that only for its fallback, and 08 §2 still says the weight column answers add no GPU time, under a weight-pass budget of 0.24 GPU-s that alerts above 0.5. OQ-0073-5 points to the cost-model issue, [#568](https://github.com/AbdelStark/tessera/issues/568).
 - **More state to keep.** Two more artifacts, a fixed directory and a lock per model entry. The operator must never restore an entry directory older than its last transition.
 - **One node per model entry.** Throughput per model is one prover node's until the budget can be partitioned.
 - **A lost record ends the model entry,** as a lost key does.
@@ -410,7 +410,7 @@ At RFC-0012's 461,310 committed rows, 49,144 of them blinding rows (826 fewer wi
   - `WeightReservation { matrices: Vec<MatrixReservation> }`, with `MatrixReservation { matrix: u8, first_row: u32 }`;
   - placed after `advice` in `Round1`'s schema version 2, as RFC-0014's sketch orders it, and absorbed with `Round1` under `round1`;
   - ids out of order are `ERR-CODEC-NONCANONICAL` at the id's byte, as RFC-0036 'Matrix ids' rules.
-- **OQ-0073-5.** Paying for the per-proof draws ('Cost at 405B'): about 1.2 GPU-s per 405B proof under RFC-0012's proximity generator, 0.41 if #394 excludes the blinding rows. That is a cost-model issue against RFC-0020 and 08, to be filed and decided with #394. Its options:
+- **OQ-0073-5.** Paying for the per-proof draws ('Cost at 405B'): about 1.2 GPU-s per 405B proof under RFC-0012's proximity generator, 0.41 if #394 excludes the blinding rows. That is a cost-model issue against RFC-0020 and 08, [#568](https://github.com/AbdelStark/tessera/issues/568), decided with #394. Its options:
   - regenerate on the GPUs, and amend 08's weight-pass budget;
   - keep the masks and blinding values in a secret store of 654 GB per epoch beside the codewords, read in full by every proof;
   - exclude the blinding rows from the proximity combination (#394).

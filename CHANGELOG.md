@@ -50,7 +50,7 @@ All notable changes to the prover release train are recorded here: the crates un
     - **Secrets.**
       - `K`, `masks_seed`, every hasher over them and a stream's output reader are key material: heap-held, cleared on drop, never `Clone` or `Debug`.
       - No secret input goes through `tessera_hash::Hasher`, `K`'s derivation included.
-    - **Cost at 405B.** 654 GB of stream output per epoch. Under RFC-0012's proximity generator every proof draws all of it, about 1.2 GPU-s; 216 GB if #394 keeps the blinding rows out of the proximity row. A cost-model issue is to be filed (OQ-0073-5).
+    - **Cost at 405B.** 654 GB of stream output per epoch. Under RFC-0012's proximity generator every proof draws all of it, about 1.2 GPU-s; 216 GB if #394 keeps the blinding rows out of the proximity row. The cost model is [#568](https://github.com/AbdelStark/tessera/issues/568) (OQ-0073-5).
     - **The conformance vector** `spec/vectors/weight-masks/` is specified, for #147's implementation to write:
       - streams under `tiny-2-minimal`'s `Embed` and `ChannelParams` identifiers;
       - a skipped word in each domain;
