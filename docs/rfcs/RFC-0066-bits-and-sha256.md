@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-25
 - Target milestone: v0.4
-- Amended by: [RFC-0072](RFC-0072-anchor-relations.md) ('`BitDecompose`' and 'Where the zero-checks run': recomposition summed over the bit axis, its claim on `x` at `y`'s coordinates, and the zero-checks' messages; '`AssertEqual`': a public input pads with zeros; 'Drawbacks': no stacking; '`BitDecompose`': a `ConstAdd`'s padded positions; OQ-0066-1 and OQ-0066-2, closed)
+- Amended by: [RFC-0072](RFC-0072-anchor-relations.md) ('`BitDecompose`' and 'Where the zero-checks run': recomposition summed over the bit axis, its claim on `x` at `y`'s coordinates, and the zero-checks' messages; '`BitFn`': `¬a` at padded positions; '`AssertEqual`': a public input pads with zeros, and the selector's example; 'Drawbacks': no stacking; '`BitDecompose`': a `ConstAdd`'s padded positions; OQ-0066-1 and OQ-0066-2, closed)
 - Amends:
   - [RFC-0006](RFC-0006-compiler-ir.md#operation-set) 'Operation set': three operations join the closed set, `BitDecompose`, `BitFn` and `AssertEqual`, and `Bitwise` is AES's alone;
   - RFC-0006 'Range analysis': the three operations' ranges and integrality rules;
@@ -93,7 +93,7 @@ pub enum BoolFn { Xor, Xor3, And, Ch, Maj }
 - **Kind.** Virtual. Each is the multilinear polynomial that agrees with its Boolean function on `{0, 1}`, and its relation is `Elementwise` (RFC-0010): `Z̃(r) = Σ_x eq(r, x)·Σ_t w_t·Π_{f ∈ t} I_f(x)`, of degree at most 4 per variable.
 - **Range.** Every input's range lies in `[0, 1]`, so it holds 0 or 1 as an integer. The output's range is `[0, 1]`: on Boolean inputs each polynomial is its Boolean function. An input outside `[0, 1]` is `ERR-COMPILE-RANGE`.
   - So is a committed graph input, read directly or moved unchanged: its declared `[0, 1]` proves no bit. The circuit's bits come from `BitDecompose` or are public.
-- `¬a` needs no operation: `ConstAdd(1)` of `ConstMul(−1)`, whose interval is `[0, 1]`.
+- `¬a` needs no operation: `ConstAdd(1)` of `ConstMul(−1)`, whose interval is `[0, 1]`. It is `1 − a` at real positions and `−a` at padded ones, since a `ConstAdd` adds its constant at real positions only ([RFC-0072](RFC-0072-anchor-relations.md#padded-positions)): 0 where `a` is, as throughout the SHA-256 circuit.
 
 ### `AssertEqual`
 
@@ -104,7 +104,7 @@ AssertEqual,   // a, b → none: a = b elementwise
 - **Kind.** A relation with no output, as `Argmax`'s certificate has none.
 - **Integrality.** Both inputs are true integers with ranges inside the centered field range. Equality in `Fp` is then equality as integers.
 - **Relation.** One `ZeroCheck` over the tensors' real positions: `0 = Σ_x eq(z, x)·ψ̃(x)·(ã(x) − b̃(x))`, of degree 3, where `ψ(x) = Π_a LT(x_a, n_a)` is 1 on the positions inside the shape `(n_a)` and 0 on padded ones. The verifier evaluates `ψ̃` in `O(log)` time (RFC-0010 'Multilinear extensions'). The sumcheck leaves a claim on each of `a` and `b`; a public one the verifier evaluates.
-  - The selector is needed: a padded position holds what the computation gives there, such as a digest of padded messages, while a public input pads with zeros. Without it, an honest prover of `M` messages fails unless `M` is a power of two.
+  - The selector is needed: a padded position holds what the computation gives there, which is not 0 downstream of a lookup non-zero at padding, such as AES's output on a padded block ([RFC-0072](RFC-0072-anchor-relations.md#padded-positions)), while a public input pads with zeros. Without it, an honest prover of such a graph fails unless its row count is a power of two. SHA-256's padded digest is 0, so its checks hold there either way.
 
 ### Where the zero-checks run
 

@@ -83,7 +83,7 @@ The lowering's checkpoints `c_0, …, c_L` are the residual stream after the emb
 ### The committed first checkpoint
 
 - **Lowering.** The `ConstMul` that forms `c_0 = 2^{s_e}·x_0` produces committed advice ([RFC-0006](RFC-0006-compiler-ir.md#llama-lowering) 'Llama lowering').
-- **Committed outputs.** A pointwise linear or degree-2 node, `ConstMul`, `ConstAdd`, `Add`, `Sub` or `Mul`, may produce a committed tensor `Y`; a committed output of any other node but a gadget or a matmul is refused (`ERR-INTERNAL`, [RFC-0072](RFC-0072-anchor-relations.md#linear-operations-that-are-not-coordinate-maps)). Stage 1 proves its relation `f` as an equality zero-check at the stage's zero-check point ([RFC-0035](RFC-0035-padded-rows.md#zero-check-points)): `0 = Σ_x eq(z, x)·(Ỹ(x) − f(x))`. For `c_0` it is `Ỹ − 2^{s_e}·x̃_0`, of degree 2.
+- **Committed outputs.** A pointwise linear or degree-2 node, `ConstMul`, `ConstAdd`, `Add`, `Sub` or `Mul`, may produce a committed tensor `Y`; a committed output of any other node but a gadget is refused, a matmul's by the IR and any other's when the schedule is derived (`ERR-INTERNAL`, [RFC-0072](RFC-0072-anchor-relations.md#linear-operations-that-are-not-coordinate-maps)). Stage 1 proves its relation `f` as an equality zero-check at the stage's zero-check point ([RFC-0035](RFC-0035-padded-rows.md#zero-check-points)): `0 = Σ_x eq(z, x)·(Ỹ(x) − f(x))`. For `c_0` it is `Ỹ − 2^{s_e}·x̃_0`, of degree 2.
 - **Effect.** Every layer reads a committed input. `x_0` has one reader, so `MatMulWeight` on `Embed` runs once.
 - **Cost.**
   - `n·d_model` more committed elements per sequence: `2^{28}` at 405B's 16K tokens, about 0.01% of the advice.
@@ -135,7 +135,7 @@ A claim names a kind and a point, `X̃_κ(r ‖ ρ) = v` for a stacked kind with
 Through a linear node, a claim on its output becomes terms on its inputs, as [RFC-0010](RFC-0010-proof-schedule.md#relations) 'Relations' places them:
 - `Transpose`, `Expand` and `Reshape` map coordinates as above.
 - A `ConstMul` by one constant multiplies the coefficient. A constant per layer multiplies the layer weights.
-- `ConstAdd` subtracts its constant's extension, times the atom's coefficient and layer weights, from the claim's value: `ỹ(r) = v` becomes `x̃(r) = v − c̃(r)` for an atom of coefficient 1. A `ConstMul` by a constant per channel, `Slice` and `GatherPublic` are relations, not maps: their outputs are virtual atoms ([RFC-0072](RFC-0072-anchor-relations.md#linear-operations-that-are-not-coordinate-maps)).
+- `ConstAdd` subtracts the extension `ĉ` of its constant at real positions, times the atom's coefficient, from the claim's value: `ỹ(r) = v` becomes `x̃(r) = v − ĉ(r)` for an atom of coefficient 1. `ĉ(r)` is `c·ψ̃(r)` for one constant and `c̃(r_c)·Π_{a≠last} ψ̃_a(r_a)` for one per channel of the last axis, with `ψ` 1 on the tensor's real positions ([RFC-0072](RFC-0072-anchor-relations.md#linear-operations-that-are-not-coordinate-maps)). A `ConstMul` by a constant per channel, `Slice` and `GatherPublic` are relations, not maps: their outputs are virtual atoms ([RFC-0072](RFC-0072-anchor-relations.md#linear-operations-that-are-not-coordinate-maps)).
 - A claim on the layer input reads its slices: `Σ_ℓ w(ℓ)·X̃_in[ℓ](r) = w(0)·c̃_0(r) + Σ_{ℓ≥1} w(ℓ)·X̃_last[ℓ − 1](r)`, with `X_last` the kind of the layer's last output. Every slice is committed.
 
 **Atoms.** After substitution, a claim is a sum of atoms. An atom is a coefficient, a kind, a point and layer weights.
