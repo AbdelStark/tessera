@@ -110,7 +110,7 @@ Mask counts must come from the eventual stage schedule (#113/#149/#154); the com
 | Committed element | row of width 2^22, RS rate 1/2 over Goldilocks by coset NTT, vanishing-mask coefficients, chained BLAKE3 column digests with row block `B = 32` | 30 ps | about 530 GB/s of hashing per H100 inside the budget (RISK-8) |
 | Lookup | LogUp-GKR, one combined fraction tree per table, leaves `(1, α − a)` and `(−m, α − t)`, `Fp2` challenges, degree-3 sumcheck per level, batched across instances | 40 ps | `(N + T)/\|Fp2\|` error, about 2^-90 at frontier volume (RISK-5) |
 | Product-tree leaf | max certificate `Π (c_q − x_qi) = 0` per row, GKR over `Fp2` | 12 ps | one leaf per score |
-| Sumcheck round | degree ≤ 7, `p(0) + p(1)` check, about 10^4 rounds per 405B 16K proof | 15% of commit + lookup | |
+| Sumcheck round | degree ≤ 7 (`tessera-protocol/1`; 10 at `tessera-protocol/2`'s reduction stages, [#565](https://github.com/AbdelStark/tessera/issues/565)), `p(0) + p(1)` check, about 10^4 rounds per 405B 16K proof | 15% of commit + lookup | |
 | Weight fold | limb-decomposed INT8 GEMM on tensor cores, one pass per proof | 0.24 GPU-s per 405B proof | opening and sumcheck fold are the same pass |
 | Native rate | INT8 GEMM at 60% of 1,979 TOPS | 1.19×10^15 op/s | the denominator of `μ` |
 

@@ -82,7 +82,7 @@ The nightly job's log has the latest table. This run is from 2026-10-26, in the 
 
 Every interval contains `K/|F|`, for the booleanity rows the exact rate `1 − (1 − 1/|F|)^n`, and starts below the bound. The LogUp bound `(N + T)/|F|` lies inside each interval too. That is not asserted: an instance reaches `(N + T − 1)/|F|` at most, and enough trials would separate the two for a small table.
 
-The degrees are the smallest, a tree level's and the largest that RFC-0014 allows (`d ≤ 7`). The tables have 16, 255 and 1,023 rows, with lookup trees of heights 0, 1 and 2, the last padded with row 0.
+The degrees are the smallest, a tree level's and the largest that RFC-0014 allows in `tessera-protocol/1` (`d ≤ 7`). `tessera-protocol/2`'s reduction stages reach 10 ([RFC-0013](../rfcs/RFC-0013-zero-knowledge.md#masked-extensions) 'Degree'), and the calibration gains a `d = 10` row with the sumcheck code that carries it ([#565](https://github.com/AbdelStark/tessera/issues/565)). The tables have 16, 255 and 1,023 rows, with lookup trees of heights 0, 1 and 2, the last padded with row 0.
 
 On the GitHub-hosted `ubuntu-24.04` runner, the pull request's run of the `nightly` workflow took 81.6 s for the measurement and 105.4 s for `tessera-logup`'s random lookups, with the same counts, and about 4 minutes for the whole job, building included: both steps stay well under their limit of 10 minutes.
 

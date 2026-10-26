@@ -34,9 +34,9 @@ Each session lists its `stages`. A stage is one batched sumcheck:
 | a batch of 12, 3, 7 and 0 variables | degree 4, products of 2, 4, 1 and 3 tables: the largest instance first, and one padded entirely |
 | a batch of equal sizes | degree 2, three instances on 5 variables: `γ` without padding |
 | batches of `n_max = 0`, then of a single instance | three constants (no round), one instance on 6 variables, and one constant of degree 1, on one transcript |
-| degrees 5 to 7 | products of 5, 6 and 7 tables on 3 variables, then a batch of degree 7 of products of 7, 3 and 1 tables on 4, 2 and 0 variables, so that every node of RFC-0014's largest degree is used |
+| degrees 5 to 7 | products of 5, 6 and 7 tables on 3 variables, then a batch of degree 7 of products of 7, 3 and 1 tables on 4, 2 and 0 variables, so that every node of RFC-0014's largest degree in `tessera-protocol/1` is used |
 
-The 31 stages that record their tables are `stage/0` to `stage/5` of each single-instance session, the batch of equal sizes, the two batches of `n_max = 0`, and the four stages of degrees 5 to 7, the last of them front-padded: every degree from 1 to 7 appears, and a padded batch.
+The 31 stages that record their tables are `stage/0` to `stage/5` of each single-instance session, the batch of equal sizes, the two batches of `n_max = 0`, and the four stages of degrees 5 to 7, the last of them front-padded: every degree from 1 to 7 appears, and a padded batch. `tessera-protocol/2`'s reduction stages reach degree 10 (RFC-0013 'Masked extensions' 'Degree'): [#565](https://github.com/AbdelStark/tessera/issues/565)'s code change adds degrees 8 to 10 here, in sessions of `tessera-protocol/2`'s context; the existing sessions are `tessera-protocol/1`'s.
 
 ## Tree batches
 

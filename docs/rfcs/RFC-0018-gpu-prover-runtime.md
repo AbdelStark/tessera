@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2 (CPU witness engine), v0.3 (CPU prover), v0.5 (GPU prover), v1.0 (405B)
-- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Kernels': constant subtrees in closed form; 'Testing Strategy'); [RFC-0054](RFC-0054-token-groups.md) ('Pass structure': P2, 'Leaf levels', 'Proof units' and 'Fusion' for the leaf stage; Alternative 2; OQ-0018-1; 'Drawbacks'; 'Testing Strategy'); [RFC-0055](RFC-0055-windowed-stages.md) ('Pass structure': P3 and P3b for a reduction stage larger than memory; 'Drawbacks'); [RFC-0056](RFC-0056-native-working-sets.md) ('Pass structure': what stage 1 holds for `SoftmaxRow`'s score instances); [RFC-0057](RFC-0057-one-proof-unit.md) ('Witness engine', 'Partitioning', 'Pass structure', 'Memory scheduler', 'Release schedule', 'Drawbacks', 'Testing Strategy': one proof unit per proof, no layer-range units)
+- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Kernels': constant subtrees in closed form; 'Testing Strategy'); [RFC-0054](RFC-0054-token-groups.md) ('Pass structure': P2, 'Leaf levels', 'Proof units' and 'Fusion' for the leaf stage; Alternative 2; OQ-0018-1; 'Drawbacks'; 'Testing Strategy'); [RFC-0055](RFC-0055-windowed-stages.md) ('Pass structure': P3 and P3b for a reduction stage larger than memory; 'Drawbacks'); [RFC-0056](RFC-0056-native-working-sets.md) ('Pass structure': what stage 1 holds for `SoftmaxRow`'s score instances); [RFC-0057](RFC-0057-one-proof-unit.md) ('Witness engine', 'Partitioning', 'Pass structure', 'Memory scheduler', 'Release schedule', 'Drawbacks', 'Testing Strategy': one proof unit per proof, no layer-range units); [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) ('Kernels', in `tessera-protocol/2`: round kernels up to degree 10 at a reduction stage, [#565](https://github.com/AbdelStark/tessera/issues/565))
 
 ## Summary
 
@@ -73,7 +73,7 @@ exact-greedy request; pass planning and protocol/2 are separate work.
 | BLAKE3 column-chain and Merkle kernels | Commitments | Byte-identical to the CPU reference ([RFC-0004](RFC-0004-hashing-and-transcript.md#column-digests)) |
 | Fraction-tree build and level sumcheck | LogUp-GKR | Bottom-up build fused with leaf generation; the level sumcheck as the product tree's; a subtree of constant leaves, such as the masked scores', in closed form ([RFC-0034](RFC-0034-causal-blocks.md#constant-leaves)) |
 | Product-tree build and level sumcheck | Max certificate | `eq` never materialized: per instance a scalar, the current variable's line and two tables of about `√N` entries, in shared memory; two node sums per round, the third recovered from the instance's claim (Gruen), about 15 `Fp`-multiplication equivalents per leaf against 25.5 with an `eq` table ([#258](https://github.com/AbdelStark/tessera/issues/258)); a subtree of constant leaves in closed form (RFC-0034) |
-| Sumcheck round kernels (degree ≤ 7) with `eq` tables | Stages | Front-padded batching |
+| Sumcheck round kernels (degree ≤ 7; ≤ 10 at a reduction stage of `tessera-protocol/2`, [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) 'Degree') with `eq` tables | Stages | Front-padded batching |
 | Table gather | Witness and leaf generation | Piecewise tables keep the dense core in L2 where it fits |
 | Limb-decomposed folds | Weight fold, tensor folds over tokens, query folds, the opening's row combination | `Fp2` coefficients split into 8-bit limbs; INT8 GEMMs; exact recombination |
 

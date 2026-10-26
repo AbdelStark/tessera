@@ -18,7 +18,7 @@
 | `eq_tables` | `n`, `point`, `table`: the `2^n` values `eq(point, x)` in index order | points of 0 to 10 coordinates |
 | `less_than` | `n`, `point`, `values`: pairs `[a, LT(point, a)]`, with `LT(r, a) = Σ_{h < a} eq(r, h)` over the `n`-bit integers `h` and `a` written like an `Fp` element | every `a` in `0..=2^n` for `n ≤ 4`; for `n` in 5, 8, 12, 16, 32, 63, 64, 65 and 80, with `m = min(2^n, 2^64)`: `0`, `1`, `2`, `m − 1`, `m/2`, `m/2 + 1`, three random `a < m`, and `2^n` itself when `n < 64` |
 | `less_than_points` | `n`, positions `q` and `i` of `n` coordinates, `lt_iq = LT2(i, q)`, `lt_qi = LT2(q, i)`, `causal = C(q, i)` and `eq = eq(q, i)`, with `LT2(x, y) = Σ_{x' < y'} eq(x, x')·eq(y, y')` and `C(q, i) = Σ_{i' ≤ q'} eq(q, q')·eq(i, i')` | `n` from 0 to 10 |
-| `round_polys` | `degree` `d`, `evaluations` `p(0), p(2), …, p(d)` as a round message sends them, `claim = p(0) + p(1)`, a challenge `r` and `value = p(r)` | four per degree from 1 to 7, the last at a node: 0, 1 or `d` |
+| `round_polys` | `degree` `d`, `evaluations` `p(0), p(2), …, p(d)` as a round message sends them, `claim = p(0) + p(1)`, a challenge `r` and `value = p(r)` | four per degree from 1 to 7, `tessera-protocol/1`'s largest, the last at a node: 0, 1 or `d`; [#565](https://github.com/AbdelStark/tessera/issues/565)'s code change adds 8 to 10, `tessera-protocol/2`'s |
 
 ## How the oracle computes
 
