@@ -34,7 +34,7 @@ Required properties, each a named test:
 - Codec: decode∘encode = id on random values of every schema; encode∘decode = id on bytes or a canonical-form error; truncation at every byte offset yields `ERR-CODEC-TRUNCATED` (RFC-0003).
 - Transcript: identical absorb sequences give identical challenges; any single-byte difference changes all later challenges; challenge distribution passes a chi-square test on 2^20 samples reduced mod 2^16 (RFC-0004).
 - Polynomials: MLE evaluation matches brute force on random tables up to 2^12 entries; `eq` table identities.
-- Sumcheck: honest proofs verify for degrees 1–7 in `tessera-protocol/1` and 1–10 at `tessera-protocol/2`'s reduction stages ([RFC-0013](../rfcs/RFC-0013-zero-knowledge.md#masked-extensions) 'Degree', [#565](https://github.com/AbdelStark/tessera/issues/565)), and 1–24 variables; any single coefficient change is rejected; degree 11 is refused.
+- Sumcheck: honest proofs verify for degrees 1–7 in `tessera-protocol/1` and 1–10 at `tessera-protocol/2`'s reduction stages ([RFC-0013](../rfcs/RFC-0013-zero-knowledge.md#masked-extensions) 'Degree', [#565](https://github.com/AbdelStark/tessera/issues/565)), and 1–24 variables; any single coefficient change is rejected; a degree past the protocol's bound is refused, 11 in `tessera-protocol/2` and 8 in `tessera-protocol/1`.
 
 ## 4. Soundness and uniqueness tests
 

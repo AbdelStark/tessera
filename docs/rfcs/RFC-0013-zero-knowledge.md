@@ -133,58 +133,71 @@ Properties:
     - **The cost** is none in rows: the row has `k` entries either way. The narrower `c` can make two values of `V` that differ only in `V`'s `log2 k`-th variable share a column point, which `c = log2 k` kept apart. R10's check refuses such a pair, and finds none in the compiled schedules.
     - **The check.** R10's check (`cargo xtask check-mask-rank`, #488) runs on the compiled schedule and refuses such a reveal, which it finds under `c = min(n_V, log2 k)`.
   - **Folds with no relation instance,** such as [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#the-layer-sumcheck)'s column masks, scale the summand by `2^{−(n − c)}`, and the sumcheck starts from the public sum.
-- **Degree.** `V'` has degree 1 in the tensor's lowest variable, which `Z` spares. In each other variable `Z` has degree 2, and `R̃_V` adds 1 when the variable is one of its columns: `V'` has degree 3 there, or 2. In `tessera-protocol/2` a reduction stage's degree `d`, RFC-0010's largest degree among its instances ('Sumcheck messages'), takes each instance's degree from its relation alone: never from a mask's columns, nor from the variable a round binds ([#565](https://github.com/AbdelStark/tessera/issues/565)). The degrees other RFCs give their relations (RFC-0010 'Relations', RFC-0030, RFC-0037, RFC-0050, RFC-0053, RFC-0066, RFC-0072) are `tessera-protocol/1`'s.
-  - **The table below is normative.** An instance's degree is its row's `d`. The schedule decides the row: the relation, the native kind, the `BoolFn`, which operands are public (RFC-0072 'Public tensors'), whether a `ConstMul`'s constant is a scalar, per channel or per layer, and, for the matmuls alone, whether the instance is stacked. The compiler and the verifier refuse an instance that matches no row, `ERR-INTERNAL`, and a new relation adds its row first. The rule below derives the table, and a reader checks a row by it.
+- **Degree.** `V'` has degree 1 in the tensor's lowest variable, which `Z` spares. In each other variable `Z` has degree 2, and `R̃_V` adds 1 when the variable is one of its columns: `V'` has degree 3 there, or 2. In `tessera-protocol/2` a reduction stage's degree `d`, RFC-0010's largest degree among its instances ('Sumcheck messages'), takes each instance's degree from its relation alone: never from a mask's columns, nor from the variable a round binds ([#565](https://github.com/AbdelStark/tessera/issues/565)). The degrees other RFCs give their relations (RFC-0010 'Relations', RFC-0030, RFC-0037, RFC-0050, RFC-0053, RFC-0066, RFC-0072) are `tessera-protocol/1`'s. RFC-0010 and RFC-0072, whose text this amendment edits, say so in their 'Amended by' entries; the others' degrees are scoped by this sentence alone.
+  - **The table below is normative.** An instance's degree is its row's `d`. The schedule decides the row, by the keys below: the relation, or a native relation's kind; the `BoolFn`; an equality zero-check's operation and, for a `ConstMul`, whether its constant is a scalar, per channel or per layer; which operands are public (RFC-0072 'Public tensors'); and, for the matmuls alone, whether the instance is stacked. A row that names no public operand holds only when no operand is public, and a row that names a pattern holds for that pattern. The compiler and the verifier refuse an instance that matches no row, `ERR-INTERNAL`, and a new relation adds its row first. The rule below derives the table, and a reader checks a row by it.
+  - **The keys.**
+    - **A native's kind** is the relation of RFC-0050, RFC-0030 or RFC-0053 that the native plan names for the instance's tag: the compiler's `ModelNatives.kinds`, tags from 1, and `tv-core`'s own derivation of the same plan. It is never inferred from the native's `tessera-protocol/1` descriptor: `Key`, `Forest` and `Reciprocal` share the descriptor of degree 3 and two evaluations, and their rows differ.
+    - **Stacked** means with one stacking variable at least, which the relation sums with a public `eq` weight (RFC-0010 'Batching within a stage', RFC-0071): a layer variable, when `λ ≥ 1`; a head variable, when two heads or more are summed; or a request variable, in a batch of two requests or more. An instance at a template position of a graph with `λ = 0` is not stacked, although its layer weights are `eq(ρ, ·)` over no variable.
+    - **Per layer.** An equality zero-check's `ConstMul` at a template position of a graph with `λ ≥ 1` has a constant per layer, whatever the layers' values: equal in every layer or not, a padded layer's included. With `λ = 0` its one constant is a scalar (RFC-0072 'Scalar or per channel'). A constant per channel is never at a template position (RFC-0072 'Not inside a layer'), so the two do not meet. A scalar `ConstMul` whose output is not committed is a coefficient (RFC-0037 'Claims and atoms') and has no instance.
+    - **Operands** are the tensors whose evaluations the relation's final message would list if none were public, in that order (RFC-0010 'Sumcheck messages'): an equality zero-check's output `Y`, which is committed, then `f`'s inputs; a recomposition's `x`, `b`, then `h` when it has one; a `BitFn`'s inputs. A constant, a kernel and a selector are public factors, not operands. A native has none.
   - **Terms and factors.** A relation's summand is a sum of product terms. A term's factors are one `eq` factor, its public factors, and its reads of tensors; a scalar coefficient is no factor.
-    - **One `eq` factor.** `eq` at the instance's point is one factor. It includes a stacked instance's layer weights (RFC-0037 'Stages and their instances'), a head or request `eq`, and every public factor an RFC writes as part of `eq`, such as RFC-0072's `eq(z_y, ·)·Z_b`. `MatMulWeight` and `MatMulAct`, with no `eq` of their own, count their stacking weight as their one `eq` factor when they are stacked. RFC-0050's root product, written without `eq`, counts the instance's.
-    - **Public factors.** Each public table a term multiplies by is one factor, as the table counts it. RFC-0050's residual selector `LT·LT` is one, and so are RFC-0053's vocabulary coefficients; RFC-0053's time coefficient is the term's `eq` factor. Where an RFC's typesetting would suggest another count, the table's holds.
+    - **One `eq` factor.** `eq` at the instance's point is one factor. It includes a stacked instance's layer weights (RFC-0037 'Stages and their instances'), a head or request `eq`, and every public factor an RFC writes as part of `eq`, such as RFC-0072's `eq(z_y, ·)·Z_b`, under premise 1. `MatMulWeight` and `MatMulAct`, with no `eq` of their own, count their stacking weight as their one `eq` factor when they are stacked. `Rotate` and `Selection` count their kernel, `E_r`, `S̃` or a combined selection's `K`, as their `eq` factor, and it takes in a stacked `Rotate`'s layer weights, which lie on variables the kernel does not read. RFC-0050's root product, written without `eq`, counts the instance's.
+    - **Public factors.** Each public table a term multiplies by is one factor, as the table counts it. RFC-0050's residual selector `LT·LT` is one, and so are RFC-0053's vocabulary coefficients; RFC-0053's time coefficient is the term's `eq` factor. An equality zero-check's constant per layer, `c̃` over the layer variables, is one of its own, beside the layer weights. Where an RFC's typesetting would suggest another count, the table's holds, provided each factor it counts meets premise 1.
     - **Reads.** A read of a committed or virtual tensor, a weight included, is masked, whatever its point. A read of a public tensor is a public factor. A linear combination of one tensor's values at several points is one read when its coefficients lie on variables those points do not read, as RFC-0053's `Hplus` is. One tensor read twice in a term, as in `X̃²` or `h̃·(1 − h̃)`, is two reads.
-  - **The rule.** For a term `t`, `d_1(t)` counts its factors and `s(t)` its masked reads. A row's `d` is the largest `d_1(t) + 2s(t)` over its terms, and its `d_1` and `s` are that term's: each masked read counts 3 in place of 1. A fold ('Virtual tensors') has degree 2.
+  - **The rule.** For a term `t`, `d_1(t)` counts its factors and `s(t)` its masked reads. A row's `d` is the largest `d_1(t) + 2s(t)` over its terms: each masked read counts 3 in place of 1. Its `d_1` and `s` are those of the term that sets `d`, and of the one with the most masked reads when several do. A fold ('Virtual tensors') has degree 2.
   - **The premises.** The rule bounds every round because a masked read adds at most 2 to a round's degree. That holds when:
-    1. every public factor is multilinear in each variable;
+    1. the `eq` factor and every public factor are multilinear in each variable. A product an RFC writes as part of `eq`, or that the table counts as one factor, is one only on disjoint variables, as `eq(z_y, ·)·Z_b`, `LT·LT` and a stacked instance's layer weights times its `eq` are, or as one multilinear extension on the cube, which both parties then evaluate as such, as RFC-0053's coefficients and RFC-0037's layer weights `w̃` are. Over shared variables, as `eq(z, x)·P(x)` would be, it is two factors;
     2. a read's point puts each summed variable in at most one coordinate, so no read is diagonal, as `V(x, x)` would be;
     3. a linear combination counted as one read has coefficients on variables its points do not read.
 
     Every row of the table meets them. A relation that breaks one states its own degree, derived per variable, in its row.
-  - **Where it overcounts.** The rule overcounts when a round binds a masked read's lowest variable or a variable outside its mask's columns, or when a public factor does not depend on the round's variable. An implementation that splits a term otherwise still sends `d` values: the CPU prover writes `Hplus` as `nt + 1` terms of four factors. Both implementations use the table's `d`, which is the round messages' length, not the polynomial's exact degree.
-  - **Which round rises.** A masked read's term is live from the round that binds the last of its own variables ('Masked extensions' above). That is the instance's last round when the read spans the instance's top variable, and an earlier one for a read over fewer variables, such as a `Leading` broadcast operand. The table bounds every round alike.
-  - **The table.** It lists each relation with every operand that can be committed or virtual being so. A public operand is counted by the rule, term by term, as the rows marked "public" show. "Stacked" means with stacking variables, layers, heads or a batch's requests, which the relation sums with a public `eq` weight (RFC-0010 'Batching within a stage', RFC-0071).
+  - **Where it overcounts.** The rule overcounts when a round binds a masked read's lowest variable or a variable outside its mask's columns, or when a factor does not depend on the round's variable.
+    - **On every shape**, as the table's last column shows: `Recomposition`, `OneHotIndex` and RFC-0053's tokens and greedy keys reach 4, since their weights lie on a low axis, constant in the round where the masked read goes live, and their `eq` on the others; RFC-0053's selected logits reach 5, since `Hplus` reads `H` at Boolean time coordinates, where its mask vanishes; an observed request's summand is 0.
+    - **On some shapes:** a constant per layer equal in every layer; a selector or constant on an axis that is not padded, or that does not hold the top variable, as `OneHotVocabulary`'s vocabulary axis under a token axis does not; a `Leading` broadcast operand.
+    - **The round messages' length.** An implementation that splits a term otherwise still sends `d` values: the CPU prover writes `Hplus` as `nt + 1` terms of four factors. Both implementations use the table's `d`, which is the round messages' length, not the polynomial's exact degree.
+  - **Which round rises.** A masked read's term is live from the round that binds the last of its own variables ('Masked extensions' above). That is the instance's last round when the read holds the instance's top variable, as a `Trailing` broadcast operand does, and an earlier one for a read that does not, such as a `Leading` broadcast operand, over the lowest axis alone. The table bounds every round alike.
+  - **The table.** It lists each relation with every operand that can be committed or virtual being so, then the relation's rows with public operands, which the rule counts term by term. `relation` is the vector's string for the row ('Testing Strategy'), and a row that names several holds for each. "Tight" says whether the row's tiny instance ('Testing Strategy') reaches `d` in some round, and when it does not, the largest degree its rounds reach.
 
-    | Relation | `d_1` | `s` | `d` |
-    |---|---|---|---|
-    | `MatMulWeight`, `MatMulAct` (RFC-0010) | 2, or 3 stacked | 2 | 6, or 7 stacked |
-    | `Mul` | 3 | 2 | 7 |
-    | `Mul`, one operand public | 3 | 1 | 5 |
-    | `SumSquares` | 3 | 2 | 7 |
-    | `Rotate` (RFC-0037), `Selection` (RFC-0072) | 2 | 1 | 4 |
-    | `ScaleChannels` (RFC-0072) | 3 | 1 | 5 |
-    | `BitFn` (RFC-0066): `Xor`, `And`, `Ch` | 3 | 2 | 7 |
-    | `Xor` or `And`, one input public; `Ch(e, f, g)` with `e`, or any two inputs, public | 3 | 1 | 5 |
-    | `Ch(e, f, g)` with `f` or `g` alone public: `e·g` or `e·f` keeps two reads | 3 | 2 | 7 |
-    | `BitFn`: `Xor3`, `Maj` | 4 | 3 | 10 |
-    | `Xor3` or `Maj`, one input public | 4 | 2 | 8 |
-    | `Xor3` or `Maj`, two inputs public | 4 | 1 | 6 |
-    | `Equality` of a committed output (RFC-0037): `ConstMul` by one scalar constant, `ConstAdd`, `Add`, `Sub` | 2 | 1 | 4 |
-    | `Equality` of a `ConstMul` by a constant per channel or per layer, a public factor | 3 | 1 | 5 |
-    | `Equality` of a `Mul` | 3 | 2 | 7 |
-    | `Equality` of a `Mul`, one input public | 3 | 1 | 5 |
-    | `Equality` of a `Mul`, both inputs public: `eq·Y'` alone | 2 | 1 | 4 |
-    | `Booleanity` | 3 | 2 | 7 |
-    | `OneHotVocabulary`, `OneHotIndex`, `InputPadding`, `BitPadding` (RFC-0035, RFC-0072) | 3 | 1 | 5 |
-    | `AssertEqual`, one side public or none: `eq·ψ·a` | 3 | 1 | 5 |
-    | `AssertEqual`, both sides public | 3 | 0 | 3 |
-    | `OneHotCount` | 2 | 1 | 4 |
-    | `Recomposition` (RFC-0072), `x` public or not: `eq·W_b·b̂` | 3 | 1 | 5 |
-    | A root's coefficient product (RFC-0050) | 4 | 3 | 10 |
-    | A root's padding checks (RFC-0050); `SoftmaxRow`'s key, forest and padding checks (RFC-0030) | 3 | 1 | 5 |
-    | `SoftmaxRow`'s reciprocal (RFC-0030) | 3 | 2 | 7 |
-    | Provisional: the greedy certificate's selected logits (RFC-0053), `L·Hplus` with its coefficients | 3 | 2 | 7 |
-    | Provisional: a request's tokens (`eq·v·H`, as `OneHotIndex`) and greedy keys (time and vocabulary coefficients times `L`) (RFC-0053) | 3 | 1 | 5 |
-    | Provisional: an observed request's logits (RFC-0053) | 1 | 1 | 3 |
-    | A fold | — | — | 2 |
+    | `relation` | Relation and public operands | `d_1` | `s` | `d` | Tight |
+    |---|---|---|---|---|---|
+    | `MatMulWeight`, `MatMulAct` | RFC-0010; one public operand is refused (RFC-0072) | 2, or 3 stacked | 2 | 6, or 7 stacked | yes |
+    | `Mul` | RFC-0010 | 3 | 2 | 7 | yes |
+    | `Mul` | one operand public | 3 | 1 | 5 | yes |
+    | `SumSquares` | RFC-0010 | 3 | 2 | 7 | yes |
+    | `Rotate`, `Selection` | RFC-0037, RFC-0072, the kernel as `eq` | 2 | 1 | 4 | yes |
+    | `ScaleChannels` | RFC-0072 | 3 | 1 | 5 | yes |
+    | `Xor`, `And`, `Ch` | `BitFn` (RFC-0066) | 3 | 2 | 7 | yes |
+    | `Xor`, `And` | one input public | 3 | 1 | 5 | yes |
+    | `Ch` | `Ch(e, f, g)` with `e`, or any two inputs, public | 3 | 1 | 5 | yes |
+    | `Ch` | `f` or `g` alone public: `e·g` or `e·f` keeps two reads | 3 | 2 | 7 | yes |
+    | `Xor3`, `Maj` | `BitFn` | 4 | 3 | 10 | yes |
+    | `Xor3`, `Maj` | one input public | 4 | 2 | 8 | yes |
+    | `Xor3`, `Maj` | two inputs public | 4 | 1 | 6 | yes |
+    | `Equality.ConstMul`, `Equality.ConstAdd`, `Equality.Add`, `Equality.Sub` | the equality zero-check of a committed output `Y` (RFC-0037) of a `ConstMul` by a scalar constant, a `ConstAdd`, an `Add` or a `Sub`, any input public or none: `eq·Y'` | 2 | 1 | 4 | yes |
+    | `Equality.ConstMul` | a constant per channel or per layer: `eq·c̃·X'` | 3 | 1 | 5 | yes |
+    | `Equality.ConstMul` | a constant per channel or per layer, its input public: `eq·Y'` | 2 | 1 | 4 | yes |
+    | `Equality.Mul` | of a `Mul` | 3 | 2 | 7 | yes |
+    | `Equality.Mul` | one input public | 3 | 1 | 5 | yes |
+    | `Equality.Mul` | both inputs public: `eq·Y'` | 2 | 1 | 4 | yes |
+    | `Booleanity` | RFC-0010, RFC-0072 | 3 | 2 | 7 | yes |
+    | `OneHotVocabulary`, `InputPadding`, `BitPadding` | RFC-0035, RFC-0072 | 3 | 1 | 5 | yes |
+    | `OneHotIndex` | RFC-0035, its token public or not: `eq·v·H'` | 3 | 1 | 5 | no: 4 |
+    | `OneHotCount` | RFC-0035 | 2 | 1 | 4 | yes |
+    | `AssertEqual` | one side public or none: `eq·ψ·a'` | 3 | 1 | 5 | yes |
+    | `AssertEqual` | both sides public | 3 | 0 | 3 | yes |
+    | `Recomposition` | RFC-0072, `x` public or not: `eq·W_b·b'` | 3 | 1 | 5 | no: 4 |
+    | `Product` | a root's coefficient product (RFC-0050) | 4 | 3 | 10 | yes |
+    | `RootPad`, `ResidualPad` | a root's padding checks (RFC-0050) | 3 | 1 | 5 | yes |
+    | `Key`, `Forest`, `MaxPad`, `ReciprocalPad` | `SoftmaxRow`'s key, forest and padding checks (RFC-0030) | 3 | 1 | 5 | yes |
+    | `Reciprocal` | `SoftmaxRow`'s reciprocal (RFC-0030) | 3 | 2 | 7 | yes |
+    | `GreedySelected` | provisional: the greedy certificate's selected logits (RFC-0053), `L·Hplus` with its coefficients | 3 | 2 | 7 | no: 5 |
+    | `Tokens`, `GreedyKey` | provisional: a request's tokens (`eq·v·H`, as `OneHotIndex`) and greedy keys (time and vocabulary coefficients times `L`) (RFC-0053) | 3 | 1 | 5 | no: 4 |
+    | `Observe` | provisional: an observed request's logits (RFC-0053), a zero summand | 1 | 1 | 3 | no: 0 |
+    | `Fold` | a fold ('Virtual tensors') | — | — | 2 | yes |
 
   - **RFC-0053's rows are provisional.** RFC-0053 holds for `tessera-protocol/1` only: it says `tessera-protocol/2` is not supported by its contract. Its final message sends `H` at Boolean time coordinates, where `H'`'s mask vanishes (`docs/zk/simulator.md` R8), an open gap of its `tessera-protocol/2` form. The rows count its relations as written, `Hplus` one read. They change with that form.
-  - **The invariant.** No row of the table exceeds 10, so no reduction stage built from these relations does. A relation that would exceed 10 needs a row and a new bound first. The compiler and the verifier each check `d ≤ 10` when they derive a stage's degree, and stop with `ERR-INTERNAL` otherwise; no input reaches that check today. The sumcheck engines refuse a degree of 11 themselves ('Testing Strategy').
+  - **`Observe`'s row** is a convention, not the rule's: its summand is 0, which has no term. It takes RFC-0053's degree 1 as `d_1`, and its one evaluation, `L(r)`, read through `L'`, as `s = 1`. A zero summand fits any `d`, and in every Llama schedule it sits in stage 1 beside `Product`'s 10.
+  - **The invariant.** No row of the table exceeds 10, so no reduction stage built from these relations does. A relation that would exceed 10 needs a row and a new bound first. The compiler and the verifier each check a stage's degree when they derive it, `d ≤ 10` in `tessera-protocol/2` and `d ≤ 7` in `tessera-protocol/1`, and stop with `ERR-INTERNAL` otherwise; no input reaches that check today. The sumcheck engines refuse a degree past their protocol's bound themselves, 11 and 8 ('Testing Strategy').
   - **A round's true degree** can be lower than the table's, as above. The honest prover sends the round polynomial at `0, 2, …, d` all the same.
   - **Every Llama schedule.** Stage 1 holds RFC-0050's root coefficient products, `Σ R_i·R_h·U_k` times `eq`: `d = 10`. Its other instances reach 7 at most. The later reduction stages hold matmuls, elementwise products and sums of squares: `d = 7`. This holds at 405B, two reduction stages of 42 and 35 rounds at 16K positions, and in the conformance claim lists, two or three.
   - **Not only a count.** At 405B's contexts, up to `2^17` positions, the final norm's products reach degree 10 in their last round whatever the masks' columns. Their per-row digit columns have at most 17 variables, below `log2 k = 22`, so each mask holds every row variable. A batch past `2^22` positions would take the last row variable out of the columns. `Xor3` and `Maj` reach 10 on SHA-256's schedules (RFC-0066), whose tensors' variables are all columns.
@@ -241,7 +254,7 @@ Before any v0.4 implementation work merges, [`docs/zk/simulator.md`](../zk/simul
 | Blinding rows for advice combined rows (`G + 1 ≤ 17`, two rows each; in `tessera-protocol/2`, `G + 1 ≤ 21` with RFC-0068's column masks' group, the two reduction stages' fold groups and RFC-0070's batching group) | 34 rows; 42 |
 | The masks' batching ([RFC-0070](RFC-0070-mask-batching.md)) | the pad `S`: 780 `Fp2` rows, 1,560 committed, 0.164% of the advice's non-zero rows; one sumcheck of 32 rounds of degree 2; one opening group. It opens the 46 masked sumchecks' `G(r)`, the 2,621 tree-level mask claims and the `SoftmaxRow` leaf mask's |
 | Weight budget per proof | 6 blinding rows per weight matrix (two each for evaluation, proximity and mask), and `2e + 4` for `ChannelParams`' `e` claims, 18 at `e = 7`: one evaluation pair for the matrix and a mask row per claim ([RFC-0065](RFC-0065-masked-channel-params.md)) |
-| Extra sumcheck work | from the round that binds the last of `Z`'s variables: the last round, an earlier one for a read over fewer variables than its instance, such as a broadcast operand ('Degree'), or a LogUp leaf level's round before the last |
+| Extra sumcheck work | from the round that binds the last of `Z`'s variables: the last round, an earlier one for a read that does not hold its instance's top variable, such as a `Leading` broadcast operand ('Degree'), or a LogUp leaf level's round before the last |
 
 The weight budget per proof is six rows, and the linking proofs take four at each end of an epoch, so `B_W = 4096` gives `(4096 − 8)/6 = 681` proofs per epoch, and `ChannelParams`' `B_CP` gives as many ([RFC-0065](RFC-0065-masked-channel-params.md)), matching the column budget of about 674 in epoch 0 and 673 after it ([RFC-0012](RFC-0012-weight-commitment.md#budget-state-machine), [RFC-0064](RFC-0064-weight-linking-proof.md#the-budget)).
 
@@ -273,19 +286,39 @@ v0.3 ships a sound, non-hiding protocol. v0.4 adds the four mechanisms behind th
 
 - Masked sumcheck: completeness for degrees 1–10; the simulator's round messages and real round messages pass a two-sample distribution test over 10^5 runs on a toy instance.
 - Stage degrees ([#565](https://github.com/AbdelStark/tessera/issues/565)):
-  - **The per-row degree test**, the independent check. In both workspaces, for each row of 'Degree''s table, it builds a tiny masked instance at the row's public pattern, every mask holding every variable. It evaluates each round polynomial at `d + 2` nodes or more, and asserts that every round's degree is at most `d`, and exactly `d` in the round where the row is tight: the root product, `Xor3` and `Maj`, `SumSquares`, `Booleanity` and `AssertEqual`. As the mutation control, a table lowered by 1 on any row fails it. This test catches a row below the true degree, which a vector both makers derive from one table cannot.
-  - **The vector.** `spec/vectors/schedule/degrees.json` holds each case's stage degrees. Its README documents its fields before it is generated:
-    - `cases[]`: `model`, `n`, `length` (the layout's length, `n` padded to four rows at least), `request` (`none`, `prefill` or `generate`), and `stages[]`;
-    - `stages[]`: `index` from 1, `rounds` (`tessera-protocol/2`'s, a fold's rounds included), `d`, `folds` (their count, each of degree 2), and `instances[]` in schedule order;
-    - `instances[]`: `relation`, the table's row name (`MatMulWeight`, `Mul`, `Root.Product`, `Softmax.Key`, `Greedy.Selected`, …), `stacked`, `public` (one Boolean per operand), `constant` (`scalar`, `channel`, `layer` or `null`), and `d_1`, `s` and `d`, those of the term that sets `d`.
+  - **The per-row degree test**, the independent check. In both workspaces, for each row of 'Degree''s table, each `relation` it names and each public pattern it admits, it builds the relation on the row's tiny masked instance below, and evaluates each round polynomial at `d + 2` nodes or more. It catches a row below the true degree, which a vector both makers derive from one table cannot.
+    - **What it asserts.** Every round's degree is at most `d`. On a row the table marks tight, the largest is exactly `d`; on another, exactly the degree its "Tight" cell gives.
+    - **Its mutation control.** A table lowered by 1 on any tight row fails it. A row that is not tight keeps the rule's count, which the test bounds but cannot pin.
+    - **The tiny instances.** An instance has three summed variables unless its shape below says otherwise, and a stacked row one layer variable above them, with weights `eq(ρ, ·)`. Every mask holds all of its tensor's variables. A read spans the instance's variables at its point, its lowest variable the instance's lowest; a matmul's operands each have one coordinate more, above the summed axis, and a selection's input one below the selected axis and one above, each a fixed challenge. Each public table, constant and kernel is random and multilinear over the variables its relation gives it. Where a relation's factors could miss the top variable, the shape puts them on it:
+      - a selector `ψ`, `1 − ψ` or `LT` over several axes (`AssertEqual`, `InputPadding`, `Equality.ConstAdd`'s `ĉ`, `RootPad`, `ResidualPad`, `MaxPad`, `ReciprocalPad`): a top axis of 3 entries, padded to 4, over a low axis of 2;
+      - a public factor on the last axis alone (`ScaleChannels`, a per-channel `Equality.ConstMul`, `OneHotVocabulary`, `BitPadding`): that axis alone, of 8 entries, 5 of them real for a selector;
+      - `SumSquares`: `eq` over the top two variables;
+      - `OneHotCount`, `OneHotIndex`, `Tokens`, `GreedyKey`, `GreedySelected` and `Observe`: a vocabulary axis of two variables under a token or time axis of two;
+      - `Recomposition`: `k = 2` bit variables with `k_b = 1`, under `n_y = 2`;
+      - `Key` and `Forest`: the causal selector over one key variable under two query variables;
+      - a per-layer `Equality.ConstMul`: two layers, whose constants differ;
+      - `Mul` and `Equality.Mul`: no broadcast operand.
+    - **In `tv-core`.** Its schedule does not derive every row's relation or public pattern yet: not `BitFn`, `ScaleChannels`, selections, `InputPadding`, `BitPadding`, `Recomposition` or `AssertEqual`, nor an equality zero-check but a scalar `ConstMul`'s (#150, #159). For those rows the test writes the summand from the RFCs' formulas itself, test-local, so it does not wait on them.
+  - **The no-row refusal.** In both workspaces, a unit test feeds the stage-degree derivation two instances that match no row, a `MatMulAct` with one public operand and an `Xor3` whose three inputs are public, and asserts `ERR-INTERNAL` for each. Neither comes from a derived schedule: the first is refused when the schedule is derived (RFC-0072 'Public tensors'), and the second's output is a public tensor, which no instance proves.
+  - **The vector.** `spec/vectors/schedule/degrees.json` holds each case's stage degrees, in these fields, which its README repeats:
+    - `cases[]`: `model`; `n`, the sequence's positions; `length`, the positions its schedule is lowered at, `max(n, 3)`, since `n` = 1, 2 and 3 share the layout of a 3-row token axis padded to 4 ('Masked extensions'); `request`, `none`, `prefill` or `generate`; and `stages[]`;
+    - `stages[]`: `index`, from 1; `rounds`, `tessera-protocol/2`'s, a fold's included; `d`; `folds`, their count, one per instance whose claim is a virtual part the stage before left (RFC-0037 'Stages and their instances'), none for a native or a zero-check; and `instances[]`, in schedule order;
+    - `instances[]`: `relation`, the table's string; `stacked`, by 'Degree''s keys, for every relation; `public`, one Boolean per operand by those keys, `[]` for a native; `constant`, `scalar`, `channel` or `layer` for an `Equality.ConstMul` and `null` otherwise; and the row's `d_1`, `s` and `d`.
+    - **`stacked` is not `schedule.json`'s.** That field records layer weights `eq(ρ, ·)`, `Layers::Eq`: it is true at a template position of a graph with `λ = 0`, where this one is false, and false for an instance stacked over heads or requests alone, where this one is true.
   - **Its schedules** are the composed schedules `tessera-protocol/2` proves: `derive_composed_schedule` with `model_natives` for the request. `derive_schedule`'s graph-only schedule is not one: it lacks the natives, and records 7 for stage 1.
-  - **Its cases, now:** each conformance claim list of `spec/vectors/claims/`, at `schedule.json`'s lengths 1, 4, 5 and `max_context`, laid out as `tessera-protocol/2` lays them out. Requests `none` and `prefill` run at every length, and `generate` at lengths of 2 or more, since RFC-0053 needs a prompt and an output. `tv-core` derives these, natives and requests included.
-  - **Its cases, later:** `tessera_compiler::anchor`'s schedules join once `tv-core` mirrors their relations (#150, #159) and AES-128-CTR's schedule is accepted (#526). They are SHA-256 at RFC-0072's sizes rows, with three layouts: a block of public bytes; a message with committed bytes; and the key commitment, one block with 32 committed bytes, bound. They also include AES-128-CTR at `B = 3` blocks. The rows those cases still miss (`ScaleChannels` without AES, `Equality` of a per-channel, per-layer, `ConstAdd`, `Add`, `Sub` or `Mul` output, `Xor3` with a public input, `And`, `AssertEqual` with neither or both sides public, an unstacked `MatMulAct`) take small synthetic graphs on the prover's side, as `schedule_anchor.rs` builds.
+  - **Its cases, now:** each conformance claim list of `spec/vectors/claims/`, at `schedule.json`'s `n` of 1, 4, 5 and `max_context`, so at lengths 3, 4, 5 and `max_context`, laid out as `tessera-protocol/2` lays them out. Requests `none` and `prefill` run at every `n`, and `generate` at `n ≥ 2`, since RFC-0053 needs a prompt and an output. `tv-core` derives these, natives and requests included.
+  - **Its cases, later:** `tessera_compiler::anchor`'s schedules join once `tv-core` mirrors their relations (#150, #159) and AES-128-CTR's schedule is accepted (#526). They are SHA-256 at RFC-0072's sizes rows, with three layouts: a block of public bytes; a message with committed bytes; and the key commitment, one block with 32 committed bytes, bound. They also include AES-128-CTR at `B = 3` blocks.
+  - **The rows no case reaches** take small synthetic graphs on the prover's side, as `schedule_anchor.rs` builds. They are counted per row and `relation` string: a row that names `Xor3` and `Maj` needs a case of each. The Llama and SHA-256 cases miss:
+    - an unstacked `MatMulAct`, and `ScaleChannels`, which AES has;
+    - `Xor` with neither input public, `And` in both of its rows, and `Xor3` with one or two inputs public;
+    - `Equality.ConstAdd`, `Equality.Add`, `Equality.Sub` and every `Equality` row past the first: Llama's one equality zero-check is `c_0`'s, a scalar `ConstMul` whose input is not public;
+    - `InputPadding`, which SHA-256 has at `M = 3` messages but not at the key commitment's `M = 1`;
+    - `AssertEqual` with neither or both sides public.
   - **Its makers.** `cargo xtask gen-vectors` writes it from the compiler's schedules and 'Degree''s table. It is a differential vector, as `schedule.json` is. `tv-core` derives each schedule and each instance's row with code of its own and compares every field, and `gen-vectors --check` fails when the file differs.
   - **What it records:** 10 for stage 1 of every Llama schedule and 7 for the later stages; SHA-256's stage of `Xor3` and `Maj` will record 10.
-  - in a stage of `d = 10`, a round message of 7 values is `Reject(Sumcheck { stage, round })`;
-  - **the bound, at the sumcheck level**: `tessera-sumcheck`'s `prove_batch` and `tv-core`'s sumcheck checks each prove and verify a batch of degree 10, and each refuses a batch of degree 11 with its degree error;
-  - **the bound, at the stage level**: in both workspaces, a unit test feeds the stage-degree derivation a fabricated instance of degree 11 and asserts `ERR-INTERNAL`. No relation reaches 11, so only a fabricated instance exercises the check, and the code change builds it.
+  - **A short round message.** In a stage of `d = 10`, a round message of 7 values is `Reject(Sumcheck { stage, round })`.
+  - **The bound, at the sumcheck level.** `tessera-sumcheck`'s `prove_batch` and `tv-core`'s sumcheck checks each prove and verify a batch of degree 10 under `tessera-protocol/2`'s bound, and refuse one of degree 11 with their degree error, and one of degree 8 under `tessera-protocol/1`'s.
+  - **The bound, at the stage level.** In both workspaces, a unit test feeds the stage-degree derivation a fabricated instance of degree 11 and asserts `ERR-INTERNAL`, and one of degree 8 in `tessera-protocol/1`. No relation reaches them, so only a fabricated instance exercises the check, and the code change builds it.
 - Masked extensions: `V' = Ṽ` on the hypercube (exhaustive for small `n`); revealed `V'(p)` values over 10^5 runs of a fixed witness are uniform (chi-square on low bits) and uncorrelated with the witness (two witnesses give indistinguishable distributions).
 - Committed tensors' columns ([#554](https://github.com/AbdelStark/tessera/issues/554)):
   - a claim on a stacked committed kind of `n_P < log2 k` with `λ ≥ 1`, and one on a tile smaller than a row, open in their data claims' groups with `R_V`'s row at `eq(p_col ‖ 0)`, and the group checks hold;
