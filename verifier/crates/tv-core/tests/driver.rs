@@ -265,6 +265,21 @@ fn set_layout_digest(c: &ClaimList, s: &PublicStatement, p: &mut NiProof) {
 
 #[cfg(unix)]
 #[test]
+fn live_start_reserves_its_share_budget_before_entropy_or_allocation() {
+    for bytes in [0, 1, 31] {
+        let (c, s, _p, mut cfg) = live_fixture();
+        cfg.limits.max_memory_bytes = bytes;
+        let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+        inconclusive(live.start().unwrap_err(), ErrorCode::Memory);
+        inconclusive(live.start().unwrap_err(), ErrorCode::ProtocolOrder);
+    }
+    let (c, s, _p, mut cfg) = live_fixture();
+    cfg.limits.max_memory_bytes = 32;
+    assert!(tv_core::LiveVerifier::new(c, s, cfg).start().is_ok());
+}
+
+#[cfg(unix)]
+#[test]
 fn live_reveals_only_bound_round1_and_never_queries_invalid_round2() {
     let (c, s, mut p, cfg) = live_fixture();
     let mut live = tv_core::LiveVerifier::new(c, s, cfg);

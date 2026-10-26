@@ -77,7 +77,8 @@ impl LiveVerifier {
     ///
     /// # Errors
     /// Inconclusive Order for a repeated call, Params for another mode/name, Memory for
-    /// reservation failure, IO for unavailable entropy. Unsupported hosts fail closed.
+    /// a policy below the 32-byte share or reservation failure, IO for unavailable entropy.
+    /// Unsupported hosts fail closed.
     #[allow(
         clippy::result_large_err,
         reason = "the specified Live API returns Verdict; reports stay by value without an infallible allocation"
@@ -119,7 +120,7 @@ impl LiveVerifier {
         {
             return Err(params_error(&self.claims));
         }
-        if self.cfg.limits.max_memory_bytes == 0 {
+        if self.cfg.limits.max_memory_bytes < 32 {
             return Err(memory());
         }
         if self.cfg.limits.max_wall_time.is_zero() {
