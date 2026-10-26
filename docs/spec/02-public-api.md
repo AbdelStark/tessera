@@ -68,10 +68,11 @@ Under draft [RFC-0073](../rfcs/RFC-0073-weight-mask-expansion.md#the-model-entry
   - **In `tessera-protocol/1`,** `commit-weights --out` and `prove --weights` are unchanged, and `weights refresh` does not exist.
   - **The other protocol's flags** are `ERR-USAGE`.
 - **The key.** `commit-weights` and `weights refresh` also take `--refresh-key KEY.twk`.
+- **The model and the plan.** `weights refresh` also takes `--model MODEL.d` and `--plan plan.tep`, as `commit-weights` does: it regenerates commitments from `K`, which needs `D`'s weights and the claim list, and checks a presented `.twl` against the claim list.
 - **Presented artifacts.** `weights refresh` and `prove` take `--present ARTIFACT`, repeatable. Each can only refuse or burn. Accepted kinds:
   - a `WeightCommitmentPublic` (`.twr`);
   - a `WeightLinkProof` (`.twl`);
-  - a `VerifierLedger`, for its roots by epoch and its used rows;
+  - a `VerifierLedger`, for this entry's chain of roots and their used rows, its other chains ignored;
   - once `Round1`'s schema version 2 exists, a kept `Round1` or `NiProof`.
 - **Not yet listed.** These flags join this listing with the code that implements them (#147, #153).
 

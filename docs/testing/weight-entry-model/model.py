@@ -90,6 +90,27 @@ def rebuilt_state(rt):
     return {'root': rt, 'next_blinding_row': B - LINK_ROWS, 'opened_columns': frozenset()}
 
 
+# ---- Presented artifacts (RFC-0073 'The entry check', item 5) -------------------------------------
+
+
+def presented_public(e, rt):
+    """A WeightCommitmentPublic (.twr): it names its epoch and root."""
+    return {'kind': 'twr', 'roots': [(e, rt)], 'used_rows': {}}
+
+
+def presented_ledger(chains, used_rows):
+    """A VerifierLedger: its weight_roots, one chain of (epoch, root) from epoch 0 per model entry
+    the verifier follows, and its used_blinding_rows by root, as the first row past every
+    reservation of the proofs it accepted (RFC-0067 'Updates')."""
+    return {'kind': 'ledger', 'chains': chains, 'used_rows': used_rows}
+
+
+def presented_round1(e, rt, end):
+    """A kept Round1 or NiProof: the epoch and root it names, and the first row past its
+    reservation (once Round1's schema version 2 fixes WeightReservation, OQ-0073-4)."""
+    return {'kind': 'round1', 'roots': [(e, rt)], 'used_rows': {rt: end}}
+
+
 class Refused(Exception):
     """A command refused with an error code of RFC-0073 'Errors' (04 §5)."""
 
@@ -117,6 +138,7 @@ class World:
     def __init__(self):
         self.rows = {}  # (root, row) -> ids of the proofs and links that revealed it
         self.cols = {}  # root -> the distinct columns opened under it
+        self.round1s = {}  # proof id -> (epoch, root, first row past its reservation): its Round1
         self.proofs = 0
 
     def reveal_rows(self, rt, rows, pid):
@@ -128,6 +150,10 @@ class World:
 
     def reused_rows(self):
         return sorted(k for k, v in self.rows.items() if len(v) > 1)
+
+    def extra_reveals(self, rt):
+        """How many times rows of `rt` were revealed again, by a proof other than the first."""
+        return sum(len(v) - 1 for (r, _row), v in self.rows.items() if r == rt)
 
     def over_opened(self):
         return {rt: len(c) for rt, c in self.cols.items() if len(c) > P_W}
@@ -220,23 +246,17 @@ class LinkingDirectory(Directory):
             if isinstance(entry, _Symlink) or (isinstance(entry, _Inode) and entry.links > 1)
         ]
 
-    def hard_link(self, other):
-        """Give every file of `other` a second name here."""
+    def hard_link(self, other, paths=None):
+        """Give the files of `other` (all, or those in `paths`) a second name here."""
         for p, entry in other.files.items():
-            entry.links += 1
-            self.files[p] = entry
+            if paths is None or p in paths:
+                entry.links += 1
+                self.files[p] = entry
 
     def symlink(self, other):
         """Name every file of `other` here by a symbolic link."""
         for p in other.files:
             self.files[p] = _Symlink(other, p)
-
-    @classmethod
-    def holding(cls, values):
-        d = cls()
-        for p, v in values.items():
-            d.put(p, v)
-        return d
 
 
 # ---- The prover -----------------------------------------------------------------------------------
@@ -302,12 +322,15 @@ class Prover:
         return value
 
     def write(self, path, value):
-        """A write by atomic rename. Before it, the file replaced must still be the one this
-        transition last read or wrote, and a file created must not exist ('Before each rename')."""
+        """A write by atomic rename (RFC-0040 'WeightCommitmentState', writing). Before it, the path
+        rules hold for the name ('The model entry', the path rules: before every write), the file
+        replaced is still the one this transition last read or wrote, and a file created does not
+        exist ('Before each rename')."""
         if self.writes_left is not None:
             if self.writes_left == 0:
                 raise Crash(name(path))
             self.writes_left -= 1
+        self.check_path_before_write(path)
         if self.dir.get(path) is not self.seen.get(path):
             raise Refused('ERR-RES-IO', f'{name(path)} changed under the writer')
         value = copy.deepcopy(value)
@@ -315,6 +338,12 @@ class Prover:
         self.seen[path] = value
         if self.on_write:
             self.on_write()
+
+    def check_path_before_write(self, path):
+        """'The model entry', the path rules, again before every write: the name is a regular file
+        of one link."""
+        if path in self.dir.path_violations():
+            raise Refused('ERR-USAGE', f'{name(path)}: a symbolic link or a file of several links')
 
     def write_key(self, value):
         """The key is created once and never replaced: a call that fails if the name exists."""
@@ -364,12 +393,41 @@ class Prover:
         key = self.keystore.get('key')
         return key is not None and rt == root(key[1], e)
 
-    def entry_check(self, presented=(), presented_rows=None, can_authenticate=False):
-        """Items 1 to 5, in order, refusing on the first failure. Returns the record.
+    def chain_of(self, ledger, roots):
+        """Item 5: a ledger counts only through the chain of this entry, the one whose epoch-0 root
+        is the record's first root. Other models' chains, and a retired entry's, are ignored."""
+        return next((chain for chain in ledger['chains'] if chain and chain[0] == (0, roots[0])), [])
 
-        `presented`: later-root artifacts, as (epoch, root): a .twr, a .twl or a ledger's
-        weight_roots. `presented_rows`: root -> the first row past every reservation a presented
-        ledger or kept Round1 shows. `can_authenticate`: the command reads K (weights refresh).
+    def presented_artifacts(self, rec, presented):
+        """Item 5: the later roots the presented artifacts name, and the reservations they show of
+        the latest root (root -> the first row past them)."""
+        roots = rec['roots']
+        latest = len(roots) - 1
+        named, shown = [], {}
+        for a in presented:
+            if a['kind'] == 'ledger':
+                chain = self.chain_of(a, roots)
+                pairs = chain
+                rows = {rt: a['used_rows'][rt] for _e, rt in chain if rt in a['used_rows']}
+            else:
+                pairs = a['roots']
+                rows = a['used_rows']
+            named += [(e, rt) for e, rt in pairs if e > latest or roots[e] != rt]
+            for rt, end in rows.items():
+                if end > B:
+                    raise Refused('ERR-USAGE', 'a presented reservation has rows past B_T')
+                if rt == roots[latest]:
+                    shown[rt] = max(shown.get(rt, 0), end)
+                # A reservation of an earlier epoch of the record is ignored: that epoch is closed.
+                # One of a root past the record names that root, and is refused above.
+        return named, shown
+
+    def entry_check(self, presented=(), can_authenticate=False):
+        """Items 1 to 5, in order, refusing on the first failure. Returns the record and the
+        presented reservations of its latest root.
+
+        `presented`: artifacts built by presented_public, presented_ledger, presented_round1.
+        `can_authenticate`: the command reads K (weights refresh).
         """
         # 1. The record is present, decodes and is not retired.
         rec = self.dir.get(RECORD)
@@ -401,17 +459,15 @@ class Prover:
         st = self.dir.get(state(latest))
         if st is not None and not self.is_open(st):
             self.retire(rec, f'{name(state(latest))} is closed')
-        # 5. Presented artifacts. A later root past the record retires the record when it is
-        #    authenticated, and otherwise refuses this command only.
-        for e, rt in presented:
-            if e > latest or roots[e] != rt:
-                if can_authenticate and self.regenerates(e, rt):
-                    self.retire(rec, f'an authenticated root of epoch {e} past the record')
-                raise Refused('ERR-USAGE', f'a presented root of epoch {e} is past the record (this command only)')
-        #    A presented reservation raises the marks in reserve; rows past B_T are refused.
-        if presented_rows and any(row > B for row in presented_rows.values()):
-            raise Refused('ERR-USAGE', 'a presented reservation has rows past B_T')
-        return rec
+        # 5. Presented artifacts: a later root retires the record when authenticated, and otherwise
+        #    refuses this command only. Reservations of the latest root raise the marks.
+        named, shown = self.presented_artifacts(rec, presented)
+        if can_authenticate and any(self.regenerates(e, rt) for e, rt in named):
+            self.retire(rec, 'an authenticated root past the record')
+        if named:
+            e, _rt = named[0]
+            raise Refused('ERR-USAGE', f'a presented root of epoch {e} is past the record (this command only)')
+        return rec, shown
 
     # -- RFC-0073 'Fresh and rebuilt states', with RFC-0012 'Budget state machine' ---------------
 
@@ -426,28 +482,27 @@ class Prover:
             self.write(state(0), {'root': r0, 'next_blinding_row': 0, 'opened_columns': frozenset()})
             self.write(public(0), {'root': r0})
 
-    def budget_start(self, rec, st, presented_rows):
-        """reserve, 'The cursor and the count': from the record's marks; a record behind the latest
-        state is raised to it, and a presented reservation raises them the same way, the count by
-        τ_W for every r_T rows added, rounded up. The count is never below the distinct columns
-        opened ('The model entry', the marks)."""
+    def budget_start(self, rec, st, shown):
+        """'The cursor and the count', the one statement of how reserve starts: from the record's
+        marks; a record behind the latest state is raised to it, its cursor to the state's and its
+        count by τ_W for every r_T rows that adds, rounded up; a presented reservation of the latest
+        root raises them the same way. Nothing else moves them: opened_columns does not."""
         cursor = rec['marks']['next_blinding_row']
         count = rec['marks']['opened_columns']
-        if st['next_blinding_row'] > cursor:
+        if st is not None and st['next_blinding_row'] > cursor:
             count += TAU_W * -(-(st['next_blinding_row'] - cursor) // R)
             cursor = st['next_blinding_row']
-        count = max(count, len(st['opened_columns']))
-        shown = (presented_rows or {}).get(rec['roots'][-1])
-        if shown is not None and shown > cursor:
-            count += TAU_W * -(-(shown - cursor) // R)
-            cursor = shown
+        end = (shown or {}).get(rec['roots'][-1])
+        if end is not None and end > cursor:
+            count += TAU_W * -(-(end - cursor) // R)
+            cursor = end
         return cursor, count
 
     def reserve_fails(self, cursor, count):
         """RFC-0012's preconditions on the cursor and the count."""
         return cursor + R > B - LINK_ROWS or count + TAU_W > P_W - TAU_LINK
 
-    def reserve(self, rec, presented_rows, hook=None):
+    def reserve(self, rec, shown, hook=None):
         """reserve, only on the state at epoch-<latest>.twc. Returns (root, first row)."""
         latest = len(rec['roots']) - 1
         st = self.dir.get(state(latest))
@@ -455,7 +510,7 @@ class Prover:
             raise Refused('ERR-WITNESS-BUDGET', 'the latest state is lost')
         if latest > 0 and not self.is_closed(self.dir.get(state(latest - 1))):
             raise Refused('ERR-WITNESS-BUDGET', 'the previous epoch is not closed')
-        cursor, count = self.budget_start(rec, st, presented_rows)
+        cursor, count = self.budget_start(rec, st, shown)
         if self.reserve_fails(cursor, count):
             raise Refused('ERR-WITNESS-BUDGET', 'too few rows or columns left')
         if hook:
@@ -477,14 +532,15 @@ class Prover:
         st = self.reread(path)
         self.write(path, {**st, 'opened_columns': st['opened_columns'] | queries})
 
-    def prove(self, presented=(), presented_rows=None, before_reserve=None, before_queries=None):
+    def prove(self, presented=(), before_reserve=None, before_queries=None):
         """One proof, holding the lock from its entry check through record_queries. The hooks let
         another process act at those two points. Returns the proof's id."""
         with self.transition():
-            rec = self.entry_check(presented, presented_rows)
-            rt, first = self.reserve(rec, presented_rows, before_reserve)
+            rec, shown = self.entry_check(presented)
+            rt, first = self.reserve(rec, shown, before_reserve)
             self.world.proofs += 1
             pid = f'{self.name}:p{self.world.proofs}'
+            self.world.round1s[pid] = (len(rec['roots']) - 1, rt, first + R)
             self.world.reveal_rows(rt, range(first, first + R), pid)  # Round1 .. the combined rows
             if before_queries:
                 before_queries()
@@ -493,15 +549,20 @@ class Prover:
             self.world.reveal_cols(rt, queries)  # Round3Response
             return pid
 
-    def link(self, e=None, presented=()):
+    def link(self, e=None, presented=(), only_if_exhausted=False):
         """RFC-0064's link transition from epoch e (default: the latest), under RFC-0073 'Fresh and
         rebuilt states': append and a fresh successor from the latest epoch, else a rebuilt one;
-        then epoch e+1's .twr and the link; then close epoch e (the commit point)."""
+        then epoch e+1's .twr and the link; then close epoch e (the commit point).
+        `only_if_exhausted`: weights refresh's step 3, decided under this link's lock."""
         with self.transition():
-            rec = self.entry_check(presented, can_authenticate=True)
+            rec, shown = self.entry_check(presented, can_authenticate=True)
             K = self.key(rec)
             roots = rec['roots']
             latest = len(roots) - 1
+            if only_if_exhausted:
+                st = self.dir.get(state(latest))
+                if st is not None and not self.reserve_fails(*self.budget_start(rec, st, shown)):
+                    return
             e = latest if e is None else e
             if e > latest or root(K, e) != roots[e]:
                 raise Refused('ERR-USAGE', f'the regeneration check of epoch {e}')
@@ -530,7 +591,7 @@ class Prover:
     def rebuild(self, e, presented=()):
         """A lost state of a recorded epoch, regenerated from K, rebuilt at B_T − 4."""
         with self.transition():
-            rec = self.entry_check(presented, can_authenticate=True)
+            rec, _shown = self.entry_check(presented, can_authenticate=True)
             K = self.key(rec)
             if e >= len(rec['roots']) or root(K, e) != rec['roots'][e]:
                 raise Refused('ERR-USAGE', f'the regeneration check of epoch {e}')
@@ -547,25 +608,35 @@ class Prover:
             return None
         return rec
 
-    def restart(self):
-        """On restart the commit of an unfinished link is completed (RFC-0064 'One link per
-        epoch'), as weights refresh's first step does: every epoch below the latest whose link or
-        closed state is missing. It needs K."""
+    def complete_links(self, presented=()):
+        """weights refresh, step 1: complete every unfinished link below the latest epoch, one
+        whose link or closed state is missing (RFC-0064 'One link per epoch': the commit is
+        completed). It needs K."""
         rec = self.readable_record()
         if rec is None or 'key' not in self.keystore:
             return
         for e in range(len(rec['roots']) - 1):
             if self.dir.get(link_file(e)) is None or not self.is_closed(self.dir.get(state(e))):
-                self.link(e)
+                self.link(e, presented)
 
-    def weights_refresh(self, presented=(), presented_rows=None):
-        """weights refresh, in order: 1. completes every unfinished link below the latest epoch;
+    def persist_raise(self, rec, shown):
+        """weights refresh writes the marks, raised as 'The cursor and the count' says, into the
+        record ('The entry check', item 5): one presentation then covers every later command."""
+        st = self.dir.get(state(len(rec['roots']) - 1))
+        cursor, count = self.budget_start(rec, st, shown)
+        if (cursor, count) != (rec['marks']['next_blinding_row'], rec['marks']['opened_columns']):
+            self.write(RECORD, {**rec, 'marks': marks(cursor, count)})
+
+    def weights_refresh(self, presented=()):
+        """weights refresh: its entry check, with what is presented to it, and the raise written
+        into the record; then, in order: 1. completes every unfinished link below the latest epoch;
         2. rebuilds a lost latest state; 3. links from the latest epoch when its reserve would fail
-        for rows or columns. It is ERR-WITNESS-BUDGET's remedy (RFC-0073 'Errors'). Like every
-        command that writes, it runs the entry check first, with what is presented to it."""
+        for rows or columns, decided under the link's lock. It is ERR-WITNESS-BUDGET's remedy
+        (RFC-0073 'Errors')."""
         with self.transition():
-            self.entry_check(presented, presented_rows, can_authenticate=True)
-        self.restart()
+            rec, shown = self.entry_check(presented, can_authenticate=True)
+            self.persist_raise(rec, shown)
+        self.complete_links(presented)
         rec = self.readable_record()
         if rec is None:
             self.link(presented=presented)  # refused by its entry check
@@ -573,29 +644,26 @@ class Prover:
         latest = len(rec['roots']) - 1
         if self.dir.get(state(latest)) is None:
             self.rebuild(latest, presented)
-        rec = self.readable_record()
-        st = self.dir.get(state(latest))
-        if rec is not None and st is not None and self.reserve_fails(*self.budget_start(rec, st, presented_rows)):
-            self.link(presented=presented)
+        self.link(presented=presented, only_if_exhausted=True)
 
 
 # ---- The operator ---------------------------------------------------------------------------------
 
 
-def operate(prover, steps, presented=(), ledger=None):
-    """An honest operator: up to `steps` proofs, each after a restart, with weights refresh on
-    ERR-WITNESS-BUDGET (04 §5) and a stop on any other refusal. `ledger`, if given, returns at each
-    proof the reservations presented to it. Returns how the run ended."""
+def operate(prover, steps, presented=(), evidence=None):
+    """An honest operator: up to `steps` proofs, with weights refresh on ERR-WITNESS-BUDGET
+    (04 §5) and a stop on any other refusal. `presented` goes to every command, and so does what
+    `evidence()` returns at that command: a ledger or kept Round1s, which grow as proofs are made.
+    Returns how the run ended."""
     try:
         for _ in range(steps):
-            prover.restart()
-            rows = ledger() if ledger else None
+            artifacts = [*presented, *(evidence() if evidence else ())]
             try:
-                prover.prove(presented, rows)
+                prover.prove(artifacts)
             except Refused as r:
                 if r.code != 'ERR-WITNESS-BUDGET':
                     return f'stopped: {r}'
-                prover.weights_refresh(presented, rows)
+                prover.weights_refresh(artifacts)
         return 'ran'
     except Refused as r:
         return f'stopped: {r}'

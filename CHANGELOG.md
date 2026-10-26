@@ -35,21 +35,21 @@ All notable changes to the prover release train are recorded here: the crates un
       - `K` lives in `WeightRefreshKey` (`0x0304`, `.twk`, secret) in the key store, naming the entry by its epoch-0 root.
       - `WeightEpochRecord` (`0x0305`, private) holds every epoch's `R_W`, the latest epoch's per-matrix marks (the next free blinding row and the column count), and a `retired` flag that persists a stale record.
       - The directory itself is locked, and every entry file obeys RFC-0067's path rules: no symbolic link, one hard link. Device and inode are checked before each rename, and a held lock is `ERR-RES-IO`. The lock spans a whole proof from its entry check: one proof at a time per entry.
-      - A corrupted entry file is refused, never read as lost, until the operator moves it aside.
+      - A corrupted entry file is refused, never read as lost, until the operator moves it aside and, before any proof, runs `weights refresh` with the latest artifacts presented.
     - **Fresh and rebuilt states.**
       - A state is fresh only when written right after its epoch's root is appended: epoch 0 by `commit-weights`, `e + 1` by the first link from the latest epoch.
       - Every other state is rebuilt, at `B_T − 4` with no opened column, and serves only its epoch's link.
-      - `reserve` runs only at the latest epoch, with the previous epoch closed. It starts from the record's marks, raised to the state's, and raises the cursor and the column count together in one record write. `record_queries` writes the state only.
+      - `reserve` runs only at the latest epoch, with the previous epoch closed. It starts from the record's marks as RFC-0073 'The cursor and the count' states, the one place that rule is written, and raises the cursor and the column count together in one record write. `record_queries` writes the state only.
       - Closed and open are taken over matrices with committed rows only.
       - A closed latest state, a file past the record or an authenticated later artifact retires the record.
-      - A presented reservation raises the marks. A forged later root refuses one command and retires nothing.
+      - A presented reservation raises the marks, by the same section, and `weights refresh` writes the raise into the record. A ledger counts through this entry's chain only. A kept `Round1` of a later root refuses like the latest `.twr`. A forged later root refuses one command and retires nothing.
       - A lost, stale or retired record fails closed.
-      - **The residual, an exact rule on files.** The record is behind the truth with every file decodable, and either:
-        - across a link, no file of a later epoch is present and the record's latest state is absent or open; or
+      - **The residual, a rule on files,** exact over histories without crashes and conservative after one. The record is behind the truth, the last record written, with every file decodable, and either:
+        - across a link, no state or `.twr` of a later epoch and no link from the record's latest epoch on is present, and the record's latest state is absent or open; or
         - within the epoch, the latest state is present and, raised to the record's marks, behind the truth.
 
         A copy of the entry is the other residual case.
-      - **Its bound,** per matrix and per rollback or copy: up to `B_T − 4` rows in epoch 0 (4,092 at 405B) and `B_T − 8` later (4,088), and up to `P_W − τ_link` and `P_W − 2τ_link` columns past `P_W`.
+      - **Its bound,** per matrix and per epoch, for each rollback or copy: up to `B_T − 4` rows in epoch 0 (4,092 at 405B) and `B_T − 8` later (4,088), and up to `P_W − τ_link` and `P_W − 2τ_link` columns past `P_W`, in every epoch it reaches. A copy's has no end in time.
       - **What catches it.**
         - A presented later root catches it across a link.
         - Within an epoch only kept `Round1`s catch it, since a verifier's ledger holds accepted proofs only.
@@ -58,7 +58,7 @@ All notable changes to the prover release train are recorded here: the crates un
       - **The gate.** An exhaustive model of the rules, [`docs/testing/weight-entry-model/`](docs/testing/weight-entry-model/README.md), finds 0 mismatches between the rule and observed harm, either way. It is standard-library Python, run by hand until #147's slice S4 ports it to `tessera-pcs`.
         - **Its state space:** three epochs and two links, a backup after every write, every version of the eight entry files or its loss or corruption.
         - **Its regimes:** rows ending an epoch first, and columns.
-        - **What is presented:** nothing, the latest `.twr`, a real ledger, and every sent reservation.
+        - **What is presented:** nothing, the latest `.twr`, a real ledger beside another model's chain, every kept `Round1` with the `.twr`, and every kept `Round1` alone.
         - **The other cases:** aliases, concurrent copies, forged artifacts, a `B_T = 0` matrix, and every crash and double crash.
         - **Its negative controls:** each earlier or naive reading of a rule shows the harm the rule prevents.
     - **The regeneration checks.**
@@ -83,7 +83,7 @@ All notable changes to the prover release train are recorded here: the crates un
       - the weights' proximity point in `tessera-protocol/2`;
       - the bytes of `WeightReservation`;
       - paying for the per-proof draws.
-    - **Review.** Five independent adversarial readings.
+    - **Review.** Six independent adversarial readings.
       - **The first found:**
         - the rebuilt state's budget reset;
         - the per-proof cost of the proximity row's blinding rows;
@@ -129,6 +129,15 @@ All notable changes to the prover release train are recorded here: the crates un
         - missing error rows.
 
         Its replays, extended, are the gate.
+      - **The sixth compared the committed model with every amended document.** The model followed RFC-0073 'The cursor and the count'. Three other documents worded that rule two other ways, and each wording, modelled, over-opens columns outside the rule. It also found:
+        - a bound stated per rollback that holds per epoch;
+        - "exactly" true only without crashes;
+        - the link from `L` left out of the residual's wording;
+        - a ledger of several entries refusing every command;
+        - a corrupted file's handling against the operator's duty;
+        - error-table gaps.
+
+        The rule is now written once and cited elsewhere, and the gate runs both readings as negative controls.
   - RFC-0004's domain table gains `weights-mask` and `weights-blinding`. The headers of RFC-0004 and RFC-0040 now name RFC-0064's amendments too.
 
 - The SHA-256 circuit proves end to end on the CPU stage prover ([#526](https://github.com/AbdelStark/tessera/issues/526), RFC-0072 'Migration' slice 3, 'Testing Strategy' 'The circuits'), tests only: the key commitment, one block with `k_s` and `salt_k` committed and its digest bound, proves and verifies in 14 stages, as do three key commitments (`M = 3`) and three public messages of two blocks. A digest one bit off on the verifier's side, and a round-0 carry bit off committed by the prover, are rejected at stage 1's final check, and each is accepted with exactly the stage-1 instance it breaks removed: the word's `AssertEqual`, or the carry's recomposition with the chain that only its claim reads.
