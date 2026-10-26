@@ -23,14 +23,19 @@
 //!    interface to the rest of the schedule. The gadgets' own relations, such as `SoftmaxRow`'s
 //!    masked keys and the padding zero-checks of RFC-0035, enter with the gadgets (#118).
 //! 4. **Claims.** A claim maps through the linear nodes onto atoms: virtual, the output of a
-//!    sumcheck relation, or committed ('Claims and atoms'). What reaches a public tensor
-//!    ([`public_tensors`]), and a `ConstAdd`'s constant, is a [`PublicTerm`], which the verifier
-//!    evaluates and moves to the claim's value (RFC-0072 'Public tensors', 'Linear operations
-//!    that are not coordinate maps'). A claim that is then one virtual atom of coefficient 1, or
-//!    committed atoms of one commitment at one point, is ready. Any other is split: the stage
-//!    sends one value per part ('Splits'). A claim of public terms alone has no part.
+//!    sumcheck relation, `Slice`, `GatherPublic` and `BitFn` among them, or committed ('Claims and
+//!    atoms'). What reaches a public tensor ([`public_tensors`]), and a `ConstAdd`'s constant, is
+//!    a [`PublicTerm`], which the verifier evaluates and moves to the claim's value (RFC-0072
+//!    'Public tensors', 'Linear operations that are not coordinate maps'). Within the claim, two
+//!    or more virtual atoms that select rows of one tensor along one axis, at one point with one
+//!    set of layer weights, are one atom of coefficient 1 ([`Atom::combined`], RFC-0072 'Combined
+//!    selections'). A claim that is then one virtual atom of coefficient 1, or committed atoms of
+//!    one commitment at one point, is ready. Any other is split: the stage sends one value per
+//!    part ('Splits'). A claim of public terms alone has no part.
 //! 5. **Stages.** Stage `k` proves one instance per virtual part that stage `k − 1` leaves, in
-//!    order, stacked over the layers where its kind is. Stage 1 then adds the equality zero-check
+//!    order, stacked over the layers where its kind is: a selection's over the selected axis
+//!    alone, against its public kernel (RFC-0072 'The selection relation'), and a `BitFn`'s as
+//!    RFC-0010's `Elementwise` (RFC-0066 '`BitFn`'). Stage 1 then adds the equality zero-check
 //!    of each committed output of a linear or degree-2 node ('The committed first checkpoint'),
 //!    and after them RFC-0066's zero-checks of each `BitDecompose` and `AssertEqual`: its
 //!    committed input's padding, its bits' booleanity and padding, its recomposition summed over
@@ -54,7 +59,7 @@ mod tokens;
 use core::ops::Range;
 
 use tessera_ir::{
-    Broadcast, CommitmentClass, Graph, NodeId, NodeKind, Op, OpClass, TensorId, WeightType,
+    BoolFn, Broadcast, CommitmentClass, Graph, NodeId, NodeKind, Op, OpClass, TensorId, WeightType,
 };
 use tessera_tables::TableSpec;
 
@@ -169,20 +174,29 @@ pub enum AtomClass {
     Committed(CommitmentClass),
 }
 
-/// A term of a claim after substitution: `Σ_ℓ w(ℓ)·c(ℓ)·X̃_{κ,ℓ}(r)`.
+/// A term of a claim after substitution: `Σ_ℓ w(ℓ)·c(ℓ)·X̃_{κ,ℓ}(r)`, or a combined selection.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Atom {
-    /// The kind `κ`.
+    /// The kind `κ`: a combined selection's first member's.
     pub kind: Kind,
     /// The point `r` on the kind's own variables, its layer variables aside.
     pub point: Vec<Coord>,
     /// The layer weights `w`.
     pub layers: Layers,
     /// The coefficient `c`: a sum of products, one for each atom merged into this one, in order.
-    /// It is 1 when it is one empty product.
+    /// It is 1 when it is one empty product, as a combined selection's is.
     pub coefficient: Vec<Vec<Factor>>,
     /// Virtual or committed.
     pub class: AtomClass,
+    /// For a combined selection (RFC-0072 'Combined selections', RFC-0037 'Claims and atoms'), its
+    /// members, two or more, in the order substitution reached them: virtual atoms of one claim,
+    /// outputs of `Slice` or `GatherPublic` that select rows of one input tensor along one axis,
+    /// at this atom's point with its layer weights. The atom is then the one selection
+    /// `Σ_t a_t·ỹ_t(r)`, its coefficient 1 and its kind the first member's, and its relation's
+    /// kernel is `K = Σ_t a_t·S_t`: its split value is the whole combination, weighed by 1, and
+    /// its members' own values are never sent. Empty for every other atom, a single selection's
+    /// among them, whose coefficient weighs its split value.
+    pub combined: Vec<Member>,
 }
 
 impl Atom {
@@ -190,6 +204,17 @@ impl Atom {
     pub fn is_unit(&self) -> bool {
         matches!(self.coefficient.as_slice(), [product] if product.is_empty())
     }
+}
+
+/// A member of a combined selection ([`Atom::combined`]): the output of one `Slice` or
+/// `GatherPublic` and its coefficient `a_t` in the combination, a sum of products as an
+/// [`Atom`]'s, at the combination's point and layer weights.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Member {
+    /// The selection's output.
+    pub kind: Kind,
+    /// Its coefficient `a_t`: a sum of products, one for each atom merged into it, in order.
+    pub coefficient: Vec<Vec<Factor>>,
 }
 
 /// What a [`PublicTerm`] evaluates: a value both parties compute from public data, the public
@@ -254,7 +279,8 @@ pub struct Claim {
     pub layers: Layers,
     /// Its atoms, in the order substitution reaches them, depth first, inputs in their node's
     /// order. Atoms on one kind at one point with the same layer weights merge, in the first one's
-    /// place.
+    /// place; then selections of one tensor along one axis at one point with one set of layer
+    /// weights combine, in the first one's place ([`Atom::combined`]).
     pub atoms: Vec<Atom>,
     /// Its public terms, in the order substitution reaches them: the public tensors it reaches
     /// and the shifts of the `ConstAdd`s it maps through. Terms of one source at one point merge,
@@ -299,6 +325,20 @@ pub enum Relation {
     Rotate,
     /// A `ConstMul` by one constant per channel, public; one evaluation.
     ScaleChannels,
+    /// RFC-0072's selection relation of a `Slice` or a `GatherPublic` of `x` along its selected
+    /// axis `a`, `n_a` positions: `ỹ(r_lo ‖ r_a ‖ r_hi) = Σ_k S̃(r_a, k)·x̃(r_lo ‖ k ‖ r_hi)` with
+    /// `S(j, k) = [j < len]·[idx_j = k]` public, `idx_j` the `GatherPublic`'s row `j` or the
+    /// `Slice`'s `start + j`. A sumcheck over `k` alone, the instance's `⌈log2 n_a⌉` variables,
+    /// of degree 2, `S̃(r_a, ·)` its one public factor; for a combined selection
+    /// ([`Atom::combined`]) the kernel `K = Σ_t a_t·S_t` in its place. The instance's point is
+    /// the atom's on `y`, its kind `y`'s (the first member's). One evaluation, a claim on `x` at
+    /// `r_lo ‖ r'_k ‖ r_hi`, `r'_k` the stage's last `⌈log2 n_a⌉` challenges.
+    Selection,
+    /// `BitFn { f }` as RFC-0010's `Elementwise`, `Z̃(r) = Σ_x eq(r, x)·f(I_1(x), …)`, with `f`
+    /// RFC-0066's multilinear polynomial of the Boolean function: degree 3, or 4 for `Xor3` and
+    /// `Maj`. Its evaluations are its inputs' that are not public, in order, each at the
+    /// instance's point.
+    BitFn(BoolFn),
     /// The equality zero-check `0 = Σ_x eq(z, x)·(Ỹ(x) − f(x))` of a node's committed output `Y`;
     /// its evaluations are `Y`'s, then those of `f`'s inputs.
     Equality,
@@ -484,6 +524,25 @@ impl StageSchedule {
         self.stages.len()
     }
 
+    /// The atom that an instance of stage `stage` proves when its source is `source`: the virtual
+    /// atom of part `part` of claim `claim` of the stage before, a combined selection's members
+    /// among it ([`Atom::combined`]). `None` for a zero-check, a native, or a claim or part the
+    /// schedule does not have.
+    pub fn atom_of(&self, stage: u16, source: Source) -> Option<&Atom> {
+        let Source::Part { claim, part } = source else {
+            return None;
+        };
+        let claim = self
+            .stages
+            .get(usize::from(stage).checked_sub(1)?)?
+            .claims
+            .get(claim)?;
+        match claim.parts.get(part)? {
+            Part::Instance { atom, .. } => claim.atoms.get(*atom),
+            Part::Pool { .. } => None,
+        }
+    }
+
     /// The weight type of `kind`, when it is a weight matrix of `graph`.
     pub fn weight_type(&self, graph: &Graph, kind: Kind) -> Option<WeightType> {
         let tensor = match kind {
@@ -505,9 +564,7 @@ impl StageSchedule {
 /// # Errors
 ///
 /// [`CompileError::Schedule`] (`ERR-INTERNAL`) for a graph the lowering does not emit: layers that
-/// are not one template ([`LayerMap`]), one of the graph's refusals ([`derive_graph_schedule`]), or
-/// a claim that reaches an operation RFC-0037 maps no claim through yet, such as `Slice` or
-/// `GatherPublic`.
+/// are not one template ([`LayerMap`]), or one of the graph's refusals ([`derive_graph_schedule`]).
 pub fn derive_schedule(lowering: &Lowering) -> Result<StageSchedule, CompileError> {
     derive_composed_schedule(lowering, &[], &[])
 }
@@ -538,8 +595,7 @@ pub fn derive_schedule(lowering: &Lowering) -> Result<StageSchedule, CompileErro
 ///   `Mul`, which stage 1 does not prove (RFC-0072 'A committed output');
 /// - a `Sum`, `SumSquares` or `MatMulAct` over an axis whose length is not a power of two none of
 ///   whose summed inputs is 0 at its padded positions (RFC-0072 'Summing relations');
-/// - logits that no node produces, or a claim that reaches an operation RFC-0037 maps no claim
-///   through yet, such as `Slice` or `GatherPublic`;
+/// - logits that no node produces;
 /// - a matmul with one public operand, which its relations do not read as `Public`;
 /// - a leaf site that reads a public tensor, whose value the leaf layout still sends in the split
 ///   (RFC-0045 'The split' sends none);
@@ -547,7 +603,9 @@ pub fn derive_schedule(lowering: &Lowering) -> Result<StageSchedule, CompileErro
 ///
 /// A claim that reaches a public tensor takes it as a [`PublicTerm`], and so does one through a
 /// `ConstAdd` its shift; a relation's public operand leaves no claim (RFC-0072 'Public tensors'
-/// 'As an operand').
+/// 'As an operand'). A claim through a `Slice` or a `GatherPublic` is a selection's virtual atom,
+/// several of which may combine ([`Atom::combined`]), and one through a `BitFn` a virtual atom
+/// of its `Elementwise` relation.
 pub fn derive_graph_schedule(
     graph: &Graph,
     tables: &[TableSpec],

@@ -13,8 +13,11 @@
 //!    - In stage 1 it first squeezes the layer point `ρ_1` (`stage/1/layer/{c}`), which stacks
 //!      the leaf stage's per-layer values, and the zero-check point (`stage/1/zero/{c}`).
 //!    - Each instance is its relation over the witness's tables at its claim's point:
-//!      `MatMulWeight`, `MatMulAct`, `Elementwise` for products, sums of squares and the equality
-//!      zero-checks, and `Rotate`'s kernel. Stacked instances stack their kinds' layers.
+//!      `MatMulWeight`, `MatMulAct`, `Elementwise` for products, sums of squares, `BitFn`'s
+//!      polynomials and the equality zero-checks, `Rotate`'s kernel, and the selection relation
+//!      of a `Slice` or a `GatherPublic` against its public kernel, a combined selection's the
+//!      sum of its members' (RFC-0072 'The selection relation', 'Combined selections'). Stacked
+//!      instances stack their kinds' layers.
 //!    - A relation's public operand is read as `Public` and leaves no claim (RFC-0072 'Public
 //!      tensors' 'As an operand'): a `Mul`'s by a public tensor, the constants of a `ConstMul` by
 //!      one constant per channel and of a committed `ConstAdd`'s zero-check.
@@ -43,10 +46,10 @@ use tessera_compiler::CompileError;
 use tessera_compiler::Lowering;
 use tessera_compiler::schedule::{
     Atom, Claim, Coord, Factor, Layers, NodeRef, Part, Relation, Source, StageSchedule,
-    nonzero_at_padding,
+    nonzero_at_padding, producers,
 };
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
-use tessera_ir::{Graph, Op, TensorId};
+use tessera_ir::{Graph, Node, NodeId, Op, TensorId};
 use tessera_poly::{eq, evaluate_base, less_than};
 use tessera_sumcheck::{
     Prefix, SumcheckError, SumcheckProof, SumcheckTranscript, prove_batch, zero_check_point,
@@ -204,6 +207,8 @@ pub struct StageProver<'a, W: WitnessSource + ?Sized> {
     witness: &'a W,
     /// The graph's public tensors (RFC-0072 'Public tensors').
     public: PublicTensors,
+    /// Each tensor's producing node and output, `None` for a graph input.
+    producers: Vec<Option<(NodeId, u32)>>,
     /// The challenges drawn so far, by coordinate.
     coords: HashMap<Coord, GoldilocksExt2>,
     /// Each stage's claims' values: one per layer for a leaf claim in the layers, else one.
@@ -250,6 +255,7 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
             schedule,
             witness,
             public: PublicTensors::of(graph),
+            producers: producers(graph),
             coords: HashMap::new(),
             claims: Vec::new(),
             parts: Vec::new(),
@@ -702,7 +708,9 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
         }
     }
 
-    /// `Σ_ℓ w(ℓ)·c(ℓ)·X̃_{κ,ℓ}(r)` of an atom, `c` left out when `with_coefficient` is false.
+    /// `Σ_ℓ w(ℓ)·c(ℓ)·X̃_{κ,ℓ}(r)` of an atom, `c` left out when `with_coefficient` is false. A
+    /// combined selection's tensor value is its whole combination `Σ_t a_t·ỹ_t(r)`, its
+    /// coefficient 1 (RFC-0037 'Splits', RFC-0072 'Combined selections').
     fn atom_value(
         &self,
         atom: &Atom,
@@ -716,9 +724,25 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
             } else {
                 GoldilocksExt2::ONE
             };
-            value += w * c * self.extension(atom.kind, l, &atom.point)?;
+            let tensor = if atom.combined.is_empty() {
+                self.extension(atom.kind, l, &atom.point)?
+            } else {
+                let mut sum = GoldilocksExt2::ZERO;
+                for member in &atom.combined {
+                    sum += self.coefficient(&member.coefficient, l)?
+                        * self.extension(member.kind, l, &atom.point)?;
+                }
+                sum
+            };
+            value += w * c * tensor;
         }
         Ok(value)
+    }
+
+    /// The node that produces `tensor`, `None` for a graph input.
+    pub(super) fn producer(&self, tensor: TensorId) -> Option<&Node> {
+        let (node, _) = self.producers.get(tensor.0 as usize).copied().flatten()?;
+        self.graph.nodes.get(node.0 as usize)
     }
 
     /// The layers `layers` weighs, each with its weight: the real layers only, a padded layer's

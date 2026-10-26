@@ -2,11 +2,11 @@
 
 //! Claims and their atoms (RFC-0037 'Claims and atoms', 'Splits').
 
-use tessera_ir::{CommitmentClass, Graph, Node, NodeId, Op, OpClass, TensorId};
+use tessera_ir::{CommitmentClass, Graph, Node, NodeId, Op, TensorId};
 
 use super::{
-    Atom, AtomClass, Claim, Coord, Factor, Kind, LayerMap, Layers, NodeRef, Part, PoolClaim,
-    PublicSource, PublicTerm, axis_vars, blocks, committed, public_tensors, refuse,
+    Atom, AtomClass, Claim, Coord, Factor, Kind, LayerMap, Layers, Member, NodeRef, Part,
+    PoolClaim, PublicSource, PublicTerm, axis_vars, blocks, committed, public_tensors, refuse,
 };
 use crate::CompileError;
 
@@ -105,8 +105,8 @@ impl<'a> Derivation<'a> {
     }
 
     /// The claim of stage `stage` on `kind` at `point` with layer weights `layers`, its `index`-th:
-    /// its atoms and public terms, and its parts, which take the next stage's instances and the
-    /// pool's claims.
+    /// its atoms and public terms, its selections combined ([`combine`]), and its parts, which
+    /// take the next stage's instances and the pool's claims.
     pub(super) fn claim(
         &mut self,
         stage: u16,
@@ -117,16 +117,37 @@ impl<'a> Derivation<'a> {
     ) -> Result<Claim, CompileError> {
         let mut terms = Terms::default();
         self.substitute(kind, point.clone(), layers.clone(), Vec::new(), &mut terms)?;
-        let (split, parts) = self.parts(stage, index, &terms.atoms)?;
+        let atoms = combine(terms.atoms, |atom| self.selects(atom))?;
+        let (split, parts) = self.parts(stage, index, &atoms)?;
         Ok(Claim {
             kind,
             point,
             layers,
-            atoms: terms.atoms,
+            atoms,
             public: terms.public,
             split,
             parts,
         })
+    }
+
+    /// What a virtual atom on a selection's output selects: the input tensor's kind and the layer
+    /// weights a claim on it takes, and the selected axis, the outermost for a `GatherPublic`.
+    /// `None` for an atom of any other relation (RFC-0072 'Combined selections').
+    fn selects(&self, atom: &Atom) -> Result<Option<Selected>, CompileError> {
+        let Some((node, graph_node)) = self.producer(atom.kind) else {
+            return Ok(None);
+        };
+        let axis = match graph_node.op {
+            Op::Slice { axis, .. } => axis,
+            Op::GatherPublic { .. } => 0,
+            _ => return Ok(None),
+        };
+        let (input, layers) = self.input(node, graph_node, 0, &atom.layers)?;
+        Ok(Some(Selected {
+            input,
+            layers,
+            axis,
+        }))
     }
 
     /// Maps a claim on `kind` at `point`, its coefficient `product` so far, onto atoms and public
@@ -154,6 +175,7 @@ impl<'a> Derivation<'a> {
                     layers,
                     coefficient: vec![product],
                     class: AtomClass::Committed(commitment),
+                    combined: Vec::new(),
                 },
             );
             return Ok(());
@@ -288,12 +310,18 @@ impl<'a> Derivation<'a> {
                 );
                 Ok(())
             }
+            // A sumcheck relation's output: a `ConstMul` by a constant per channel, the selections
+            // `Slice` and `GatherPublic` and `BitFn` among them (RFC-0072 'Linear operations
+            // that are not coordinate maps', 'The selection relation'; RFC-0066 '`BitFn`').
             Op::MatMulWeight { .. }
             | Op::MatMulAct { .. }
             | Op::Mul { .. }
             | Op::SumSquares { .. }
             | Op::Rotate { .. }
-            | Op::ConstMul { .. } => {
+            | Op::ConstMul { .. }
+            | Op::Slice { .. }
+            | Op::GatherPublic { .. }
+            | Op::BitFn { .. } => {
                 merge(
                     &mut terms.atoms,
                     Atom {
@@ -302,16 +330,21 @@ impl<'a> Derivation<'a> {
                         layers,
                         coefficient: vec![product],
                         class: AtomClass::Virtual,
+                        combined: Vec::new(),
                     },
                 );
                 Ok(())
             }
-            op if op.class() == OpClass::Gadget => refuse(id, "a gadget's outputs are committed"),
-            _ => refuse(
-                id,
-                "RFC-0037 maps a claim through Add, Sub, ConstMul, Sum, Reshape, Transpose and \
-                 Expand only",
-            ),
+            Op::OneHot { .. }
+            | Op::Requant { .. }
+            | Op::TableMap { .. }
+            | Op::SoftmaxRow { .. }
+            | Op::RsqrtRow { .. }
+            | Op::Argmax
+            | Op::InverseCdf { .. }
+            | Op::Bitwise { .. }
+            | Op::BitDecompose { .. }
+            | Op::AssertEqual => refuse(id, "a gadget's outputs are committed"),
         }
     }
 
@@ -397,12 +430,14 @@ impl<'a> Derivation<'a> {
     }
 
     /// Checks that a virtual atom stacked at a layer point is weighed by `eq` alone: a constant of a
-    /// template position that differs between layers would weigh its layers otherwise.
+    /// template position that differs between layers would weigh its layers otherwise. A combined
+    /// selection's members' coefficients count as its own.
     fn check_uniform(&self, atom: &Atom) -> Result<(), CompileError> {
         if atom.class != AtomClass::Virtual || !matches!(atom.layers, Layers::Eq(_)) {
             return Ok(());
         }
-        for factor in atom.coefficient.iter().flatten() {
+        let members = atom.combined.iter().flat_map(|m| &m.coefficient);
+        for factor in atom.coefficient.iter().chain(members).flatten() {
             if let Factor::Constant(NodeRef::Position(position)) = factor
                 && !self.layers.uniform(*position)
             {
@@ -467,6 +502,76 @@ struct Terms {
     public: Vec<PublicTerm>,
 }
 
+/// What a selection's output selects: rows of `input`, a claim on which takes the layer weights
+/// `layers`, along its axis `axis`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Selected {
+    input: Kind,
+    layers: Layers,
+    axis: u8,
+}
+
+/// RFC-0072 'Combined selections' on one claim's `atoms`, `selects` saying what a virtual atom
+/// selects, `None` for one that is no selection's output. Two or more virtual atoms that select
+/// rows of one input tensor along one axis, at one point with one set of layer weights, become
+/// one atom at the first one's place: of coefficient 1, the first one's kind, point and layer
+/// weights, and the members ([`Atom::combined`]) in the order substitution reached them, each
+/// with its coefficient. A single selection atom is not combined, and every other atom keeps its
+/// place. Atoms of one kind at one point have merged already, so the members are distinct
+/// tensors. The rule reads one claim's atoms alone: no claim merges with another ('No merging
+/// across claims').
+fn combine(
+    atoms: Vec<Atom>,
+    selects: impl Fn(&Atom) -> Result<Option<Selected>, CompileError>,
+) -> Result<Vec<Atom>, CompileError> {
+    let mut keys = Vec::with_capacity(atoms.len());
+    for atom in &atoms {
+        keys.push(match atom.class {
+            AtomClass::Virtual => selects(atom)?,
+            AtomClass::Committed(_) => None,
+        });
+    }
+    let same = |i: usize, j: usize| {
+        keys[j].is_some()
+            && keys[j] == keys[i]
+            && atoms[j].point == atoms[i].point
+            && atoms[j].layers == atoms[i].layers
+    };
+    let mut taken = vec![false; atoms.len()];
+    let mut combined = Vec::with_capacity(atoms.len());
+    for i in 0..atoms.len() {
+        if taken[i] {
+            continue;
+        }
+        let members: Vec<usize> = (i..atoms.len())
+            .filter(|&j| !taken[j] && same(i, j))
+            .collect();
+        if members.len() < 2 {
+            combined.push(atoms[i].clone());
+            continue;
+        }
+        for &j in &members {
+            taken[j] = true;
+        }
+        let first = &atoms[i];
+        combined.push(Atom {
+            kind: first.kind,
+            point: first.point.clone(),
+            layers: first.layers.clone(),
+            coefficient: vec![Vec::new()],
+            class: AtomClass::Virtual,
+            combined: members
+                .iter()
+                .map(|&j| Member {
+                    kind: atoms[j].kind,
+                    coefficient: atoms[j].coefficient.clone(),
+                })
+                .collect(),
+        });
+    }
+    Ok(combined)
+}
+
 /// Adds `term` to `public`, merged into a term of its source at its point, in the first one's
 /// place: the verifier evaluates each source once per point (RFC-0072 'Public tensors' 'Once per
 /// point').
@@ -492,7 +597,7 @@ fn merge(atoms: &mut Vec<Atom>, atom: Atom) {
 }
 
 /// The offset of each axis's block in a point of `shape`, by axis: the last axis's block first.
-fn offsets(shape: &[u32]) -> Vec<usize> {
+pub(super) fn offsets(shape: &[u32]) -> Vec<usize> {
     let mut offsets = vec![0; shape.len()];
     let mut at = 0;
     for (axis, &len) in shape.iter().enumerate().rev() {
@@ -545,7 +650,92 @@ fn reshape_is_identity(x: &[u32], y: &[u32]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::reshape_is_identity;
+    use super::{
+        Atom, AtomClass, Coord, Factor, Kind, Layers, Selected, combine, reshape_is_identity,
+    };
+    use tessera_ir::{CommitmentClass, TensorId};
+
+    /// RFC-0072 'Combined selections' on atoms built here: the rule reads the selected tensor and
+    /// axis, the point and the layer weights, and nothing else; committed atoms and virtual atoms
+    /// of other relations keep their places, and the combination takes its first member's.
+    #[test]
+    fn selections_combine_on_one_tensor_axis_point_and_layer_weights() {
+        let x = Kind::Tensor(TensorId(0));
+        let (p, q) = (vec![Coord::Leaf { site: 0, index: 0 }], vec![Coord::Half]);
+        let atom = |t: u32, point: &[Coord], layers: Layers, committed: bool| Atom {
+            kind: Kind::Tensor(TensorId(t)),
+            point: point.to_vec(),
+            layers,
+            coefficient: vec![vec![Factor::Pow2(t)]],
+            class: if committed {
+                AtomClass::Committed(CommitmentClass::Advice)
+            } else {
+                AtomClass::Virtual
+            },
+            combined: Vec::new(),
+        };
+        let v = |t: u32, point: &[Coord]| atom(t, point, Layers::None, false);
+        // Tensors 1, 2, 3 and 6 select `x`'s axis 0, 4 its axis 1, 5 another tensor's axis 0; 7
+        // is no selection's output.
+        let selects = |a: &Atom| {
+            let Kind::Tensor(TensorId(t)) = a.kind else {
+                return Ok(None);
+            };
+            let on = |input: Kind, axis: u8| {
+                Some(Selected {
+                    input,
+                    layers: Layers::None,
+                    axis,
+                })
+            };
+            Ok(match t {
+                1 | 2 | 3 | 6 => on(x, 0),
+                4 => on(x, 1),
+                5 => on(Kind::Tensor(TensorId(9)), 0),
+                _ => None,
+            })
+        };
+        let kinds = |atoms: &[Atom]| -> Vec<(Kind, usize)> {
+            atoms.iter().map(|a| (a.kind, a.combined.len())).collect()
+        };
+        let t = |t: u32| Kind::Tensor(TensorId(t));
+        let run = |atoms: Vec<Atom>| combine(atoms, selects).expect("combined");
+        // One tensor, one axis, one point, one set of layer weights: one atom of coefficient 1,
+        // its members' coefficients theirs.
+        let both = run(vec![v(1, &p), v(2, &p)]);
+        assert_eq!(kinds(&both), [(t(1), 2)]);
+        assert!(both[0].is_unit());
+        assert_eq!(both[0].combined[1].coefficient, [vec![Factor::Pow2(2)]]);
+        // In the first member's place, the other atoms in theirs.
+        let committed = atom(3, &p, Layers::None, true);
+        let placed = run(vec![v(7, &p), v(1, &p), committed, v(2, &p)]);
+        assert_eq!(kinds(&placed), [(t(7), 0), (t(1), 2), (t(3), 0)]);
+        // Two combinations at two points.
+        let two = run(vec![v(1, &p), v(3, &q), v(2, &p), v(6, &q)]);
+        assert_eq!(kinds(&two), [(t(1), 2), (t(3), 2)]);
+        // None of these combine.
+        let apart = [
+            (
+                "different layer weights",
+                vec![v(1, &p), atom(2, &p, Layers::Eq(Vec::new()), false)],
+            ),
+            ("different axes", vec![v(1, &p), v(4, &p)]),
+            ("different tensors", vec![v(1, &p), v(5, &p)]),
+            ("different points", vec![v(1, &p), v(2, &q)]),
+            ("a single atom", vec![v(1, &p)]),
+            (
+                "committed atoms",
+                vec![
+                    atom(1, &p, Layers::None, true),
+                    atom(2, &p, Layers::None, true),
+                ],
+            ),
+            ("no selection", vec![v(7, &p), v(1, &p)]),
+        ];
+        for (name, atoms) in apart {
+            assert_eq!(run(atoms.clone()), atoms, "{name}");
+        }
+    }
 
     /// The lowering's reshapes, and ones that move a padded axis.
     #[test]

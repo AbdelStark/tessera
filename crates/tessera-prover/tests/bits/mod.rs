@@ -179,7 +179,7 @@ fn decompose(
 
 /// The index of `at`, a position of a tensor of `shape`, in its padded table: the last axis the
 /// lowest bits, each axis its own block of `⌈log2 n_a⌉`.
-fn index(shape: &[u32], at: &[u32]) -> usize {
+pub(super) fn index(shape: &[u32], at: &[u32]) -> usize {
     let mut index = 0;
     let mut shift = 0;
     for (&len, &i) in shape.iter().zip(at).rev() {
@@ -190,7 +190,7 @@ fn index(shape: &[u32], at: &[u32]) -> usize {
 }
 
 /// `tensor`'s honest table over its padded shape, its padded positions 0.
-fn table_of(witness: &Witness, graph: &Graph, tensor: TensorId) -> Vec<i64> {
+pub(super) fn table_of(witness: &Witness, graph: &Graph, tensor: TensorId) -> Vec<i64> {
     padded(witness, graph, tensor)
         .into_iter()
         .map(|v| v.to_centered_i128() as i64)
@@ -199,9 +199,9 @@ fn table_of(witness: &Witness, graph: &Graph, tensor: TensorId) -> Vec<i64> {
 
 /// A prover that commits the tables `tables` holds over their padded shapes, their padded
 /// positions among them, and the honest witness's other tensors.
-struct Cheat<'a> {
-    witness: &'a Witness,
-    tables: Vec<(TensorId, Vec<i64>)>,
+pub(super) struct Cheat<'a> {
+    pub(super) witness: &'a Witness,
+    pub(super) tables: Vec<(TensorId, Vec<i64>)>,
 }
 
 impl WitnessSource for Cheat<'_> {
@@ -317,6 +317,7 @@ impl Bits {
         let publics = Publics {
             values: &values,
             shift: Shift::Extension,
+            kernel: Kernel::Closed,
         };
         verify_public(&self.graph, &[], schedule, proof, &self.points, publics)
     }
@@ -405,73 +406,110 @@ impl Bits {
 /// it.
 type Cheating<'a> = (&'a str, Vec<(TensorId, Vec<i64>)>, (Relation, TensorId));
 
-/// `schedule` with stage 1's instance `removed` taken out, its claims and their pool claims with
-/// it, every index after them moved down: the protocol without that one check. The check's
-/// claims must reach the pool alone, and stage 1's rounds and zero-check point must stay.
-fn without(schedule: &StageSchedule, removed: usize) -> StageSchedule {
-    let mut s = schedule.clone();
-    let stage = &mut s.stages[1];
-    let instance = stage.instances.remove(removed);
-    let range = instance.claims.clone();
-    let n = range.len();
-    let pooled: Vec<usize> = stage
-        .claims
-        .drain(range.clone())
-        .flat_map(|claim| claim.parts)
-        .map(|part| match part {
-            Part::Pool { claim, .. } => claim,
-            Part::Instance { .. } => panic!("a removed check's claims reach the pool alone"),
-        })
+/// `schedule` with stage 1's instance `removed` taken out: the protocol without that one check.
+/// Its claims go with it, and with them their pool claims and the instances of later stages
+/// that prove their virtual parts, with those instances' own claims in turn: no other claim
+/// reads them, so nothing else changes. Every index after a removed one moves down. Every stage
+/// keeps its rounds and stage 1 its zero-check point: the removed instances are no stage's
+/// only largest. Removing a check whose claims all reach the pool, as every cheat on a committed
+/// input's bits here does, takes out that one instance alone; a SHA-256 sum's recomposition also
+/// takes out the chain that proves its claim on the sum's value ([`super::sha256`]).
+pub(super) fn without(schedule: &StageSchedule, removed: usize) -> StageSchedule {
+    // The instances, claims and pool claims removed, stage by stage.
+    let mut instances: Vec<Vec<bool>> = schedule
+        .stages
+        .iter()
+        .map(|s| vec![false; s.instances.len()])
         .collect();
-    for later in &mut stage.instances[removed..] {
-        later.claims = later.claims.start - n..later.claims.end - n;
-    }
-    let renumber = |pool: usize| pool - pooled.iter().filter(|&&p| p < pool).count();
-    s.pool = s
-        .pool
-        .into_iter()
-        .enumerate()
-        .filter(|(i, _)| !pooled.contains(i))
-        .map(|(_, mut claim)| {
-            if claim.stage == 1 && claim.claim >= range.end {
-                claim.claim -= n;
+    let mut claims: Vec<Vec<bool>> = schedule
+        .stages
+        .iter()
+        .map(|s| vec![false; s.claims.len()])
+        .collect();
+    let mut pool = vec![false; schedule.pool.len()];
+    instances[1][removed] = true;
+    for (k, stage) in schedule.stages.iter().enumerate() {
+        for (i, instance) in stage.instances.iter().enumerate() {
+            if !instances[k][i] {
+                continue;
             }
-            claim
-        })
-        .collect();
-    for stage in &mut s.stages {
-        for claim in &mut stage.claims {
-            for part in &mut claim.parts {
-                if let Part::Pool { claim, .. } = part {
-                    *claim = renumber(*claim);
+            for c in instance.claims.clone() {
+                claims[k][c] = true;
+                for part in &stage.claims[c].parts {
+                    match *part {
+                        Part::Instance { instance, .. } => instances[k + 1][instance] = true,
+                        Part::Pool { claim, .. } => pool[claim] = true,
+                    }
                 }
             }
         }
     }
-    if let Some(next) = s.stages.get_mut(2) {
-        for instance in &mut next.instances {
-            if let Source::Part { claim, .. } = &mut instance.source
-                && *claim >= range.end
-            {
-                *claim -= n;
+    // An index's new value: the kept indices before it.
+    let kept = |removed: &[bool], index: usize| removed[..index].iter().filter(|r| !**r).count();
+    let mut s = schedule.clone();
+    for (k, stage) in s.stages.iter_mut().enumerate() {
+        let old = core::mem::take(&mut stage.instances);
+        for (i, mut instance) in old.into_iter().enumerate() {
+            if instances[k][i] {
+                continue;
             }
+            let start = kept(&claims[k], instance.claims.start);
+            instance.claims = start..start + instance.claims.len();
+            if let Source::Part { claim, .. } = &mut instance.source {
+                *claim = kept(&claims[k - 1], *claim);
+            }
+            stage.instances.push(instance);
+        }
+        let old = core::mem::take(&mut stage.claims);
+        for (c, mut claim) in old.into_iter().enumerate() {
+            if claims[k][c] {
+                continue;
+            }
+            for part in &mut claim.parts {
+                match part {
+                    Part::Instance { instance, .. } => {
+                        *instance = kept(&instances[k + 1], *instance)
+                    }
+                    Part::Pool { claim, .. } => *claim = kept(&pool, *claim),
+                }
+            }
+            stage.claims.push(claim);
         }
     }
-    let stage = &s.stages[1];
-    let most = |zero: bool| {
-        stage
-            .instances
-            .iter()
-            .filter(|i| !zero || i.source == Source::ZeroCheck)
-            .map(|i| i.vars)
-            .max()
-            .unwrap_or(0)
-    };
-    assert_eq!(
-        (stage.rounds, stage.zero_vars),
-        (most(false), most(true)),
-        "the removed check is not stage 1's only largest"
-    );
+    s.pool = s
+        .pool
+        .into_iter()
+        .enumerate()
+        .filter(|(p, _)| !pool[*p])
+        .map(|(_, mut claim)| {
+            claim.claim = kept(&claims[usize::from(claim.stage)], claim.claim);
+            claim
+        })
+        .collect();
+    for stage in &s.stages[1..] {
+        let most = |zero: bool| {
+            stage
+                .instances
+                .iter()
+                .filter(|i| !zero || i.source == Source::ZeroCheck)
+                .map(|i| i.vars)
+                .max()
+                .unwrap_or(0)
+        };
+        assert_eq!(
+            stage.rounds,
+            most(false),
+            "stage {}'s rounds stay",
+            stage.index
+        );
+        if stage.index == 1 {
+            assert_eq!(
+                stage.zero_vars,
+                most(true),
+                "stage 1's zero-check point stays"
+            );
+        }
+    }
     s
 }
 

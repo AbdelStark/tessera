@@ -4,13 +4,14 @@
 //! RFC-0072 'The bit zero-checks'), and the claims its evaluations leave.
 
 use tessera_codec::SecretBuf;
-use tessera_compiler::schedule::{Instance as Planned, Layers, NodeRef, Relation, Stage};
+use tessera_compiler::schedule::{Instance as Planned, Kind, Layers, NodeRef, Relation, Stage};
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
-use tessera_ir::{Broadcast, Node, Op};
+use tessera_ir::{BoolFn, Broadcast, Node, Op};
 use tessera_sumcheck::{
     Claim, Elementwise, ElementwiseShape, ElementwiseTables, Input, Instance, MatMulAct,
     MatMulActShape, MatMulActTables, MatMulWeight, MatMulWeightShape, MatMulWeightTables,
-    Recomposition, RecompositionTables, RightLayout, Rotate, RotateTables, Term,
+    Recomposition, RecompositionTables, RightLayout, Rotate, RotateTables, Selected, Selection,
+    SelectionTables, Term,
 };
 use tessera_tables::RopeTable;
 
@@ -86,6 +87,17 @@ pub(super) enum Plan {
         bit: usize,
         vars: usize,
     },
+    /// A selection (RFC-0072 'The selection relation'): `x` along an axis of `axis` variables
+    /// with `low` below and `high` above, the output's axis of `rows`, and the kernel's members,
+    /// each its coefficient and rows: one of coefficient 1 for a single selection.
+    Selection {
+        x: usize,
+        low: usize,
+        axis: usize,
+        high: usize,
+        rows: usize,
+        members: Vec<(GoldilocksExt2, Vec<usize>)>,
+    },
     /// A `BitDecompose`'s recomposition (RFC-0072 'The bit zero-checks'): `x`, an operand or
     /// public, its `b` and `h`, and its `eq` at the instance's point from `point_from`, the bit
     /// variables' count `k`, on.
@@ -123,6 +135,7 @@ pub(super) enum Built<'a> {
     MatMulAct(MatMulActTables<'a, GoldilocksExt2>),
     Elementwise(ElementwiseTables<'a, GoldilocksExt2>),
     Rotate(RotateTables<'a, GoldilocksExt2>),
+    Selection(SelectionTables<GoldilocksExt2>),
     Recomposition(RecompositionTables<GoldilocksExt2>),
 }
 
@@ -134,6 +147,7 @@ impl Built<'_> {
             Self::MatMulAct(t) => t.instance(),
             Self::Elementwise(t) => t.instance(),
             Self::Rotate(t) => t.instance(),
+            Self::Selection(t) => t.instance(),
             Self::Recomposition(t) => t.instance(),
         }
     }
@@ -155,6 +169,7 @@ impl Built<'_> {
             }
             Self::Elementwise(t) => t.claims(point, evals)?,
             Self::Rotate(t) => vec![t.claim(point, evals)?],
+            Self::Selection(t) => vec![t.claim(point, evals)?],
             Self::Recomposition(t) => t.claims(point, evals)?,
         })
     }
@@ -227,6 +242,27 @@ pub(super) fn build<'a>(
                 )?;
                 degree = degree.max(relation.degree());
                 Built::Rotate(relation.tables(point)?)
+            }
+            // The claim's point on the output, `r_lo ‖ r_a ‖ r_hi`, builds the kernel and
+            // contracts `x` at its other axes' coordinates.
+            Plan::Selection {
+                x,
+                low,
+                axis,
+                high,
+                rows,
+                members,
+            } => {
+                let relation = Selection::new(&arena.secret[*x], *low, *axis, *high)?;
+                degree = degree.max(relation.degree());
+                let kernel: Vec<Selected<'_, GoldilocksExt2>> = members
+                    .iter()
+                    .map(|(coefficient, index)| Selected {
+                        coefficient: *coefficient,
+                        index,
+                    })
+                    .collect();
+                Built::Selection(relation.tables(point, *rows, &kernel)?)
             }
             Plan::Recomposition {
                 x,
@@ -395,6 +431,33 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                     inputs: vec![x, c],
                     terms: vec![Term::new(GoldilocksExt2::ONE, vec![0, 1])],
                     shape: ElementwiseShape::elementwise(vars(output)),
+                }
+            }
+            Relation::Selection => {
+                if stacked {
+                    return internal("a selection is outside the layers");
+                }
+                self.selection(stage, instance, node, arena, &operand)?
+            }
+            // RFC-0010's `Elementwise` with RFC-0066's polynomial, each public input read as
+            // `Public` (RFC-0072 'Public tensors' 'As an operand').
+            Relation::BitFn(f) => {
+                let mut next = 0;
+                let mut inputs = Vec::with_capacity(node.inputs.len());
+                for i in 0..node.inputs.len() {
+                    inputs.push(match self.input(instance, node, i, &operand, &mut next)? {
+                        Operand::Public(table) => Read::Public(arena.public(table)),
+                        Operand::Claimed(table) => Read::Operand(arena.secret(table)),
+                    });
+                }
+                if inputs.len() != f.arity() {
+                    return internal("a BitFn has its function's inputs");
+                }
+                Plan::Elementwise {
+                    point_from: 0,
+                    inputs,
+                    terms: bit_terms(f),
+                    shape: ElementwiseShape::elementwise(vars(output) + lambda),
                 }
             }
             Relation::Booleanity => {
@@ -610,6 +673,59 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                 }
             }
             _ => return internal("a bit zero-check is RFC-0066's"),
+        })
+    }
+
+    /// RFC-0072's selection relation of `instance`'s node, a `Slice` or a `GatherPublic` of `x`:
+    /// `x`'s table, its variables below, along and above the selected axis, the output axis's,
+    /// and the kernel's members. A combined selection's ([`Atom::combined`]) are its members',
+    /// each with its coefficient, all selecting along this node's axis of this node's input; a
+    /// single selection's kernel is its own `S`, of coefficient 1, its atom's coefficient
+    /// weighing its split value instead.
+    ///
+    /// [`Atom::combined`]: tessera_compiler::schedule::Atom::combined
+    fn selection(
+        &self,
+        stage: &Stage,
+        instance: &Planned,
+        node: &Node,
+        arena: &mut Arena,
+        operand: &dyn Fn(usize) -> Result<SecretBuf<Goldilocks>, StageError>,
+    ) -> Result<Plan, StageError> {
+        let (axis, _) = selected(self.graph, node)?;
+        let x = &self.graph.tensors[node.inputs[0].0 as usize].shape;
+        let y = &self.graph.tensors[node.outputs[0].0 as usize].shape;
+        let vars = |axes: &[u32]| Self::vars_of(axes) as usize;
+        let atom =
+            self.schedule
+                .atom_of(stage.index, instance.source)
+                .ok_or(StageError::Internal {
+                    rule: "a selection proves a virtual part",
+                })?;
+        let mut members = Vec::new();
+        if atom.combined.is_empty() {
+            members.push((GoldilocksExt2::ONE, selected(self.graph, node)?.1));
+        }
+        for member in &atom.combined {
+            let Kind::Tensor(tensor) = member.kind else {
+                return internal("a combined selection is outside the layers");
+            };
+            let producer = self.producer(tensor).ok_or(StageError::Internal {
+                rule: "a combined selection's member is a node's output",
+            })?;
+            let (member_axis, index) = selected(self.graph, producer)?;
+            if member_axis != axis || producer.inputs[0] != node.inputs[0] {
+                return internal("a combined selection's members select one axis of one tensor");
+            }
+            members.push((self.coefficient(&member.coefficient, 0)?, index));
+        }
+        Ok(Plan::Selection {
+            x: arena.secret(operand(0)?),
+            low: vars(&x[axis + 1..]),
+            axis: axis_vars(x[axis]) as usize,
+            high: vars(&x[..axis]),
+            rows: axis_vars(y[axis]) as usize,
+            members,
         })
     }
 
@@ -974,6 +1090,62 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             vec![y, x, c],
             vec![Term::new(one, vec![0]), Term::new(-one, vec![2, 1])],
         ))
+    }
+}
+
+/// The axis a selection's node selects along and its rows `idx_j`, `j < len`: a `Slice`'s
+/// `start + j` along its axis, a `GatherPublic`'s constant along the outermost.
+fn selected(graph: &tessera_ir::Graph, node: &Node) -> Result<(usize, Vec<usize>), StageError> {
+    match node.op {
+        Op::Slice { axis, start, len } => Ok((
+            usize::from(axis),
+            (start as usize..start as usize + len as usize).collect(),
+        )),
+        Op::GatherPublic { index } => {
+            let rows = graph
+                .constants
+                .get(index.0 as usize)
+                .ok_or(StageError::Internal {
+                    rule: "a gather's indices are a constant of the graph",
+                })?;
+            let index = rows
+                .iter()
+                .map(|&row| usize::try_from(row))
+                .collect::<Result<_, _>>()
+                .map_err(|_| StageError::Internal {
+                    rule: "a gather's indices are rows of its input",
+                })?;
+            Ok((0, index))
+        }
+        _ => internal("a selection is a Slice's or a GatherPublic's"),
+    }
+}
+
+/// RFC-0066's multilinear polynomial of `f` on its inputs `0, 1, 2` as the terms of an
+/// `Elementwise` relation: `Xor` `a + b − 2ab`, `Xor3` `a + b + c − 2ab − 2ac − 2bc + 4abc`, `And`
+/// `ab`, `Ch` `ef + g − eg` and `Maj` `ab + ac + bc − 2abc`.
+fn bit_terms(f: BoolFn) -> Vec<Term<GoldilocksExt2>> {
+    let c = |v: i64| GoldilocksExt2::from(Goldilocks::from_i64(v));
+    let term = |weight: i64, factors: &[usize]| Term::new(c(weight), factors.to_vec());
+    match f {
+        BoolFn::Xor => vec![term(1, &[0]), term(1, &[1]), term(-2, &[0, 1])],
+        BoolFn::Xor3 => vec![
+            term(1, &[0]),
+            term(1, &[1]),
+            term(1, &[2]),
+            term(-2, &[0, 1]),
+            term(-2, &[0, 2]),
+            term(-2, &[1, 2]),
+            term(4, &[0, 1, 2]),
+        ],
+        BoolFn::And => vec![term(1, &[0, 1])],
+        BoolFn::Ch => vec![term(1, &[0, 1]), term(1, &[2]), term(-1, &[0, 2])],
+        BoolFn::Maj => vec![
+            term(1, &[0, 1]),
+            term(1, &[0, 2]),
+            term(1, &[1, 2]),
+            term(-2, &[0, 1, 2]),
+        ],
     }
 }
 
