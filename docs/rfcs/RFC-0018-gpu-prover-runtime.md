@@ -170,7 +170,7 @@ A release time therefore reveals only the public statement and which of the `L +
 
 - Field reductions are exact, so the order of GPU reductions and all-reduces does not change results.
 - Integer GEMMs are exact under S2.
-- Nothing in a kernel's control flow depends on secret values (INV-ARCH-2), except a weight stream's rejection of its words, the one exception INV-ARCH-2 admits (draft [RFC-0073](RFC-0073-weight-mask-expansion.md#the-stream)). Memory addresses do, in two places: multiplicity counting, which increments the counter of each lookup's row (RFC-0008), and the reads of the `Exp`, `Exp2Frac` and `Silu` dense cores at a key. A kernel that compacts a stream's accepted words is the same exception. None of these reaches a verifier, which times the prover only through the release schedule.
+- Nothing in a kernel's control flow depends on secret values (INV-ARCH-2), except a stream of RFC-0004 rejecting its words, the one exception INV-ARCH-2 admits (draft [RFC-0073](RFC-0073-weight-mask-expansion.md#the-stream)). Memory addresses do, in two places: multiplicity counting, which increments the counter of each lookup's row (RFC-0008), and the reads of the `Exp`, `Exp2Frac` and `Silu` dense cores at a key. A kernel that compacts a stream's accepted words is the same exception. None of these reaches a verifier, which times the prover only through the release schedule.
 
 ## Alternatives Considered
 

@@ -16,7 +16,7 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Tests.** An S-box output off its table, and a padded block's S-box outputs taken as 0, are `Reject(Lookup { table })` of the S-box; a changed split value, and a public counter changed on the verifier's side, `Reject(Sumcheck { stage: 0, round: 0 })`; `Gf256Mul { 3 }`'s lookup run on another column than `shifted`'s, its leaf value that column's, `Reject(Sumcheck { stage: 1, round: n_1 })`, which a verifier merging the two lookups' claims on `shifted` accepts; multiplicities that miss the padded positions fail LogUp. Each operation downstream of an S-box proves and verifies over the padded witness, every witness differing from the zero-padded one at padded positions. The tests' verifier computes its public tensors from the public inputs alone, so a round constant changed on either side is `Reject(Sumcheck { stage: 0, round: 0 })`; and a committed lookup output, multiplicity column or input other than the one LogUp and the stages read fails exactly its own opening targets, `Reject(Evaluation { commitment: Advice })`, and is accepted with exactly those removed.
 - The weight masks' expansion, specified as a draft ([#147](https://github.com/AbdelStark/tessera/issues/147)):
   - **RFC-0073, 'Expanding an Epoch's Mask Seed into the Weights' Masks and Blinding Rows'** (Draft).
-    - **Where its amendments are written:** RFC-0002, RFC-0004, RFC-0012, RFC-0018, RFC-0040, RFC-0064, 01 §6, 02 §1, 05 §3, 06 §5 and §7, and the simulator's R6.
+    - **Where its amendments are written:** RFC-0002, RFC-0004, RFC-0012, RFC-0018, RFC-0040 (with its 'Command line'), RFC-0064, 01 §6, 02 §1 and §2.2, 05 §3, 06 §5 and §7, and the simulator's §5 and R6.
     - **Each is marked as a draft's,** and takes effect when the RFC is accepted.
     - **03 §5's rows** for its two artifacts come with their code.
     - **SPEC.md** reserves the number, as it does RFC-0021's.
@@ -30,22 +30,30 @@ All notable changes to the prover release train are recorded here: the crates un
 
       The verifier's refusal is #564's.
     - **The model entry.**
-      - Each model entry has one directory under fixed names: the epoch record, every epoch's state and `.twr`, the links, and a lock.
+      - Each model entry has one directory under fixed names: the epoch record, every epoch's state and `.twr`, and the links.
+      - `commit-weights`, `weights refresh` and, in `tessera-protocol/2`, `prove` take it with `--entry`, and presented artifacts with `--present`.
       - `K` lives in `WeightRefreshKey` (`0x0304`, `.twk`, secret) in the key store, naming the entry by its epoch-0 root.
       - `WeightEpochRecord` (`0x0305`, private) holds every epoch's `R_W` and the latest epoch's per-matrix marks: the next free blinding row and the count of opened columns.
-      - One node proves per entry. The lock is held from `reserve` through `record_queries`, and across a link, and a second process refuses.
+      - The directory itself is locked, as RFC-0067 locks the verifier's ledger: device and inode checks before each rename, and `ERR-RES-IO` for a held lock. The lock spans a whole proof from its entry check, one proof at a time per entry.
     - **Fresh and rebuilt states.**
       - A state is fresh only when written right after its epoch's root is appended: epoch 0 by `commit-weights`, `e + 1` by the first link from the latest epoch.
       - Every other state is rebuilt, at `B_T − 4` with no opened column, and serves only its epoch's link.
-      - `reserve` runs only at the latest epoch, from the larger of the state's cursor and the record's marks, which are written first.
-      - Every command refuses an entry holding a file past its record, or a presented artifact past it. Such artifacts can only refuse.
+      - `reserve` runs only at the latest epoch, with the previous epoch closed, from the larger of the state's cursor and the record's marks, which are written first. `record_queries` raises the record's column count first.
+      - A closed latest state, a file past the record or an authenticated later artifact marks the record stale.
+      - A presented reservation or ledger rows raise the marks.
       - A lost or stale record fails closed.
-      - The residual is stated exactly: a restore of the whole entry directory, or a copy on a second node, which the ledger's `Reject(Budget)` (#158) catches only in part.
+      - **The residual, as a rule on files:** a rollback of the record in which every file that would refute it is also rolled back or lost, or a copy of the entry.
+      - **Its bound:** up to `B_T − 8` rows per matrix per epoch, 4,088 at 405B, and columns past `P_W`.
+      - **What catches it:** presented artifacts catch it, and verifiers' ledgers catch reused rows only in part (#158).
+      - **The gate.** An exhaustive model of the rules, over every combination of lost and restored entry files, finds no reuse outside that class.
     - **The regeneration checks.**
       - A regenerated commitment is checked against the record's root before anything is written or sent.
       - Each combined row drawn from the seed is checked at one column drawn from the CSPRNG, with the codeword store or through a kept Merkle tree.
       - An evaluated column answer is checked against the root.
-    - **Errors.** One code per failure. The entry's checks and the regeneration checks give `ERR-USAGE`. A lack of rows or columns at the latest epoch gives `ERR-WITNESS-BUDGET`.
+    - **Errors.** One code per failure.
+      - A held lock or an I/O failure gives `ERR-RES-IO`.
+      - The entry's checks and the regeneration checks give `ERR-USAGE`.
+      - What `weights refresh` repairs gives `ERR-WITNESS-BUDGET`: a lack of rows or columns, a lost latest state, an unfinished link.
     - **Versions.** This is version 1, `tessera-protocol/2`'s. The expansion is tier A, so a change takes new domains and a new protocol version, and the claim list names it.
     - **Secrets.**
       - `K`, `masks_seed`, every hasher over them and a stream's output reader are key material: heap-held, cleared on drop, never `Clone` or `Debug`.
@@ -83,6 +91,16 @@ All notable changes to the prover release train are recorded here: the crates un
         - the documents still contradicting INV-ARCH-2;
         - inconsistent error codes;
         - twelve nits.
+      - **The fourth built the exhaustive model.** It found:
+        - a closed latest state that should mark the record stale;
+        - a lock that a removed file defeated;
+        - RFC-0012's `record_queries` row;
+        - a residual stated too narrowly and too broadly;
+        - `prove`'s free path;
+        - error codes not one per failure;
+        - an undecidable link precondition.
+
+        The model, with the fixes, is now the gate.
   - RFC-0004's domain table gains `weights-mask` and `weights-blinding`. The headers of RFC-0004 and RFC-0040 now name RFC-0064's amendments too.
 
 - The SHA-256 circuit proves end to end on the CPU stage prover ([#526](https://github.com/AbdelStark/tessera/issues/526), RFC-0072 'Migration' slice 3, 'Testing Strategy' 'The circuits'), tests only: the key commitment, one block with `k_s` and `salt_k` committed and its digest bound, proves and verifies in 14 stages, as do three key commitments (`M = 3`) and three public messages of two blocks. A digest one bit off on the verifier's side, and a round-0 carry bit off committed by the prover, are rejected at stage 1's final check, and each is accepted with exactly the stage-1 instance it breaks removed: the word's `AssertEqual`, or the carry's recomposition with the chain that only its claim reads.

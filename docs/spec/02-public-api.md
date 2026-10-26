@@ -63,7 +63,11 @@ tessera recorder ref    --listen ADDR --upstream ADDR --log-dir DIR --key FILE -
 tessera inspect         FILE                                                # renders a TCE artifact as text (RFC-0003)
 ```
 
-Under draft [RFC-0073](../rfcs/RFC-0073-weight-mask-expansion.md#the-model-entry), in effect when it is accepted, `commit-weights` and `weights refresh` take a model entry's directory and the refresh key (`--refresh-key KEY.twk`) in place of free paths for a state or a link. The entry holds every epoch's state, `.twr` and link under fixed names, beside the epoch record and a lock. These flags join this listing with the code that implements them (#147, #153).
+Under draft [RFC-0073](../rfcs/RFC-0073-weight-mask-expansion.md#the-model-entry), in effect when it is accepted:
+- **The entry.** `commit-weights`, `weights refresh` and, in `tessera-protocol/2`, `prove` take a model entry's directory with `--entry DIR` in place of a free path for a state or a link. The entry holds every epoch's state, `.twr` and link under fixed names, beside the epoch record, and is locked as a whole.
+- **The key.** `commit-weights` and `weights refresh` also take `--refresh-key KEY.twk`.
+- **Presented artifacts.** Each takes `--present ARTIFACT`, repeatable: a published `.twr` or `.twl`, a ledger's root, or a reservation, which can only refuse or burn.
+- **Not yet listed.** These flags join this listing with the code that implements them (#147, #153). `tessera-protocol/1`'s `prove --weights` is unchanged.
 
 `audit share` is the prover's side of the coin toss over a manifest ([RFC-0016](../rfcs/RFC-0016-audit-sampling.md#sample-derivation) step 2):
 - **One answer.** The first commitment for a manifest gets a fresh share. The share is kept in `--state`, with the manifest, the `tessera.audit-policy/1` policy and the commitment, before it is printed. The same commitment and policy again get the same share.
