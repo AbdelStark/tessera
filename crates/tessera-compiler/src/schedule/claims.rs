@@ -2,31 +2,46 @@
 
 //! Claims and their atoms (RFC-0037 'Claims and atoms', 'Splits').
 
-use tessera_ir::{CommitmentClass, Graph, Node, NodeKind, Op, OpClass};
+use tessera_ir::{CommitmentClass, Graph, Node, NodeId, Op, OpClass, TensorId};
 
 use super::{
     Atom, AtomClass, Claim, Coord, Factor, Kind, LayerMap, Layers, NodeRef, Part, PoolClaim,
-    axis_vars, blocks, committed, refuse,
+    axis_vars, blocks, committed, public_tensors, refuse,
 };
 use crate::CompileError;
 
-/// The state of a derivation: the graph, its layers, the pool so far, and how many instances each
-/// stage's claims have given the next stage.
+/// The state of a derivation: the graph, its layers, each tensor's producer and whether it is
+/// public, the pool so far, and how many instances each stage's claims have given the next stage.
 pub(super) struct Derivation<'a> {
     pub(super) graph: &'a Graph,
     pub(super) layers: &'a LayerMap,
+    producers: Vec<Option<(NodeId, u32)>>,
+    public: Vec<bool>,
     pool: Vec<PoolClaim>,
     instances: Vec<usize>,
 }
 
 impl<'a> Derivation<'a> {
-    pub(super) fn new(graph: &'a Graph, layers: &'a LayerMap) -> Self {
+    /// A derivation over `graph`, whose producers by tensor are `producers`.
+    pub(super) fn new(
+        graph: &'a Graph,
+        layers: &'a LayerMap,
+        producers: Vec<Option<(NodeId, u32)>>,
+    ) -> Self {
         Self {
             graph,
             layers,
+            producers,
+            public: public_tensors(graph),
             pool: Vec::new(),
             instances: Vec::new(),
         }
+    }
+
+    /// The node that produces `tensor`, `None` for a graph input: `O(1)`.
+    pub(super) fn producer_of(&self, tensor: TensorId) -> Option<&'a Node> {
+        let (node, _) = self.producers.get(tensor.0 as usize).copied().flatten()?;
+        self.graph.nodes.get(node.0 as usize)
     }
 
     pub(super) fn into_pool(self) -> Vec<PoolClaim> {
@@ -48,10 +63,7 @@ impl<'a> Derivation<'a> {
                 Some((NodeRef::Position(position), node))
             }
             Kind::Tensor(tensor) => self
-                .graph
-                .nodes
-                .iter()
-                .find(|node| node.outputs.contains(&tensor))
+                .producer_of(tensor)
                 .map(|node| (NodeRef::Node(node.id), node)),
             Kind::LayerInput | Kind::LayerParameter { .. } => None,
         }
@@ -137,7 +149,14 @@ impl<'a> Derivation<'a> {
         let Some((node, graph_node)) = self.producer(kind) else {
             return refuse(None, "a claim reaches a public graph input");
         };
-        if spec.kind == NodeKind::Public {
+        // A public tensor's atom is the verifier's to evaluate (RFC-0072 'Public tensors'), which
+        // the schedule does not derive yet (#526).
+        if self
+            .public
+            .get(spec.id.0 as usize)
+            .copied()
+            .unwrap_or(false)
+        {
             return refuse(Some(graph_node.id), "a claim reaches a public tensor");
         }
         let id = Some(graph_node.id);

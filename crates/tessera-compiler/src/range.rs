@@ -366,19 +366,8 @@ impl<'a> Analysis<'a> {
     /// The committed graph input whose values `tensor` holds, moved but unchanged by `Reshape`,
     /// `Slice`, `Transpose`, `GatherPublic` or `Expand`, if there is one. Its range is then that
     /// input's declared range, which nothing has proven (RFC-0066 'Ranges').
-    fn committed_source(&self, mut tensor: TensorId) -> Option<TensorId> {
-        while let Some(node) = self.producer(tensor) {
-            match node.op {
-                Op::Reshape
-                | Op::Slice { .. }
-                | Op::Transpose { .. }
-                | Op::GatherPublic { .. }
-                | Op::Expand { .. } => tensor = node.inputs[0],
-                _ => return None,
-            }
-        }
-        let kind = self.graph.tensors.get(index(tensor)).map(|t| t.kind);
-        matches!(kind, Some(NodeKind::Committed { .. })).then_some(tensor)
+    fn committed_source(&self, tensor: TensorId) -> Option<TensorId> {
+        committed_source(self.graph, |t| self.producer(t), tensor)
     }
 
     fn table(&self, node: &Node, table: TableId) -> Result<&TableKind, CompileError> {
@@ -816,6 +805,30 @@ fn values(kind: &TableKind) -> Range {
         TableKind::Exp2Frac { out_bits, .. } => Range::new(0, 1 << (u32::from(out_bits) + 1)),
         TableKind::Silu { .. } => Range::new(-128, 127),
     }
+}
+
+/// The committed graph input whose values `tensor` holds, moved but unchanged by `Reshape`,
+/// `Slice`, `Transpose`, `GatherPublic` or `Expand`, if there is one, `producer` giving each
+/// tensor's producing node: the walk RFC-0006 'Committed graph inputs' takes from a
+/// `BitDecompose`'s input, which range analysis and the schedule's padding rule share (RFC-0072
+/// 'Padded positions').
+pub(crate) fn committed_source<'g>(
+    graph: &'g Graph,
+    producer: impl Fn(TensorId) -> Option<&'g Node>,
+    mut tensor: TensorId,
+) -> Option<TensorId> {
+    while let Some(node) = producer(tensor) {
+        match node.op {
+            Op::Reshape
+            | Op::Slice { .. }
+            | Op::Transpose { .. }
+            | Op::GatherPublic { .. }
+            | Op::Expand { .. } => tensor = *node.inputs.first()?,
+            _ => return None,
+        }
+    }
+    let kind = graph.tensors.get(index(tensor)).map(|t| t.kind);
+    matches!(kind, Some(NodeKind::Committed { .. })).then_some(tensor)
 }
 
 fn index(tensor: TensorId) -> usize {

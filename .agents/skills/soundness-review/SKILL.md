@@ -30,6 +30,13 @@ Read the change twice: as a malicious prover (ADV-P) with a large grinding budge
 - A simplified masked relation that assumes zero padding must retain proof of that premise on every padded axis. Shape metadata alone does not prove committed zeros; test time and feature padding separately (RFC-0050, “Binding the simplified input”).
 - Every new round or challenge is counted by the soundness calculator (RFC-0014).
 
+## Schedule (RFC-0037, RFC-0072)
+- Every classification the schedule makes from the graph must be a total function of public data. That covers a scalar or per-channel constant, a public or committed tensor, a real or padded position, which tensor a check reads, and which lookups are non-zero at padding.
+  - Each must hold at degenerate shapes, an axis of length 1 or `M = 1`, as the specification states.
+  - Two readings that both fit give different instances, so the workspaces reject each other's honest proofs. A one-value constant read as per channel on a last axis of length 1 takes SHA-256's key commitment from 3,431 instances to 76,074 (RFC-0072 read 9).
+- A refusal is decidable from the graph alone, such as reachability from named inputs. It never rests on a derivation that another component can refuse: RFC-0054's token axis refuses `Bitwise`.
+- Two claims merge only when they read one sent value through one map. Merging equal claims across a stage leaves one of them unchecked (RFC-0072 read 2).
+
 ## Commitments (RFC-0011, RFC-0012)
 - Blinding claims (`q_g` for advice, `q_T` for weights) are absorbed into the transcript before squeezing the batching challenge (`pcs/advice/gamma` or `pcs/weights/{T}/xi`, #237).
 - Column queries are drawn after every combined row is fixed; `τ` comes from the parameter set.

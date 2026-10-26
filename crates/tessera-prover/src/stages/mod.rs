@@ -33,16 +33,19 @@ use std::collections::HashMap;
 use std::fmt;
 
 use tessera_codec::error::ErrorCode;
+use tessera_compiler::CompileError;
 use tessera_compiler::Lowering;
 use tessera_compiler::schedule::{
     Atom, Claim, Coord, Factor, Layers, NodeRef, Part, Relation, Source, StageSchedule,
+    nonzero_at_padding,
 };
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
-use tessera_ir::{Op, TensorId};
+use tessera_ir::{Graph, Op, TensorId};
 use tessera_poly::{eq, evaluate_base, less_than};
 use tessera_sumcheck::{
     Prefix, SumcheckError, SumcheckProof, SumcheckTranscript, prove_batch, zero_check_point,
 };
+use tessera_tables::TableSpec;
 
 use relations::{Arena, build};
 
@@ -173,7 +176,10 @@ impl From<SumcheckError> for StageError {
 
 /// Proves a [`StageSchedule`]'s stages over a [`WitnessSource`], in order.
 pub struct StageProver<'a, W: WitnessSource + ?Sized> {
-    lowering: &'a Lowering,
+    /// The graph the schedule was derived from.
+    graph: &'a Graph,
+    /// The tables its nodes name, RoPE's among them.
+    tables: &'a [TableSpec],
     schedule: &'a StageSchedule,
     witness: &'a W,
     /// The challenges drawn so far, by coordinate.
@@ -198,8 +204,27 @@ impl<W: WitnessSource + ?Sized> fmt::Debug for StageProver<'_, W> {
 impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
     /// A prover of `schedule`, derived from `lowering`, over `witness`.
     pub fn new(lowering: &'a Lowering, schedule: &'a StageSchedule, witness: &'a W) -> Self {
+        Self::for_graph(&lowering.graph, &lowering.tables, schedule, witness)
+    }
+
+    /// A prover of `schedule`, derived from `graph` and its tables `tables` with no lowering, over
+    /// `witness`: a graph of the anchor's circuits, with no layers and no logits
+    /// ([`derive_graph_schedule`](tessera_compiler::derive_graph_schedule), RFC-0072 'Graphs
+    /// without layers'). It proves what [`new`](Self::new) proves for a lowering of that graph.
+    ///
+    /// **Precondition.** As for the schedule, `graph` has passed RFC-0006 range analysis
+    /// ([`analyze`](tessera_compiler::analyze)), and `witness` holds every tensor of it. Its tables
+    /// pad every tensor with zeros, so [`leaf`](Self::leaf) refuses a graph that holds a lookup
+    /// non-zero at padding with padded positions (RFC-0072 'Padded positions').
+    pub fn for_graph(
+        graph: &'a Graph,
+        tables: &'a [TableSpec],
+        schedule: &'a StageSchedule,
+        witness: &'a W,
+    ) -> Self {
         Self {
-            lowering,
+            graph,
+            tables,
             schedule,
             witness,
             coords: HashMap::new(),
@@ -222,12 +247,14 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
     ///
     /// # Errors
     ///
-    /// [`StageError::Internal`] when a point has the wrong number of coordinates or the leaf stage
-    /// was proven already; [`StageError::Memory`] when a table does not fit.
+    /// [`StageError::Internal`] when the graph holds a lookup non-zero at padding with padded
+    /// positions, a point has the wrong number of coordinates or the leaf stage was proven already;
+    /// [`StageError::Memory`] when a table does not fit.
     pub fn leaf(
         &mut self,
         points: &[Vec<GoldilocksExt2>],
     ) -> Result<Vec<Vec<GoldilocksExt2>>, StageError> {
+        self.check_padding()?;
         let leaf = &self.schedule.stages[0];
         if !self.claims.is_empty() || points.len() != leaf.claims.len() {
             return internal("the leaf stage comes first, with one point per site");
@@ -251,6 +278,36 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
         }
         self.claims.push(values.clone());
         Ok(values)
+    }
+
+    /// Refuses a graph holding a lookup non-zero at padding whose output has padded positions
+    /// (RFC-0072 'Padded positions'): they hold its table's value at the zero key, such as
+    /// `AesSbox(0) = 0x63`, where the stage tables, padded with zeros, hold 0. #526's fourth slice
+    /// computes the tables over padded shapes.
+    fn check_padding(&self) -> Result<(), StageError> {
+        for node in &self.graph.nodes {
+            let padded = node.outputs.iter().any(|t| {
+                self.graph
+                    .tensors
+                    .get(t.0 as usize)
+                    .is_some_and(|spec| spec.shape.iter().any(|len| !len.is_power_of_two()))
+            });
+            if !padded {
+                continue;
+            }
+            match nonzero_at_padding(self.graph, self.tables, node) {
+                Ok(false) => {}
+                Ok(true) => {
+                    return internal(
+                        "a lookup non-zero at padding has no padded positions while the stage \
+                         tables pad with zeros",
+                    );
+                }
+                Err(CompileError::Schedule { rule, .. }) => return internal(rule),
+                Err(_) => return internal("a lookup's padding is decided from public data"),
+            }
+        }
+        Ok(())
     }
 
     /// Stage 0's splits (RFC-0037 'Splits'): the values of the leaf claims' parts, claim by claim,
@@ -678,14 +735,8 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
             NodeRef::Node(id) => id,
             NodeRef::Position(position) => self.schedule.layers.node(position, layer),
         };
-        match self.lowering.graph.nodes[id.0 as usize].op {
-            Op::ConstMul { c } => match self
-                .lowering
-                .graph
-                .constants
-                .get(c.0 as usize)
-                .map(Vec::as_slice)
-            {
+        match self.graph.nodes[id.0 as usize].op {
+            Op::ConstMul { c } => match self.graph.constants.get(c.0 as usize).map(Vec::as_slice) {
                 Some(&[scalar]) => Ok(GoldilocksExt2::from(Goldilocks::from_i64(scalar))),
                 _ => internal("a coefficient's ConstMul is by one constant"),
             },

@@ -20,7 +20,9 @@
 //!   folds.
 //! - **Stages.** RFC-0010's: 3 in `servable` and 4 in `minimal`, at any depth (INV-SCH-4). On a
 //!   chain built by hand, each sumcheck relation adds a stage, each claim map none, and a committed
-//!   tensor ends the chain.
+//!   tensor ends the chain. RFC-0072's: selections and `BitFn` are relations, a public tensor
+//!   costs none, and the bit operations' zero-checks count themselves; AES-128-CTR takes 3 stages,
+//!   SHA-256 10 per block of public bytes and 14 with committed bytes.
 //! - **Stage tables.** RFC-0055's and RFC-0056's working sets: each reduction stage's tables by
 //!   size, growth and per-bit count are the composed schedule's own, native relations included,
 //!   at every batch of a power of two, and the same for a report whose sequence is not one.
@@ -30,6 +32,10 @@ mod common;
 use std::collections::BTreeMap;
 
 use common::{ADVICE, decl, llama, one, virt};
+use tessera_compiler::anchor::{
+    AesTables, Sha256Layout, aes128_ctr, aes128_ctr_inputs, sha256, sha256_bind,
+    sha256_digest_input, sha256_inputs,
+};
 use tessera_compiler::schedule::{
     NativeKind, Relation, Request, derive_composed_schedule, model_natives,
 };
@@ -38,8 +44,8 @@ use tessera_compiler::{
     select, stage_count,
 };
 use tessera_ir::{
-    Broadcast, GadgetPolicy, GraphBuilder, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint,
-    Site, TableId, TensorId, WeightRef, WeightType,
+    BoolFn, Broadcast, GadgetPolicy, GraphBuilder, NodeKind, Op, Profile, PublicQuantSpec,
+    QuantPoint, Site, TableId, TensorId, WeightRef, WeightType,
 };
 
 /// `d_model`, `n_heads`, `n_kv_heads` and `d_ff`.
@@ -462,6 +468,322 @@ fn each_sumcheck_relation_adds_a_stage_and_each_claim_map_none() {
         }),
         2,
         "Mul after a committed requantization"
+    );
+}
+
+/// The stage count of the graph `build` makes from two committed `[4, 8]` tensors and two public
+/// ones, `p` and `q`.
+fn stages_with(
+    build: impl FnOnce(&mut GraphBuilder, [TensorId; 4]) -> Option<TensorId>,
+    key: &[u32],
+) -> u32 {
+    let mut g = GraphBuilder::new();
+    let x = g.input(decl(&[4, 8], ADVICE, -128, 127)).expect("x");
+    let y = g.input(decl(&[4, 8], ADVICE, -128, 127)).expect("y");
+    let p = g.input(decl(&[4, 8], NodeKind::Public, 0, 1)).expect("p");
+    let q = g.input(decl(&[4, 8], NodeKind::Public, 0, 1)).expect("q");
+    if let Some(tensor) = build(&mut g, [x, y, p, q]) {
+        let shift = g.shift_classes(vec![4]).expect("a shift");
+        let op = Op::Requant {
+            shift,
+            lo: -128,
+            hi: 127,
+        };
+        one(&mut g, op, &[tensor], decl(key, ADVICE, -128, 127));
+    }
+    stage_count(&g.finish())
+}
+
+/// RFC-0072 'Messages, rejections and stages': selections and `BitFn` are relations; a public
+/// tensor costs none, even through `Mul`, `BitFn` or a selection; `BitDecompose` and `AssertEqual`
+/// take no leaf site, and their zero-checks count themselves, as does `OneHot`'s.
+#[test]
+fn selections_and_bit_functions_are_relations_and_public_tensors_cost_none() {
+    let mul = || Op::Mul {
+        broadcast: Broadcast::Trailing,
+    };
+    let gather = |g: &mut GraphBuilder, x: TensorId| {
+        let index = g.constant(vec![3, 0]).expect("rows");
+        one(g, Op::GatherPublic { index }, &[x], virt(&[2, 8]))
+    };
+    let slice = |g: &mut GraphBuilder, x: TensorId| {
+        let op = Op::Slice {
+            axis: 1,
+            start: 2,
+            len: 4,
+        };
+        one(g, op, &[x], virt(&[4, 4]))
+    };
+    let xor = Op::BitFn { f: BoolFn::Xor };
+    // Selections and `BitFn` on committed tensors: one relation each.
+    assert_eq!(
+        stages_with(|g, [x, ..]| Some(slice(g, x)), &[4, 4]),
+        2,
+        "Slice"
+    );
+    assert_eq!(
+        stages_with(|g, [x, ..]| Some(gather(g, x)), &[2, 8]),
+        2,
+        "GatherPublic"
+    );
+    assert_eq!(
+        stages_with(
+            |g, [x, y, ..]| Some(one(g, xor.clone(), &[x, y], virt(&[4, 8]))),
+            &[4, 8]
+        ),
+        2,
+        "BitFn"
+    );
+    // Maps the RFC lists as free.
+    assert_eq!(
+        stages_with(
+            |g, [x, ..]| Some(one(
+                g,
+                Op::Expand { axis: 0, len: 3 },
+                &[x],
+                virt(&[3, 4, 8])
+            )),
+            &[3, 4, 8]
+        ),
+        1,
+        "Expand"
+    );
+    assert_eq!(
+        stages_with(
+            |g, [x, ..]| Some(one(
+                g,
+                Op::Transpose { perm: vec![1, 0] },
+                &[x],
+                virt(&[8, 4])
+            )),
+            &[8, 4]
+        ),
+        1,
+        "Transpose"
+    );
+    // Public tensors cost none, through a product, a Boolean function or a selection.
+    assert_eq!(
+        stages_with(
+            |g, [_, _, p, q]| Some(one(g, mul(), &[p, q], virt(&[4, 8]))),
+            &[4, 8]
+        ),
+        1,
+        "Mul of public tensors"
+    );
+    assert_eq!(
+        stages_with(
+            |g, [_, _, p, q]| Some(one(g, xor.clone(), &[p, q], virt(&[4, 8]))),
+            &[4, 8]
+        ),
+        1,
+        "BitFn of public tensors"
+    );
+    assert_eq!(
+        stages_with(
+            |g, [_, _, p, q]| {
+                let picked = gather(g, p);
+                let rows = gather(g, q);
+                Some(one(g, mul(), &[picked, rows], virt(&[2, 8])))
+            },
+            &[2, 8]
+        ),
+        1,
+        "a product of selections of public tensors"
+    );
+    // One committed operand makes the product a relation, and its selection's operand another.
+    assert_eq!(
+        stages_with(
+            |g, [x, _, p, _]| Some(one(g, mul(), &[x, p], virt(&[4, 8]))),
+            &[4, 8]
+        ),
+        2,
+        "Mul of a committed and a public tensor"
+    );
+    assert_eq!(
+        stages_with(
+            |g, [x, _, p, _]| {
+                let picked = gather(g, x);
+                let rows = gather(g, p);
+                Some(one(g, mul(), &[picked, rows], virt(&[2, 8])))
+            },
+            &[2, 8]
+        ),
+        3,
+        "a product of a committed selection"
+    );
+    // A tensor declared committed is committed, whatever its inputs: the zero-check of a public
+    // product declared advice counts itself.
+    assert_eq!(
+        stages_with(
+            |g, [_, _, p, q]| {
+                one(g, mul(), &[p, q], decl(&[4, 8], ADVICE, 0, 1));
+                None
+            },
+            &[4, 8]
+        ),
+        2,
+        "a committed product of public tensors"
+    );
+    // `BitDecompose`'s and `AssertEqual`'s zero-checks count themselves, with no leaf site.
+    let decompose = |g: &mut GraphBuilder, x: TensorId| {
+        let op = Op::BitDecompose { low: 8, high: 0 };
+        g.node(op, &[x], vec![decl(&[4, 8, 8], ADVICE, 0, 1)])
+            .expect("bits");
+    };
+    assert_eq!(
+        stages_with(
+            |g, [x, ..]| {
+                decompose(g, x);
+                None
+            },
+            &[4, 8]
+        ),
+        2,
+        "BitDecompose of a committed tensor"
+    );
+    assert_eq!(
+        stages_with(
+            |g, [x, y, ..]| {
+                let product = one(g, mul(), &[x, y], virt(&[4, 8]));
+                decompose(g, product);
+                None
+            },
+            &[4, 8]
+        ),
+        3,
+        "BitDecompose of a product"
+    );
+    assert_eq!(
+        stages_with(
+            |g, [_, _, p, q]| {
+                let product = one(g, mul(), &[p, q], virt(&[4, 8]));
+                decompose(g, product);
+                None
+            },
+            &[4, 8]
+        ),
+        2,
+        "BitDecompose of a public product"
+    );
+    assert_eq!(
+        stages_with(
+            |g, [x, y, ..]| {
+                let product = one(g, xor.clone(), &[x, y], virt(&[4, 8]));
+                g.node(Op::AssertEqual, &[product, x], Vec::new())
+                    .expect("an equality");
+                None
+            },
+            &[4, 8]
+        ),
+        3,
+        "AssertEqual of a BitFn"
+    );
+    assert_eq!(
+        stages_with(
+            |g, [_, _, p, q]| {
+                let picked = slice(g, p);
+                let other = slice(g, q);
+                g.node(Op::AssertEqual, &[picked, other], Vec::new())
+                    .expect("an equality");
+                None
+            },
+            &[4, 8]
+        ),
+        2,
+        "AssertEqual of public selections"
+    );
+    // `OneHot`'s index zero-check reads its token input at stage 1, after its leaf site's claim.
+    assert_eq!(
+        stages_with(
+            |g, [x, ..]| {
+                let tokens = one(g, Op::SumSquares { axis: 1 }, &[x], virt(&[4]));
+                one(
+                    g,
+                    Op::OneHot { vocab: 4 },
+                    &[tokens],
+                    decl(&[4, 4], ADVICE, 0, 1),
+                );
+                None
+            },
+            &[4, 8]
+        ),
+        3,
+        "OneHot of a sum of squares"
+    );
+}
+
+/// `tessera_compiler::anchor`'s tables, and AES-128-CTR's graph over `blocks` counter blocks.
+fn aes_graph(blocks: u32) -> tessera_ir::Graph {
+    let tables = AesTables {
+        sbox: TableId(0),
+        mul2: TableId(1),
+        mul3: TableId(2),
+        xor: TableId(3),
+    };
+    let mut g = GraphBuilder::new();
+    let inputs = aes128_ctr_inputs(blocks).map(|d| g.input(d).expect("an input"));
+    aes128_ctr(&mut g, &tables, inputs, blocks).expect("the circuit");
+    g.finish()
+}
+
+/// SHA-256's graph over `layout`, its last chaining value bound to a public digest.
+fn sha256_graph(layout: &Sha256Layout) -> tessera_ir::Graph {
+    let mut g = GraphBuilder::new();
+    let inputs: Vec<TensorId> = sha256_inputs(layout)
+        .into_iter()
+        .map(|d| g.input(d).expect("an input"))
+        .collect();
+    let sha = sha256(&mut g, layout, &inputs).expect("the circuit");
+    let digest = g
+        .input(sha256_digest_input(layout.messages))
+        .expect("the digest");
+    let last = sha.chaining.last().expect("a block");
+    sha256_bind(&mut g, last, digest, layout.messages).expect("the binding");
+    g.finish()
+}
+
+/// RFC-0072's sizes table: AES-128-CTR takes 3 stages; SHA-256 10 per block of public bytes and
+/// 14 with committed bytes, whatever the block and message counts (INV-SCH-4), the key
+/// commitment's one block of 32 committed bytes included.
+#[test]
+fn the_anchor_circuits_take_rfc_0072s_stages() {
+    for blocks in [1, 2, 3] {
+        assert_eq!(
+            stage_count(&aes_graph(blocks)),
+            3,
+            "AES-128-CTR, {blocks} blocks"
+        );
+    }
+    for (blocks, messages) in [(1, 1), (2, 1), (1, 3)] {
+        let public = Sha256Layout {
+            blocks,
+            messages,
+            committed: Vec::new(),
+        };
+        assert_eq!(
+            stage_count(&sha256_graph(&public)),
+            10,
+            "public bytes, {blocks} blocks, {messages} messages"
+        );
+        let committed = Sha256Layout {
+            committed: vec![0, 1, 2, 5],
+            ..public
+        };
+        assert_eq!(
+            stage_count(&sha256_graph(&committed)),
+            14,
+            "committed bytes, {blocks} blocks, {messages} messages"
+        );
+    }
+    let key_commitment = Sha256Layout {
+        blocks: 1,
+        messages: 1,
+        committed: (21..53).collect(),
+    };
+    assert_eq!(
+        stage_count(&sha256_graph(&key_commitment)),
+        14,
+        "the key commitment"
     );
 }
 

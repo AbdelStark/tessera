@@ -6,11 +6,11 @@
 
 use std::collections::BTreeMap;
 
-use tessera_compiler::schedule::{LayerMap, NodeRef, token_axes};
+use tessera_compiler::schedule::{LayerMap, NodeRef, has_leaf_site, token_axes};
 use tessera_compiler::{CompileError, Lowering, Selection};
 use tessera_field::Goldilocks;
 use tessera_gadgets::{Lookup, Requant, Term};
-use tessera_ir::{NodeId, OpClass, TensorId};
+use tessera_ir::{NodeId, TensorId};
 use tessera_logup::TreeId;
 use tessera_tables::TableId;
 
@@ -164,12 +164,14 @@ impl Site<Term> {
     }
 }
 
-/// Every gadget node of `lowering` in node order, a template position once: the prologue's, the
-/// template's positions, then the epilogue's (RFC-0045 'Sites').
+/// Every gadget node of `lowering` with a leaf site in node order, a template position once: the
+/// prologue's, the template's positions, then the epilogue's (RFC-0045 'Sites'). `BitDecompose`
+/// and `AssertEqual` have none, their claims being stage 1's zero-checks' (RFC-0072 'Gadgets and
+/// leaf sites'): the schedule's own rule, [`has_leaf_site`], so the two cannot disagree.
 pub fn gadget_nodes(lowering: &Lowering, layers: &LayerMap) -> Vec<NodeRef> {
     let mut nodes = Vec::new();
     for node in &lowering.graph.nodes {
-        if node.op.class() != OpClass::Gadget {
+        if !has_leaf_site(&node.op) {
             continue;
         }
         match layers.position(node.id) {

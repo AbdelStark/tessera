@@ -228,7 +228,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             })?;
             self.operand(claim.kind, &claim.layers)
         };
-        let shape = |t: usize| self.lowering.graph.tensors[t].shape.as_slice();
+        let shape = |t: usize| self.graph.tensors[t].shape.as_slice();
         let input_shape = |i: usize| shape(node.inputs[i].0 as usize);
         let output = shape(node.outputs[0].0 as usize);
         let vars = |s: &[u32]| Self::vars_of(s) as usize;
@@ -421,7 +421,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             NodeRef::Node(id) => id,
             NodeRef::Position(position) => self.schedule.layers.node(position, 0),
         };
-        &self.lowering.graph.nodes[id.0 as usize]
+        &self.graph.nodes[id.0 as usize]
     }
 
     /// `Mul`'s second operand as its relation reads it: a broadcast window of the product's
@@ -478,12 +478,11 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             return internal("a Rotate names its RoPE table");
         };
         let spec = self
-            .lowering
             .tables
             .iter()
             .find(|spec| spec.id == rope)
             .ok_or(StageError::Internal {
-                rule: "a Rotate's table is the lowering's",
+                rule: "a Rotate's table is the graph's",
             })?;
         let table = RopeTable::from_spec(spec).map_err(|_| StageError::Internal {
             rule: "a Rotate's table regenerates",
@@ -543,7 +542,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
     ) -> Result<Plan, StageError> {
         let layers = &self.schedule.layers;
         let lambda = if stacked { layers.vars as usize } else { 0 };
-        let output = &self.lowering.graph.tensors[node.outputs[0].0 as usize].shape;
+        let output = &self.graph.tensors[node.outputs[0].0 as usize].shape;
         let shape = ElementwiseShape::elementwise(Self::vars_of(output) as usize + lambda);
         let one = GoldilocksExt2::ONE;
         let y = Read::Operand(arena.secret(operand(0)?));
@@ -555,9 +554,8 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                         NodeRef::Node(id) => id,
                         NodeRef::Position(position) => layers.node(position, layer),
                     };
-                    match self.lowering.graph.nodes[id.0 as usize].op {
+                    match self.graph.nodes[id.0 as usize].op {
                         Op::ConstMul { c } => self
-                            .lowering
                             .graph
                             .constants
                             .get(c.0 as usize)
@@ -611,8 +609,8 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                 )
             }
             Op::Mul { broadcast } => {
-                let a_shape = &self.lowering.graph.tensors[node.inputs[0].0 as usize].shape;
-                let b_shape = &self.lowering.graph.tensors[node.inputs[1].0 as usize].shape;
+                let a_shape = &self.graph.tensors[node.inputs[0].0 as usize].shape;
+                let b_shape = &self.graph.tensors[node.inputs[1].0 as usize].shape;
                 let a = Read::Operand(arena.secret(operand(1)?));
                 let b = self.broadcast(arena, operand(2)?, a_shape, b_shape, broadcast, stacked)?;
                 (

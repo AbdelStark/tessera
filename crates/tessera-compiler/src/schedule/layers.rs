@@ -3,7 +3,10 @@
 //! The layers of a lowered graph and their template (RFC-0037 'Layers and kinds').
 
 use tessera_ir::{CommitmentClass, Graph, NodeId, NodeKind, Op, TensorId, TensorSpec};
+use tessera_tables::TableSpec;
 
+use super::padding::nonzero_at_padding;
+use super::public::{producers, public_tensors};
 use super::{Kind, Layers, axis_vars, refuse};
 use crate::{CompileError, Lowering};
 
@@ -11,16 +14,24 @@ use crate::{CompileError, Lowering};
 /// template, node for node (RFC-0037 'Layers and kinds').
 ///
 /// Layer `ℓ` holds the nodes after `c_ℓ`'s producer, up to and including `c_{ℓ+1}`'s. The nodes up
-/// to `c_0`'s producer are the prologue, and those after `c_L`'s the epilogue. [`LayerMap::new`]
+/// to `c_0`'s producer are the prologue, and those after `c_L`'s the epilogue. [`LayerMap::of`]
 /// checks the template:
 ///
 /// - every layer has as many nodes, the last producing the layer's checkpoint;
 /// - the nodes at one position have one operation, up to their layer's own weights, constants,
 ///   shift classes and tables, and the same inputs and outputs, of one shape and kind;
+/// - no position holds a `ConstAdd`, a selection (`Slice`, `GatherPublic`), a `ConstMul` by a
+///   constant per channel, a `BitDecompose`, an `AssertEqual`, a lookup non-zero at padding
+///   ([`nonzero_at_padding`](super::nonzero_at_padding)), or a node whose output is public
+///   ([`public_tensors`](super::public_tensors)), whose stacked forms or padded layers RFC-0072
+///   leaves unspecified ('Graphs without layers');
 /// - each input is an earlier output of its own layer, its layer's checkpoint, or a graph input:
 ///   one every layer shares, or one of its own in each layer;
 /// - each output of a layer is read in its layer only, but for its checkpoint, which the next
 ///   layer, or the epilogue, reads.
+///
+/// A graph with no checkpoint has no layers, `L = 0` and `λ = 0` ([`LayerMap::none`]): every node
+/// is outside them, as the anchor's circuits are (RFC-0072 'Graphs without layers').
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LayerMap {
     /// The layers `L`.
@@ -43,20 +54,48 @@ pub struct LayerMap {
 }
 
 impl LayerMap {
-    /// The layers of `lowering`'s graph, from its checkpoints.
+    /// The layers of `lowering`'s graph, from its checkpoints: [`LayerMap::of`].
     ///
     /// # Errors
     ///
     /// [`CompileError::Schedule`] for the first rule of the template broken, as [`LayerMap`] lists
     /// them.
     pub fn new(lowering: &Lowering) -> Result<Self, CompileError> {
-        let graph = &lowering.graph;
-        let checkpoints = &lowering.checkpoints;
+        Self::of(&lowering.graph, &lowering.tables, &lowering.checkpoints)
+    }
+
+    /// The layers of a graph with no checkpoint: none, `L = 0` and `λ = 0`, every node outside them
+    /// and every kind a tensor's (RFC-0037 'Layers and kinds' 'No checkpoint').
+    pub fn none() -> Self {
+        Self {
+            count: 0,
+            vars: 0,
+            first: 0,
+            width: 0,
+            inputs: Vec::new(),
+            checkpoints: Vec::new(),
+            last_output: 0,
+            uniform: Vec::new(),
+        }
+    }
+
+    /// The layers of `graph`, whose tables are `tables`, that the checkpoints `c_0, …, c_L` bound;
+    /// with no checkpoint, [`LayerMap::none`]. One checkpoint bounds no layer and is refused.
+    ///
+    /// # Errors
+    ///
+    /// [`CompileError::Schedule`] for the first rule of the template broken, as [`LayerMap`] lists
+    /// them, or for a lookup at a template position whose table is not among `tables`.
+    pub fn of(
+        graph: &Graph,
+        tables: &[TableSpec],
+        checkpoints: &[TensorId],
+    ) -> Result<Self, CompileError> {
+        if checkpoints.is_empty() {
+            return Ok(Self::none());
+        }
         let producers = producers(graph);
         let producer = |t: TensorId| producers.get(t.0 as usize).copied().flatten();
-        if checkpoints.is_empty() {
-            return refuse(None, "the lowering lists its checkpoints");
-        }
         let count = u32::try_from(checkpoints.len() - 1).unwrap_or(u32::MAX);
         if count == 0 {
             return refuse(None, "the lowering has a layer");
@@ -64,7 +103,7 @@ impl LayerMap {
         let mut ends = Vec::with_capacity(checkpoints.len());
         for &c in checkpoints {
             match producer(c) {
-                Some((node, _)) => ends.push(node),
+                Some((node, _)) => ends.push(node.0),
                 None => return refuse(None, "every checkpoint is a node's output"),
             }
             let advice = NodeKind::Committed {
@@ -100,12 +139,13 @@ impl LayerMap {
             first,
             width,
             inputs: Vec::with_capacity(width as usize),
-            checkpoints: checkpoints.clone(),
+            checkpoints: checkpoints.to_vec(),
             last_output,
             uniform: Vec::with_capacity(width as usize),
         };
+        let public = public_tensors(graph);
         for position in 0..width {
-            map.check_position(graph, &producers, position)?;
+            map.check_position(graph, tables, &producers, &public, position)?;
         }
         map.check_readers(graph, &producers)?;
         Ok(map)
@@ -131,10 +171,10 @@ impl LayerMap {
         self.uniform[position as usize]
     }
 
-    /// The layer and position of `node`, when it is in a layer.
+    /// The layer and position of `node`, when it is in a layer: never with no layers.
     pub fn position(&self, node: NodeId) -> Option<(u32, u32)> {
         let offset = node.0.checked_sub(self.first)?;
-        let layer = offset / self.width;
+        let layer = offset.checked_div(self.width)?;
         (layer < self.count).then_some((layer, offset % self.width))
     }
 
@@ -181,11 +221,34 @@ impl LayerMap {
     fn check_position(
         &mut self,
         graph: &Graph,
-        producers: &[Option<(u32, u32)>],
+        tables: &[TableSpec],
+        producers: &[Option<(NodeId, u32)>],
+        public: &[bool],
         position: u32,
     ) -> Result<(), CompileError> {
         let base_id = self.node(position, 0);
         let base = &graph.nodes[base_id.0 as usize];
+        // Neither a public tensor's padded layers nor a lookup's non-zero at padding are specified;
+        // each layer's node is checked, as a lookup may read a table of its layer's own.
+        let mut unspecified = !stacks(graph, &base.op);
+        for layer in 0..self.count {
+            let Some(node) = graph.nodes.get(self.node(position, layer).0 as usize) else {
+                continue;
+            };
+            unspecified |= node
+                .outputs
+                .iter()
+                .any(|t| public.get(t.0 as usize).copied().unwrap_or(false));
+            unspecified |= nonzero_at_padding(graph, tables, node)?;
+        }
+        if unspecified {
+            return refuse(
+                Some(base_id),
+                "a layer template holds no ConstAdd, selection, ConstMul per channel, \
+                 BitDecompose, AssertEqual, lookup non-zero at padding or node whose output is \
+                 public",
+            );
+        }
         // Where each input comes from, in every layer.
         let mut sources: Vec<Vec<Source>> = vec![Vec::new(); base.inputs.len()];
         for layer in 0..self.count {
@@ -218,7 +281,7 @@ impl LayerMap {
                 } else {
                     match producers.get(t.0 as usize).copied().flatten() {
                         None => Source::Graph(t),
-                        Some((m, output)) => match self.position(NodeId(m)) {
+                        Some((m, output)) => match self.position(m) {
                             Some((l, p)) if l == layer && p < position => Source::Own(p, output),
                             _ => {
                                 return refuse(
@@ -295,7 +358,7 @@ impl LayerMap {
     fn check_readers(
         &self,
         graph: &Graph,
-        producers: &[Option<(u32, u32)>],
+        producers: &[Option<(NodeId, u32)>],
     ) -> Result<(), CompileError> {
         for node in &graph.nodes {
             let reader = self.position(node.id).map(|(layer, _)| layer);
@@ -303,7 +366,7 @@ impl LayerMap {
                 let Some((m, _)) = producers.get(t.0 as usize).copied().flatten() else {
                     continue;
                 };
-                let written = self.position(NodeId(m)).map(|(layer, _)| layer);
+                let written = self.position(m).map(|(layer, _)| layer);
                 let fine = match (written, reader) {
                     (Some(w), Some(r)) => {
                         w == r || (r == w + 1 && t == self.checkpoints[r as usize])
@@ -339,17 +402,27 @@ enum Source {
     Graph(TensorId),
 }
 
-/// Each tensor's producer and the output it is, or `None` for a graph input.
-fn producers(graph: &Graph) -> Vec<Option<(u32, u32)>> {
-    let mut producers = vec![None; graph.tensors.len()];
-    for node in &graph.nodes {
-        for (output, &t) in (0u32..).zip(&node.outputs) {
-            if let Some(slot) = producers.get_mut(t.0 as usize) {
-                *slot = Some((node.id.0, output));
-            }
-        }
+/// Whether a node of `op` may sit at a template's position (RFC-0072 'Graphs without layers' 'Not
+/// inside a layer'): not a `ConstAdd`, a selection, a `ConstMul` by a constant of more than one
+/// value, a `BitDecompose` or an `AssertEqual`, whose stacked forms (a per-layer constant on a
+/// padded layer, stacked bit zero-checks) are not specified. A lookup non-zero at padding and a
+/// node whose output is public are refused too, by [`LayerMap::of`], their padded layers being
+/// unspecified. A constant of one value is a scalar,
+/// whatever the last axis's length ('Scalar or per channel'). `BitFn` and `Bitwise` stack as any
+/// relation and lookup do.
+fn stacks(graph: &Graph, op: &Op) -> bool {
+    match op {
+        Op::ConstAdd { .. }
+        | Op::Slice { .. }
+        | Op::GatherPublic { .. }
+        | Op::BitDecompose { .. }
+        | Op::AssertEqual => false,
+        Op::ConstMul { c } => graph
+            .constants
+            .get(c.0 as usize)
+            .is_some_and(|v| v.len() == 1),
+        _ => true,
     }
-    producers
 }
 
 /// Whether two tensors at one position have one shape and kind: a lookup output's table may be

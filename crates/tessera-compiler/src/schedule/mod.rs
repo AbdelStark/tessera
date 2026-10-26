@@ -4,21 +4,30 @@
 //! the relation instances that prove them, and what reaches the claim pool, derived from the
 //! lowered graph alone (INV-SCH-1).
 //!
-//! [`derive_schedule`] reads a [`Lowering`] in four steps:
+//! [`derive_schedule`] reads a [`Lowering`], and [`derive_graph_schedule`] a graph with its tables,
+//! checkpoints and logits, such as the anchor's circuits, which have none (RFC-0072 'Graphs without
+//! layers'). Both take the same five steps:
 //!
 //! 1. **Layers.** The checkpoints `c_0, …, c_L` bound the layers. Every layer must be one template,
 //!    node for node ([`LayerMap`]), so that the outputs at one position form one kind stacked over
 //!    the layers, with `λ = ⌈log2 L⌉` layer variables, the highest (RFC-0037 'Layers and kinds').
-//! 2. **The leaf stage.** It leaves one claim per input of each gadget, and one on the logits that
-//!    the scoring certificates read (RFC-0017), each at a point of its site. A site in the layers
-//!    leaves one claim per layer, all at that point ('The layer point'). This is the leaf stage's
+//!    A graph with no checkpoint has no layers, `L = λ = 0`.
+//! 2. **The graph's refusals.** Before any claim, RFC-0072's rules that read the graph alone: a
+//!    committed output stage 1 does not prove, and a sum over an axis that is not a power of two
+//!    whose inputs are not 0 at its padded positions, downstream of a lookup non-zero at padding
+//!    ([`nonzero_at_padding`]) or of a committed graph input nothing pins, are refused.
+//! 3. **The leaf stage.** It leaves one claim per input of each gadget but `BitDecompose` and
+//!    `AssertEqual` ([`has_leaf_site`]), and, when the graph has logits, one on them that the
+//!    scoring certificates read (RFC-0017), each at a point of its site. A site in the layers leaves
+//!    one claim per layer, all at that point ('The layer point'). This is the leaf stage's
 //!    interface to the rest of the schedule. The gadgets' own relations, such as `SoftmaxRow`'s
 //!    masked keys and the padding zero-checks of RFC-0035, enter with the gadgets (#118).
-//! 3. **Claims.** A claim maps through the linear nodes onto atoms: virtual, the output of a
+//! 4. **Claims.** A claim maps through the linear nodes onto atoms: virtual, the output of a
 //!    sumcheck relation, or committed ('Claims and atoms'). A claim that is one virtual atom of
 //!    coefficient 1, or committed atoms of one commitment at one point, is ready. Any other is
-//!    split: the stage sends one value per part ('Splits').
-//! 4. **Stages.** Stage `k` proves one instance per virtual part that stage `k − 1` leaves, in
+//!    split: the stage sends one value per part ('Splits'). A claim that reaches a public tensor
+//!    ([`public_tensors`]) is refused until the verifier evaluates public atoms (#526).
+//! 5. **Stages.** Stage `k` proves one instance per virtual part that stage `k − 1` leaves, in
 //!    order, stacked over the layers where its kind is. Stage 1 then adds the equality zero-check
 //!    of each committed output of a linear or degree-2 node ('The committed first checkpoint').
 //!    Each instance's evaluations are the stage's claims, which go to the next stage or the pool.
@@ -32,17 +41,24 @@ mod claims;
 mod layers;
 pub mod masks;
 mod natives;
+mod padding;
+mod public;
 mod relations;
 mod tokens;
 
 use core::ops::Range;
 
-use tessera_ir::{Broadcast, CommitmentClass, Graph, NodeId, NodeKind, Op, TensorId, WeightType};
+use tessera_ir::{
+    Broadcast, CommitmentClass, Graph, NodeId, NodeKind, Op, OpClass, TensorId, WeightType,
+};
+use tessera_tables::TableSpec;
 
 use crate::{CompileError, Lowering};
 
 pub use layers::LayerMap;
 pub use natives::{ModelNatives, NativeKind, Request, model_natives};
+pub use padding::nonzero_at_padding;
+pub use public::{producers, public_tensors};
 pub use tokens::token_axes;
 
 /// A coordinate of a point, by the challenge or constant that sets it.
@@ -339,7 +355,7 @@ pub enum Site {
         /// The input.
         input: u32,
     },
-    /// The logits, which the scoring certificates read (RFC-0017).
+    /// The logits, which the scoring certificates read (RFC-0017), when the graph has them.
     Logits,
 }
 
@@ -382,8 +398,8 @@ pub struct Native {
 pub struct StageSchedule {
     /// The layers and their template.
     pub layers: LayerMap,
-    /// The leaf stage's sites, in node order, then the logits: the leaf stage's claim `s` is site
-    /// `s`'s.
+    /// The leaf stage's sites, in node order, then the logits when the graph has them: the leaf
+    /// stage's claim `s` is site `s`'s.
     pub sites: Vec<Site>,
     /// The stages, from the leaf stage.
     pub stages: Vec<Stage>,
@@ -413,15 +429,56 @@ impl StageSchedule {
     }
 }
 
-/// The stage schedule of `lowering`, derived from its graph and checkpoints alone (INV-SCH-1).
+/// The stage schedule of `lowering`, derived from its graph and checkpoints alone (INV-SCH-1), with
+/// a claim on its logits.
 ///
 /// # Errors
 ///
 /// [`CompileError::Schedule`] (`ERR-INTERNAL`) for a graph the lowering does not emit: layers that
-/// are not one template ([`LayerMap`]), or a claim that reaches an operation RFC-0037 maps no claim
-/// through, such as `ConstAdd`, `Slice` or `GatherPublic`.
+/// are not one template ([`LayerMap`]), one of the graph's refusals ([`derive_graph_schedule`]), or
+/// a claim that reaches an operation RFC-0037 maps no claim through yet, such as `ConstAdd`, `Slice`
+/// or `GatherPublic`.
 pub fn derive_schedule(lowering: &Lowering) -> Result<StageSchedule, CompileError> {
     derive_composed_schedule(lowering, &[], &[])
+}
+
+/// The stage schedule of `graph`, whose tables are `tables`, its layers bounded by `checkpoints`
+/// and its leaf stage leaving a claim on `logits` when it has some (INV-SCH-1). The anchor's
+/// circuits have no checkpoint and no logits: no layers, every node outside them, and no scoring
+/// site (RFC-0072 'Graphs without layers'). [`derive_schedule`] is this function on a lowering's
+/// graph, tables, checkpoints and logits.
+///
+/// **Precondition.** The schedule proves `graph`'s relations as RFC-0010 states them over the
+/// field, so `graph` must have passed RFC-0006 range analysis ([`analyze`](crate::analyze)):
+/// every gadget input a true integer inside its gadget's domain, and every committed advice graph
+/// input proven in its declared range and pinned at its padded positions. This function checks
+/// the graph's rules ([`Graph::validate`]) but runs no range analysis; its summing rule treats an
+/// unpinned committed input as non-zero at padding rather than rely on it (RFC-0072 'Summing
+/// relations').
+///
+/// # Errors
+///
+/// [`CompileError::Graph`] for a graph that breaks a rule of RFC-0006 'Operation set'. Then
+/// [`CompileError::Schedule`] (`ERR-INTERNAL`):
+///
+/// - layers that are not one template, a single checkpoint, or a template holding an operation
+///   whose stacked form RFC-0072 leaves unspecified, a lookup non-zero at padding or a public
+///   tensor ([`LayerMap`]);
+/// - a committed output of a node other than a gadget, `ConstMul`, `ConstAdd`, `Add`, `Sub` or
+///   `Mul`, which stage 1 does not prove (RFC-0072 'A committed output');
+/// - a `Sum`, `SumSquares` or `MatMulAct` over an axis whose length is not a power of two none of
+///   whose summed inputs is 0 at its padded positions (RFC-0072 'Summing relations');
+/// - a `BitDecompose` or an `AssertEqual`, whose stage-1 zero-checks are not derived yet;
+/// - logits that no node produces, or a claim that reaches a public tensor or an operation
+///   RFC-0037 maps no claim through yet, such as `ConstAdd`, `Slice` or `GatherPublic`.
+pub fn derive_graph_schedule(
+    graph: &Graph,
+    tables: &[TableSpec],
+    checkpoints: &[TensorId],
+    logits: Option<TensorId>,
+) -> Result<StageSchedule, CompileError> {
+    graph.validate()?;
+    derive(graph, tables, checkpoints, logits, &[], &[])
 }
 
 /// Compose model-owned native components with the existing graph derivation. Each deferred
@@ -436,21 +493,47 @@ pub fn derive_composed_schedule(
     deferred: &[Deferred],
     native: &[Native],
 ) -> Result<StageSchedule, CompileError> {
-    let layers = LayerMap::new(lowering)?;
-    let graph = &lowering.graph;
-    let lm = graph
-        .nodes
-        .iter()
-        .find(|n| n.outputs.contains(&lowering.logits))
-        .ok_or(CompileError::Schedule {
-            node: None,
-            rule: "the lowered graph has its logits producer",
-        })?
-        .id;
+    derive(
+        &lowering.graph,
+        &lowering.tables,
+        &lowering.checkpoints,
+        Some(lowering.logits),
+        deferred,
+        native,
+    )
+}
+
+/// The schedule of `graph` with its natives: [`derive_graph_schedule`] and
+/// [`derive_composed_schedule`] alike.
+fn derive(
+    graph: &Graph,
+    tables: &[TableSpec],
+    checkpoints: &[TensorId],
+    logits: Option<TensorId>,
+    deferred: &[Deferred],
+    native: &[Native],
+) -> Result<StageSchedule, CompileError> {
+    let layers = LayerMap::of(graph, tables, checkpoints)?;
+    let producers = producers(graph);
+    check_graph(graph, tables, &producers)?;
+    let lm = match logits {
+        Some(logits) => Some(
+            producers
+                .get(logits.0 as usize)
+                .copied()
+                .flatten()
+                .ok_or(CompileError::Schedule {
+                    node: None,
+                    rule: "the lowered graph has its logits producer",
+                })?
+                .0,
+        ),
+        None => None,
+    };
     let site_node = |node: NodeId| {
         graph.nodes.get(node.0 as usize).filter(|n| {
-            n.op.class() == tessera_ir::OpClass::Gadget
-                || (n.id == lm
+            n.op.class() == OpClass::Gadget
+                || (Some(n.id) == lm
                     && matches!(n.op,Op::MatMulWeight{weight} if weight.ty==WeightType::LmHead))
         })
     };
@@ -496,7 +579,7 @@ pub fn derive_composed_schedule(
         };
         let tensor = match input {
             Some(i) => definition.inputs.get(i),
-            None if node == lm => definition.outputs.first(),
+            None if Some(node) == lm => definition.outputs.first(),
             None => None,
         };
         if matches!(definition.op, Op::OneHot { .. }) && input == Some(0) {
@@ -543,8 +626,8 @@ pub fn derive_composed_schedule(
             );
         }
     }
-    let mut derivation = claims::Derivation::new(&lowering.graph, &layers);
-    let mut sites = leaf_sites(&lowering.graph, &layers);
+    let mut derivation = claims::Derivation::new(graph, &layers, producers);
+    let mut sites = leaf_sites(graph, &layers, lm.is_some());
     sites.retain(|&s| {
         let key = match s {
             Site::Gadget { node, input } => (
@@ -554,7 +637,10 @@ pub fn derive_composed_schedule(
                 },
                 Some(input as usize),
             ),
-            Site::Logits => (lm, None),
+            Site::Logits => match lm {
+                Some(lm) => (lm, None),
+                None => return true,
+            },
         };
         !deferred.contains(&key)
     });
@@ -583,8 +669,11 @@ pub fn derive_composed_schedule(
             Site::Gadget {
                 node: NodeRef::Node(node),
                 input,
-            } => layers.outside(input_of(&lowering.graph, node, input)),
-            Site::Logits => layers.outside(lowering.logits),
+            } => layers.outside(input_of(graph, node, input)),
+            Site::Logits => layers.outside(logits.ok_or(CompileError::Schedule {
+                node: None,
+                rule: "a logits site reads the graph's logits",
+            })?),
         };
         let vars = derivation.vars(kind);
         let point = (0..vars)
@@ -629,32 +718,88 @@ pub fn derive_composed_schedule(
     })
 }
 
-/// The leaf stage's sites: each input of each gadget in node order, a template position's once,
-/// then the logits.
-fn leaf_sites(graph: &Graph, layers: &LayerMap) -> Vec<Site> {
+/// Whether the leaf stage gives a node of `op` a site, one claim per input (RFC-0045 'Sites',
+/// RFC-0072 'Gadgets and leaf sites'): every gadget but `BitDecompose` and `AssertEqual`, whose
+/// claims all come from stage 1's zero-checks. `OneHot` keeps its site. The prover's leaf layout
+/// lays out the same sites.
+pub fn has_leaf_site(op: &Op) -> bool {
+    op.class() == OpClass::Gadget && !matches!(op, Op::BitDecompose { .. } | Op::AssertEqual)
+}
+
+/// The leaf stage's sites: each input of each node with a site ([`has_leaf_site`]) in node order,
+/// a template position's once, then the logits when the graph has them.
+fn leaf_sites(graph: &Graph, layers: &LayerMap, logits: bool) -> Vec<Site> {
     let mut sites = Vec::new();
-    let mut gadget = |node: NodeRef, op: &Op, inputs: usize| {
-        if op.class() == tessera_ir::OpClass::Gadget {
-            for input in 0..inputs {
-                sites.push(Site::Gadget {
-                    node,
-                    input: u32::try_from(input).unwrap_or(u32::MAX),
-                });
-            }
-        }
-    };
     for node in &graph.nodes {
-        let id = node.id.0;
-        if id < layers.first {
-            gadget(NodeRef::Node(node.id), &node.op, node.inputs.len());
-        } else if let Some(position) = id.checked_sub(layers.first).filter(|&p| p < layers.width) {
-            gadget(NodeRef::Position(position), &node.op, node.inputs.len());
-        } else if id >= layers.end() {
-            gadget(NodeRef::Node(node.id), &node.op, node.inputs.len());
+        if !has_leaf_site(&node.op) {
+            continue;
+        }
+        let node_ref = match layers.position(node.id) {
+            Some((0, position)) => NodeRef::Position(position),
+            Some(_) => continue,
+            None => NodeRef::Node(node.id),
+        };
+        for input in 0..node.inputs.len() {
+            sites.push(Site::Gadget {
+                node: node_ref,
+                input: u32::try_from(input).unwrap_or(u32::MAX),
+            });
         }
     }
-    sites.push(Site::Logits);
+    if logits {
+        sites.push(Site::Logits);
+    }
     sites
+}
+
+/// RFC-0072's refusals that read the graph alone, before any claim (`ERR-INTERNAL`), in this
+/// order:
+///
+/// - **A committed output** of a node that is not a gadget is proven by stage 1's equality
+///   zero-check only for a pointwise `ConstMul`, `ConstAdd`, `Add`, `Sub` or `Mul` ('Linear
+///   operations that are not coordinate maps' 'A committed output'): any other's, a selection's,
+///   `Sum`'s, `SumSquares`'s, `Rotate`'s, `Transpose`'s, `Reshape`'s or `Expand`'s, is refused,
+///   although the IR admits the declaration, whether or not a claim reaches it.
+/// - **Summing relations** over a padded axis ('Summing relations').
+/// - **The bit operations.** A `BitDecompose`'s and an `AssertEqual`'s relations are stage 1's bit
+///   zero-checks ('The bit zero-checks'), and they have no leaf site: until the schedule derives
+///   those checks (#526), a graph holding one is refused, rather than given a schedule that
+///   proves neither. This refusal comes last, as it lifts with the checks.
+fn check_graph(
+    graph: &Graph,
+    tables: &[TableSpec],
+    producers: &[Option<(NodeId, u32)>],
+) -> Result<(), CompileError> {
+    for node in &graph.nodes {
+        let committed = node.outputs.iter().any(|t| {
+            graph
+                .tensors
+                .get(t.0 as usize)
+                .is_some_and(|spec| matches!(spec.kind, NodeKind::Committed { .. }))
+        });
+        let pointwise = matches!(
+            node.op,
+            Op::ConstMul { .. } | Op::ConstAdd { .. } | Op::Add | Op::Sub | Op::Mul { .. }
+        );
+        if committed && node.op.class() != OpClass::Gadget && !pointwise {
+            return refuse(
+                Some(node.id),
+                "a committed output is of a ConstMul, ConstAdd, Add, Sub or Mul",
+            );
+        }
+    }
+    padding::check_sums(graph, tables, producers)?;
+    if let Some(node) = graph
+        .nodes
+        .iter()
+        .find(|node| matches!(node.op, Op::BitDecompose { .. } | Op::AssertEqual))
+    {
+        return refuse(
+            Some(node.id),
+            "the schedule derives no bit zero-check of a BitDecompose or an AssertEqual yet",
+        );
+    }
+    Ok(())
 }
 
 /// Input `input` of `node`.

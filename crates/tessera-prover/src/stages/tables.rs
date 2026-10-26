@@ -20,14 +20,14 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
     /// The shape of `kind`'s tensors.
     pub(super) fn shape(&self, kind: Kind) -> Result<&[u32], StageError> {
         let tensor = self.tensor(kind, 0)?;
-        Ok(&self.lowering.graph.tensors[tensor.0 as usize].shape)
+        Ok(&self.graph.tensors[tensor.0 as usize].shape)
     }
 
     /// The tensor of `kind` in `layer`.
     pub(super) fn tensor(&self, kind: Kind, layer: u32) -> Result<TensorId, StageError> {
         self.schedule
             .layers
-            .tensor(&self.lowering.graph, kind, layer)
+            .tensor(self.graph, kind, layer)
             .ok_or(StageError::Internal {
                 rule: "a kind names a tensor in every layer",
             })
@@ -40,7 +40,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         layer: u32,
     ) -> Result<SecretBuf<Goldilocks>, StageError> {
         let tensor = self.tensor(kind, layer)?;
-        let shape = &self.lowering.graph.tensors[tensor.0 as usize].shape;
+        let shape = &self.graph.tensors[tensor.0 as usize].shape;
         let mut table = zeros(1usize << Self::vars_of(shape))?;
         let values = self.witness.values(tensor).ok_or(StageError::Internal {
             rule: "the witness holds every tensor of the graph",

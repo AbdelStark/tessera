@@ -6,6 +6,22 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The anchor circuits' schedule, first part ([#526](https://github.com/AbdelStark/tessera/issues/526), RFC-0072 'Migration' slice 1):
+  - **Graphs without layers.** A graph with no checkpoint has `L = 0`, and `tessera_compiler::derive_graph_schedule` derives its schedule from the graph and its tables, with logits only when it has some. `derive_schedule` is the same code on a lowering. `StageProver::for_graph` proves such a schedule.
+  - **The graph's analyses.**
+    - `public_tensors` closes publicness over the nodes that are not gadget-backed.
+    - `nonzero_at_padding` decides from public data whether a `Requant`, `TableMap` or `Bitwise` node maps zero inputs to a non-zero value: `AesSbox`, and no Llama table.
+    - `producers` gives each tensor's producer in `O(1)`.
+  - **The refusals** (`ERR-INTERNAL`):
+    - a committed output of a node that is not pointwise;
+    - a `Sum`, `SumSquares` or `MatMulAct` over a padded axis with no summed input 0 there;
+    - a layer template holding a `ConstAdd`, a selection, a per-channel `ConstMul`, a `BitDecompose`, an `AssertEqual`, a lookup non-zero at padding or a public tensor.
+
+    A committed advice graph input counts as non-zero at padding unless a `OneHot` or a `BitDecompose` pins it (RFC-0006). The stage prover refuses a lookup non-zero at padding whose output has padded positions, since its tables pad with zeros until RFC-0072's AES slice.
+
+    Until their zero-checks land, the schedule also refuses `BitDecompose` and `AssertEqual`, and a claim on a public tensor. No Llama graph is affected.
+  - **Leaf sites.** `BitDecompose` and `AssertEqual` take none, in the schedule (`has_leaf_site`) and in the prover's leaf layout alike.
+  - **The commitment report's stage count** follows RFC-0072: selections and `BitFn` are relations, public tensors cost none, and the bit operations' zero-checks count themselves. AES-128-CTR takes 3 stages, and SHA-256 10 per block of public bytes and 14 with committed bytes. Llama's counts are unchanged.
 - The anchor circuits' relations, specified ([#526](https://github.com/AbdelStark/tessera/issues/526)):
   - **RFC-0072, 'Proving the Anchor Circuits: Graphs Without Layers, Public Tensors, Selections and the Bit Zero-Checks'.**
     - **The gap.** Neither AES-128-CTR nor SHA-256 could enter a proof. The schedule assumed layers and logits; `GatherPublic`, `Slice` and a `ConstMul` by a constant per channel had no relation; no rule made a tensor public; and RFC-0066 left the zero-checks' messages open (OQ-0066-1, OQ-0066-2).

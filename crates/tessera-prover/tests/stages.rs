@@ -7,26 +7,32 @@
 //! The leaf stage is the gadgets' (#118). Here its claims are true values at random points, which
 //! both sides bind under a test label, as the trees' messages will. The verifier ends with the
 //! pool's values, and each must equal its committed tensors' extensions, computed from the witness.
+//!
+//! A graph without layers (RFC-0072 'Graphs without layers'), with no checkpoint and no logits,
+//! proves with the same relations through a prover of the graph alone, and a committed input
+//! changed under the honest values is rejected.
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use tessera_codec::{Ascii, DecodeLimits, Secret, SecretBuf, envelope, schema};
+use tessera_compiler::schedule::LayerMap;
 use tessera_compiler::schedule::{
     Claim, Coord, Factor, Layers, NodeRef, Part, Relation, Source, StageSchedule,
 };
-use tessera_compiler::{Lowering, PublicModel, derive_schedule, lower};
+use tessera_compiler::{Lowering, PublicModel, derive_graph_schedule, derive_schedule, lower};
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_ir::{
-    CommitmentClass, GraphBuilder, IntRange, IntType, IntegerModel, NodeKind, Op, TensorDecl,
-    TensorId,
+    CommitmentClass, Graph, GraphBuilder, IntRange, IntType, IntegerModel, NodeKind, Op,
+    TensorDecl, TensorId, WeightRef, WeightType,
 };
 use tessera_poly::{eq, eq_table, evaluate_base, less_than};
-use tessera_prover::{StageProof, StageProver};
+use tessera_prover::leaf::gadget_nodes;
+use tessera_prover::{StageError, StageProof, StageProver, WitnessSource};
 use tessera_sumcheck::SumcheckTranscript;
-use tessera_tables::RopeTable;
+use tessera_tables::{GeneratedTable, RopeTable, Table, TableId, TableKind, TableSpec};
 use tessera_witness::{Engine, Witness};
 
 type F = GoldilocksExt2;
@@ -156,6 +162,33 @@ fn prove(
     (proof, prover.pool().to_vec())
 }
 
+/// Every stage of a schedule of `graph` proven by a prover of the graph alone, over `witness`.
+fn prove_graph<W: WitnessSource + ?Sized>(
+    graph: &Graph,
+    tables: &[TableSpec],
+    schedule: &StageSchedule,
+    witness: &W,
+    points: &[Vec<F>],
+) -> (Proof, Vec<Option<F>>) {
+    let mut t = transcript();
+    let mut prover = StageProver::for_graph(graph, tables, schedule, witness);
+    let leaf = prover.leaf(points).expect("the leaf stage's claims");
+    absorb_leaf(&mut t, &leaf);
+    let leaf_splits = prover.leaf_splits(&mut t).expect("the leaf stage's splits");
+    let stages = (1..schedule.stages.len())
+        .map(|k| {
+            let k = u16::try_from(k).expect("small");
+            prover.prove_stage(&mut t, k).expect("a stage")
+        })
+        .collect();
+    let proof = Proof {
+        leaf,
+        leaf_splits,
+        stages,
+    };
+    (proof, prover.pool().to_vec())
+}
+
 // ----- A verifier from RFC-0010 and RFC-0037 ----------------------------------------------------
 
 /// `Reject(Sumcheck { stage, round })` (04 §2), the leaf stage's splits at stage 0, round 0.
@@ -165,9 +198,11 @@ struct Reject {
     round: u32,
 }
 
-/// The verifier's state: the challenges, each stage's claims' and parts' values, and the pool.
+/// The verifier's state: the graph and its tables, the challenges, each stage's claims' and parts'
+/// values, and the pool.
 struct Verifier<'a> {
-    lowering: &'a Lowering,
+    graph: &'a Graph,
+    tables: &'a [TableSpec],
     schedule: &'a StageSchedule,
     coords: HashMap<Coord, F>,
     claims: Vec<Vec<Vec<F>>>,
@@ -182,8 +217,21 @@ fn verify(
     proof: &Proof,
     points: &[Vec<F>],
 ) -> Result<Vec<F>, Reject> {
+    verify_graph(&lowering.graph, &lowering.tables, schedule, proof, points)
+}
+
+/// The pool's values of a schedule of `graph`, whose tables are `tables`, once every stage's
+/// checks pass.
+fn verify_graph(
+    graph: &Graph,
+    tables: &[TableSpec],
+    schedule: &StageSchedule,
+    proof: &Proof,
+    points: &[Vec<F>],
+) -> Result<Vec<F>, Reject> {
     let mut v = Verifier {
-        lowering,
+        graph,
+        tables,
         schedule,
         coords: HashMap::new(),
         claims: Vec::new(),
@@ -256,12 +304,10 @@ impl Verifier<'_> {
             NodeRef::Node(id) => id,
             NodeRef::Position(position) => self.schedule.layers.node(position, layer),
         };
-        let Op::ConstMul { c } = self.lowering.graph.nodes[id.0 as usize].op else {
+        let Op::ConstMul { c } = self.graph.nodes[id.0 as usize].op else {
             panic!("a ConstMul");
         };
-        F::from(Goldilocks::from_i64(
-            self.lowering.graph.constants[c.0 as usize][0],
-        ))
+        F::from(Goldilocks::from_i64(self.graph.constants[c.0 as usize][0]))
     }
 
     /// A coefficient in `layer`.
@@ -464,7 +510,7 @@ impl Verifier<'_> {
             Relation::Native { .. } => panic!("this oracle covers graph-only schedules"),
             Relation::MatMulWeight => 2 + usize::from(stacked),
             Relation::MatMulAct { .. } => {
-                let heads = self.lowering.graph.tensors[node.inputs[0].0 as usize].shape[0];
+                let heads = self.graph.tensors[node.inputs[0].0 as usize].shape[0];
                 2 + usize::from(stacked || heads > 1)
             }
             Relation::Mul(_)
@@ -490,7 +536,7 @@ impl Verifier<'_> {
             NodeRef::Node(id) => id,
             NodeRef::Position(p) => self.schedule.layers.node(p, 0),
         };
-        &self.lowering.graph.nodes[id.0 as usize]
+        &self.graph.nodes[id.0 as usize]
     }
 
     /// An instance's relation at its point from its evaluations, public factors included.
@@ -507,7 +553,7 @@ impl Verifier<'_> {
         }
         let r = self.point(&instance.challenges);
         let node = self.node(instance.node);
-        let shape = |i: usize| &self.lowering.graph.tensors[node.inputs[i].0 as usize].shape;
+        let shape = |i: usize| &self.graph.tensors[node.inputs[i].0 as usize].shape;
         match instance.relation {
             Relation::Native { .. } => panic!("this oracle covers graph-only schedules"),
             Relation::MatMulWeight => {
@@ -516,7 +562,7 @@ impl Verifier<'_> {
                 layers * e[0] * e[1]
             }
             Relation::MatMulAct { .. } => {
-                let out = &self.lowering.graph.tensors[node.outputs[0].0 as usize].shape;
+                let out = &self.graph.tensors[node.outputs[0].0 as usize].shape;
                 let (c, a) = (axis_vars(out[2]) as usize, axis_vars(out[1]) as usize);
                 let inner = axis_vars(shape(0)[2]) as usize;
                 eq(&target[c + a..], &r[inner..]).expect("eq") * e[0] * e[1]
@@ -530,7 +576,7 @@ impl Verifier<'_> {
             Relation::ScaleChannels => panic!("no per-channel ConstMul in the conformance models"),
             Relation::Booleanity => eq(&target, &r).expect("eq") * e[0] * (F::ONE - e[0]),
             Relation::OneHotVocabulary | Relation::OneHotCount | Relation::OneHotIndex => {
-                let &[positions, vocab] = self.lowering.graph.tensors[node.outputs[0].0 as usize]
+                let &[positions, vocab] = self.graph.tensors[node.outputs[0].0 as usize]
                     .shape
                     .as_slice()
                 else {
@@ -601,13 +647,12 @@ impl Verifier<'_> {
             panic!("a Rotate");
         };
         let spec = self
-            .lowering
             .tables
             .iter()
             .find(|s| s.id == rope)
             .expect("the table");
         let table = RopeTable::from_spec(spec).expect("RoPE's constants");
-        let x = &self.lowering.graph.tensors[node.inputs[0].0 as usize].shape;
+        let x = &self.graph.tensors[node.inputs[0].0 as usize].shape;
         let (rows, heads, dim) = (x[0], x[1], x[2]);
         let bit = axis_vars(dim) as usize - 1;
         let (hv, nv) = (axis_vars(heads) as usize, axis_vars(rows) as usize);
@@ -676,8 +721,8 @@ fn axis_vars(len: u32) -> u32 {
 // ----- The pool against the witness -----------------------------------------------------------
 
 /// `tensor` padded per dimension with zeros.
-fn padded(witness: &Witness, lowering: &Lowering, tensor: TensorId) -> Vec<Goldilocks> {
-    let shape = &lowering.graph.tensors[tensor.0 as usize].shape;
+fn padded(witness: &Witness, graph: &Graph, tensor: TensorId) -> Vec<Goldilocks> {
+    let shape = &graph.tensors[tensor.0 as usize].shape;
     let vars: Vec<u32> = shape.iter().map(|&d| axis_vars(d)).collect();
     let mut table = vec![Goldilocks::ZERO; 1 << vars.iter().sum::<u32>()];
     for (flat, &v) in witness.tensor(tensor).expect("a tensor").iter().enumerate() {
@@ -699,8 +744,19 @@ fn pool_from_witness(
     schedule: &StageSchedule,
     witness: &Witness,
 ) -> Vec<F> {
+    pool_of_graph(verifier_coords, &lowering.graph, schedule, witness)
+}
+
+/// Each pool claim's value of a schedule of `graph` from the witness.
+fn pool_of_graph(
+    verifier_coords: &HashMap<Coord, F>,
+    graph: &Graph,
+    schedule: &StageSchedule,
+    witness: &Witness,
+) -> Vec<F> {
     let v = Verifier {
-        lowering,
+        graph,
+        tables: &[],
         schedule,
         coords: verifier_coords.clone(),
         claims: Vec::new(),
@@ -727,9 +783,9 @@ fn pool_from_witness(
                 for (l, w) in weights {
                     let tensor = schedule
                         .layers
-                        .tensor(&lowering.graph, atom.kind, l)
+                        .tensor(graph, atom.kind, l)
                         .expect("a tensor");
-                    let table = padded(witness, lowering, tensor);
+                    let table = padded(witness, graph, tensor);
                     let x = evaluate_base::<F>(&table, &v.point(&atom.point)).expect("a point");
                     value += w * v.coefficient(&atom.coefficient, l) * x;
                 }
@@ -929,7 +985,7 @@ fn requant(b: &mut GraphBuilder, key: TensorId, shape: &[u32], bound: i64) -> Te
 }
 
 /// A lowering of `graph` with `x` its one input and `checkpoints` its layers' boundaries.
-fn lowering_of(graph: tessera_ir::Graph, x: TensorId, checkpoints: Vec<TensorId>) -> Lowering {
+fn lowering_of(graph: Graph, x: TensorId, checkpoints: Vec<TensorId>) -> Lowering {
     let logits = *checkpoints.last().expect("checkpoints");
     Lowering {
         graph,
@@ -1089,10 +1145,12 @@ fn every_linear_map_proves_in_a_template_of_its_own() {
         let k = b.constant(vec![2 + 3 * layer]).expect("a constant");
         let scaled = one(&mut b, Op::ConstMul { c: k }, &[thrice], virt(&[5, 3, 4]));
         let difference = one(&mut b, Op::Sub, &[back, scaled], virt(&[5, 3, 4]));
-        let mean = one(&mut b, Op::Sum { axis: 0 }, &[c], virt(&[3, 4]));
+        // Over the checkpoint's axis of 4: its padded positions are `x`'s, a bare committed
+        // input's, so a sum over its axis of 5 is refused (RFC-0072 'Summing relations').
+        let mean = one(&mut b, Op::Sum { axis: 2 }, &[c], virt(&[5, 3]));
         let spread = one(
             &mut b,
-            Op::Expand { axis: 0, len: 5 },
+            Op::Expand { axis: 2, len: 4 },
             &[mean],
             virt(&[5, 3, 4]),
         );
@@ -1157,4 +1215,247 @@ fn a_stacked_channel_product_proves() {
             .any(|i| i.relation == Relation::Mul(tessera_ir::Broadcast::Leading))
     );
     prove_template(&lowering, &inputs, 0x0113_A1F1);
+}
+
+// ----- Graphs without layers (RFC-0072) ---------------------------------------------------------
+
+/// Committed `a`, `b` and `c` of `[3, 8]` and a weight `W`: `s = a·b + W·c` requantized, its sum
+/// of squares over its channels requantized, and `3a` committed. No checkpoint and no logits. The
+/// graph and its inputs `a`, `b`, `c` and `W`.
+fn products() -> (Graph, [TensorId; 4]) {
+    let mut g = GraphBuilder::new();
+    let mut input = decl(&[3, 8], ADVICE);
+    // Small enough that the sum of squares stays inside its declared range.
+    input.range = IntRange { lo: -3, hi: 3 };
+    let a = g.input(input.clone()).expect("a");
+    let b = g.input(input.clone()).expect("b");
+    let c = g.input(input).expect("c");
+    let weight = WeightRef {
+        ty: WeightType::Q,
+        layer: 0,
+    };
+    let w = g.weight(weight, 8, 8).expect("a weight");
+    let mul = Op::Mul {
+        broadcast: tessera_ir::Broadcast::Trailing,
+    };
+    let virt = |shape: &[u32]| decl(shape, NodeKind::Virtual);
+    let m = one(&mut g, mul, &[a, b], virt(&[3, 8]));
+    let p = one(&mut g, Op::MatMulWeight { weight }, &[c, w], virt(&[3, 8]));
+    let s = one(&mut g, Op::Add, &[m, p], virt(&[3, 8]));
+    let q = one(&mut g, Op::SumSquares { axis: 1 }, &[s], virt(&[3]));
+    requant(&mut g, q, &[3], 100);
+    requant(&mut g, s, &[3, 8], 100);
+    let three = g.constant(vec![3]).expect("a constant");
+    one(
+        &mut g,
+        Op::ConstMul { c: three },
+        &[a],
+        decl(&[3, 8], ADVICE),
+    );
+    (g.finish(), [a, b, c, w])
+}
+
+/// Random values in each input's declared range.
+fn random_inputs(graph: &Graph, inputs: &[TensorId], seed: u64) -> Vec<(TensorId, SecretBuf<i64>)> {
+    let mut state = seed;
+    inputs
+        .iter()
+        .map(|&t| {
+            let spec = &graph.tensors[t.0 as usize];
+            let len: usize = spec.shape.iter().map(|&d| d as usize).product();
+            let span = u64::try_from(spec.range.hi - spec.range.lo + 1).expect("small");
+            let values: SecretBuf<i64> = (0..len)
+                .map(|_| {
+                    state = state
+                        .wrapping_mul(6_364_136_223_846_793_005)
+                        .wrapping_add(1);
+                    let offset = i64::try_from((state >> 33) % span).expect("small");
+                    i64::try_from(spec.range.lo).expect("small") + offset
+                })
+                .collect();
+            (t, values)
+        })
+        .collect()
+}
+
+/// A witness whose tensor `tensor` holds `values`, every other the honest witness's: a prover that
+/// commits an input other than the one its virtual tensors were computed from.
+struct Tampered<'a> {
+    witness: &'a Witness,
+    tensor: TensorId,
+    values: Vec<i64>,
+}
+
+impl WitnessSource for Tampered<'_> {
+    fn values(&self, tensor: TensorId) -> Option<&[i64]> {
+        if tensor == self.tensor {
+            return Some(&self.values);
+        }
+        self.witness.values(tensor)
+    }
+}
+
+/// RFC-0072 'Graphs without layers': with no checkpoint, `L = λ = 0`, stage 1 squeezes no layer
+/// coordinate, and every relation runs on tensors outside the layers; with no logits the leaf
+/// stage leaves claims on its sites alone. The schedule proves through a prover of the graph alone
+/// and the in-test verifier accepts it, its pool the committed tensors' extensions. A committed
+/// input entry changed under the honest values fails stage 1's final check.
+#[test]
+fn a_graph_without_layers_proves_and_verifies() {
+    let (graph, inputs) = products();
+    let schedule = derive_graph_schedule(&graph, &[], &[], None).expect("a schedule");
+    assert_eq!((schedule.layers.count, schedule.layers.vars), (0, 0));
+    assert_eq!(schedule.stage_count(), 3);
+    assert_eq!(
+        schedule.stage_count(),
+        tessera_compiler::stage_count(&graph) as usize,
+        "the report's count"
+    );
+    let witness = Engine::for_graph(&graph, &[])
+        .expect("an engine")
+        .evaluate(random_inputs(&graph, &inputs, 0x0526_0001))
+        .expect("a witness");
+    let points = leaf_points(&schedule, 0x0526_0001);
+    let (proof, prover_pool) = prove_graph(&graph, &[], &schedule, &witness, &points);
+    assert_eq!(proof.stages.len() + 1, schedule.stage_count());
+    let pool = verify_graph(&graph, &[], &schedule, &proof, &points).expect("it verifies");
+    let prover_pool: Vec<F> = prover_pool
+        .into_iter()
+        .map(|v| v.expect("a value"))
+        .collect();
+    assert_eq!(pool, prover_pool);
+    let coords = coords_after(&schedule, &proof, &points);
+    assert_eq!(pool, pool_of_graph(&coords, &graph, &schedule, &witness));
+    // The prover of a lowering proves the same messages.
+    let lowering = Lowering {
+        graph: graph.clone(),
+        tables: Vec::new(),
+        tokens: inputs[0],
+        positions: inputs[0],
+        one_hot: inputs[0],
+        logits: inputs[0],
+        checkpoints: Vec::new(),
+        sites: Vec::new(),
+        classes: Vec::new(),
+        multipliers: Vec::new(),
+    };
+    let (same, _) = prove(&lowering, &schedule, &witness, &points);
+    assert_eq!(same.stages, proof.stages);
+    // `b`, which only the products read, with one entry changed.
+    let b = inputs[1];
+    let mut values = witness.tensor(b).expect("b").to_vec();
+    values[5] += 1;
+    let tampered = Tampered {
+        witness: &witness,
+        tensor: b,
+        values,
+    };
+    let (bad, _) = prove_graph(&graph, &[], &schedule, &tampered, &points);
+    assert_eq!(
+        verify_graph(&graph, &[], &schedule, &bad, &points),
+        Err(Reject {
+            stage: 1,
+            round: schedule.stages[1].rounds
+        })
+    );
+}
+
+/// RFC-0072 'Gadgets and leaf sites': the leaf layout gives `BitDecompose` and `AssertEqual` no
+/// site, as the schedule gives none (`has_leaf_site`, which both call), and every other gadget,
+/// `OneHot` among them, its own.
+#[test]
+fn the_bit_operations_take_no_leaf_site() {
+    let mut g = GraphBuilder::new();
+    let mut input = decl(&[4], ADVICE);
+    input.range = IntRange { lo: 0, hi: 3 };
+    let x = g.input(input).expect("x");
+    g.node(
+        Op::BitDecompose { low: 2, high: 0 },
+        &[x],
+        vec![decl(&[4, 2], ADVICE)],
+    )
+    .expect("bits");
+    let r = requant(&mut g, x, &[4], 100);
+    g.node(Op::AssertEqual, &[x, r], Vec::new())
+        .expect("an equality");
+    one(&mut g, Op::OneHot { vocab: 4 }, &[x], decl(&[4, 4], ADVICE));
+    let graph = g.finish();
+    let lowering = Lowering {
+        graph,
+        tables: Vec::new(),
+        tokens: x,
+        positions: x,
+        one_hot: x,
+        logits: x,
+        checkpoints: Vec::new(),
+        sites: Vec::new(),
+        classes: Vec::new(),
+        multipliers: Vec::new(),
+    };
+    let layers = LayerMap::new(&lowering).expect("no checkpoint, no layers");
+    assert_eq!(layers.count, 0);
+    let sites = gadget_nodes(&lowering, &layers);
+    let expected: Vec<NodeRef> = lowering
+        .graph
+        .nodes
+        .iter()
+        .filter(|n| matches!(n.op, Op::Requant { .. } | Op::OneHot { .. }))
+        .map(|n| NodeRef::Node(n.id))
+        .collect();
+    assert_eq!(sites, expected);
+}
+
+/// A witness of zeros, each tensor of its own size.
+struct Zeros(Vec<Vec<i64>>);
+
+impl WitnessSource for Zeros {
+    fn values(&self, tensor: TensorId) -> Option<&[i64]> {
+        self.0.get(tensor.0 as usize).map(Vec::as_slice)
+    }
+}
+
+/// RFC-0072 'Padded positions': an S-box, a lookup non-zero at padding, holds `AesSbox(0) =
+/// 0x63` at its padded positions, which the stage tables, padded with zeros, do not hold until
+/// #526's fourth slice computes them over padded shapes. The stage prover refuses such a graph at
+/// its leaf stage. An S-box with no padded position, and a `Gf256Mul` lookup with padded
+/// positions, which maps 0 to 0, prove their leaf stage.
+#[test]
+fn a_lookup_non_zero_at_padding_with_padded_positions_is_refused() {
+    let leaf = |kind: TableKind, shape: &[u32]| {
+        let mut g = GraphBuilder::new();
+        let mut input = decl(shape, ADVICE);
+        input.range = IntRange { lo: 0, hi: 255 };
+        let x = g.input(input).expect("bytes");
+        let output = decl(shape, NodeKind::LookupOutput { table: TableId(0) });
+        g.node(Op::TableMap { table: TableId(0) }, &[x], vec![output])
+            .expect("a lookup");
+        let graph = g.finish();
+        let tables = vec![
+            GeneratedTable::new(TableId(0), kind)
+                .expect("a table")
+                .spec()
+                .clone(),
+        ];
+        let schedule = derive_graph_schedule(&graph, &tables, &[], None).expect("a schedule");
+        let witness = Zeros(
+            graph
+                .tensors
+                .iter()
+                .map(|t| vec![0; t.shape.iter().map(|&d| d as usize).product()])
+                .collect(),
+        );
+        let mut prover = StageProver::for_graph(&graph, &tables, &schedule, &witness);
+        prover
+            .leaf(&leaf_points(&schedule, 0x0526_0002))
+            .map(|_| ())
+    };
+    assert_eq!(
+        leaf(TableKind::AesSbox, &[4, 3]),
+        Err(StageError::Internal {
+            rule: "a lookup non-zero at padding has no padded positions while the stage tables \
+                   pad with zeros"
+        })
+    );
+    leaf(TableKind::AesSbox, &[4, 4]).expect("no padded position");
+    leaf(TableKind::Gf256Mul { c: 2 }, &[4, 3]).expect("a lookup that maps 0 to 0");
 }

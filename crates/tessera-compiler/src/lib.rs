@@ -18,7 +18,8 @@
 //!   [`report`] the commitment report (RFC-0006 'Outputs').
 //! - [`derive_schedule`] derives the stage schedule from a lowering: the claims each stage leaves,
 //!   their splits, the relation instances that prove them and the claim pool (RFC-0010 'Stages',
-//!   RFC-0037).
+//!   RFC-0037). [`derive_graph_schedule`] derives it from a graph with no lowering, such as the
+//!   anchor's circuits, which have no layers and no logits (RFC-0072).
 //! - [`plan`] builds the execution plan from the public part of `D` and its claim list: the claim
 //!   list and the tiles of [`tiles`], which partition a sequence's committed values in production
 //!   order. [`ExecutionPlan::expand`] gives the tiles of one sequence with the elements each holds,
@@ -56,7 +57,7 @@ pub use report::{
     Tally, report, stage_count,
 };
 pub use runtime::{GreedyCertificate, RuntimePlan};
-pub use schedule::{StageSchedule, derive_schedule};
+pub use schedule::{StageSchedule, derive_graph_schedule, derive_schedule};
 pub use select::{Gadget, Selection, select};
 
 /// The three outputs of compiling `D` (RFC-0006 'Outputs', RFC-0029): the public

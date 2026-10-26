@@ -172,11 +172,7 @@ pub(super) fn stage<'a>(
                     let point =
                         challenges[out.from as usize..(out.from + out.vars) as usize].to_vec();
                     let (kind, layers) = if matches!(plan.node, NodeRef::Position(_)) {
-                        let producer = derivation
-                            .graph
-                            .nodes
-                            .iter()
-                            .find(|node| node.outputs.contains(&out.tensor));
+                        let producer = derivation.producer_of(out.tensor);
                         let kind = if Some(out.tensor)
                             == derivation
                                 .layers
@@ -497,6 +493,16 @@ fn evaluations(
             let mut claims = vec![output];
             match &node.op {
                 Op::ConstMul { .. } => claims.push(at(0, own.to_vec())?),
+                // Its `f = x̃ + ĉ` moves the constant at real positions into the claim
+                // (RFC-0072 'Linear operations that are not coordinate maps'), as a public term
+                // the schedule does not derive yet (#526).
+                Op::ConstAdd { .. } => {
+                    return refuse(
+                        id,
+                        "a committed ConstAdd's equality zero-check takes its shift ĉ, which the \
+                         schedule does not derive yet",
+                    );
+                }
                 Op::Add | Op::Sub => {
                     claims.push(at(0, own.to_vec())?);
                     claims.push(at(1, own.to_vec())?);
