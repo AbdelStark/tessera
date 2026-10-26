@@ -25,6 +25,7 @@ Every repository-wide invariant in `AGENTS.md` has a corresponding module in `xt
 | `cargo xtask lint` | `agent_context.rs` | `.agents/skills` and `.agents/workflows` have valid structure and exact symlinks in `.claude/` and `.codex/` |
 | `cargo xtask check-isolation` | `isolation.rs` | `verifier/` shares zero code or path dependencies with `crates/`, and every transitive dependency is in `verifier/allowlist.toml` (`RFC-0001`, `SP-6`, `DEP-1..3`) |
 | `cargo xtask check-test-features` | `test_features.rs` | `test-rng`, `test-params`, and `unsafe-debug-dump` fail compilation in `--release` builds (`OBS-4`) |
+| `cargo xtask check-mask-rank` | `mask_rank.rs` | Every mask row's revealed functionals are linearly independent on the compiled schedule, every secret value of a matrix's pair `β_T` lies outside its other functionals' span, and every revealed tensor has two variables, for each conformance claim list and the 405B claim list (`R10`, `RFC-0013`, `RFC-0065`, #488); `tessera_compiler::schedule::masks` lists what the schedule does not hold yet |
 | `cargo xtask check-deps` | `deps.rs` | `cargo-deny` (`0.20.2`) and `cargo-vet` (`0.10.2`) pass on both the root workspace and `verifier/` |
 | `cargo xtask check-pr` | `pr_policy.rs` | Every commit carries a DCO `Signed-off-by:` trailer, zero tool/vendor attribution lines, and user-facing changes update `CHANGELOG.md` |
 

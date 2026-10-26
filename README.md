@@ -41,6 +41,7 @@ cargo fmt --all --check
 cargo xtask lint                # unsafe-code policy, SPDX headers, licenses, Markdown links, report schemas
 cargo xtask check-isolation     # the verifier shares no code with the prover (RFC-0001)
 cargo xtask check-test-features # test-only features fail release builds (RFC-0001)
+cargo xtask check-mask-rank     # every mask row's revealed points are independent (R10, #488)
 cargo xtask check-branchless    # the field compiles branch-free in x86_64 loops (INV-ARCH-2)
 
 # The verifier is a separate workspace:

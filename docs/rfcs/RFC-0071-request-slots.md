@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-25
 - Target milestone: v0.4
+- Amended by: [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) ('The slots', in `tessera-protocol/2`: a slot holds four rows at least, #488)
 - Amends, in both protocols where they apply:
   - [RFC-0006](RFC-0006-compiler-ir.md#llama-lowering) 'Operation set' (`MatMulAct`, `SoftmaxRow`), 'Range analysis' and 'Llama lowering': one graph covers one batch, which carries its slot length and its requests' lengths, and attention reads within a slot;
   - [RFC-0044](RFC-0044-lowering-nodes.md#graph-inputs) 'Graph inputs' and 'A layer': a batch's token axis, positions and scores;
@@ -60,8 +61,8 @@ At 405B, a 16K-token batch of 16 requests of 1K takes about 2.07 GB of `tessera-
 ### The slots
 
 A batch is `statement.batch.requests`, `R ≥ 1` requests in that order, with `n_r = prompt_len_r + output_len_r` positions each (RFC-0047).
-- **The slot length** is `S = 2^{b}`, with `b = ⌈log2 max_r n_r⌉`. Write `n_max = max_r n_r`, and `n_r = 0` for the empty slots `R ≤ r < 2^{⌈log2 R⌉}`.
-- **One request.** With `R = 1` the token axis is today's, of `n` rows, and `S = 2^{⌈log2 n⌉}` is its padded length: every rule below reduces to today's, since `⌊τ/S⌋ = 0`.
+- **The slot length** is `S = 2^{b}`, with `b = ⌈log2 max_r n_r⌉`, and `b ≥ 2` in `tessera-protocol/2`, whose masked tensors need two variables (RFC-0013 'Masked extensions'). Write `n_max = max_r n_r`, and `n_r = 0` for the empty slots `R ≤ r < 2^{⌈log2 R⌉}`.
+- **One request.** With `R = 1` the token axis is today's, of `n` rows, and `S = 2^{⌈log2 n⌉}` is its padded length, at least 4 in `tessera-protocol/2`: every rule below reduces to today's, since `⌊τ/S⌋ = 0`.
 - **The token axis.** Request `r`'s position `p < n_r` is row `τ = r·S + p`. For `R ≥ 2` the graph's token axis has `N = R·S` rows, every slot whole, so that a slot's reads stay inside the axis. It is padded, as every axis is, to `2^{b + ⌈log2 R⌉}` rows. With `R = 1`, `N = n`.
   - A point of it is `(r_p, r_β)`: `r_p` the `b` variables of the position within a slot, lowest, and `r_β` the `⌈log2 R⌉` variables of the request.
 - **Real and padded rows.** A row is **real** when its position is below its request's length: `τ mod S < n_{⌊τ/S⌋}`, with `⌊τ/S⌋ < R`. Every other row of the padded axis is a **padded row**: the rows between `r·S + n_r` and `(r + 1)·S`, and the axis's own padding.

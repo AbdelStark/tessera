@@ -20,6 +20,7 @@ mod isolation;
 mod licenses;
 mod links;
 mod lint;
+mod mask_rank;
 mod model_vectors;
 mod no_float;
 mod plan_vectors;
@@ -52,6 +53,8 @@ commands:
   check-deps         run cargo-deny in both workspaces and cargo-vet in the verifier, then
                      self-test the dependency policies (09 §7; needs cargo-deny, cargo-vet)
   check-isolation    check that the verifier shares no code with the prover (RFC-0001)
+  check-mask-rank    check that every mask row's revealed points are independent on the
+                     compiled schedule, for the conformance and 405B claim lists (R10, #488)
   check-pr --base <REF> [--labels <a,b,...>]
                      check the change from REF to HEAD: changelog entries and DCO sign-off
   check-test-features
@@ -74,6 +77,7 @@ fn main() -> ExitCode {
         Some("check-branchless") => report(branchless::run(&repo::root())),
         Some("check-deps") => report(deps::run(&repo::root())),
         Some("check-isolation") => report(isolation::run(&repo::root())),
+        Some("check-mask-rank") => report(mask_rank::run(&repo::root())),
         Some("check-pr") => match check_pr_args(std::env::args().skip(2)) {
             Ok((base, labels)) => report(pr_policy::run(&repo::root(), &base, &labels)),
             Err(message) => {

@@ -6,6 +6,20 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- R10's rank check on the compiled schedule, `cargo xtask check-mask-rank` ([#488](https://github.com/AbdelStark/tessera/issues/488); R10 stays open for the leaf stage's `tessera-protocol/2` points):
+  - **`tessera_compiler::schedule::masks`.** It extracts every mask row's revealed functionals from the composed schedule and the advice and weight layouts:
+    - pool atoms on committed advice tensors, each row its placed tensor's, and a one-layer read's its layer's (RFC-0069);
+    - weight matrices, and each `ChannelParams` claim on its own row with its matrix's `β_T` (RFC-0065);
+    - virtual tensors' values and one fold per reduction-stage instance, at `tessera-protocol/2`'s rounds.
+
+    Leaf claims share RFC-0045's point. Values merge on their row, point and layer weights, folds never with values. Each indeterminate gets a seeded `Fp2` value, and Gaussian elimination over `Fp2` on product sketches proves generic independence. A `β_T` value with a secret term inside the others' span is refused (RFC-0065).
+  - **The gate** runs every claim list of `spec/vectors/claims/` at the schedule vectors' lengths, three requests each, and the 405B claim list at every `n = 2^j` and `2^j + 1` up to 131,072. It joins CI's `checks` job, 18 s on 16 cores.
+  - **What it found.**
+    - A zero-knowledge leak in RFC-0013 as written. At 405B, for every `n` in `(16384, 32768]`, stage 1 reveals the `SumSquares` outputs at layer positions 0 and 38, of `n_V = 22 = log2 k`, at its last 22 challenges, which is their own folds' point. That reveals `Ṽ`. RFC-0013 now keeps a folded virtual tensor's mask below a full row, `c = min(n_V, log2 k − 1)`, at no cost. The old rule is the gate's regression control, refused at exactly those lengths and tensors.
+    - Tensors of fewer than two variables at `n ≤ 2`: the tokens and the per-position sums of squares and their roots. RFC-0013 and RFC-0071 now pad `tessera-protocol/2`'s token axis, and a batch's slot, to at least four rows, and the gate checks each length at that shape.
+  - **What it does not cover yet** (simulator R10): the leaf stage's `tessera-protocol/2` points (RFC-0068), the `Exp` row sums at `1/2`, gadget auxiliary columns, multiplicities, and tree-level and batching masks.
+  - **Filed:** [#554](https://github.com/AbdelStark/tessera/issues/554). RFC-0013 'Committed tensors' and RFC-0068's degree analysis disagree on whether a stacked committed tensor's mask takes its layer variables. Neither reading gives a rank finding.
+
 - The verifier's log lines, spans and run manifest, specified ([#446](https://github.com/AbdelStark/tessera/issues/446); the verifier's own changelog has the code):
   - **05 §2 'A human line'** states the human format both tools share, which only the prover's rustdoc said. A message follows `error: ` or `warn: `, or at `debug` and `trace` the level and the span path; the fields it does not name follow it.
   - **05 §2 'The verifier's lines'.** `tessera-verify` writes both formats itself, adding no crate (RFC-0001, DEP-1). Every command takes `--log-format` and `--log-level`, read before its other options. Its human lines are today's at the default level. Its three events are `tessera.tv_cli.command_failed`, `check_completed` for each RFC-0019 check that runs, and `verified`.
