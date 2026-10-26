@@ -409,6 +409,7 @@ The first run satisfies the same criteria.
 - **(d)'s rules.**
   - **The heights.** `⌈log2 N⌉`, the protocol crate's rule. RFC-0045's aligned blocks could raise one: the sensitivity run moves B1' from 612 to 558 and the claims from 2,667 to 2,718.
   - **The degrees.** The reduction stages' degrees are RFC-0013's bound of 7.
+  - **Erratum (2026-10-26).** In `tessera-protocol/2` stage 1's degree is 10, not 7 ([#565](https://github.com/AbdelStark/tessera/issues/565), RFC-0013 'Masked extensions' 'Degree'). RFC-0070 recounts the block at 8,132 coefficients, in the same 8,192 slots.
   - **The levels.** The tree levels are batched as RFC-0010 says, one masked sumcheck per batch level.
 - **Seeding.** The defect in the frozen seeding rule is disclosed and amended. The first run reaches the same verdict.
 

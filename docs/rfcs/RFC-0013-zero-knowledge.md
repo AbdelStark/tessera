@@ -133,38 +133,50 @@ Properties:
     - **The cost** is none in rows: the row has `k` entries either way. The narrower `c` can make two values of `V` that differ only in `V`'s `log2 k`-th variable share a column point, which `c = log2 k` kept apart. R10's check refuses such a pair, and finds none in the compiled schedules.
     - **The check.** R10's check (`cargo xtask check-mask-rank`, #488) runs on the compiled schedule and refuses such a reveal, which it finds under `c = min(n_V, log2 k)`.
   - **Folds with no relation instance,** such as [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md#the-layer-sumcheck)'s column masks, scale the summand by `2^{−(n − c)}`, and the sumcheck starts from the public sum.
-- **Degree.** `V'` has degree at most 3 in each variable: 2 from `Z`, and 1 more from `R̃_V` when the variable is one of its columns. In `tessera-protocol/2` a reduction stage's degree `d`, RFC-0010's largest degree among its instances ('Sumcheck messages'), takes each instance's degree from its relation alone, never from a mask's columns ([#565](https://github.com/AbdelStark/tessera/issues/565)):
-  - **An instance's degree** is the largest, over the product terms of its relation's summand, of `d_1 + 2s`. `d_1` counts the term's factors as `tessera-protocol/1` does, `eq` and public factors included (RFC-0010). `s` counts its factors read from a committed or virtual tensor, a weight included, every occurrence at any point, a Boolean one included: each such factor counts 3 in place of 1. A fold ('Virtual tensors') has degree 2.
-  - **The relations' degrees**, `d_1`, `s` and `d = d_1 + 2s`:
+- **Degree.** `V'` has degree 1 in the tensor's lowest variable, which `Z` spares. In each other variable `Z` has degree 2, and `R̃_V` adds 1 when the variable is one of its columns: `V'` has degree 3 there, or 2. In `tessera-protocol/2` a reduction stage's degree `d`, RFC-0010's largest degree among its instances ('Sumcheck messages'), takes each instance's degree from its relation alone: never from a mask's columns, nor from the variable a round binds ([#565](https://github.com/AbdelStark/tessera/issues/565)).
+  - **Terms and factors.** An instance's summand is its relation's, as the RFC that defines the relation writes it: a sum of product terms. A factor of a term is `eq`, a public table, or a read of a tensor. Public tables include selectors, kernels, a constant per channel or per layer, `W_b` and RFC-0053's coefficients. A scalar coefficient is no factor. A linear combination of one tensor's values at several points is one read, as RFC-0053's `Hplus` is, not one read per point. One tensor read twice in one term, as in `X̃²` or `h̃·(1 − h̃)`, is two reads.
+  - **The rule.** For each term `t`, `d_1(t)` counts its factors, and `s(t)` counts its reads of a committed or virtual tensor, a weight included, whatever their points. A read of a public tensor counts in `d_1(t)` alone. The instance's degree is the largest `d_1(t) + 2s(t)` over its terms: each masked read counts 3 in place of 1. A fold ('Virtual tensors') has degree 2.
+  - **Why the factor count of the RFC's form.** RFC-0010 sometimes gives a degree per variable, which can be lower: `Recomposition`'s is 2. An implementation may also split a term differently: the CPU prover writes RFC-0053's `Hplus` as `nt + 1` terms of four factors. The factor count of the defining RFC's form is decidable from the schedule alone, and both parties compute it alike. It bounds every round's degree, because a masked read adds at most 2 in any variable. It overcounts when a round binds a masked read's lowest variable or a variable outside its mask's columns, or when a public selector vanishes. Both implementations still use it: `d` is the round messages' length, not the polynomial's exact degree.
+  - **The table.** It lists each relation with every operand that can be committed or virtual being so. A public operand is counted by the rule, term by term, as the rows marked "public" show. "Stacked" means with stacking variables, layers or heads, which the relation sums with a public `eq` weight (RFC-0010 'Batching within a stage').
 
     | Relation | `d_1` | `s` | `d` |
     |---|---|---|---|
     | `MatMulWeight`, `MatMulAct` (RFC-0010) | 2, or 3 stacked | 2 | 6, or 7 stacked |
-    | `Mul` | 3 | 2, or 1 with a public operand | 7, or 5 |
+    | `Mul` | 3 | 2 | 7 |
+    | `Mul`, one operand public | 3 | 1 | 5 |
     | `SumSquares` | 3 | 2 | 7 |
     | `Rotate` (RFC-0037), `Selection` (RFC-0072) | 2 | 1 | 4 |
     | `ScaleChannels` (RFC-0072) | 3 | 1 | 5 |
     | `BitFn` (RFC-0066): `Xor`, `And`, `Ch` | 3 | 2 | 7 |
+    | `Xor` or `And`, one input public; `Ch(e, f, g)` with `e`, or any two inputs, public | 3 | 1 | 5 |
+    | `Ch(e, f, g)` with `f` or `g` alone public: `e·g` or `e·f` keeps two reads | 3 | 2 | 7 |
     | `BitFn`: `Xor3`, `Maj` | 4 | 3 | 10 |
-    | `Equality` of a committed output (RFC-0037): `ConstMul` by one constant, `ConstAdd`, `Add`, `Sub` | 2 | 1 | 4 |
-    | `Equality` of a `ConstMul` per channel | 3 | 1 | 5 |
+    | `Xor3` or `Maj`, one input public | 4 | 2 | 8 |
+    | `Xor3` or `Maj`, two inputs public | 4 | 1 | 6 |
+    | `Equality` of a committed output (RFC-0037): `ConstMul` by one constant in every layer, `ConstAdd`, `Add`, `Sub` | 2 | 1 | 4 |
+    | `Equality` of a `ConstMul` by a constant per channel or per layer, a public factor | 3 | 1 | 5 |
     | `Equality` of a `Mul` | 3 | 2 | 7 |
+    | `Equality` of a `Mul`, one input public | 3 | 1 | 5 |
+    | `Equality` of a `Mul`, both inputs public: `eq·Y'` alone | 2 | 1 | 4 |
     | `Booleanity` | 3 | 2 | 7 |
-    | `OneHotVocabulary`, `OneHotIndex`, `InputPadding`, `BitPadding`, `AssertEqual` (RFC-0035, RFC-0072) | 3 | 1 | 5 |
+    | `OneHotVocabulary`, `OneHotIndex`, `InputPadding`, `BitPadding` (RFC-0035, RFC-0072) | 3 | 1 | 5 |
+    | `AssertEqual`, one side public or none: `eq·ψ·a` | 3 | 1 | 5 |
+    | `AssertEqual`, both sides public | 3 | 0 | 3 |
     | `OneHotCount` | 2 | 1 | 4 |
-    | `Recomposition` (RFC-0072) | 3 | 1 | 5 |
+    | `Recomposition` (RFC-0072), `x` public or not: `eq·W_b·b̂` | 3 | 1 | 5 |
     | A root's coefficient product (RFC-0050) | 4 | 3 | 10 |
     | A root's padding checks (RFC-0050); `SoftmaxRow`'s key, forest and padding checks (RFC-0030) | 3 | 1 | 5 |
-    | `SoftmaxRow`'s reciprocal (RFC-0030); the greedy certificate's selected logits (RFC-0053) | 3 | 2 | 7 |
-    | A request's tokens and greedy keys (RFC-0053) | 2 | 1 | 4 |
-    | An observed request's logits (RFC-0053) | 1 | 1 | 3 |
+    | `SoftmaxRow`'s reciprocal (RFC-0030) | 3 | 2 | 7 |
+    | Provisional: the greedy certificate's selected logits (RFC-0053), `L·Hplus` with its coefficients | 3 | 2 | 7 |
+    | Provisional: a request's tokens and greedy keys (RFC-0053) | 2 | 1 | 4 |
+    | Provisional: an observed request's logits (RFC-0053) | 1 | 1 | 3 |
     | A fold | — | — | 2 |
 
-    A relation with a public operand where the table counts a masked one has `s` one lower for each.
-  - **Both parties** derive `d` from the schedule's relations and this table. A schedule with a reduction stage of `d > 10` is refused, `ERR-INTERNAL`, by the compiler and by the verifier.
-  - **A round's true degree** can be lower, when a masked factor's mask holds no variable of that round. The honest prover sends the round polynomial at `0, 2, …, d` all the same.
+  - **RFC-0053's rows are provisional.** RFC-0053 holds for `tessera-protocol/1` only: it says `tessera-protocol/2` is not supported by its contract. Its final message sends `H` at Boolean time coordinates, where `H'`'s mask vanishes (`docs/zk/simulator.md` R8), an open gap of its `tessera-protocol/2` form. The rows count its relations as written, `Hplus` one read. They change with that form.
+  - **The invariant.** No row of the table exceeds 10, so no reduction stage built from these relations does. A relation that would exceed 10 needs a row and a new bound first. The compiler and the verifier each check `d ≤ 10` when they derive a stage's degree, and stop with `ERR-INTERNAL` otherwise; no input reaches that check today. The sumcheck engines refuse a degree of 11 themselves ('Testing Strategy').
+  - **A round's true degree** can be lower than the table's, as above. The honest prover sends the round polynomial at `0, 2, …, d` all the same.
   - **Every Llama schedule.** Stage 1 holds RFC-0050's root coefficient products, `Σ R_i·R_h·U_k` times `eq`: `d = 10`. Its other instances reach 7 at most. The later reduction stages hold matmuls, elementwise products and sums of squares: `d = 7`. This holds at 405B, two reduction stages of 42 and 35 rounds at 16K positions, and in the conformance claim lists, two or three.
-  - **Not only a count.** The final norm's products reach degree 10 in their last round whatever the masks' columns: their per-row digit columns have fewer than `log2 k` variables, so each mask holds every row variable. `Xor3` and `Maj` reach 10 as well, in the stages that hold them.
+  - **Not only a count.** At 405B's contexts, up to `2^17` positions, the final norm's products reach degree 10 in their last round whatever the masks' columns. Their per-row digit columns have at most 17 variables, below `log2 k = 22`, so each mask holds every row variable. A batch past `2^22` positions would take the last row variable out of the columns. `Xor3` and `Maj` reach 10 on SHA-256's schedules (RFC-0066), whose tensors' variables are all columns.
   - **The bound** for `tessera-protocol/2`'s reduction stages is therefore 10, not 7: RFC-0014's `d ≤ 10` and step 1 of 'Masked sumcheck'. Tree levels stay at 7 (RFC-0032), and `tessera-protocol/1` at 7.
 
 Weights follow the same rule with the mask row stored as blinding rows of the weight matrix ([RFC-0012](RFC-0012-weight-commitment.md#budget-state-machine)); each proof consumes one `Fp2` mask row, two blinding rows, per weight matrix. `ChannelParams` takes one per claim, with `Z` over the claim's type tensor, since its claims' points have Boolean coordinates ([RFC-0065](RFC-0065-masked-channel-params.md)).
@@ -250,9 +262,13 @@ v0.3 ships a sound, non-hiding protocol. v0.4 adds the four mechanisms behind th
 
 - Masked sumcheck: completeness for degrees 1–10; the simulator's round messages and real round messages pass a two-sample distribution test over 10^5 runs on a toy instance.
 - Stage degrees ([#565](https://github.com/AbdelStark/tessera/issues/565)):
-  - a conformance vector gives each compiled reduction stage's `d` by the table of 'Degree', for every claim list, and both workspaces reproduce it: 10 for stage 1, 7 for the later stages;
+  - **The vector.** `spec/vectors/schedule/degrees.json` gives, per instance, its stage and index, its relation with what fixes its row (native kind, `BoolFn`, broadcast, stacking, which operands are public), `d_1`, `s` and `d`, and each stage's `d`.
+    - **Its schedules** are the composed schedules `tessera-protocol/2` proves: `derive_composed_schedule` with `model_natives` for the request, not `derive_schedule`'s graph-only schedule, which lacks the natives and records 7 for stage 1.
+    - **Its cases** are each conformance claim list of `spec/vectors/claims/`, at `schedule.json`'s lengths 1, 4, 5 and `max_context` laid out as `tessera-protocol/2` lays them out, for each of the three requests: none, a prefill and a generation. They add `tessera_compiler::anchor`'s schedules from `derive_graph_schedule`: SHA-256 over a block of public bytes and over committed bytes, and AES-128-CTR. SHA-256 holds `Xor3` and `Maj` and public operands of `Ch`, `Maj`, `Xor`, `AssertEqual`, `Recomposition` and `Mul`.
+    - **Its makers.** `cargo xtask gen-vectors` writes it from the compiler's schedules and this RFC's table. It is a differential vector, as `schedule.json` is. The verifier, `tv-core`, derives each schedule and each instance's degree with code of its own and compares every field. `gen-vectors --check` fails when the file differs. No independent oracle computes schedules.
+    - **What it records:** 10 for stage 1 of every Llama schedule, 7 for the later stages, and 10 for SHA-256's stage of `Xor3` and `Maj`.
   - in a stage of `d = 10`, a round message of 7 values is `Reject(Sumcheck { stage, round })`;
-  - a schedule with a stage of `d = 11` is refused, `ERR-INTERNAL`, by the compiler and by the verifier.
+  - **the bound, at the sumcheck level**: `tessera-sumcheck`'s `prove_batch` and `tv-core`'s sumcheck checks each prove and verify a batch of degree 10, and each refuses a batch of degree 11 with its degree error.
 - Masked extensions: `V' = Ṽ` on the hypercube (exhaustive for small `n`); revealed `V'(p)` values over 10^5 runs of a fixed witness are uniform (chi-square on low bits) and uncorrelated with the witness (two witnesses give indistinguishable distributions).
 - Committed tensors' columns ([#554](https://github.com/AbdelStark/tessera/issues/554)):
   - a claim on a stacked committed kind of `n_P < log2 k` with `λ ≥ 1`, and one on a tile smaller than a row, open in their data claims' groups with `R_V`'s row at `eq(p_col ‖ 0)`, and the group checks hold;
