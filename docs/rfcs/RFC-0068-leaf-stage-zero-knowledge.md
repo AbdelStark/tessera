@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-25
 - Target milestone: v0.4
-- Amended by: [RFC-0069](RFC-0069-one-layer-claims.md) ('The layer sumcheck' step 1 and 'Zero knowledge': an outside value at one layer; 'Non-Goals': the epilogue's claim), [RFC-0070](RFC-0070-mask-batching.md) ('The layer sumcheck' step 6: `G(ρ')` is sent last under `stage/0/layer/evals` and opened by RFC-0070's batching; the proof-size figures)
+- Amended by: [RFC-0069](RFC-0069-one-layer-claims.md) ('The layer sumcheck' step 1 and 'Zero knowledge': an outside value at one layer; 'Non-Goals': the epilogue's claim), [RFC-0070](RFC-0070-mask-batching.md) ('The layer sumcheck' step 6: `G(ρ')` is sent last under `stage/0/layer/evals` and opened by RFC-0070's batching; the proof-size figures), [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) ('The layer sumcheck' step 4, 'Zero knowledge' and 'Testing Strategy': a committed tensor's mask takes its data claim's column sub-point and no layer variable, so the degree-4 case is a virtual or type tensor's, [#554](https://github.com/AbdelStark/tessera/issues/554))
 - Amends, in `tessera-protocol/2`:
   - [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#leaf-checks) 'Leaf checks': each LogUp instance's key and value columns take a mask row of their own;
   - [RFC-0045](RFC-0045-leaf-layout.md#the-leaf-point) 'The leaf point' and 'The split': `P` without the tree index's coordinate, and the values of sites in the layers sent once per site and tensor, at a random layer point, after a layer sumcheck;
@@ -125,8 +125,15 @@ In `tessera-protocol/2` the leaf stage ends as follows, after `logup/values`.
    - **The stage's degree** `d`, RFC-0010's one degree for every round, is 4 when `λ ≥ 1`, and 2 when `λ = 0`. The verifier derives it from `λ` alone, never from the masks' variables.
      - A fold has degree 2 in each variable.
      - The layer instance has degree 2 in every round but its last: until then its remaining layer variables are Boolean, so `Z`'s layer factors vanish.
-     - In its last round, `W̃·X'_t` has degree 3: `Z`'s factor `y(1 − y)` times `W̃`. It has degree 4 when the tensor's mask depends on `y_{λ−1}`: an advice tensor of `n_V ≤ log2 k` variables, whose mask row takes all of them (RFC-0013), or a type tensor whose mask's column point holds `y_{λ−1}` (RFC-0065).
-     - So 4 bounds every round, and it is reached at 405B. The two `RsqrtRow` sites' 376 layered pairs read tensors of 14 non-layer variables, `n_V = 21 ≤ 22`. The five class tensors of 10 or 14 non-layer variables do not reach it: their masks' column point holds the layer variables `y_0..y_3` only.
+     - In its last round, `W̃·X'_t` has degree 3: `Z`'s factor `y(1 − y)` times `W̃`. It has degree 4 when the tensor's mask depends on `y_{λ−1}`:
+       - a virtual tensor of `n_V ≤ log2 k − 1` variables, whose folded mask takes all of them, its layer variables included (RFC-0013 'Virtual tensors');
+       - a type tensor whose mask's column point holds `y_{λ−1}` (RFC-0065).
+
+       A committed advice tensor's mask never does: its columns are its data claim's column sub-point, which holds no layer variable (RFC-0013 'Committed tensors', [#554](https://github.com/AbdelStark/tessera/issues/554)).
+     - So 4 bounds every round. On the compiler's schedule, only virtual tensors reach it:
+       - **405B at 16K positions.** The two `RsqrtRow` sites' root inputs, read through the `SumSquares` outputs, virtual tensors of 14 non-layer variables: `n_V = 21 = log2 k − 1`. The sites' 374 committed columns of 14 variables do not reach it, nor do the seven class tensors, of 10, 14 or 16 non-layer variables, whose masks' column point holds the layer variables `y_0..y_3` only.
+       - **405B past 16,384 positions.** The root inputs have `n_V ≥ 22`, so their masks stop below `y_6`, and no pair reaches 4. An honest last round then has degree 3, and `d` stays 4.
+       - **The conformance claim lists,** at 3 to 5 positions and at their `max_context`, 64, with `λ = 1` or 2. The `RsqrtRow` root inputs reach it in every case. At 3 to 5 positions, in the lists of one layer variable, some `Requant` inputs reach it too: virtual matmul and elementwise-product outputs of 7 or 8 non-layer variables, read directly or through linear maps (`ConstMul`, `Reshape`). `tiny-4-servable`, of two, has the root inputs alone.
      - At 405B, `n = 22` rounds of degree 4. An honest round's polynomial has degree 2 in every round but the last.
      - A round message of another length than `d` values is `Reject(Sumcheck { stage: 0, round: j })` (RFC-0010).
    - **The masking polynomial** `G` has each `g_j` of degree `d`: `2(n(d + 1) + 1)` committed elements, 222 at 405B.
@@ -182,7 +189,8 @@ This section covers what the verifier sees of the leaf stage (`simulator.md` §4
 - **The tensors.**
   - Their per-layer evaluations enter only the column values, already masked, and the layer instance's round sums, masked by `G`.
   - The `v_{s,t}` sit at `(π_t(r_s) ‖ ρ'_y)`, every coordinate but the lowest a challenge, so each tensor's own mask `R_t` acts there (RFC-0013).
-  - `R_t` is then revealed at that point and at stage 1's final point, as in every stacked claim. R10's check (#488) covers those points as before.
+  - A committed tensor's `R_t` is read at `π_t(r_s)`'s column sub-point alone, `ρ'_y` lying in the claim's row part (RFC-0013 'Committed tensors', #554). In the compiler's leaf layouts one site reads each tensor, at one point (`crates/tessera-prover/tests/leaf_read_points.rs`), so the leaf stage reveals one value of it.
+  - `R_t` is then revealed at that point and at stage 1's final point, as in every stacked claim. R10's check (#488) covers those points for the gadgets' inputs, which are the leaf stage's claims in the schedule's pool. It does not cover the value forms' `v_{s,t}` yet, gadget outputs and auxiliary columns, nor the other items of RFC-0013 'Committed tensors' list of R10's gap, which blocks #154 and #159.
 - **The outside values** sit at points of challenges and are masked by their tensors' own masks, or, at one layer, by the layer's tensor's (RFC-0069).
 - **R8.** No tensor or column of the leaf stage is revealed alone at a point where its mask vanishes, and every revealed sum of such terms carries a column mask. R8 is met for the leaf stage.
 - **R9.** `ChannelParams`' class tensors are read at the leaf per layer, but those evaluations are now revealed only inside masked columns.
@@ -254,7 +262,8 @@ Atom split values come in addition, in both protocols.
 - **Costs.** A test counts, on the 405B layout:
   - the layered pairs and outside values, 423 and 191;
   - the instances and their columns, 25 key and 11 value, the shortest of height 22;
-  - `n = 22` and `d = 4`, with the 376 `RsqrtRow` pairs whose masks reach degree 4.
+  - `n = 22` and `d = 4`, with the two `RsqrtRow` root inputs the only pairs whose masks reach degree 4 at 16K positions, and none past 16,384 positions;
+  - that no committed tensor's mask depends on a layer variable (RFC-0013 'Committed tensors', #554).
 
 ## Open Questions
 

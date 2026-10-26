@@ -5,8 +5,9 @@
 //! of a matrix's pair `β_T` must lie outside the span of the pair's other functionals (RFC-0065
 //! 'Zero knowledge'), and every revealed tensor must have the two variables RFC-0013's mask
 //! needs. `tessera_compiler::schedule::masks` runs the check, under RFC-0013 as #488 amended it
-//! (`ColumnRule::BelowRow`), on the composed schedule the prover proves; its documentation lists
-//! what the compiled schedule does not hold yet.
+//! (`ColumnRule::BelowRow`) and with committed tensors' mask columns as #554 fixed them
+//! (`CommittedColumns::RULE`), on the composed schedule the prover proves; its documentation
+//! lists what the compiled schedule does not hold yet.
 //!
 //! The cases:
 //! - every claim list of `spec/vectors/claims/claim-lists.json`, at the lengths
@@ -22,11 +23,11 @@
 //!
 //! Each length `n` is checked at the token-axis layout `tessera-protocol/2` gives it,
 //! `masks::protocol2_length(n) = max(n, 3)` (RFC-0013 'Masked extensions', RFC-0047, RFC-0071
-//! 'The slots'), and reported with both. Each check runs under both readings of #554, committed
-//! tensors' mask columns in tensor order and limited to the data claim's own column inputs
-//! (`CommittedColumns::BOTH`); a case passes only if both pass, and its findings are reported
-//! per reading. Cases of one claim list, checked length and request share one check, and the
-//! checks run on up to [`WORKERS`] threads.
+//! 'The slots'), and reported with both. A committed tensor's mask columns are its data claim's
+//! column sub-point (RFC-0013 'Committed tensors', #554): a stacked kind's layer variables and an
+//! attention tile's index bits are row bits, so two values that differ only there share one
+//! functional, which the check refuses. Cases of one claim list, checked length and request share
+//! one check, and the checks run on up to [`WORKERS`] threads.
 
 use std::fs;
 use std::io;
@@ -38,10 +39,10 @@ use std::thread;
 
 use serde_json::Value;
 use tessera_codec::{Ascii, DecodeLimits, Rational, envelope, schema};
-use tessera_compiler::schedule::Request;
 use tessera_compiler::schedule::masks::{
-    ColumnRule, CommittedColumns, MaskReport, check_readings, protocol2_length,
+    ColumnRule, CommittedColumns, MaskReport, check_schedule, protocol2_length,
 };
+use tessera_compiler::schedule::{Request, StageSchedule, derive_composed_schedule, model_natives};
 use tessera_compiler::{Lowering, PublicModel, analyze, claim_list, lower, select};
 use tessera_ir::{
     AdviceLayoutParams, ArchFamily, ArchSpec, ClaimList, CommitmentLayout, GadgetPolicy,
@@ -55,6 +56,10 @@ const REQUESTS: [Request; 3] = [Request::None, Request::Prefill, Request::Genera
 
 /// The most checks run at once: a 405B check holds about 0.6 GB.
 const WORKERS: usize = 8;
+
+/// Committed tensors' mask columns, as RFC-0013 'Committed tensors' fixes them: the data claim's
+/// column sub-point (#554).
+const COMMITTED: CommittedColumns = CommittedColumns::RULE;
 
 /// One schedule to check: a claim list, a length and a request, and where the claim list is.
 #[derive(Clone)]
@@ -332,27 +337,26 @@ pub(crate) struct Outcome {
     pub(crate) violations: Vec<String>,
 }
 
-/// One reading's system counts (mask rows, functionals, folds, pair functionals) and its count
-/// of findings.
-#[derive(Clone, Copy)]
-struct Reading {
-    committed: CommittedColumns,
-    counts: (usize, usize, usize, usize),
-    findings: usize,
-}
-
-/// What one check finds: each reading's counts, and each finding with its reading and the tensors
-/// it names.
+/// What one check finds: its system's counts (mask rows, functionals, folds, pair functionals),
+/// and each finding with the tensors it names.
 #[derive(Clone)]
 struct Checked {
-    per_reading: Vec<Reading>,
+    counts: (usize, usize, usize, usize),
     findings: Vec<String>,
 }
 
-fn reading(committed: CommittedColumns) -> &'static str {
-    match committed {
-        CommittedColumns::TensorOrder => "tensor-order columns",
-        CommittedColumns::DataColumn => "data-column columns",
+/// `report`'s counts and findings.
+fn checked(report: &MaskReport) -> Checked {
+    Checked {
+        counts: report.counts(),
+        findings: report
+            .findings
+            .iter()
+            .map(|finding| {
+                let text = finding.to_string();
+                format!("{text} [{}]", named(report, &text))
+            })
+            .collect(),
     }
 }
 
@@ -365,58 +369,63 @@ fn at(case: &Case) -> String {
     )
 }
 
-fn check_one(case: &Case, rule: ColumnRule) -> Result<Checked, String> {
-    let reports = check_readings(
-        &case.claims,
-        case.length,
-        case.request,
-        rule,
-        &CommittedColumns::BOTH,
+/// R10 on `case`'s composed schedule once `plant` has edited it, under `rule` and the reading
+/// `committed`: the gate plants nothing, and its self-tests plant violations.
+fn check_planted(
+    case: &Case,
+    rule: ColumnRule,
+    committed: CommittedColumns,
+    plant: impl FnOnce(&mut StageSchedule),
+) -> Result<Checked, String> {
+    let fail = |e: &dyn std::fmt::Display| format!("{}: the schedule's functionals: {e}", at(case));
+    let claims = &case.claims;
+    let lowering = lower(PublicModel::of_claims(claims), case.length).map_err(|e| fail(&e))?;
+    let ranges = analyze(&lowering.graph, &lowering.tables).map_err(|e| fail(&e))?;
+    let selection = select(
+        &lowering.graph,
+        &ranges,
+        &lowering.tables,
+        &claims.gadget_policy,
     )
-    .map_err(|e| format!("{}: the schedule's functionals: {e}", at(case)))?;
-    if reports.is_empty() {
-        return Err(format!("{}: no reading was checked", at(case)));
-    }
-    let mut findings = Vec::new();
-    let mut per_reading = Vec::new();
-    for report in &reports {
-        per_reading.push(Reading {
-            committed: report.committed,
-            counts: report.counts(),
-            findings: report.findings.len(),
-        });
-        for finding in &report.findings {
-            let text = finding.to_string();
-            findings.push(format!(
-                "[{}] {text} [{}]",
-                reading(report.committed),
-                named(report, &text)
-            ));
-        }
-    }
-    Ok(Checked {
-        per_reading,
-        findings,
-    })
+    .map_err(|e| fail(&e))?;
+    let natives = model_natives(&lowering, case.request).map_err(|e| fail(&e))?;
+    let mut schedule = derive_composed_schedule(&lowering, &natives.deferred, &natives.native)
+        .map_err(|e| fail(&e))?;
+    plant(&mut schedule);
+    let report = check_schedule(
+        claims,
+        lowering,
+        &selection,
+        &schedule,
+        case.length,
+        rule,
+        &[committed],
+    )
+    .map_err(|e| fail(&e))?
+    .pop()
+    .ok_or_else(|| fail(&"no report"))?;
+    Ok(checked(&report))
+}
+
+/// R10 on `case` under `rule` and the gate's columns, [`COMMITTED`], once `plant` has edited its
+/// schedule: the gate plants nothing.
+fn check_one(
+    case: &Case,
+    rule: ColumnRule,
+    plant: impl FnOnce(&mut StageSchedule),
+) -> Result<Checked, String> {
+    check_planted(case, rule, COMMITTED, plant)
 }
 
 fn outcome(case: &Case, checked: &Checked) -> Outcome {
     let at = at(case);
-    let readings: Vec<String> = checked
-        .per_reading
-        .iter()
-        .map(|r| {
-            let (rows, functionals, folds, pairs) = r.counts;
-            format!(
-                "{}: {rows} mask rows, {functionals} functionals ({folds} folds), {pairs} pair \
-                 functionals, {} findings",
-                reading(r.committed),
-                r.findings
-            )
-        })
-        .collect();
+    let (rows, functionals, folds, pairs) = checked.counts;
     Outcome {
-        summary: format!("{at}: {}", readings.join("; ")),
+        summary: format!(
+            "{at}: {rows} mask rows, {functionals} functionals ({folds} folds), {pairs} pair \
+             functionals, {} findings",
+            checked.findings.len()
+        ),
         violations: checked
             .findings
             .iter()
@@ -428,7 +437,7 @@ fn outcome(case: &Case, checked: &Checked) -> Outcome {
 /// R10 on `case` under `rule`, at its checked length.
 #[cfg(test)]
 pub(crate) fn check_case(case: &Case, rule: ColumnRule) -> Result<Outcome, String> {
-    Ok(outcome(case, &check_one(case, rule)?))
+    Ok(outcome(case, &check_one(case, rule, |_| {})?))
 }
 
 /// R10 on every case under `rule`, the outcomes in the cases' order. Cases of one claim list,
@@ -463,7 +472,7 @@ pub(crate) fn check_all(cases: &[Case], rule: ColumnRule) -> Result<Vec<Outcome>
                 loop {
                     let j = next.fetch_add(1, Ordering::Relaxed);
                     let Some(&i) = unique.get(j) else { break };
-                    let checked = check_one(&cases[i], rule);
+                    let checked = check_one(&cases[i], rule, |_| {});
                     if let Ok(mut results) = results.lock() {
                         results[j] = Some(checked);
                     }
@@ -516,7 +525,8 @@ pub(crate) fn run(repo: &Path) -> io::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Case, ColumnRule, Request, check_all, check_case, lengths, llama_405b, llama_405b_cases,
+        COMMITTED, Case, ColumnRule, CommittedColumns, Outcome, Request, StageSchedule, check_all,
+        check_case, check_one, check_planted, lengths, llama_405b, llama_405b_cases, outcome,
         vector_cases,
     };
     use crate::claim_vectors;
@@ -524,6 +534,9 @@ mod tests {
     use crate::testing::Fixture;
     use serde_json::Value;
     use std::fs;
+    use tessera_compiler::schedule::masks::{MaskRow, Origin, Src, check_at};
+    use tessera_compiler::schedule::{Coord, Kind, Layers};
+    use tessera_ir::CommitmentClass;
 
     /// A fixture tree whose claim-list file holds the repository's case `name` alone.
     fn one_case(name: &str) -> Fixture {
@@ -643,19 +656,13 @@ mod tests {
                 case.request
             );
             assert!(outcome.summary.contains(&shown), "{}", outcome.summary);
-            // Each reading's own counts, and its findings: none.
-            for label in ["tensor-order columns: ", "data-column columns: "] {
-                let part = outcome
-                    .summary
-                    .split(label)
-                    .nth(1)
-                    .and_then(|rest| rest.split(';').next())
-                    .unwrap_or_else(|| panic!("{label}: {}", outcome.summary));
-                assert!(
-                    part.contains(" mask rows, ") && part.ends_with(", 0 findings"),
-                    "{label}{part}"
-                );
-            }
+            // The system's counts, and its findings: none.
+            assert!(
+                outcome.summary.contains(" mask rows, ")
+                    && outcome.summary.ends_with(", 0 findings"),
+                "{}",
+                outcome.summary
+            );
         }
     }
 
@@ -676,21 +683,18 @@ mod tests {
             ..case.clone()
         };
         let outcome = check_case(&unpadded, ColumnRule::BelowRow).expect("checked");
-        // Each reading refuses it, and says which it is.
-        for reading in ["[tensor-order columns]", "[data-column columns]"] {
-            let tokens = outcome
-                .violations
-                .iter()
-                .find(|v| v.contains("t0 [1]: the tokens") && v.contains(reading))
-                .unwrap_or_else(|| panic!("the tokens, {reading}: {:?}", outcome.violations));
-            for part in [
-                "spec/vectors/claims/claim-lists.json:",
-                "`tiny-2-affine` at n = 1, checked at 1 (Generate)",
-                "revealed with 0 variable(s)",
-                "RFC-0013",
-            ] {
-                assert!(tokens.contains(part), "{part}: {tokens}");
-            }
+        let tokens = outcome
+            .violations
+            .iter()
+            .find(|v| v.contains("t0 [1]: the tokens"))
+            .unwrap_or_else(|| panic!("the tokens: {:?}", outcome.violations));
+        for part in [
+            "spec/vectors/claims/claim-lists.json:",
+            "`tiny-2-affine` at n = 1, checked at 1 (Generate)",
+            "revealed with 0 variable(s)",
+            "RFC-0013",
+        ] {
+            assert!(tokens.contains(part), "{part}: {tokens}");
         }
     }
 
@@ -710,17 +714,9 @@ mod tests {
             .find(|c| c.n == 32_768 && c.request == Request::Generate)
             .expect("n = 32,768");
         let old = check_case(case, ColumnRule::Row).expect("checked");
-        // The virtual rows' columns do not depend on the committed reading: both refuse.
-        assert_eq!(old.violations.len(), 4, "{:?}", old.violations);
-        let expected = [
-            ("[tensor-order columns]", "t6"),
-            ("[tensor-order columns]", "t53"),
-            ("[data-column columns]", "t6"),
-            ("[data-column columns]", "t53"),
-        ];
-        for (violation, (reading, t)) in old.violations.iter().zip(expected) {
+        assert_eq!(old.violations.len(), 2, "{:?}", old.violations);
+        for (violation, t) in old.violations.iter().zip(["t6", "t53"]) {
             for part in [
-                reading,
                 "xtask/src/mask_rank.rs:",
                 "`llama-3.1-405b` at n = 32768, checked at 32768 (Generate)",
                 "linearly dependent (R10",
@@ -733,6 +729,195 @@ mod tests {
         }
         let amended = check_case(case, ColumnRule::BelowRow).expect("checked");
         assert_eq!(amended.violations, Vec::<String>::new());
+    }
+
+    /// The gate's outcome for `case` once `plant` has planted a violation in its schedule: the
+    /// gate's own check, at RFC-0013 as #488 amended it.
+    fn planted(case: &Case, plant: impl FnOnce(&mut StageSchedule)) -> Outcome {
+        let checked = check_one(case, ColumnRule::BelowRow, plant).expect("checked");
+        outcome(case, &checked)
+    }
+
+    /// The same under #554's rejected reading, a stacked kind's layer variables and a tile's
+    /// index bits among a committed tensor's mask columns: the control.
+    fn rejected_reading(case: &Case, plant: impl FnOnce(&mut StageSchedule)) -> Outcome {
+        let checked = check_planted(
+            case,
+            ColumnRule::BelowRow,
+            CommittedColumns::TensorOrder,
+            plant,
+        )
+        .expect("checked");
+        outcome(case, &checked)
+    }
+
+    /// A coordinate no challenge of the schedule sets: leaf point coordinates far past every
+    /// site's.
+    fn fresh(j: u32) -> Coord {
+        Coord::Leaf {
+            site: 0,
+            index: 1000 + j,
+        }
+    }
+
+    /// Adds a twin of the advice pool claim whose one atom is on `kind`, at fresh layer
+    /// coordinates: a value at the claim's column sub-point and another layer point.
+    fn twin_at_another_layer(kind: Kind) -> impl Fn(&mut StageSchedule) {
+        move |schedule| {
+            let index = schedule
+                .pool
+                .iter()
+                .position(|p| {
+                    p.commitment == CommitmentClass::Advice
+                        && p.atoms.len() == 1
+                        && p.atoms[0].kind == kind
+                })
+                .expect("a pool claim on the kind");
+            let mut twin = schedule.pool[index].clone();
+            let Layers::Eq(rho) = &twin.atoms[0].layers else {
+                panic!("a stacked claim");
+            };
+            twin.atoms[0].layers = Layers::Eq((0..rho.len() as u32).map(fresh).collect());
+            schedule.pool.push(twin);
+        }
+    }
+
+    /// RFC-0013's rule refuses what it forbids (#554): a stacked committed kind's mask takes its
+    /// data claim's column sub-point, not its layer variables, so a value at a claim's column
+    /// sub-point and another layer point shares the claim's functional. On tiny-2-servable at 4
+    /// positions the layer input has 8 variables of its own and one layer bit, below
+    /// `log2 k = 10`. The gate's rule refuses the planted twin, naming the file and line, the
+    /// case, the row and the rule; the rejected reading, which takes the layer bit as a column,
+    /// accepts it.
+    #[test]
+    fn a_stacked_value_at_another_layer_point_fails_naming_it() {
+        let fixture = one_case("tiny-2-servable");
+        let cases = vector_cases(fixture.path()).expect("the fixture's claim list");
+        let case = cases
+            .iter()
+            .find(|c| c.n == 4 && c.request == Request::Generate)
+            .expect("n = 4");
+        let plant = twin_at_another_layer(Kind::LayerInput);
+        // The compiled schedule passes.
+        assert_eq!(planted(case, |_| {}).violations, Vec::<String>::new());
+        let refused = planted(case, &plant);
+        let [violation] = refused.violations.as_slice() else {
+            panic!("one violation: {:?}", refused.violations);
+        };
+        for part in [
+            "spec/vectors/claims/claim-lists.json:",
+            "`tiny-2-servable` at n = 4, checked at 4 (Generate)",
+            "stacked advice kind LayerInput",
+            "2 revealed functionals are linearly dependent (R10",
+            "RFC-0013",
+        ] {
+            assert!(violation.contains(part), "{part}: {violation}");
+        }
+        assert!(
+            refused.summary.ends_with(", 1 findings"),
+            "{}",
+            refused.summary
+        );
+        let control = rejected_reading(case, &plant);
+        assert_eq!(control.violations, Vec::<String>::new());
+    }
+
+    /// The same at 405B, where the readings differ on real tensors: the `RsqrtRow` outputs
+    /// `[16384]` at layer position 1 have 14 variables and 7 layer bits, below `log2 k = 22`.
+    #[test]
+    fn a_405b_stacked_value_at_another_layer_point_fails() {
+        let claims = llama_405b().expect("the 405B claim list");
+        let cases = llama_405b_cases(&claims);
+        let case = cases
+            .iter()
+            .find(|c| c.n == 16_384 && c.request == Request::Generate)
+            .expect("n = 16,384");
+        let roots = Kind::Layer {
+            position: 1,
+            output: 0,
+        };
+        let plant = twin_at_another_layer(roots);
+        let refused = planted(case, &plant);
+        let [violation] = refused.violations.as_slice() else {
+            panic!("one violation: {:?}", refused.violations);
+        };
+        for part in [
+            "`llama-3.1-405b` at n = 16384, checked at 16384 (Generate)",
+            "stacked advice kind Layer { position: 1, output: 0 } (t7)",
+            "linearly dependent (R10",
+            "t7 [16384]: RsqrtRow output",
+        ] {
+            assert!(violation.contains(part), "{part}: {violation}");
+        }
+        let control = rejected_reading(case, &plant);
+        assert_eq!(control.violations, Vec::<String>::new());
+    }
+
+    /// An attention tile smaller than a row (RFC-0034, #554): tiny-2-servable's `SoftmaxRow`
+    /// reciprocals at 4 positions are two tiles, one per KV head, each of 3 variables. The bit
+    /// that selects the tile is a row bit, not a mask variable: a twin of a compiled read that
+    /// differs in that bit alone is refused by the gate's rule and accepted by the rejected
+    /// reading.
+    #[test]
+    fn a_value_in_another_tile_fails_naming_it() {
+        let fixture = one_case("tiny-2-servable");
+        let cases = vector_cases(fixture.path()).expect("the fixture's claim list");
+        let case = cases
+            .iter()
+            .find(|c| c.n == 4 && c.request == Request::Generate)
+            .expect("n = 4");
+        let reciprocals = Kind::Layer {
+            position: 27,
+            output: 1,
+        };
+        // The compiled read on the reciprocals, and the coordinate of its point that the tile's
+        // column sub-point leaves out: the tile bit.
+        let report = check_at(
+            &case.claims,
+            case.length,
+            case.request,
+            ColumnRule::BelowRow,
+            COMMITTED,
+        )
+        .expect("checked");
+        assert_eq!(report.findings, Vec::new(), "the compiled schedule passes");
+        let value = report
+            .system
+            .rows
+            .iter()
+            .find(|r| r.row == MaskRow::Stacked(reciprocals))
+            .and_then(|r| r.functionals.first())
+            .expect("a read on the reciprocals");
+        let &Origin::Pool { claim, .. } = value.origins.first().expect("an origin") else {
+            panic!("a pool claim: {value:?}");
+        };
+        let natural = value.key.len() - 1;
+        let columns = value.point.iter().filter(|s| **s != Src::Zero).count();
+        assert_eq!((natural, columns), (4, 3), "{value:?}");
+        let tile = (0..natural)
+            .find(|&j| !value.point.contains(&value.key[j]))
+            .expect("a coordinate outside the column sub-point");
+        let plant = |schedule: &mut StageSchedule| {
+            let mut twin = schedule.pool[claim].clone();
+            assert_eq!(twin.atoms[0].kind, reciprocals);
+            twin.point[tile] = fresh(0);
+            twin.atoms[0].point[tile] = fresh(0);
+            schedule.pool.push(twin);
+        };
+        let refused = planted(case, plant);
+        let [violation] = refused.violations.as_slice() else {
+            panic!("one violation: {:?}", refused.violations);
+        };
+        for part in [
+            "`tiny-2-servable` at n = 4, checked at 4 (Generate)",
+            "stacked advice kind Layer { position: 27, output: 1 }",
+            "linearly dependent (R10",
+            "SoftmaxRow output",
+        ] {
+            assert!(violation.contains(part), "{part}: {violation}");
+        }
+        let control = rejected_reading(case, plant);
+        assert_eq!(control.violations, Vec::<String>::new());
     }
 
     /// A claim-list file the gate cannot read is an error naming the file and the case.

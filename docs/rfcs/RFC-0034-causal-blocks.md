@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Causal layout' and 'Zero rows': in a batch, a slot's keys and a query block's own request's length)
+- Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Causal layout' and 'Zero rows': in a batch, a slot's keys and a query block's own request's length), [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) ('Causal layout', in `tessera-protocol/2`: a tiled tensor's mask reads the tile's column sub-point alone, [#554](https://github.com/AbdelStark/tessera/issues/554))
 - Supersedes, on acceptance:
   - [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) 'Canonical advice layout', rules 1, 3 and 4: a causal tensor's variable order, and its masked blocks as zero rows;
   - [RFC-0006](RFC-0006-compiler-ir.md#tiling-and-the-execution-plan) 'Tiling and the execution plan': the order of `e`'s variables within an attention tile;
@@ -50,6 +50,7 @@ The tile's layout splits the key index into `i = i_hi·2^w + i_lo`, with `w = mi
 - **405B.** `g = 16` and `w = 9`: a row holds the block's 512 queries against 512 keys, for all 16 heads.
 - **8B.** `g = 4` and `w = 11`: 512 queries against 2,048 keys.
 - **Claims.** A claim `ẽ(r_h, r_q, r_i)` names its indices as before. RFC-0011 rule 3 maps it to `Ã` with the tile's coordinates in layout order: low variables first, the column sub-point `(r_{i,lo} ‖ r_q ‖ r_h)`, then `r_{i,hi}` and the tile's base bits. Relations name indices, not variable positions, so none changes.
+- **The mask, in `tessera-protocol/2`.** A tiled tensor's mask row reads the claim's column sub-point alone, the low `min(n_P, log2 k)` of the tile's own variables, `n_P` of them. The KV head's and the query block's bits, which select the tile, and `r_{i,hi}` are row bits: the mask does not depend on them, also when the tile is smaller than a row (RFC-0013 'Committed tensors', [#554](https://github.com/AbdelStark/tessera/issues/554)). This holds for every tensor an attention tile shares, the reciprocals and maxima of `SoftmaxRow` as well as `e`.
 
 ### Zero rows
 

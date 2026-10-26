@@ -15,15 +15,15 @@
 //! A mask row is a row of `k = 2^{log2 k}` entries. A value at `p` on `V`'s row is the vector
 //! `eq(p_col_c ‖ 0^{log2 k − c})` over the row's `log2 k` coordinates, `p_col_c` being `V`'s low
 //! `c` column variables in layout order ([`ColumnRule`]):
-//! - **Committed advice tensors.** The layout order is the data claim's column sub-point, which
-//!   [`ModelAdviceLayout::claim`] gives (RFC-0011 rule 3, RFC-0047's order, RFC-0034's for score
-//!   tiles), followed by the variables it leaves out, then the layer variables, the highest
-//!   (RFC-0037 'Layers and kinds'). So `c ≤ log2 k` takes the data's column sub-point when the
-//!   tensor fills a row, and the tensor's variables then its layer variables when it does not
-//!   (RFC-0068 'The layer sumcheck' step 4 reads it so). Until #554 settles which, both readings
-//!   are checked ([`CommittedColumns`]): that one, and the mask's column limited to the data
-//!   claim's own column inputs (`docs/zk/simulator.md` §7), which excludes a tile's index bits and
-//!   the layer bits.
+//! - **Committed advice tensors.** The mask's columns are the data claim's column sub-point,
+//!   which [`ModelAdviceLayout::claim`] gives (RFC-0011 rule 3, RFC-0047's order, RFC-0034's for
+//!   attention tiles), and every coordinate past its inputs is 0: `c = min(n_P, log2 k)` of the
+//!   placed tensor's variables (RFC-0013 'Committed tensors', #554). A stacked kind's layer
+//!   variables, a tile's index bits and the placed tensor's variables past `log2 k` are row bits,
+//!   never mask variables ([`CommittedColumns::DataColumn`]). [`CommittedColumns::TensorOrder`],
+//!   the reading #554 rejected (the tensor's variables, then its layer variables, up to
+//!   `log2 k`), stays as a control: a value that differs from another only in a layer or tile
+//!   coordinate is refused under the rule and passes under the control.
 //! - **Virtual tensors** have no placement: their variables are their relation's, lowest first,
 //!   then the layer variables.
 //! - **A fold** (RFC-0013 'Virtual tensors', #538) reveals `u = R̃_row(r'')`, the whole row's
@@ -38,9 +38,10 @@
 //! - A committed advice tensor in its own variables: a [`Kind::Tensor`], a stacked kind's layer
 //!   read at one layer when `λ ≥ 1` (RFC-0069), or a stacked kind of one layer (`λ = 0`). Two
 //!   kinds that name one placed tensor this way share its row: the epilogue's read of `c_L` and
-//!   the prologue's `c_0` are such tensors. A stacked kind with `λ ≥ 1` is a tensor of its own,
-//!   over its `λ` layer variables too, even where one of its layers is another kind's tensor
-//!   (`Kind::LayerInput`'s layer 0 is `c_0`, RFC-0069 'Motivation').
+//!   the prologue's `c_0` are such tensors. A stacked kind with `λ ≥ 1` has a row of its own,
+//!   even where one of its layers is another kind's tensor (`Kind::LayerInput`'s layer 0 is
+//!   `c_0`, RFC-0069 'Motivation'). Its `Z` runs over its `λ` layer variables too, but its mask
+//!   does not: the row's columns are its data claim's column sub-point (#554).
 //! - A virtual kind's row, which a linear node's output never has: the schedule substitutes it by
 //!   its atoms (`docs/zk/simulator.md` 'Virtual tensors').
 //! - A weight matrix's `R_W` (RFC-0013); each `ChannelParams` claim's `R_i` (RFC-0065).
@@ -89,27 +90,33 @@
 //! # What this check does not cover
 //!
 //! It reads the compiled [`StageSchedule`], which does not hold every revealed point of
-//! `tessera-protocol/2`. Not covered, each to be added as its geometry is compiled:
-//! - the leaf stage's `tessera-protocol/2` shape beyond its claims' points: RFC-0068's column
-//!   masks and their values at the pair points and `ρ'_{w_i}`, the layer sumcheck's own folds,
-//!   and the tensors a site reads over some of its block's axes (`π_t`, RFC-0045 'The split');
-//! - the `Exp` row sum at key coordinates `½` (RFC-0037 'The claim pool', RFC-0030), which the
-//!   prover assembles outside the schedule;
-//! - gadget auxiliary columns, native raw evaluations and the multiplicities' claims;
-//! - the gadget outputs' values at their leaf read points (RFC-0068 step 5's `v_{s,t}` on value
-//!   forms), and `SoftmaxRow`'s output reads: its reciprocal at its row point and `Exp` at its
-//!   score-leaf point; the schedule's leaf sites are gadget inputs only;
-//! - native raw openings on graph tensors, such as the greedy natives' reads of the one-hot
-//!   tokens at their carry points, whose `tessera-protocol/2` form RFC-0053 disclaims;
-//! - batches of several requests (RFC-0071, `R ≥ 2`): a claim list is checked for one request;
-//! - the masked value of a committed group whose layer weights carry per-layer constants
-//!   (RFC-0037 'Claims and atoms'), which no RFC specifies in `tessera-protocol/2` yet (#556): on
-//!   the advice the check keeps such a value apart from every other ([`Functional::scale`]) and
-//!   reads it through the stacked kind's mask row; on a weight matrix it refuses it
-//!   ([`Finding::ScaledWeight`]), since a matrix's pair would drop it as its first claim's value;
-//! - the tree levels' masks, the identity sumcheck's root levels (RFC-0032), the `SoftmaxRow`
-//!   leaf mask, the masking polynomials' `G(r)` and RFC-0070's batching (`M`, `S`, `r*`);
-//! - combined rows, blinding rows of advice groups and the proximity rows (Lemmas 5 to 7).
+//! `tessera-protocol/2`. RFC-0013 'Committed tensors' 'Hiding' states R10's gap as one list, these
+//! nine items in this order, and makes it block #154 and #159; each is to be added as its
+//! geometry is compiled:
+//! 1. the leaf stage's values of gadget outputs and auxiliary columns at their leaf read points
+//!    (RFC-0068 step 5's `v_{s,t}` on value forms); the schedule's leaf sites are gadget inputs
+//!    only;
+//! 2. the tensors a site reads over some of its block's axes (`π_t`, RFC-0045 'The split');
+//! 3. RFC-0068's column masks and their values at the pair points and `ρ'_{w_i}`, and the layer
+//!    sumcheck's own folds;
+//! 4. `SoftmaxRow`'s reciprocal at its row point, its maximum, `Exp` at its score-leaf point and
+//!    the `Exp` row sum at key coordinates `½` (RFC-0037 'The claim pool', RFC-0030), which the
+//!    prover assembles outside the schedule;
+//! 5. native raw evaluations on graph tensors, such as the greedy natives' reads of the one-hot
+//!    tokens at their carry points, whose `tessera-protocol/2` form RFC-0053 disclaims;
+//! 6. the multiplicities' claims;
+//! 7. the tree levels' masks, the identity sumcheck's root levels (RFC-0032) and the `SoftmaxRow`
+//!    leaf mask;
+//! 8. the masked value of a committed group whose layer weights carry per-layer constants
+//!    (RFC-0037 'Claims and atoms'), which no RFC specifies in `tessera-protocol/2` yet (#556): on
+//!    the advice the check keeps such a value apart from every other ([`Functional::scale`]) and
+//!    reads it through the stacked kind's mask row; on a weight matrix it refuses it
+//!    ([`Finding::ScaledWeight`]), since a matrix's pair would drop it as its first claim's value;
+//! 9. batches of several requests (RFC-0071, `R ≥ 2`): a claim list is checked for one request.
+//!
+//! Outside R10 altogether, other lemmas cover the masking polynomials' `G(r)` and RFC-0070's
+//! batching (`M`, `S`, `r*`; Lemma 4a), and the combined rows, the advice groups' blinding rows
+//! and the proximity rows (Lemmas 5 to 7).
 
 use std::collections::HashMap;
 use std::fmt;
@@ -125,7 +132,8 @@ use super::{
     derive_composed_schedule, model_natives,
 };
 use crate::{
-    AdviceSource, CompileError, Lowering, ModelAdviceLayout, PublicModel, analyze, lower, select,
+    AdviceSource, CompileError, Lowering, ModelAdviceLayout, PublicModel, Selection, analyze,
+    lower, select,
 };
 
 type Fp2 = GoldilocksExt2;
@@ -155,22 +163,23 @@ pub enum ColumnRule {
     BelowRow,
 }
 
-/// Which of a committed advice tensor's variables its mask's column takes, the two readings of
-/// #554 (RFC-0013 'Committed tensors' against RFC-0068's `n_V`).
+/// Which of a committed advice tensor's variables its mask's column takes: #554's two readings,
+/// RFC-0013 'Committed tensors', which #554 made the rule, and RFC-0068's `n_V`, which it
+/// rejected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CommittedColumns {
-    /// The tensor's low `c = min(n_V, log2 k)` variables in layout order: the data claim's column
-    /// inputs, then the variables the column sub-point leaves out (a tile's index bits), then the
-    /// layer variables.
+    /// The rejected reading, kept as a control: the tensor's low `c = min(n_V, log2 k)` variables
+    /// in layout order, the data claim's column inputs, then the variables the column sub-point
+    /// leaves out (a tile's index bits), then the layer variables.
     TensorOrder,
-    /// The data claim's own column inputs alone, `docs/zk/simulator.md` §7's reading: the mask's
-    /// column part is the data's, `eq(p_col ‖ 0)`, and every coordinate past its inputs is 0.
+    /// RFC-0013's rule (#554): the data claim's own column inputs alone, so the mask's column
+    /// part is the data's, `eq(p_col ‖ 0)`, and every coordinate past its inputs is 0.
     DataColumn,
 }
 
 impl CommittedColumns {
-    /// Both readings, which the gate checks until #554 settles which.
-    pub const BOTH: [Self; 2] = [Self::TensorOrder, Self::DataColumn];
+    /// The reading RFC-0013 'Committed tensors' specifies, which R10's gate checks (#554).
+    pub const RULE: Self = Self::DataColumn;
 }
 
 /// An indeterminate: a challenge of `tessera-protocol/2` that the check treats as a variable.
@@ -1546,12 +1555,34 @@ pub fn check_readings(
     )?;
     let natives = model_natives(&lowering, request)?;
     let schedule = derive_composed_schedule(&lowering, &natives.deferred, &natives.native)?;
-    let advice = ModelAdviceLayout::new(&lowering, &selection, claims)?;
+    check_schedule(
+        claims, lowering, &selection, &schedule, length, rule, readings,
+    )
+}
+
+/// R10 on `schedule`, a schedule of `lowering`, which is `claims` lowered at `length` positions
+/// with `selection` its gadgets, under `rule` and each reading of `readings`: the layouts,
+/// [`extract`] and [`check`] with [`SEED`]. [`check_readings`] runs it on the composed schedule;
+/// a gate's self-test runs it on a schedule it plants a violation in.
+///
+/// # Errors
+///
+/// The layouts' errors, and [`extract`]'s for a schedule the layouts do not place.
+pub fn check_schedule(
+    claims: &ClaimList,
+    lowering: Lowering,
+    selection: &Selection,
+    schedule: &StageSchedule,
+    length: u32,
+    rule: ColumnRule,
+    readings: &[CommittedColumns],
+) -> Result<Vec<MaskReport>, CompileError> {
+    let advice = ModelAdviceLayout::new(&lowering, selection, claims)?;
     let weights = weight_layout(claims, &lowering)?;
     let systems = readings
         .iter()
         .map(|&committed| {
-            extract(&lowering, &schedule, &advice, &weights, rule, committed)
+            extract(&lowering, schedule, &advice, &weights, rule, committed)
                 .map(|system| (committed, system))
         })
         .collect::<Result<Vec<_>, _>>()?;
