@@ -119,6 +119,11 @@ pub struct TesseraError {
 | Bounded-mode deviation | Not an error: `Û` rises | Verifier reports `Û`; `Reject(UBoundExceeded)` if above the bound |
 | Recorder log and prover transcripts disagree | Prover pre-check; verifier anchor check | Prover: `ERR-WITNESS-ANCHOR`. Verifier: `Reject(Anchor)` |
 | Weight hiding budget exhausted | Budget state machine before `Round1` | `ERR-WITNESS-BUDGET`; operator runs `tessera weights refresh` |
+| Weight model entry: latest state lost, or a link unfinished (draft [RFC-0073](../rfcs/RFC-0073-weight-mask-expansion.md#errors)) | Entry check and `reserve` | `ERR-WITNESS-BUDGET`; `tessera weights refresh` rebuilds the state or completes the link |
+| Weight model entry: epoch record lost, stale or retired | Entry check | `ERR-USAGE`; the entry has failed closed and the operator starts a new model entry under a new key |
+| Weight model entry: lock held by another writer, or a file changed under a writer | Directory lock; device and inode checks | `ERR-RES-IO`; the writer tries again later |
+| Weight model entry: an entry file corrupted | Entry check decodes every file | `ERR-CODEC-*` or `ERR-RES-IO`; refused until the operator moves the file aside, then handled as lost |
+| Weight model entry: an alias (symbolic link, several hard links) or a file it may not hold | Entry check, path rules | `ERR-USAGE` |
 | Selective abort during coin toss | Session state machine | Prover discards the `Round1` and its randomness; the next attempt is a fresh `Round1` (INV-PROTO-1 in [RFC-0014](../rfcs/RFC-0014-interaction-and-soundness.md#invariants)) |
 | Prover crash after `Round1` | Restart from persisted per-proof secret seed | Commitments are a deterministic function of inputs and the encrypted per-proof seed, so the prover resumes with identical messages ([RFC-0018](../rfcs/RFC-0018-gpu-prover-runtime.md#crash-consistency)) |
 | GPU transient fault | CUDA error codes, ECC counters | Retry the current phase up to two times from its start; then `ERR-RES-DEVICE` |

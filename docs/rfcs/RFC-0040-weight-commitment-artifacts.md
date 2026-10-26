@@ -121,7 +121,7 @@ pub struct TypeBudget {
 
 ### Command line
 
-- `tessera commit-weights --model MODEL.d --plan plan.tep --out WEIGHTS.twc` writes the state, and the public artifact beside it as `WEIGHTS.twr` (the same name with the extension `.twr`). It prints `R_W`. In `tessera-protocol/2`, under draft [RFC-0073](RFC-0073-weight-mask-expansion.md#the-model-entry), it writes a model entry instead: `--entry DIR` and `--refresh-key KEY.twk` in place of `--out`, with every epoch's files under fixed names.
+- `tessera commit-weights --model MODEL.d --plan plan.tep --out WEIGHTS.twc` writes the state, and the public artifact beside it as `WEIGHTS.twr` (the same name with the extension `.twr`). It prints `R_W`. Under draft [RFC-0073](RFC-0073-weight-mask-expansion.md#the-model-entry), in `tessera-protocol/2` (the plan's claim list's protocol) it writes a model entry instead, with every epoch's files under fixed names. It then takes `--entry DIR` and `--refresh-key KEY.twk` in place of `--out`. In `tessera-protocol/1`, `--out` is unchanged, and the other protocol's flags are `ERR-USAGE`.
 - `tessera-verify verify` and `tessera-verify live` take `--weights WEIGHTS.twr` beside `--weights-root ROOT`.
 
 ## Alternatives Considered

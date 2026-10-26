@@ -52,7 +52,7 @@ its layout across network rounds. Successful P4 releases an opaque permit tied
 to that same commitment; P5 cannot consume a permit from another P1. Per-proof
 randomness is a fresh OS seed held on the heap in `Secret`; separately labeled
 BLAKE3 streams produce replayable masks, the prover coin-toss share and the NI
-session id. Every mask coefficient uses rejection sampling. Completion and
+session id. Every mask coefficient uses rejection sampling: a branch on a secret word under a stream outside RFC-0004, which the exception of INV-ARCH-2 as draft RFC-0073 amends it does not cover, a known violation until [#567](https://github.com/AbdelStark/tessera/issues/567) moves the stream under an RFC-0004 domain. Completion and
 abort clear the witness and private seed/PRG state. The CPU backend (`rayon`
 1.x) is the reference for every kernel. The current driver composes one
 exact-greedy request; pass planning and protocol/2 are separate work.

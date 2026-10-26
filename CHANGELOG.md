@@ -16,7 +16,7 @@ All notable changes to the prover release train are recorded here: the crates un
   - **Tests.** An S-box output off its table, and a padded block's S-box outputs taken as 0, are `Reject(Lookup { table })` of the S-box; a changed split value, and a public counter changed on the verifier's side, `Reject(Sumcheck { stage: 0, round: 0 })`; `Gf256Mul { 3 }`'s lookup run on another column than `shifted`'s, its leaf value that column's, `Reject(Sumcheck { stage: 1, round: n_1 })`, which a verifier merging the two lookups' claims on `shifted` accepts; multiplicities that miss the padded positions fail LogUp. Each operation downstream of an S-box proves and verifies over the padded witness, every witness differing from the zero-padded one at padded positions. The tests' verifier computes its public tensors from the public inputs alone, so a round constant changed on either side is `Reject(Sumcheck { stage: 0, round: 0 })`; and a committed lookup output, multiplicity column or input other than the one LogUp and the stages read fails exactly its own opening targets, `Reject(Evaluation { commitment: Advice })`, and is accepted with exactly those removed.
 - The weight masks' expansion, specified as a draft ([#147](https://github.com/AbdelStark/tessera/issues/147)):
   - **RFC-0073, 'Expanding an Epoch's Mask Seed into the Weights' Masks and Blinding Rows'** (Draft).
-    - **Where its amendments are written:** RFC-0002, RFC-0004, RFC-0012, RFC-0018, RFC-0040 (with its 'Command line'), RFC-0064, 01 §6, 02 §1 and §2.2, 05 §3, 06 §5 and §7, and the simulator's §5 and R6.
+    - **Where its amendments are written:** RFC-0002, RFC-0004, RFC-0012, RFC-0018, RFC-0040 (with its 'Command line'), RFC-0064, 01 §6, 02 §1 and §2.2, 04 §5, 05 §3, 06 §5 and §7, and the simulator's §5 and R6.
     - **Each is marked as a draft's,** and takes effect when the RFC is accepted.
     - **03 §5's rows** for its two artifacts come with their code.
     - **SPEC.md** reserves the number, as it does RFC-0021's.
@@ -31,21 +31,36 @@ All notable changes to the prover release train are recorded here: the crates un
       The verifier's refusal is #564's.
     - **The model entry.**
       - Each model entry has one directory under fixed names: the epoch record, every epoch's state and `.twr`, and the links.
-      - `commit-weights`, `weights refresh` and, in `tessera-protocol/2`, `prove` take it with `--entry`, and presented artifacts with `--present`.
+      - In `tessera-protocol/2`, `commit-weights`, `weights refresh` and `prove` take it with `--entry`. The last two also take presented artifacts with `--present`, named by schema.
       - `K` lives in `WeightRefreshKey` (`0x0304`, `.twk`, secret) in the key store, naming the entry by its epoch-0 root.
-      - `WeightEpochRecord` (`0x0305`, private) holds every epoch's `R_W` and the latest epoch's per-matrix marks: the next free blinding row and the count of opened columns.
-      - The directory itself is locked, as RFC-0067 locks the verifier's ledger: device and inode checks before each rename, and `ERR-RES-IO` for a held lock. The lock spans a whole proof from its entry check, one proof at a time per entry.
+      - `WeightEpochRecord` (`0x0305`, private) holds every epoch's `R_W`, the latest epoch's per-matrix marks (the next free blinding row and the column count), and a `retired` flag that persists a stale record.
+      - The directory itself is locked, and every entry file obeys RFC-0067's path rules: no symbolic link, one hard link. Device and inode are checked before each rename, and a held lock is `ERR-RES-IO`. The lock spans a whole proof from its entry check: one proof at a time per entry.
+      - A corrupted entry file is refused, never read as lost, until the operator moves it aside.
     - **Fresh and rebuilt states.**
       - A state is fresh only when written right after its epoch's root is appended: epoch 0 by `commit-weights`, `e + 1` by the first link from the latest epoch.
       - Every other state is rebuilt, at `B_T − 4` with no opened column, and serves only its epoch's link.
-      - `reserve` runs only at the latest epoch, with the previous epoch closed, from the larger of the state's cursor and the record's marks, which are written first. `record_queries` raises the record's column count first.
-      - A closed latest state, a file past the record or an authenticated later artifact marks the record stale.
-      - A presented reservation or ledger rows raise the marks.
-      - A lost or stale record fails closed.
-      - **The residual, as a rule on files:** a rollback of the record in which every file that would refute it is also rolled back or lost, or a copy of the entry.
-      - **Its bound:** up to `B_T − 8` rows per matrix per epoch, 4,088 at 405B, and columns past `P_W`.
-      - **What catches it:** presented artifacts catch it, and verifiers' ledgers catch reused rows only in part (#158).
-      - **The gate.** An exhaustive model of the rules, over every combination of lost and restored entry files, finds no reuse outside that class.
+      - `reserve` runs only at the latest epoch, with the previous epoch closed. It starts from the record's marks, raised to the state's, and raises the cursor and the column count together in one record write. `record_queries` writes the state only.
+      - Closed and open are taken over matrices with committed rows only.
+      - A closed latest state, a file past the record or an authenticated later artifact retires the record.
+      - A presented reservation raises the marks. A forged later root refuses one command and retires nothing.
+      - A lost, stale or retired record fails closed.
+      - **The residual, an exact rule on files.** The record is behind the truth with every file decodable, and either:
+        - across a link, no file of a later epoch is present and the record's latest state is absent or open; or
+        - within the epoch, the latest state is present and, raised to the record's marks, behind the truth.
+
+        A copy of the entry is the other residual case.
+      - **Its bound,** per matrix and per rollback or copy: up to `B_T − 4` rows in epoch 0 (4,092 at 405B) and `B_T − 8` later (4,088), and up to `P_W − τ_link` and `P_W − 2τ_link` columns past `P_W`.
+      - **What catches it.**
+        - A presented later root catches it across a link.
+        - Within an epoch only kept `Round1`s catch it, since a verifier's ledger holds accepted proofs only.
+        - Copies that prove concurrently are never caught.
+        - Verifiers catch reused rows only in part (#158), and reused columns not at all (#569).
+      - **The gate.** An exhaustive model of the rules, [`docs/testing/weight-entry-model/`](docs/testing/weight-entry-model/README.md), finds 0 mismatches between the rule and observed harm, either way. It is standard-library Python, run by hand until #147's slice S4 ports it to `tessera-pcs`.
+        - **Its state space:** three epochs and two links, a backup after every write, every version of the eight entry files or its loss or corruption.
+        - **Its regimes:** rows ending an epoch first, and columns.
+        - **What is presented:** nothing, the latest `.twr`, a real ledger, and every sent reservation.
+        - **The other cases:** aliases, concurrent copies, forged artifacts, a `B_T = 0` matrix, and every crash and double crash.
+        - **Its negative controls:** each earlier or naive reading of a rule shows the harm the rule prevents.
     - **The regeneration checks.**
       - A regenerated commitment is checked against the record's root before anything is written or sent.
       - Each combined row drawn from the seed is checked at one column drawn from the CSPRNG, with the codeword store or through a kept Merkle tree.
@@ -68,7 +83,7 @@ All notable changes to the prover release train are recorded here: the crates un
       - the weights' proximity point in `tessera-protocol/2`;
       - the bytes of `WeightReservation`;
       - paying for the per-proof draws.
-    - **Review.** Three independent adversarial readings.
+    - **Review.** Five independent adversarial readings.
       - **The first found:**
         - the rebuilt state's budget reset;
         - the per-proof cost of the proximity row's blinding rows;
@@ -100,7 +115,20 @@ All notable changes to the prover release train are recorded here: the crates un
         - error codes not one per failure;
         - an undecidable link precondition.
 
-        The model, with the fixes, is now the gate.
+        The model, with the fixes, became the gate.
+      - **The fifth checked the model's fidelity and extended its state space.** It found:
+        - that read 4's parameters hid a column under-count when columns end an epoch first, as in production, now counted at `reserve`;
+        - that a real ledger holds accepted proofs only;
+        - concurrent copies;
+        - entry aliases;
+        - a residual stated too broadly and an epoch-0 bound stated too low;
+        - `B_T = 0`;
+        - a stale record with no persistence;
+        - corrupted files read as lost;
+        - `--present` and `--entry` gaps;
+        - missing error rows.
+
+        Its replays, extended, are the gate.
   - RFC-0004's domain table gains `weights-mask` and `weights-blinding`. The headers of RFC-0004 and RFC-0040 now name RFC-0064's amendments too.
 
 - The SHA-256 circuit proves end to end on the CPU stage prover ([#526](https://github.com/AbdelStark/tessera/issues/526), RFC-0072 'Migration' slice 3, 'Testing Strategy' 'The circuits'), tests only: the key commitment, one block with `k_s` and `salt_k` committed and its digest bound, proves and verifies in 14 stages, as do three key commitments (`M = 3`) and three public messages of two blocks. A digest one bit off on the verifier's side, and a round-0 carry bit off committed by the prover, are rejected at stage 1's final check, and each is accepted with exactly the stage-1 instance it breaks removed: the word's `AssertEqual`, or the carry's recomposition with the chain that only its claim reads.

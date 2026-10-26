@@ -64,10 +64,16 @@ tessera inspect         FILE                                                # re
 ```
 
 Under draft [RFC-0073](../rfcs/RFC-0073-weight-mask-expansion.md#the-model-entry), in effect when it is accepted:
-- **The entry.** `commit-weights`, `weights refresh` and, in `tessera-protocol/2`, `prove` take a model entry's directory with `--entry DIR` in place of a free path for a state or a link. The entry holds every epoch's state, `.twr` and link under fixed names, beside the epoch record, and is locked as a whole.
+- **The entry.** In `tessera-protocol/2`, the plan's claim list's protocol, `commit-weights`, `weights refresh` and `prove` take a model entry's directory with `--entry DIR` in place of a free path for a state or a link. The entry holds every epoch's state, `.twr` and link under fixed names, beside the epoch record, and is locked as a whole.
+  - **In `tessera-protocol/1`,** `commit-weights --out` and `prove --weights` are unchanged, and `weights refresh` does not exist.
+  - **The other protocol's flags** are `ERR-USAGE`.
 - **The key.** `commit-weights` and `weights refresh` also take `--refresh-key KEY.twk`.
-- **Presented artifacts.** Each takes `--present ARTIFACT`, repeatable: a published `.twr` or `.twl`, a ledger's root, or a reservation, which can only refuse or burn.
-- **Not yet listed.** These flags join this listing with the code that implements them (#147, #153). `tessera-protocol/1`'s `prove --weights` is unchanged.
+- **Presented artifacts.** `weights refresh` and `prove` take `--present ARTIFACT`, repeatable. Each can only refuse or burn. Accepted kinds:
+  - a `WeightCommitmentPublic` (`.twr`);
+  - a `WeightLinkProof` (`.twl`);
+  - a `VerifierLedger`, for its roots by epoch and its used rows;
+  - once `Round1`'s schema version 2 exists, a kept `Round1` or `NiProof`.
+- **Not yet listed.** These flags join this listing with the code that implements them (#147, #153).
 
 `audit share` is the prover's side of the coin toss over a manifest ([RFC-0016](../rfcs/RFC-0016-audit-sampling.md#sample-derivation) step 2):
 - **One answer.** The first commitment for a manifest gets a fresh share. The share is kept in `--state`, with the manifest, the `tessera.audit-policy/1` policy and the commitment, before it is printed. The same commitment and policy again get the same share.
