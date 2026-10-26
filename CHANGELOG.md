@@ -15,7 +15,9 @@ All notable changes to the prover release train are recorded here: the crates un
   - **The refusals** (`ERR-INTERNAL`):
     - a committed output of a node that is not pointwise;
     - a `Sum`, `SumSquares` or `MatMulAct` over a padded axis with no summed input 0 there;
-    - a layer template holding a `ConstAdd`, a selection, a per-channel `ConstMul`, a `BitDecompose`, an `AssertEqual` or a public tensor.
+    - a layer template holding a `ConstAdd`, a selection, a per-channel `ConstMul`, a `BitDecompose`, an `AssertEqual`, a lookup non-zero at padding or a public tensor.
+
+    A committed advice graph input counts as non-zero at padding unless a `OneHot` or a `BitDecompose` pins it (RFC-0006). The stage prover refuses a lookup non-zero at padding whose output has padded positions, since its tables pad with zeros until RFC-0072's AES slice.
 
     Until their zero-checks land, the schedule also refuses `BitDecompose` and `AssertEqual`, and a claim on a public tensor. No Llama graph is affected.
   - **Leaf sites.** `BitDecompose` and `AssertEqual` take none, in the schedule (`has_leaf_site`) and in the prover's leaf layout alike.

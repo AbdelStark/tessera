@@ -609,10 +609,13 @@ fn every_linear_map_holds_in_a_template_of_its_own() {
             common::virt(&[5, 3, 4]),
         );
         let difference = common::one(&mut b, Op::Sub, &[back, scaled], common::virt(&[5, 3, 4]));
-        let mean = common::one(&mut b, Op::Sum { axis: 0 }, &[c], common::virt(&[3, 4]));
+        // The checkpoint is summed over its axis of 4: its padded positions are `x`'s, a bare
+        // committed input's, which nothing pins, so a sum over its axis of 5 is refused
+        // (RFC-0072 'Summing relations'). The sum over a padded axis is the `Expand`'s, above.
+        let mean = common::one(&mut b, Op::Sum { axis: 2 }, &[c], common::virt(&[5, 3]));
         let spread = common::one(
             &mut b,
-            Op::Expand { axis: 0, len: 5 },
+            Op::Expand { axis: 2, len: 4 },
             &[mean],
             common::virt(&[5, 3, 4]),
         );
@@ -661,7 +664,7 @@ fn every_linear_map_holds_in_a_template_of_its_own() {
         len: 3,
     }));
     assert_eq!(mean.kind, Kind::LayerInput);
-    assert_eq!(mean.point[mean.point.len() - 3..], [Coord::Half; 3]);
+    assert_eq!(mean.point[..2], [Coord::Half; 2]);
     assert!(key.split, "two groups of one commitment at two points");
     assert!(matches!(
         key.parts[..],

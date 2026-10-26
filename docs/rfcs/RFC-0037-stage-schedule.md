@@ -68,8 +68,8 @@ The lowering's checkpoints `c_0, …, c_L` are the residual stream after the emb
   - its layer's checkpoint `c_ℓ`;
   - a graph input, such as the positions or the layer's own weight, classes and multipliers.
 
-  The lowering emits such layers for a claim list that rescales every layer's sites alike ([RFC-0038](RFC-0038-uniform-layers.md)). The schedule refuses any other graph with `ERR-INTERNAL`, and a template that holds a `ConstAdd`, a selection, a per-channel `ConstMul`, a `BitDecompose`, an `AssertEqual` or a node whose output is public ([RFC-0072](RFC-0072-anchor-relations.md#graphs-without-layers)).
-- **No checkpoint.** A lowering with no checkpoint has no layers, `L = 0` and `λ = 0`. Every node is outside them, every tensor a kind without a layer index, and stage 1's layer point has no coordinate, as for the anchor's circuits ([RFC-0072](RFC-0072-anchor-relations.md#graphs-without-layers)).
+  The lowering emits such layers for a claim list that rescales every layer's sites alike ([RFC-0038](RFC-0038-uniform-layers.md)). The schedule refuses any other graph with `ERR-INTERNAL`, and a template that holds a `ConstAdd`, a selection, a per-channel `ConstMul`, a `BitDecompose`, an `AssertEqual`, a lookup non-zero at padding or a node whose output is public ([RFC-0072](RFC-0072-anchor-relations.md#graphs-without-layers)).
+- **No checkpoint.** A lowering with no checkpoint has no layers, `L = 0` and `λ = 0`. Every node is outside them, every tensor a kind without a layer index, and stage 1's layer point has no coordinate, as for the anchor's circuits ([RFC-0072](RFC-0072-anchor-relations.md#graphs-without-layers)). A single checkpoint bounds no layer, and the schedule refuses it (`ERR-INTERNAL`).
 - **Kinds.**
   - The outputs at position `p` form one stacked kind, `X_κ[ℓ, …]`.
   - The layer input `X_in[ℓ] = c_ℓ` is a stacked kind.

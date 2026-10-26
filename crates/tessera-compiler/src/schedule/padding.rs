@@ -7,14 +7,22 @@
 //! every operation maps zeros there to zeros but a lookup whose function does not. So a tensor is
 //! 0 at its padded positions unless a lookup non-zero at padding lies upstream of it, or it is an
 //! `Expand` or a selection, which are 0 past their length along their axis whatever their input.
+//!
+//! A committed advice graph input's padded positions are computed by nothing: they are the
+//! prover's. RFC-0006 'Committed graph inputs' admits a graph only when an operation pins them,
+//! a `OneHot` reading the input directly or a `BitDecompose` reading it directly or moved, and
+//! [`crate::analyze`] refuses any other. The schedule does not rely on that analysis having run:
+//! an input that neither pins counts here as a lookup non-zero at padding does. On a graph that
+//! range analysis admits, this changes no verdict.
 
 use std::collections::HashMap;
 
-use tessera_ir::{Graph, Node, NodeId, Op};
+use tessera_ir::{CommitmentClass, Graph, Node, NodeId, NodeKind, Op, TensorId};
 use tessera_tables::{GeneratedTable, Table, TableId, TableKind, TableSpec};
 
 use super::refuse;
 use crate::CompileError;
+use crate::range::committed_source;
 
 /// Whether `node` is a lookup node non-zero at padding (RFC-0072 'Padded positions'): a
 /// `Requant`, `TableMap` or `Bitwise` whose function maps zero inputs, in any of its classes, to a
@@ -79,11 +87,12 @@ fn table_nonzero(tables: &[TableSpec], node: NodeId, table: TableId) -> Result<b
 }
 
 /// The value table `spec` gives the key that packs input 0 with class `class` (RFC-0008 'Table
-/// kinds'). The kinds whose rows are closed forms or a few hundred values come from
-/// `tessera_tables`' generator itself. The others' definitions give it, since generating them
-/// builds up to `2^16` or `2^24` values: `0 ⊕ 0 = 0 ∧ 0 = 0` for `Bitwise8`; `round(2^σ·e^0) = 2^σ`
-/// for `Exp`; `⌊2^{out_bits}·2^0⌋` for `Exp2Frac`; and `silu(0) = 0` for `Silu`, whatever its
-/// class's shift and scales.
+/// kinds'). The kinds whose rows are closed forms, or whose digests hash a few hundred values,
+/// come from `tessera_tables`' generator itself. The others' definitions give it: building them
+/// generates `Exp`'s, `Exp2Frac`'s and `Silu`'s dense cores, up to `2^24` values, and hashes
+/// `Bitwise8`'s `2^16` rows into its digest. So `0 ⊕ 0 = 0 ∧ 0 = 0` for `Bitwise8`;
+/// `round(2^σ·e^0) = 2^σ` for `Exp`; `⌊2^{out_bits}·2^0⌋` for `Exp2Frac`; and `silu(0) = 0` for
+/// `Silu`, whatever its class's shift and scales.
 fn zero_value(spec: &TableSpec, class: u8, node: NodeId) -> Result<i64, CompileError> {
     match &spec.kind {
         TableKind::Range { .. }
@@ -104,10 +113,55 @@ fn zero_value(spec: &TableSpec, class: u8, node: NodeId) -> Result<i64, CompileE
     }
 }
 
-/// Whether a lookup node non-zero at padding lies upstream of each tensor of `graph`, its own
-/// producer included, by tensor id. Each table is evaluated once.
-fn upstream(graph: &Graph, tables: &[TableSpec]) -> Result<Vec<bool>, CompileError> {
-    let mut reached = vec![false; graph.tensors.len()];
+/// Whether each committed advice graph input of `graph` is pinned at its padded positions, by
+/// tensor id (RFC-0006 'Committed graph inputs', RFC-0072 'Padded positions'): read directly by a
+/// `OneHot`, whose row selector pins its own input's padded rows, or by a `BitDecompose`, directly
+/// or moved by `Reshape`, `Slice`, `Transpose`, `GatherPublic` or `Expand`, whose input padding
+/// check pins the whole input's. Range analysis takes the same walk.
+fn pinned(graph: &Graph, producers: &[Option<(NodeId, u32)>]) -> Vec<bool> {
+    let producer = |t: TensorId| {
+        producers
+            .get(t.0 as usize)
+            .copied()
+            .flatten()
+            .and_then(|(node, _)| graph.nodes.get(node.0 as usize))
+    };
+    let mut pinned = vec![false; graph.tensors.len()];
+    for node in &graph.nodes {
+        let Some(&input) = node.inputs.first() else {
+            continue;
+        };
+        let source = match node.op {
+            Op::BitDecompose { .. } => committed_source(graph, producer, input),
+            Op::OneHot { .. } => producer(input).is_none().then_some(input),
+            _ => None,
+        };
+        if let Some(slot) = source.and_then(|t| pinned.get_mut(t.0 as usize)) {
+            *slot = true;
+        }
+    }
+    pinned
+}
+
+/// Whether a lookup node non-zero at padding, or a committed advice graph input that nothing pins
+/// ([`pinned`]), lies upstream of each tensor of `graph`, its own producer or itself included, by
+/// tensor id. Each table is evaluated once.
+fn upstream(
+    graph: &Graph,
+    tables: &[TableSpec],
+    producers: &[Option<(NodeId, u32)>],
+) -> Result<Vec<bool>, CompileError> {
+    let advice = NodeKind::Committed {
+        commitment: CommitmentClass::Advice,
+    };
+    let pinned = pinned(graph, producers);
+    let mut reached: Vec<bool> = graph
+        .tensors
+        .iter()
+        .zip(producers)
+        .zip(&pinned)
+        .map(|((spec, producer), &pinned)| producer.is_none() && spec.kind == advice && !pinned)
+        .collect();
     let mut by_table: HashMap<TableId, bool> = HashMap::new();
     for node in &graph.nodes {
         let own = match node.op {
@@ -139,22 +193,25 @@ fn upstream(graph: &Graph, tables: &[TableSpec]) -> Result<Vec<bool>, CompileErr
 /// summed inputs is 0 at the axis's padded positions (RFC-0072 'Summing relations'). `Sum` and
 /// `SumSquares` sum their input over their axis; `MatMulAct` sums both inputs over its inner axis,
 /// and one clean input suffices, since a product is 0 where either factor is. An input is clean
-/// when no lookup non-zero at padding lies upstream of it, or when it is an `Expand` or a selection
-/// along that axis. `MatMulWeight` sums against weights that are 0 there, and is never refused.
+/// when neither a lookup non-zero at padding nor a committed advice graph input that nothing pins
+/// lies upstream of it ([`upstream`]), or when it is an `Expand` or a selection along that axis.
+/// `MatMulWeight` sums against weights that are 0 there, and is never refused; a weight, and a
+/// channel-class vector or multipliers committed with the weights, takes the domain its
+/// publisher vouches for (RFC-0048).
 pub(super) fn check_sums(
     graph: &Graph,
     tables: &[TableSpec],
     producers: &[Option<(NodeId, u32)>],
 ) -> Result<(), CompileError> {
-    let reached = upstream(graph, tables)?;
-    let shape = |t: tessera_ir::TensorId| {
+    let reached = upstream(graph, tables, producers)?;
+    let shape = |t: TensorId| {
         graph
             .tensors
             .get(t.0 as usize)
             .map_or(&[][..], |spec| spec.shape.as_slice())
     };
     // Whether input `t` is 0 at the padded positions of its axis `axis`.
-    let clean = |t: tessera_ir::TensorId, axis: usize| {
+    let clean = |t: TensorId, axis: usize| {
         if !reached.get(t.0 as usize).copied().unwrap_or(false) {
             return true;
         }
@@ -171,7 +228,7 @@ pub(super) fn check_sums(
     };
     for node in &graph.nodes {
         // The inputs the relation sums, each with the axis it sums.
-        let summed: Vec<(tessera_ir::TensorId, usize)> = match node.op {
+        let summed: Vec<(TensorId, usize)> = match node.op {
             Op::Sum { axis } | Op::SumSquares { axis } => match node.inputs.first() {
                 Some(&x) => vec![(x, usize::from(axis))],
                 None => continue,

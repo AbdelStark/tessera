@@ -14,7 +14,8 @@
 //!    A graph with no checkpoint has no layers, `L = λ = 0`.
 //! 2. **The graph's refusals.** Before any claim, RFC-0072's rules that read the graph alone: a
 //!    committed output stage 1 does not prove, and a sum over an axis that is not a power of two
-//!    whose inputs are not 0 at its padded positions ([`nonzero_at_padding`]), are refused.
+//!    whose inputs are not 0 at its padded positions, downstream of a lookup non-zero at padding
+//!    ([`nonzero_at_padding`]) or of a committed graph input nothing pins, are refused.
 //! 3. **The leaf stage.** It leaves one claim per input of each gadget but `BitDecompose` and
 //!    `AssertEqual` ([`has_leaf_site`]), and, when the graph has logits, one on them that the
 //!    scoring certificates read (RFC-0017), each at a point of its site. A site in the layers leaves
@@ -447,12 +448,22 @@ pub fn derive_schedule(lowering: &Lowering) -> Result<StageSchedule, CompileErro
 /// site (RFC-0072 'Graphs without layers'). [`derive_schedule`] is this function on a lowering's
 /// graph, tables, checkpoints and logits.
 ///
+/// **Precondition.** The schedule proves `graph`'s relations as RFC-0010 states them over the
+/// field, so `graph` must have passed RFC-0006 range analysis ([`analyze`](crate::analyze)):
+/// every gadget input a true integer inside its gadget's domain, and every committed advice graph
+/// input proven in its declared range and pinned at its padded positions. This function checks
+/// the graph's rules ([`Graph::validate`]) but runs no range analysis; its summing rule treats an
+/// unpinned committed input as non-zero at padding rather than rely on it (RFC-0072 'Summing
+/// relations').
+///
 /// # Errors
 ///
+/// [`CompileError::Graph`] for a graph that breaks a rule of RFC-0006 'Operation set'. Then
 /// [`CompileError::Schedule`] (`ERR-INTERNAL`):
 ///
 /// - layers that are not one template, a single checkpoint, or a template holding an operation
-///   whose stacked form RFC-0072 leaves unspecified or a public tensor ([`LayerMap`]);
+///   whose stacked form RFC-0072 leaves unspecified, a lookup non-zero at padding or a public
+///   tensor ([`LayerMap`]);
 /// - a committed output of a node other than a gadget, `ConstMul`, `ConstAdd`, `Add`, `Sub` or
 ///   `Mul`, which stage 1 does not prove (RFC-0072 'A committed output');
 /// - a `Sum`, `SumSquares` or `MatMulAct` over an axis whose length is not a power of two none of
@@ -466,6 +477,7 @@ pub fn derive_graph_schedule(
     checkpoints: &[TensorId],
     logits: Option<TensorId>,
 ) -> Result<StageSchedule, CompileError> {
+    graph.validate()?;
     derive(graph, tables, checkpoints, logits, &[], &[])
 }
 
@@ -501,7 +513,7 @@ fn derive(
     deferred: &[Deferred],
     native: &[Native],
 ) -> Result<StageSchedule, CompileError> {
-    let layers = LayerMap::of(graph, checkpoints)?;
+    let layers = LayerMap::of(graph, tables, checkpoints)?;
     let producers = producers(graph);
     check_graph(graph, tables, &producers)?;
     let lm = match logits {
@@ -740,18 +752,19 @@ fn leaf_sites(graph: &Graph, layers: &LayerMap, logits: bool) -> Vec<Site> {
     sites
 }
 
-/// RFC-0072's refusals that read the graph alone, node by node, before any claim (`ERR-INTERNAL`):
+/// RFC-0072's refusals that read the graph alone, before any claim (`ERR-INTERNAL`), in this
+/// order:
 ///
 /// - **A committed output** of a node that is not a gadget is proven by stage 1's equality
 ///   zero-check only for a pointwise `ConstMul`, `ConstAdd`, `Add`, `Sub` or `Mul` ('Linear
 ///   operations that are not coordinate maps' 'A committed output'): any other's, a selection's,
 ///   `Sum`'s, `SumSquares`'s, `Rotate`'s, `Transpose`'s, `Reshape`'s or `Expand`'s, is refused,
 ///   although the IR admits the declaration, whether or not a claim reaches it.
+/// - **Summing relations** over a padded axis ('Summing relations').
 /// - **The bit operations.** A `BitDecompose`'s and an `AssertEqual`'s relations are stage 1's bit
 ///   zero-checks ('The bit zero-checks'), and they have no leaf site: until the schedule derives
 ///   those checks (#526), a graph holding one is refused, rather than given a schedule that
-///   proves neither.
-/// - **Summing relations** over a padded axis ('Summing relations').
+///   proves neither. This refusal comes last, as it lifts with the checks.
 fn check_graph(
     graph: &Graph,
     tables: &[TableSpec],
@@ -774,14 +787,19 @@ fn check_graph(
                 "a committed output is of a ConstMul, ConstAdd, Add, Sub or Mul",
             );
         }
-        if matches!(node.op, Op::BitDecompose { .. } | Op::AssertEqual) {
-            return refuse(
-                Some(node.id),
-                "the schedule derives no bit zero-check of a BitDecompose or an AssertEqual yet",
-            );
-        }
     }
-    padding::check_sums(graph, tables, producers)
+    padding::check_sums(graph, tables, producers)?;
+    if let Some(node) = graph
+        .nodes
+        .iter()
+        .find(|node| matches!(node.op, Op::BitDecompose { .. } | Op::AssertEqual))
+    {
+        return refuse(
+            Some(node.id),
+            "the schedule derives no bit zero-check of a BitDecompose or an AssertEqual yet",
+        );
+    }
+    Ok(())
 }
 
 /// Input `input` of `node`.

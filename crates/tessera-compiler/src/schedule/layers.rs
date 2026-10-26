@@ -3,7 +3,9 @@
 //! The layers of a lowered graph and their template (RFC-0037 'Layers and kinds').
 
 use tessera_ir::{CommitmentClass, Graph, NodeId, NodeKind, Op, TensorId, TensorSpec};
+use tessera_tables::TableSpec;
 
+use super::padding::nonzero_at_padding;
 use super::public::{producers, public_tensors};
 use super::{Kind, Layers, axis_vars, refuse};
 use crate::{CompileError, Lowering};
@@ -19,9 +21,10 @@ use crate::{CompileError, Lowering};
 /// - the nodes at one position have one operation, up to their layer's own weights, constants,
 ///   shift classes and tables, and the same inputs and outputs, of one shape and kind;
 /// - no position holds a `ConstAdd`, a selection (`Slice`, `GatherPublic`), a `ConstMul` by a
-///   constant per channel, a `BitDecompose`, an `AssertEqual`, or a node whose output is public
-///   ([`public_tensors`](super::public_tensors)), whose stacked forms RFC-0072 leaves unspecified
-///   ('Graphs without layers');
+///   constant per channel, a `BitDecompose`, an `AssertEqual`, a lookup non-zero at padding
+///   ([`nonzero_at_padding`](super::nonzero_at_padding)), or a node whose output is public
+///   ([`public_tensors`](super::public_tensors)), whose stacked forms or padded layers RFC-0072
+///   leaves unspecified ('Graphs without layers');
 /// - each input is an earlier output of its own layer, its layer's checkpoint, or a graph input:
 ///   one every layer shares, or one of its own in each layer;
 /// - each output of a layer is read in its layer only, but for its checkpoint, which the next
@@ -58,7 +61,7 @@ impl LayerMap {
     /// [`CompileError::Schedule`] for the first rule of the template broken, as [`LayerMap`] lists
     /// them.
     pub fn new(lowering: &Lowering) -> Result<Self, CompileError> {
-        Self::of(&lowering.graph, &lowering.checkpoints)
+        Self::of(&lowering.graph, &lowering.tables, &lowering.checkpoints)
     }
 
     /// The layers of a graph with no checkpoint: none, `L = 0` and `λ = 0`, every node outside them
@@ -76,14 +79,18 @@ impl LayerMap {
         }
     }
 
-    /// The layers of `graph` that the checkpoints `c_0, …, c_L` bound; with no checkpoint,
-    /// [`LayerMap::none`]. One checkpoint bounds no layer and is refused.
+    /// The layers of `graph`, whose tables are `tables`, that the checkpoints `c_0, …, c_L` bound;
+    /// with no checkpoint, [`LayerMap::none`]. One checkpoint bounds no layer and is refused.
     ///
     /// # Errors
     ///
     /// [`CompileError::Schedule`] for the first rule of the template broken, as [`LayerMap`] lists
-    /// them.
-    pub fn of(graph: &Graph, checkpoints: &[TensorId]) -> Result<Self, CompileError> {
+    /// them, or for a lookup at a template position whose table is not among `tables`.
+    pub fn of(
+        graph: &Graph,
+        tables: &[TableSpec],
+        checkpoints: &[TensorId],
+    ) -> Result<Self, CompileError> {
         if checkpoints.is_empty() {
             return Ok(Self::none());
         }
@@ -138,7 +145,7 @@ impl LayerMap {
         };
         let public = public_tensors(graph);
         for position in 0..width {
-            map.check_position(graph, &producers, &public, position)?;
+            map.check_position(graph, tables, &producers, &public, position)?;
         }
         map.check_readers(graph, &producers)?;
         Ok(map)
@@ -214,28 +221,32 @@ impl LayerMap {
     fn check_position(
         &mut self,
         graph: &Graph,
+        tables: &[TableSpec],
         producers: &[Option<(NodeId, u32)>],
         public: &[bool],
         position: u32,
     ) -> Result<(), CompileError> {
         let base_id = self.node(position, 0);
         let base = &graph.nodes[base_id.0 as usize];
-        // A public tensor's stacked form, and its padded layers, are not specified either.
-        let public_output = (0..self.count).any(|layer| {
-            graph
-                .nodes
-                .get(self.node(position, layer).0 as usize)
-                .is_some_and(|node| {
-                    node.outputs
-                        .iter()
-                        .any(|t| public.get(t.0 as usize).copied().unwrap_or(false))
-                })
-        });
-        if !stacks(graph, &base.op) || public_output {
+        // Neither a public tensor's padded layers nor a lookup's non-zero at padding are specified;
+        // each layer's node is checked, as a lookup may read a table of its layer's own.
+        let mut unspecified = !stacks(graph, &base.op);
+        for layer in 0..self.count {
+            let Some(node) = graph.nodes.get(self.node(position, layer).0 as usize) else {
+                continue;
+            };
+            unspecified |= node
+                .outputs
+                .iter()
+                .any(|t| public.get(t.0 as usize).copied().unwrap_or(false));
+            unspecified |= nonzero_at_padding(graph, tables, node)?;
+        }
+        if unspecified {
             return refuse(
                 Some(base_id),
                 "a layer template holds no ConstAdd, selection, ConstMul per channel, \
-                 BitDecompose, AssertEqual or node whose output is public",
+                 BitDecompose, AssertEqual, lookup non-zero at padding or node whose output is \
+                 public",
             );
         }
         // Where each input comes from, in every layer.
@@ -394,8 +405,9 @@ enum Source {
 /// Whether a node of `op` may sit at a template's position (RFC-0072 'Graphs without layers' 'Not
 /// inside a layer'): not a `ConstAdd`, a selection, a `ConstMul` by a constant of more than one
 /// value, a `BitDecompose` or an `AssertEqual`, whose stacked forms (a per-layer constant on a
-/// padded layer, stacked bit zero-checks) are not specified. A node whose output is public is
-/// refused too, by [`LayerMap::of`]. A constant of one value is a scalar,
+/// padded layer, stacked bit zero-checks) are not specified. A lookup non-zero at padding and a
+/// node whose output is public are refused too, by [`LayerMap::of`], their padded layers being
+/// unspecified. A constant of one value is a scalar,
 /// whatever the last axis's length ('Scalar or per channel'). `BitFn` and `Bitwise` stack as any
 /// relation and lookup do.
 fn stacks(graph: &Graph, op: &Op) -> bool {

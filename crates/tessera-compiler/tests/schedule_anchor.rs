@@ -40,10 +40,11 @@ use tessera_ir::{
 };
 use tessera_tables::{BitOp, GeneratedTable, Table, TableKind, TableSpec};
 
-/// RFC-0072 'Graphs without layers': their stacked forms, and a public tensor's padded layers,
-/// are not specified.
+/// RFC-0072 'Graphs without layers': their stacked forms, and the padded layers of a public tensor
+/// and of a lookup non-zero at padding, are not specified.
 const TEMPLATE: &str = "a layer template holds no ConstAdd, selection, ConstMul per channel, \
-                        BitDecompose, AssertEqual or node whose output is public";
+                        BitDecompose, AssertEqual, lookup non-zero at padding or node whose \
+                        output is public";
 /// RFC-0072 'Linear operations that are not coordinate maps': 'A committed output'.
 const COMMITTED: &str = "a committed output is of a ConstMul, ConstAdd, Add, Sub or Mul";
 /// RFC-0072 'Linear operations that are not coordinate maps': 'Summing relations'.
@@ -511,9 +512,17 @@ fn template(extra: Extra) -> (Graph, Vec<TensorId>) {
     (g.finish(), checkpoints)
 }
 
+/// The S-box as table 0 and `Gf256Mul { 2 }`, which maps 0 to 0, as table 1.
+fn byte_tables() -> Vec<TableSpec> {
+    vec![
+        spec(0, TableKind::AesSbox),
+        spec(1, TableKind::Gf256Mul { c: 2 }),
+    ]
+}
+
 fn layered(extra: Extra) -> Result<StageSchedule, CompileError> {
     let (graph, checkpoints) = template(extra);
-    derive_graph_schedule(&graph, &[], &checkpoints, None)
+    derive_graph_schedule(&graph, &byte_tables(), &checkpoints, None)
 }
 
 /// RFC-0072 'Graphs without layers' 'Not inside a layer': a template holding a `ConstAdd`, a
@@ -612,11 +621,96 @@ fn a_layer_template_holds_no_public_tensor() {
     );
 }
 
+/// RFC-0072 'Not inside a layer', after its review: a template position holding a lookup
+/// non-zero at padding, an S-box or a requantization into `[1, 100]`, is refused, since its padded
+/// layers, `AesSbox(0)` and `rq(0)` each, are not specified. A `Gf256Mul` lookup maps 0 to 0 and
+/// stacks.
+#[test]
+fn a_layer_template_holds_no_lookup_non_zero_at_padding() {
+    let refused: [(&str, Extra); 2] = [
+        ("an S-box", |g, c, _| {
+            Some(one(
+                g,
+                Op::TableMap { table: TableId(0) },
+                &[c],
+                out(&[4, 8], NodeKind::LookupOutput { table: TableId(0) }),
+            ))
+        }),
+        ("a requantization into [1, 100]", |g, c, _| {
+            Some(requant(g, c, &[4, 8], 1, 100))
+        }),
+    ];
+    for (name, extra) in refused {
+        assert_eq!(refusal(layered(extra)), TEMPLATE, "{name}");
+    }
+    let doubled = layered(|g, c, _| {
+        Some(one(
+            g,
+            Op::TableMap { table: TableId(1) },
+            &[c],
+            out(&[4, 8], NodeKind::LookupOutput { table: TableId(1) }),
+        ))
+    })
+    .expect("a lookup that maps 0 to 0 stacks");
+    assert_eq!(doubled.layers.count, 2);
+}
+
+/// RFC-0072 'In a model's graph': the template rule reads the layers alone. A prologue holding a
+/// `Slice`, a `GatherPublic` and a public product, and an epilogue holding a `ConstAdd`, a `Slice`
+/// and an S-box, all of the last checkpoint, pass it: the anchor's circuits are epilogue nodes. A
+/// claim through the epilogue's `ConstAdd` then waits for `ConstAdd`'s relation (#526).
+#[test]
+fn the_template_rule_reads_the_layers_alone() {
+    let build = |read: bool| {
+        let mut g = GraphBuilder::new();
+        let x = g.input(decl(&[4, 8], ADVICE, -100, 100)).expect("x");
+        let p = g.input(decl(&[4, 8], NodeKind::Public, 0, 1)).expect("p");
+        let cut = Op::Slice {
+            axis: 0,
+            start: 1,
+            len: 2,
+        };
+        one(&mut g, cut.clone(), &[x], virt(&[2, 8]));
+        let rows = g.constant(vec![3, 0]).expect("rows");
+        one(
+            &mut g,
+            Op::GatherPublic { index: rows },
+            &[x],
+            virt(&[2, 8]),
+        );
+        one(&mut g, mul(), &[p, p], virt(&[4, 8]));
+        let unit = g.constant(vec![1]).expect("a constant");
+        let mut c = one(&mut g, Op::ConstMul { c: unit }, &[x], out(&[4, 8], ADVICE));
+        let mut checkpoints = vec![c];
+        for _ in 0..2 {
+            let square = one(&mut g, mul(), &[c, c], virt(&[4, 8]));
+            c = requant(&mut g, square, &[4, 8], -100, 100);
+            checkpoints.push(c);
+        }
+        let three = g.constant(vec![3]).expect("a constant");
+        let shifted = one(&mut g, Op::ConstAdd { c: three }, &[c], virt(&[4, 8]));
+        one(&mut g, cut, &[c], virt(&[2, 8]));
+        substitute(&mut g, c, &[4, 8]);
+        if read {
+            requant(&mut g, shifted, &[4, 8], -100, 100);
+        }
+        derive_graph_schedule(&g.finish(), &byte_tables(), &checkpoints, None)
+    };
+    let schedule = build(false).expect("the prologue and epilogue pass the template rule");
+    assert_eq!(schedule.layers.count, 2);
+    assert_eq!(
+        refusal(build(true)),
+        MAPS,
+        "a claim through the epilogue's ConstAdd"
+    );
+}
+
 /// A node a test adds to a graph of two committed `[4, 3]` tensors, its output committed.
 type Committed = fn(&mut GraphBuilder, TensorId, TensorId);
 
 /// RFC-0072 'A committed output': stage 1 proves a committed output of a `ConstMul`, `ConstAdd`,
-/// `Add`, `Sub` or `Mul` only; any other's is refused when the schedule is derived, although the
+/// `Add`, `Sub` or `Mul` only; any other's, a selection's, `Sum`'s, `SumSquares`'s, `Rotate`'s,
+/// `Transpose`'s, `Reshape`'s or `Expand`'s, is refused when the schedule is derived, although the
 /// IR admits it, even when no claim reaches it.
 #[test]
 fn a_committed_output_stage_1_does_not_prove_is_refused() {
@@ -627,7 +721,7 @@ fn a_committed_output_stage_1_does_not_prove_is_refused() {
         node(&mut g, x, y);
         g.finish()
     };
-    let refused: [(&str, Committed); 6] = [
+    let refused: [(&str, Committed); 8] = [
         ("Slice", |g, x, _| {
             let op = Op::Slice {
                 axis: 0,
@@ -653,6 +747,17 @@ fn a_committed_output_stage_1_does_not_prove_is_refused() {
         ("Expand", |g, x, _| {
             let op = Op::Expand { axis: 0, len: 2 };
             one(g, op, &[x], out(&[2, 4, 3], ADVICE));
+        }),
+        ("Reshape", |g, x, _| {
+            one(g, Op::Reshape, &[x], out(&[12], ADVICE));
+        }),
+        ("Rotate", |g, _, _| {
+            let x = g.input(decl(&[4, 2], ADVICE, -100, 100)).expect("pairs");
+            let positions = g
+                .input(decl(&[4], NodeKind::Public, 0, 3))
+                .expect("positions");
+            let op = Op::Rotate { rope: TableId(0) };
+            one(g, op, &[x, positions], out(&[4, 2], ADVICE));
         }),
     ];
     for (name, node) in refused {
@@ -703,7 +808,6 @@ fn summed(shape: &[u32], key: Key<'_>) -> Result<StageSchedule, CompileError> {
 /// non-zero at padding upstream, or an `Expand` or a selection along that axis.
 #[test]
 fn a_sum_over_a_padded_axis_needs_an_input_zero_there() {
-    let tables = sbox();
     let sum_of = summed;
     let sum = |axis: u8, out_shape: Vec<u32>| {
         move |g: &mut GraphBuilder, s: TensorId| {
@@ -792,49 +896,250 @@ fn a_sum_over_a_padded_axis_needs_an_input_zero_there() {
         SUMS,
         "a Slice along another axis"
     );
-    // `MatMulAct` sums both inputs over its inner axis: one clean input suffices.
-    let product = |a_dirty: bool, b_dirty: bool, inner: u32, transposed: bool| {
-        let mut g = GraphBuilder::new();
-        let b_shape = if transposed {
-            [1, 2, inner]
-        } else {
-            [1, inner, 2]
-        };
-        let operand = |g: &mut GraphBuilder, shape: &[u32], dirty: bool| {
-            let x = bytes(g, shape);
-            if dirty { substitute(g, x, shape) } else { x }
-        };
-        let a = operand(&mut g, &[1, 2, inner], a_dirty);
-        let b = operand(&mut g, &b_shape, b_dirty);
-        let op = Op::MatMulAct {
-            transpose_rhs: transposed,
-        };
-        let z = one(&mut g, op, &[a, b], virt(&[1, 2, 2]));
-        requant(&mut g, z, &[1, 2, 2], -128, 127);
-        layerless(&g.finish(), &tables)
-    };
+    // A gather selects the outermost axis's rows: along axis 1 it is no selection.
+    assert_eq!(
+        refusal(sum_of(&[4, 3], &|g, s| {
+            let index = g.constant(vec![0, 2]).expect("rows");
+            let picked = one(g, Op::GatherPublic { index }, &[s], virt(&[2, 3]));
+            (one(g, Op::Sum { axis: 1 }, &[picked], virt(&[2])), vec![2])
+        })),
+        SUMS,
+        "a GatherPublic, summed along axis 1"
+    );
+    // `MatMulAct` sums both inputs over its inner axis: one clean input suffices. A bare
+    // committed input's padded positions are the prover's, so it is clean only when a `OneHot`
+    // reads it directly or a `BitDecompose` reads it, directly or moved (RFC-0006 'Committed graph
+    // inputs').
     for transposed in [false, true] {
+        let product = |a: Operand, b: Operand, inner: u32| matmul(a, b, inner, transposed);
+        let label = format!("transposed: {transposed}");
+        assert_eq!(refusal(product(Dirty, Dirty, 3)), SUMS, "{label}");
         assert_eq!(
-            refusal(product(true, true, 3, transposed)),
+            refusal(product(Dirty, Bare, 3)),
             SUMS,
-            "{transposed}"
+            "{label}: a bare right operand"
         );
-        product(true, false, 3, transposed).expect("a clean right operand");
-        product(false, true, 3, transposed).expect("a clean left operand");
-        product(true, true, 4, transposed).expect("an inner axis of 4");
+        assert_eq!(
+            refusal(product(Bare, Dirty, 3)),
+            SUMS,
+            "{label}: a bare left operand"
+        );
+        product(Dirty, Pinned, 3).expect("a pinned right operand");
+        product(Pinned, Dirty, 3).expect("a pinned left operand");
+        product(Dirty, Dirty, 4).expect("an inner axis of 4");
+        // An `Expand` that forms the right operand is 0 past its length along its inner axis
+        // only.
+        expanded_right(transposed, true).expect("an Expand along the right operand's inner axis");
+        assert_eq!(
+            refusal(expanded_right(transposed, false)),
+            SUMS,
+            "{label}: an Expand along its outer axis"
+        );
     }
     // A requantization non-zero at padding, `rq(0) = 1` into `[1, 255]`, is such a lookup; one
-    // into `[−128, 127]` is not.
-    let requantized = |lo: i64, hi: i64| {
+    // into `[−128, 127]` is not, but its bare input is, until a `OneHot` reads it.
+    assert_eq!(refusal(requantized(1, 255, Bare)), SUMS);
+    assert_eq!(refusal(requantized(-128, 127, Bare)), SUMS, "a bare input");
+    requantized(-128, 127, Pinned).expect("rq(0) = 0 of a pinned input");
+    assert_eq!(refusal(requantized(1, 255, Pinned)), SUMS, "rq(0) = 1");
+}
+
+/// How a test's operand reaches a relation: a bare committed input; one a `OneHot` reads
+/// directly, which pins its padded positions; or an S-box of a bare input, non-zero at padding.
+#[derive(Clone, Copy, Debug)]
+enum Operand {
+    Bare,
+    Pinned,
+    Dirty,
+}
+use Operand::{Bare, Dirty, Pinned};
+
+/// An operand of `shape` of `kind`: committed bytes, pinned by a `OneHot` of 256, or their S-box.
+fn operand(g: &mut GraphBuilder, shape: &[u32], kind: Operand) -> TensorId {
+    let x = bytes(g, shape);
+    match kind {
+        Bare => x,
+        Pinned => {
+            let mut one_hot = shape.to_vec();
+            one_hot.push(256);
+            one(g, Op::OneHot { vocab: 256 }, &[x], out(&one_hot, ADVICE));
+            x
+        }
+        Dirty => substitute(g, x, shape),
+    }
+}
+
+/// The schedule of `requant(MatMulAct(a, b))` over an inner axis of `inner`, `[1, 2, inner]` by
+/// `[1, inner, 2]`, or by `[1, 2, inner]` transposed.
+fn matmul(
+    a: Operand,
+    b: Operand,
+    inner: u32,
+    transposed: bool,
+) -> Result<StageSchedule, CompileError> {
+    let mut g = GraphBuilder::new();
+    let b_shape = if transposed {
+        [1, 2, inner]
+    } else {
+        [1, inner, 2]
+    };
+    let a = operand(&mut g, &[1, 2, inner], a);
+    let b = operand(&mut g, &b_shape, b);
+    let op = Op::MatMulAct {
+        transpose_rhs: transposed,
+    };
+    let z = one(&mut g, op, &[a, b], virt(&[1, 2, 2]));
+    requant(&mut g, z, &[1, 2, 2], -128, 127);
+    layerless(&g.finish(), &sbox())
+}
+
+/// The schedule of `requant(MatMulAct(a, B))` over an inner axis of 3, `a` an S-box output and
+/// `B` an `Expand` of another, along `B`'s inner axis or along its outer one.
+fn expanded_right(transposed: bool, along_inner: bool) -> Result<StageSchedule, CompileError> {
+    let mut g = GraphBuilder::new();
+    let a = operand(&mut g, &[1, 2, 3], Dirty);
+    // `B` is `[1, 3, 2]` (inner axis 1), or `[1, 2, 3]` transposed (inner axis 2).
+    let (inner, b_shape) = if transposed {
+        (2, [1, 2, 3])
+    } else {
+        (1, [1, 3, 2])
+    };
+    let axis = if along_inner { inner } else { 3 - inner };
+    let mut source = b_shape.to_vec();
+    let len = source.remove(axis);
+    let s = operand(&mut g, &source, Dirty);
+    let axis = u8::try_from(axis).expect("small");
+    let b = one(&mut g, Op::Expand { axis, len }, &[s], virt(&b_shape));
+    let op = Op::MatMulAct {
+        transpose_rhs: transposed,
+    };
+    let z = one(&mut g, op, &[a, b], virt(&[1, 2, 2]));
+    requant(&mut g, z, &[1, 2, 2], -128, 127);
+    layerless(&g.finish(), &sbox())
+}
+
+/// The schedule of `requant(Sum_1(requant_{[lo, hi]}(x)))`, `x` committed bytes `[4, 3]`.
+fn requantized(lo: i64, hi: i64, x: Operand) -> Result<StageSchedule, CompileError> {
+    let mut g = GraphBuilder::new();
+    let x = operand(&mut g, &[4, 3], x);
+    let r = requant(&mut g, x, &[4, 3], lo, hi);
+    let k = one(&mut g, Op::Sum { axis: 1 }, &[r], virt(&[4]));
+    requant(&mut g, k, &[4], -128, 127);
+    layerless(&g.finish(), &sbox())
+}
+
+/// RFC-0072 'Padded positions' and RFC-0006 'Committed graph inputs': nothing computes a committed
+/// graph input's padded positions, so a sum over a padded axis downstream of one is refused unless
+/// an operation pins them: a `OneHot` reading it directly, or a `BitDecompose` reading it directly
+/// or moved by `Reshape`, `Slice`, `Transpose`, `GatherPublic` or `Expand`, whose input padding
+/// check pins them (slice 2). The summing rule runs before the bit operations' refusal, so a
+/// `BitDecompose`'s pin shows as that refusal, `BITS`, rather than `SUMS`.
+#[test]
+fn a_committed_input_is_zero_at_padding_only_when_pinned() {
+    // `requant(Sum_1(x))`, `x` committed `[4, 3]`, which `reader` reads too.
+    let sum_with = |reader: fn(&mut GraphBuilder, TensorId)| {
         let mut g = GraphBuilder::new();
-        let x = bytes(&mut g, &[4, 3]);
-        let r = requant(&mut g, x, &[4, 3], lo, hi);
-        let k = one(&mut g, Op::Sum { axis: 1 }, &[r], virt(&[4]));
+        let x = g.input(decl(&[4, 3], ADVICE, 0, 255)).expect("x");
+        reader(&mut g, x);
+        let k = one(&mut g, Op::Sum { axis: 1 }, &[x], virt(&[4]));
         requant(&mut g, k, &[4], -128, 127);
         layerless(&g.finish(), &[])
     };
-    assert_eq!(refusal(requantized(1, 255)), SUMS);
-    requantized(-128, 127).expect("rq(0) = 0");
+    // The bits of `t`, of `shape`.
+    fn decompose(g: &mut GraphBuilder, t: TensorId, shape: &[u32]) {
+        let mut bits = shape.to_vec();
+        bits.push(8);
+        g.node(
+            Op::BitDecompose { low: 8, high: 0 },
+            &[t],
+            vec![out(&bits, ADVICE)],
+        )
+        .expect("bits");
+    }
+    assert_eq!(refusal(sum_with(|_, _| {})), SUMS, "no reader");
+    sum_with(|g, x| {
+        one(
+            g,
+            Op::OneHot { vocab: 256 },
+            &[x],
+            out(&[4, 3, 256], ADVICE),
+        );
+    })
+    .expect("a OneHot reads it directly");
+    // A `OneHot` pins its own input's padded rows only: through a move they are not `x`'s.
+    assert_eq!(
+        refusal(sum_with(|g, x| {
+            let flat = one(g, Op::Reshape, &[x], virt(&[12]));
+            one(
+                g,
+                Op::OneHot { vocab: 256 },
+                &[flat],
+                out(&[12, 256], ADVICE),
+            );
+        })),
+        SUMS,
+        "a OneHot of a reshape"
+    );
+    assert_eq!(
+        refusal(sum_with(|g, x| decompose(g, x, &[4, 3]))),
+        BITS,
+        "a BitDecompose reads it directly"
+    );
+    assert_eq!(
+        refusal(sum_with(|g, x| {
+            let turned = one(g, Op::Transpose { perm: vec![1, 0] }, &[x], virt(&[3, 4]));
+            let flat = one(g, Op::Reshape, &[turned], virt(&[12]));
+            decompose(g, flat, &[12]);
+        })),
+        BITS,
+        "a BitDecompose reads it moved"
+    );
+    assert_eq!(
+        refusal(sum_with(|g, x| {
+            let index = g.constant(vec![1]).expect("a row");
+            let row = one(g, Op::GatherPublic { index }, &[x], virt(&[1, 3]));
+            let cut = Op::Slice {
+                axis: 1,
+                start: 0,
+                len: 2,
+            };
+            let pair = one(g, cut, &[row], virt(&[1, 2]));
+            let wide = one(g, Op::Expand { axis: 0, len: 2 }, &[pair], virt(&[2, 1, 2]));
+            decompose(g, wide, &[2, 1, 2]);
+        })),
+        BITS,
+        "a BitDecompose reads part of it, moved: its padding check covers the whole input"
+    );
+    // Through an `Add`, the decomposition reads another tensor.
+    assert_eq!(
+        refusal(sum_with(|g, x| {
+            let doubled = one(g, Op::Add, &[x, x], virt(&[4, 3]));
+            decompose(g, doubled, &[4, 3]);
+        })),
+        SUMS,
+        "a BitDecompose of an Add"
+    );
+    // A weight is not advice: RFC-0048 vouches for its domain.
+    let mut g = GraphBuilder::new();
+    let w = g.input(decl(&[4, 3], WEIGHT, -127, 127)).expect("w");
+    let k = one(&mut g, Op::Sum { axis: 1 }, &[w], virt(&[4]));
+    requant(&mut g, k, &[4], -128, 127);
+    layerless(&g.finish(), &[]).expect("a weight's sum");
+}
+
+/// `derive_graph_schedule` validates its graph (RFC-0006 'Operation set') before reading it: an
+/// input id outside the graph is an error, not a panic.
+#[test]
+fn an_invalid_graph_is_an_error() {
+    let mut g = GraphBuilder::new();
+    let x = g.input(decl(&[4], ADVICE, -100, 100)).expect("x");
+    requant(&mut g, x, &[4], -128, 127);
+    let mut graph = g.finish();
+    graph.nodes[0].inputs[0] = TensorId(99);
+    assert!(matches!(
+        layerless(&graph, &[]),
+        Err(CompileError::Graph(_))
+    ));
 }
 
 /// RFC-0072 'Padded positions': a `TableMap` or `Bitwise` is non-zero at padding when its table

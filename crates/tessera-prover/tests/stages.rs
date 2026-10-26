@@ -17,10 +17,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use tessera_codec::{Ascii, DecodeLimits, Secret, SecretBuf, envelope, schema};
+use tessera_compiler::schedule::LayerMap;
 use tessera_compiler::schedule::{
     Claim, Coord, Factor, Layers, NodeRef, Part, Relation, Source, StageSchedule,
 };
-use tessera_compiler::schedule::{LayerMap, has_leaf_site};
 use tessera_compiler::{Lowering, PublicModel, derive_graph_schedule, derive_schedule, lower};
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
@@ -30,9 +30,9 @@ use tessera_ir::{
 };
 use tessera_poly::{eq, eq_table, evaluate_base, less_than};
 use tessera_prover::leaf::gadget_nodes;
-use tessera_prover::{StageProof, StageProver, WitnessSource};
+use tessera_prover::{StageError, StageProof, StageProver, WitnessSource};
 use tessera_sumcheck::SumcheckTranscript;
-use tessera_tables::{RopeTable, TableSpec};
+use tessera_tables::{GeneratedTable, RopeTable, Table, TableId, TableKind, TableSpec};
 use tessera_witness::{Engine, Witness};
 
 type F = GoldilocksExt2;
@@ -1145,10 +1145,12 @@ fn every_linear_map_proves_in_a_template_of_its_own() {
         let k = b.constant(vec![2 + 3 * layer]).expect("a constant");
         let scaled = one(&mut b, Op::ConstMul { c: k }, &[thrice], virt(&[5, 3, 4]));
         let difference = one(&mut b, Op::Sub, &[back, scaled], virt(&[5, 3, 4]));
-        let mean = one(&mut b, Op::Sum { axis: 0 }, &[c], virt(&[3, 4]));
+        // Over the checkpoint's axis of 4: its padded positions are `x`'s, a bare committed
+        // input's, so a sum over its axis of 5 is refused (RFC-0072 'Summing relations').
+        let mean = one(&mut b, Op::Sum { axis: 2 }, &[c], virt(&[5, 3]));
         let spread = one(
             &mut b,
-            Op::Expand { axis: 0, len: 5 },
+            Op::Expand { axis: 2, len: 4 },
             &[mean],
             virt(&[5, 3, 4]),
         );
@@ -1359,7 +1361,8 @@ fn a_graph_without_layers_proves_and_verifies() {
 }
 
 /// RFC-0072 'Gadgets and leaf sites': the leaf layout gives `BitDecompose` and `AssertEqual` no
-/// site, as the schedule gives none, and every other gadget, `OneHot` among them, its own.
+/// site, as the schedule gives none (`has_leaf_site`, which both call), and every other gadget,
+/// `OneHot` among them, its own.
 #[test]
 fn the_bit_operations_take_no_leaf_site() {
     let mut g = GraphBuilder::new();
@@ -1400,12 +1403,59 @@ fn the_bit_operations_take_no_leaf_site() {
         .map(|n| NodeRef::Node(n.id))
         .collect();
     assert_eq!(sites, expected);
-    for node in &lowering.graph.nodes {
-        assert_eq!(
-            sites.contains(&NodeRef::Node(node.id)),
-            has_leaf_site(&node.op),
-            "{}",
-            node.op.name()
-        );
+}
+
+/// A witness of zeros, each tensor of its own size.
+struct Zeros(Vec<Vec<i64>>);
+
+impl WitnessSource for Zeros {
+    fn values(&self, tensor: TensorId) -> Option<&[i64]> {
+        self.0.get(tensor.0 as usize).map(Vec::as_slice)
     }
+}
+
+/// RFC-0072 'Padded positions': an S-box, a lookup non-zero at padding, holds `AesSbox(0) =
+/// 0x63` at its padded positions, which the stage tables, padded with zeros, do not hold until
+/// #526's fourth slice computes them over padded shapes. The stage prover refuses such a graph at
+/// its leaf stage. An S-box with no padded position, and a `Gf256Mul` lookup with padded
+/// positions, which maps 0 to 0, prove their leaf stage.
+#[test]
+fn a_lookup_non_zero_at_padding_with_padded_positions_is_refused() {
+    let leaf = |kind: TableKind, shape: &[u32]| {
+        let mut g = GraphBuilder::new();
+        let mut input = decl(shape, ADVICE);
+        input.range = IntRange { lo: 0, hi: 255 };
+        let x = g.input(input).expect("bytes");
+        let output = decl(shape, NodeKind::LookupOutput { table: TableId(0) });
+        g.node(Op::TableMap { table: TableId(0) }, &[x], vec![output])
+            .expect("a lookup");
+        let graph = g.finish();
+        let tables = vec![
+            GeneratedTable::new(TableId(0), kind)
+                .expect("a table")
+                .spec()
+                .clone(),
+        ];
+        let schedule = derive_graph_schedule(&graph, &tables, &[], None).expect("a schedule");
+        let witness = Zeros(
+            graph
+                .tensors
+                .iter()
+                .map(|t| vec![0; t.shape.iter().map(|&d| d as usize).product()])
+                .collect(),
+        );
+        let mut prover = StageProver::for_graph(&graph, &tables, &schedule, &witness);
+        prover
+            .leaf(&leaf_points(&schedule, 0x0526_0002))
+            .map(|_| ())
+    };
+    assert_eq!(
+        leaf(TableKind::AesSbox, &[4, 3]),
+        Err(StageError::Internal {
+            rule: "a lookup non-zero at padding has no padded positions while the stage tables \
+                   pad with zeros"
+        })
+    );
+    leaf(TableKind::AesSbox, &[4, 4]).expect("no padded position");
+    leaf(TableKind::Gf256Mul { c: 2 }, &[4, 3]).expect("a lookup that maps 0 to 0");
 }
