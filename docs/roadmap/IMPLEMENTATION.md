@@ -273,6 +273,7 @@ Dependencies between subsystems that shape the schedule. Every issue lists its f
 - [#175](https://github.com/AbdelStark/tessera/issues/175) blocks [#188](https://github.com/AbdelStark/tessera/issues/188) because the 405B campaign starts from the re-fit cost model and measured pass plan.
 - [#135](https://github.com/AbdelStark/tessera/issues/135) blocks [#185](https://github.com/AbdelStark/tessera/issues/185) because the fuzzing seed corpus includes the tamper corpus.
 - [#186](https://github.com/AbdelStark/tessera/issues/186) blocks [#187](https://github.com/AbdelStark/tessera/issues/187) because the external review audits the verifier against its written specification.
+- [#488](https://github.com/AbdelStark/tessera/issues/488) blocks [#154](https://github.com/AbdelStark/tessera/issues/154) and [#159](https://github.com/AbdelStark/tessera/issues/159). RFC-0013 'Committed tensors' ([#554](https://github.com/AbdelStark/tessera/issues/554)) lets neither ship `tessera-protocol/2`'s masks until R10's check covers its list of ten uncovered values, or a written argument shows them independent.
 
 ## Critical path
 

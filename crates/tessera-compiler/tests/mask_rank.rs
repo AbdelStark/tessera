@@ -86,9 +86,9 @@ fn compiled(claims: ClaimList, n: u32, request: Request) -> Compiled {
 
 impl Compiled {
     /// R10's functionals of `schedule`, a schedule of this lowering, under `rule`, with committed
-    /// tensors' mask columns in tensor order.
+    /// tensors' mask columns RFC-0013's, their data claims' column sub-points (#554).
     fn system(&self, schedule: &StageSchedule, rule: ColumnRule) -> MaskSystem {
-        self.system_with(schedule, rule, CommittedColumns::TensorOrder)
+        self.system_with(schedule, rule, CommittedColumns::RULE)
     }
 
     /// R10's functionals of `schedule` under `rule` and the reading `committed`.
@@ -726,7 +726,7 @@ fn short_sequences_take_the_layout_of_three_positions() {
             n,
             Request::Generate,
             ColumnRule::BelowRow,
-            CommittedColumns::TensorOrder,
+            CommittedColumns::RULE,
         )
         .expect("the schedule")
     };
@@ -751,7 +751,7 @@ fn short_sequences_take_the_layout_of_three_positions() {
         1,
         Request::Generate,
         ColumnRule::BelowRow,
-        CommittedColumns::TensorOrder,
+        CommittedColumns::RULE,
     )
     .expect("1");
     assert!(
@@ -762,9 +762,10 @@ fn short_sequences_take_the_layout_of_three_positions() {
 
 /// #554's two readings of a committed tensor's mask columns differ where the tensor does not
 /// fill a row: tiny-2-servable's layer input at 4 positions has 8 variables of its own and a
-/// layer bit below `log2 k = 10`. A second read at its point and other layer weights is then
-/// independent in tensor order, the layer bit being a column, and refused when the mask's column
-/// is the data claim's own, which the layer bit is not part of.
+/// layer bit below `log2 k = 10`. RFC-0013's rule takes the data claim's column sub-point, which
+/// the layer bit is not part of, so a second read at its point and other layer weights shares the
+/// first's functional and is refused. The rejected reading, the layer bit a column, accepts it:
+/// the control.
 #[test]
 fn the_two_readings_of_a_committed_mask_column_differ_below_a_row() {
     let c = compiled(golden("tiny-2-servable"), 4, Request::Generate);
@@ -794,11 +795,7 @@ fn the_two_readings_of_a_committed_mask_column_differ_below_a_row() {
     );
     assert_eq!(tensor_order, Vec::new());
     let data_column = check(
-        &c.system_with(
-            &schedule,
-            ColumnRule::BelowRow,
-            CommittedColumns::DataColumn,
-        ),
+        &c.system_with(&schedule, ColumnRule::BelowRow, CommittedColumns::RULE),
         SEED,
     );
     assert_eq!(
@@ -807,7 +804,7 @@ fn the_two_readings_of_a_committed_mask_column_differ_below_a_row() {
         "{data_column:?}"
     );
     // The compiled schedule passes under both.
-    for committed in CommittedColumns::BOTH {
+    for committed in [CommittedColumns::TensorOrder, CommittedColumns::RULE] {
         assert_eq!(
             check(
                 &c.system_with(&c.schedule, ColumnRule::BelowRow, committed),
@@ -817,6 +814,68 @@ fn the_two_readings_of_a_committed_mask_column_differ_below_a_row() {
             "{committed:?}"
         );
     }
+}
+
+/// RFC-0013's rule for an attention tile smaller than a row (#554, RFC-0034): tiny-2-servable's
+/// `SoftmaxRow` reciprocals at 4 positions are two tiles, one per KV head, each a tensor of
+/// 3 variables below `log2 k = 10`. The bit that selects the tile is a row bit, not a mask
+/// variable: a second read that differs from a compiled one in that bit alone shares its
+/// functional and is refused. The rejected reading, the tile bit a column, accepts it.
+#[test]
+fn a_value_in_another_tile_at_one_column_point_is_refused() {
+    let c = compiled(golden("tiny-2-servable"), 4, Request::Generate);
+    let kind = Kind::Layer {
+        position: 27,
+        output: 1,
+    };
+    let tensor = c
+        .schedule
+        .layers
+        .tensor(&c.lowering.graph, kind, 0)
+        .expect("the reciprocals");
+    assert_eq!(c.lowering.graph.tensors[tensor.0 as usize].shape, [4, 4]);
+    let index = c.pool_claim_on(tensor);
+    // The compiled value's functional, and the coordinate of its point the tile's column
+    // sub-point leaves out: the tile bit.
+    let system = c.system(&c.schedule, ColumnRule::BelowRow);
+    let value = system
+        .rows
+        .iter()
+        .find(|r| r.row == MaskRow::Stacked(kind))
+        .and_then(|r| {
+            r.functionals.iter().find(|f| {
+                f.origins
+                    .iter()
+                    .any(|o| matches!(o, Origin::Pool { claim, .. } if *claim == index))
+            })
+        })
+        .expect("the claim's value");
+    let natural = c.schedule.pool[index].atoms[0].point.len();
+    let columns = value.point.iter().filter(|s| **s != Src::Zero).count();
+    assert_eq!((natural, columns), (4, 3), "{value:?}");
+    let tile = (0..natural)
+        .find(|&j| !value.point.contains(&value.key[j]))
+        .expect("a coordinate outside the column sub-point");
+    let mut schedule = c.schedule.clone();
+    let mut twin = schedule.pool[index].clone();
+    twin.point[tile] = fresh(0);
+    twin.atoms[0].point[tile] = fresh(0);
+    schedule.pool.push(twin);
+    let rule = check(&c.system(&schedule, ColumnRule::BelowRow), SEED);
+    assert_eq!(
+        dependent_rows(&rule),
+        vec![MaskRow::Stacked(kind)],
+        "{rule:?}"
+    );
+    let rejected = check(
+        &c.system_with(
+            &schedule,
+            ColumnRule::BelowRow,
+            CommittedColumns::TensorOrder,
+        ),
+        SEED,
+    );
+    assert_eq!(rejected, Vec::new());
 }
 
 /// A functional of another length than its row's width is refused, on a row and on a pair,
@@ -1008,7 +1067,7 @@ fn the_405b_schedule_folds_below_a_full_row() {
         32_768,
         Request::Generate,
         ColumnRule::Row,
-        CommittedColumns::TensorOrder,
+        CommittedColumns::RULE,
     )
     .expect("the schedule");
     let refused: Vec<(MaskRow, Option<TensorId>)> = old
@@ -1050,7 +1109,7 @@ fn the_405b_schedule_folds_below_a_full_row() {
         32_768,
         Request::Generate,
         ColumnRule::BelowRow,
-        CommittedColumns::TensorOrder,
+        CommittedColumns::RULE,
     )
     .expect("the schedule");
     assert_eq!(amended.findings, Vec::new());

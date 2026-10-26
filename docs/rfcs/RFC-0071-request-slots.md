@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-25
 - Target milestone: v0.4
-- Amended by: [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) ('The slots', in `tessera-protocol/2`: a slot holds four rows at least, #488)
+- Amended by: [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) ('The slots', in `tessera-protocol/2`: a slot holds four rows at least, #488), [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) ('Soundness and zero knowledge', in `tessera-protocol/2`: one mask per tensor kind, at its data claim's column sub-point, [#554](https://github.com/AbdelStark/tessera/issues/554))
 - Amends, in both protocols where they apply:
   - [RFC-0006](RFC-0006-compiler-ir.md#llama-lowering) 'Operation set' (`MatMulAct`, `SoftmaxRow`), 'Range analysis' and 'Llama lowering': one graph covers one batch, which carries its slot length and its requests' lengths, and attention reads within a slot;
   - [RFC-0044](RFC-0044-lowering-nodes.md#graph-inputs) 'Graph inputs' and 'A layer': a batch's token axis, positions and scores;
@@ -166,7 +166,7 @@ The requests' order in `statement.batch` is the slots' order, `RequestKey` order
   - **Padded rows.** A prover that puts a real value in a padded row is caught as RFC-0035 catches it, whatever the row's place.
   - **No reads across a slot.** Attention reads within a slot. `Hplus` is read only inside a window, which `prompt_len_r ≥ 1` keeps in its slot. Token binding pins every row, and the anchor ties each request's frames to its own rows.
   - **The rounds.** The request variables add `⌈log2 R⌉` rounds to each relation over the token axis. RFC-0014's calculator counts them through `rounds`, from the statement's sizes.
-- **Zero knowledge.** `tessera-protocol/2`'s masks are per tensor and per row, and the slots are public. A request variable is a token variable: a claim's point is random in it, so no mask's `Z` vanishes more often (`docs/zk/simulator.md` R8).
+- **Zero knowledge.** In `tessera-protocol/2` each committed tensor kind's mask row is shared by every layer and attention tile of the kind, at its data claim's column sub-point (RFC-0013 'Committed tensors', [#554](https://github.com/AbdelStark/tessera/issues/554)); a claim at one layer takes its layer tensor's own row (RFC-0069), and a virtual tensor's mask takes its low variables, layer variables among them when they fit. The slots are public. A request variable is a token variable: a claim's point is random in it, so no mask's `Z` vanishes more often (`docs/zk/simulator.md` R8). In an attention-tiled tensor the request bits are part of its query block's, so they are row bits, not mask variables; in another tensor they are its own variables, mask variables where its column sub-point holds them. R10's check does not cover batches yet (RFC-0013 'Committed tensors').
 
 ### Cost at 405B
 
