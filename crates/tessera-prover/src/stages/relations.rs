@@ -1095,7 +1095,31 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
 
 /// The axis a selection's node selects along and its rows `idx_j`, `j < len`: a `Slice`'s
 /// `start + j` along its axis, a `GatherPublic`'s constant along the outermost.
+///
+/// Every row is checked against the input's axis, `idx_j < n_a`, so that no padded row of `x` is
+/// selected (RFC-0072 'The selection relation' 'Padded rows'), as graph validation also
+/// requires: the kernel bounds rows only by `2^{⌈log2 n_a⌉}`.
 fn selected(graph: &tessera_ir::Graph, node: &Node) -> Result<(usize, Vec<usize>), StageError> {
+    let (axis, index) = selected_rows(graph, node)?;
+    let n_a = node
+        .inputs
+        .first()
+        .and_then(|t| graph.tensors.get(t.0 as usize))
+        .and_then(|x| x.shape.get(axis))
+        .ok_or(StageError::Internal {
+            rule: "a selection reads an axis of its input",
+        })?;
+    if index.iter().any(|&row| row >= *n_a as usize) {
+        return internal("a selection's rows are rows of its input's axis");
+    }
+    Ok((axis, index))
+}
+
+/// The axis and rows a `Slice` or a `GatherPublic` takes, unchecked.
+fn selected_rows(
+    graph: &tessera_ir::Graph,
+    node: &Node,
+) -> Result<(usize, Vec<usize>), StageError> {
     match node.op {
         Op::Slice { axis, start, len } => Ok((
             usize::from(axis),

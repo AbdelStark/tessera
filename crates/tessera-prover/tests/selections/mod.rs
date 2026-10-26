@@ -109,6 +109,12 @@ impl Verifier<'_> {
                         .iter()
                         .find(|n| n.outputs.contains(&t))
                         .expect("a selection's output");
+                    // The members select one axis of one tensor, whatever the schedule says.
+                    assert_eq!(
+                        (rows_of(self.graph, producer).0, producer.inputs[0]),
+                        (axis, node.inputs[0]),
+                        "a combined selection's members select one axis of one tensor"
+                    );
                     (self.coefficient(&member.coefficient, 0), producer)
                 })
                 .collect()
@@ -117,6 +123,11 @@ impl Verifier<'_> {
         let mut kernel = F::ZERO;
         for (t, (a, member)) in members.into_iter().enumerate() {
             let (_, mut index) = rows_of(self.graph, member);
+            // No padded row of `x` is selected: the closed form reads `idx_j` as given.
+            assert!(
+                index.iter().all(|&i| i < n_a),
+                "a selection's rows are rows of its input's axis"
+            );
             if self.publics.kernel == Kernel::LastMemberMoved && t == last {
                 index = index.iter().map(|&i| (i + 1) % n_a).collect();
             }
@@ -842,4 +853,279 @@ fn the_bit_functions_are_rfc_0066s_polynomials() {
         assert_eq!(bit_function(BoolFn::Ch, &r), and(a, b) + and(F::ONE - a, c));
         assert_eq!(bit_function(BoolFn::Maj, &r), and(a, b) + and(c, xor(a, b)));
     }
+}
+
+// ----- Further cases ----------------------------------------------------------------------------
+
+/// RFC-0072 'Combined selections': a combination whose first member's coefficient is not 1,
+/// `Add(ConstMul(odd), even)`, a scalar `ConstMul` of the whole level, and `Sub(even, odd)`, is
+/// one atom of coefficient 1 that proves and verifies; a verifier with its last member moved
+/// rejects it.
+#[test]
+fn a_combination_whose_first_member_is_scaled_proves() {
+    for case in 0..3 {
+        let mut g = GraphBuilder::new();
+        let rows = committed(&mut g, &[32, 3], 0, 3);
+        let even = gather(&mut g, rows, (0..32).step_by(2).collect(), &[3]);
+        let odd = gather(&mut g, rows, (1..32).step_by(2).collect(), &[3]);
+        let c = g.constant(vec![2]).expect("2");
+        let sum = match case {
+            0 => {
+                let scaled = one(&mut g, Op::ConstMul { c }, &[odd], wide(&[16, 3]));
+                one(&mut g, Op::Add, &[scaled, even], wide(&[16, 3]))
+            }
+            1 => {
+                let both = one(&mut g, Op::Add, &[even, odd], wide(&[16, 3]));
+                one(&mut g, Op::ConstMul { c }, &[both], wide(&[16, 3]))
+            }
+            _ => one(&mut g, Op::Sub, &[even, odd], wide(&[16, 3])),
+        };
+        requant(&mut g, sum, &[16, 3], 1 << 20);
+        let graph = g.finish();
+        let run = Run::of(&graph, &[rows], 0x0526_9100 + case);
+        let leaf = &run.schedule.stages[0].claims[0];
+        assert_eq!(leaf.atoms.len(), 1, "case {case}");
+        assert_eq!(leaf.atoms[0].combined.len(), 2, "case {case}");
+        assert!(leaf.atoms[0].is_unit(), "case {case}");
+        run.accepted(&graph);
+        assert_eq!(
+            verdict(&run, &graph, Kernel::LastMemberMoved),
+            Err(run.end(1)),
+            "case {case}"
+        );
+    }
+}
+
+/// RFC-0037 'Splits': a split combination's value moved to the committed part keeps the split's
+/// sum, and the combination's instance then proves a false claim, rejected at stage 1's final
+/// check.
+#[test]
+fn a_value_moved_between_a_combinations_parts_fails_stage_1() {
+    let mut g = GraphBuilder::new();
+    let rows = committed(&mut g, &[32, 3], 0, 3);
+    let w = committed(&mut g, &[16, 3], -3, 3);
+    let sum = level(&mut g, rows, 32, 3, 4);
+    let key = one(&mut g, Op::Add, &[w, sum], wide(&[16, 3]));
+    requant(&mut g, key, &[16, 3], 1 << 20);
+    let graph = g.finish();
+    let run = Run::of(&graph, &[rows, w], 0x0526_9200);
+    run.accepted(&graph);
+    let mut bad = run.proof.clone();
+    bad.leaf_splits[0] -= F::ONE;
+    bad.leaf_splits[1] += F::ONE;
+    // Stage 0's split sums; the combination's instance then proves a false claim.
+    let verdict = run.verify_with(&graph, &bad, &run.public, Shift::Extension);
+    assert_eq!(verdict, Err(run.end(1)), "{verdict:?}");
+}
+
+/// RFC-0072 'Combined selections': a `Slice` and a `GatherPublic` of one tensor along its axis 0
+/// combine, prove and verify, and a changed row that either reads is rejected.
+#[test]
+fn a_slice_and_a_gather_of_one_tensor_combine() {
+    let mut g = GraphBuilder::new();
+    let x = committed(&mut g, &[6, 4], -3, 3);
+    let a = slice(&mut g, x, &[6, 4], 0, 1, 4);
+    let b = gather(&mut g, x, vec![0, 5, 1, 2], &[4]);
+    let d = one(&mut g, Op::Sub, &[a, b], wide(&[4, 4]));
+    let s = one(&mut g, Op::Add, &[d, a], wide(&[4, 4]));
+    requant(&mut g, s, &[4, 4], 1 << 20);
+    let graph = g.finish();
+    let run = Run::of(&graph, &[x], 0x0526_9300);
+    assert_eq!(relations(&run, 1), [Relation::Selection]);
+    assert_eq!(run.schedule.stages[0].claims[0].atoms[0].combined.len(), 2);
+    run.accepted(&graph);
+    assert_eq!(
+        verdict(&run, &graph, Kernel::LastMemberMoved),
+        Err(run.end(1))
+    );
+    for row in [0u32, 5, 3] {
+        let bad = changed(&run, &graph, x, flat(&[6, 4], &[row, 2]));
+        assert_eq!(
+            run.verify_with(&graph, &bad, &run.public, Shift::Extension),
+            Err(run.end(1)),
+            "row {row}"
+        );
+    }
+}
+
+/// A selection along an axis of length 1 is an instance of no variable, which proves and
+/// verifies, and a changed entry is rejected.
+#[test]
+fn a_selection_along_an_axis_of_one_row_proves() {
+    for case in 0..2 {
+        let mut g = GraphBuilder::new();
+        let x = committed(&mut g, &[1, 4], -3, 3);
+        let (y, shape) = if case == 0 {
+            (gather(&mut g, x, vec![0, 0, 0], &[4]), vec![3u32, 4])
+        } else {
+            (slice(&mut g, x, &[1, 4], 0, 0, 1), vec![1u32, 4])
+        };
+        requant(&mut g, y, &shape, 100);
+        let graph = g.finish();
+        let run = Run::of(&graph, &[x], 0x0526_9400 + case);
+        assert_eq!(relations(&run, 1), [Relation::Selection]);
+        assert_eq!(run.schedule.stages[1].instances[0].vars, 0);
+        run.accepted(&graph);
+        let bad = changed(&run, &graph, x, 2);
+        assert_eq!(
+            run.verify_with(&graph, &bad, &run.public, Shift::Extension),
+            Err(run.end(1)),
+            "case {case}"
+        );
+    }
+}
+
+/// RFC-0066 '`BitFn`': one tensor read twice, and public inputs after committed ones, send one
+/// evaluation per input that is not public, prove and verify, and a changed bit is rejected.
+#[test]
+fn bit_functions_of_a_repeated_or_late_public_input_prove() {
+    let shape = [5u32, 3];
+    for (f, kinds) in [
+        (BoolFn::Xor, vec![0usize, 0]),
+        (BoolFn::Maj, vec![0, 1, 0]),
+        (BoolFn::Ch, vec![0, 1, 2]),
+        (BoolFn::And, vec![0, 2]),
+        (BoolFn::Xor3, vec![0, 2, 1]),
+    ] {
+        let mut g = GraphBuilder::new();
+        let mut make = |public: bool| {
+            let mut input = decl(&shape, if public { PUBLIC } else { ADVICE });
+            input.range = IntRange { lo: 0, hi: 1 };
+            g.input(input).expect("bits")
+        };
+        let a = make(false);
+        let b = make(false);
+        let p = make(true);
+        let pick = [a, b, p];
+        let ins: Vec<TensorId> = kinds.iter().map(|&k| pick[k]).collect();
+        let mut out = decl(&shape, NodeKind::Virtual);
+        out.range = IntRange { lo: 0, hi: 1 };
+        let z = one(&mut g, Op::BitFn { f }, &ins, out);
+        requant(&mut g, z, &shape, 4);
+        let graph = g.finish();
+        let run = Run::of(&graph, &[a, b, p], 0x0526_9500);
+        let sent = kinds.iter().filter(|&&k| k != 2).count();
+        assert_eq!(
+            run.proof.stages[0].sumcheck.final_evals.len(),
+            sent,
+            "{f:?}"
+        );
+        run.accepted(&graph);
+        let entry = (0..15).find(|&e| {
+            let bits: Vec<i64> = ins
+                .iter()
+                .map(|&t| run.witness.tensor(t).expect("bits")[e])
+                .collect();
+            let mut moved = bits.clone();
+            for (i, &k) in kinds.iter().enumerate() {
+                if k == 0 {
+                    moved[i] += 1;
+                }
+            }
+            f.eval(&bits) != f.eval(&moved)
+        });
+        if let Some(entry) = entry {
+            let bad = changed(&run, &graph, a, entry);
+            assert_eq!(
+                run.verify_with(&graph, &bad, &run.public, Shift::Extension),
+                Err(run.end(1)),
+                "{f:?}: a changed bit"
+            );
+        }
+    }
+}
+
+/// RFC-0066 '`BitFn`' 'Range': a `BitFn` input must be a bit an operation proves, which range
+/// analysis checks (`ERR-COMPILE-RANGE`), not the schedule or the stage prover. These tests'
+/// graphs read committed graph inputs as bits to exercise the relation alone; range analysis
+/// refuses such a graph, while the schedule still derives it. A verifier re-derives the ranges
+/// from public data before the schedule (SP-7, #150).
+#[test]
+fn range_analysis_refuses_a_bit_function_of_committed_inputs() {
+    let shape = [5u32, 3];
+    let mut g = GraphBuilder::new();
+    let inputs: Vec<TensorId> = (0..2)
+        .map(|_| {
+            let mut input = decl(&shape, ADVICE);
+            input.range = IntRange { lo: 0, hi: 1 };
+            g.input(input).expect("bits")
+        })
+        .collect();
+    let mut out = decl(&shape, NodeKind::Virtual);
+    out.range = IntRange { lo: 0, hi: 1 };
+    let z = one(&mut g, Op::BitFn { f: BoolFn::Xor }, &inputs, out);
+    requant(&mut g, z, &shape, 4);
+    let graph = g.finish();
+    assert!(tessera_compiler::analyze(&graph, &[]).is_err());
+    let schedule = derive_graph_schedule(&graph, &[], &[], None).expect("a schedule");
+    assert!(schedule.stage_count() >= 2);
+}
+
+/// RFC-0072 'Graphs without layers': `BitFn` stacks as any relation does. A `BitFn` in a layer
+/// template is a stacked stage-1 instance that proves.
+#[test]
+fn a_stacked_bit_function_proves() {
+    let mut b = GraphBuilder::new();
+    let mut input = decl(&[5, 8], ADVICE);
+    input.range = IntRange { lo: 0, hi: 1 };
+    let x = b.input(input).expect("an input");
+    let unit = b.constant(vec![1]).expect("a constant");
+    let mut first = decl(&[5, 8], ADVICE);
+    first.range = IntRange { lo: 0, hi: 1 };
+    let mut c = one(&mut b, Op::ConstMul { c: unit }, &[x], first);
+    let mut checkpoints = vec![c];
+    for _ in 0..3 {
+        let mut z = decl(&[5, 8], NodeKind::Virtual);
+        z.range = IntRange { lo: 0, hi: 1 };
+        let z = one(&mut b, Op::BitFn { f: BoolFn::And }, &[c, c], z);
+        let key = one(&mut b, Op::Add, &[z, c], decl(&[5, 8], NodeKind::Virtual));
+        let shift = b.shift_classes(vec![1]).expect("shift classes");
+        let mut out = decl(&[5, 8], ADVICE);
+        out.range = IntRange { lo: 0, hi: 1 };
+        c = one(
+            &mut b,
+            Op::Requant {
+                shift,
+                lo: 0,
+                hi: 1,
+            },
+            &[key],
+            out,
+        );
+        checkpoints.push(c);
+    }
+    let lowering = lowering_of(b.finish(), x, checkpoints);
+    let schedule = derive_schedule(&lowering).expect("a schedule");
+    assert!(
+        schedule.stages[1].instances.iter().any(
+            |i| i.relation == Relation::BitFn(BoolFn::And) && matches!(i.layers, Layers::Eq(_))
+        )
+    );
+    prove_template(&lowering, &[x], 0x0526_9600);
+}
+
+/// RFC-0072 'Combined selections': two selections of one tensor along one axis at two points in
+/// one claim are not combined: two instances, which prove and verify.
+#[test]
+fn selections_at_two_points_stay_two_instances() {
+    let mut g = GraphBuilder::new();
+    let x = committed(&mut g, &[6, 4], -3, 3);
+    let a = slice(&mut g, x, &[6, 4], 0, 0, 4);
+    let b = slice(&mut g, x, &[6, 4], 0, 2, 4);
+    let total = one(&mut g, Op::Sum { axis: 1 }, &[b], wide(&[4]));
+    let spread = one(
+        &mut g,
+        Op::Expand { axis: 1, len: 4 },
+        &[total],
+        wide(&[4, 4]),
+    );
+    let s = one(&mut g, Op::Add, &[a, spread], wide(&[4, 4]));
+    requant(&mut g, s, &[4, 4], 1 << 20);
+    let graph = g.finish();
+    let run = Run::of(&graph, &[x], 0x0526_9700);
+    assert_eq!(
+        relations(&run, 1),
+        [Relation::Selection, Relation::Selection]
+    );
+    run.accepted(&graph);
 }

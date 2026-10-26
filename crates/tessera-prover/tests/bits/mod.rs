@@ -386,6 +386,14 @@ impl Bits {
             tables,
         };
         let without = without(&self.schedule, self.check(check.0, check.1));
+        // Slice 2's cheats each break one check whose claims all reach the pool: exactly one
+        // instance goes.
+        let count = |s: &StageSchedule| s.stages.iter().map(|s| s.instances.len()).sum::<usize>();
+        assert_eq!(
+            count(&without) + 1,
+            count(&self.schedule),
+            "{name}: exactly one instance removed"
+        );
         let passed = self.prove(&without, &cheat);
         let pool = self
             .verify(&without, &passed, &self.public)

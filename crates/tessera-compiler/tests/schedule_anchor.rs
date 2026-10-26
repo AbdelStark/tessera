@@ -2437,3 +2437,42 @@ fn aes_ctr_waits_for_public_leaf_reads() {
         assert_eq!(stage_count(&graph), 3, "{blocks} blocks");
     }
 }
+
+/// RFC-0072 'The circuits' sizes': at `M = 3` messages the figures are the independent count's,
+/// per stage, for the key commitment and for public messages of two blocks.
+#[test]
+fn sha256s_figures_at_three_messages_are_the_independent_counts() {
+    let fig = |blocks, committed: Vec<u32>, bind| {
+        let graph = sha256_graph(blocks, 3, committed, bind);
+        let schedule = layerless(&graph, &[]).expect("a schedule");
+        Figures::of(&schedule)
+    };
+    let model = |instances: &[usize], evaluations: &[usize], splits: &[usize], pool| Figures {
+        instances: instances.to_vec(),
+        evaluations: evaluations.to_vec(),
+        splits: splits.to_vec(),
+        pool,
+    };
+    assert_eq!(
+        fig(1, (21..53).collect(), true),
+        model(
+            &[
+                0, 691, 184, 184, 184, 184, 184, 522, 903, 178, 99, 51, 51, 17
+            ],
+            &[
+                0, 1060, 184, 184, 184, 184, 184, 1461, 903, 178, 99, 51, 51, 17
+            ],
+            &[0, 0, 0, 0, 0, 0, 681, 0, 0, 0, 0, 0, 0, 0],
+            2506
+        )
+    );
+    assert_eq!(
+        fig(2, Vec::new(), false),
+        model(
+            &[0, 1360, 362, 362, 362, 362, 362, 920, 1617, 158],
+            &[0, 2090, 362, 362, 362, 362, 362, 2751, 1617, 158],
+            &[0, 0, 0, 0, 0, 0, 1240, 0, 0, 0],
+            4825
+        )
+    );
+}

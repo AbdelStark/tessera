@@ -606,6 +606,13 @@ pub fn derive_schedule(lowering: &Lowering) -> Result<StageSchedule, CompileErro
 /// 'As an operand'). A claim through a `Slice` or a `GatherPublic` is a selection's virtual atom,
 /// several of which may combine ([`Atom::combined`]), and one through a `BitFn` a virtual atom
 /// of its `Elementwise` relation.
+///
+/// It runs no range analysis. The preconditions that rest on ranges are RFC-0006's range
+/// analysis's ([`analyze`](crate::analyze)) and gadget selection's, which a verifier re-derives
+/// from public data before it derives the schedule (SP-7): a `BitFn`'s inputs are bits that an
+/// operation proves, a `BitDecompose`'s input lies in its bits' range, and `AssertEqual`'s inputs
+/// are true integers. A schedule derived from a graph that range analysis refuses proves the
+/// relations as written, not the operations.
 pub fn derive_graph_schedule(
     graph: &Graph,
     tables: &[TableSpec],
