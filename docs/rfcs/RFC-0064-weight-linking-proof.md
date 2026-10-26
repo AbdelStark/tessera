@@ -17,7 +17,7 @@
   - [RFC-0040](RFC-0040-weight-commitment-artifacts.md) 'masks_seed': every epoch's seed is derived from the model's refresh key, and the seed's expansion is normative;
   - [RFC-0019](RFC-0019-verifier.md#ledger) 'Ledger': one successor per root, and `weights link`'s claim list;
   - [03 §5](../spec/03-data-model.md#5-artifact-catalog): `WeightLinkProof` is defined here.
-- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('The inputs', 'The transcript', 'The difference row', 'The proximity rows', 'The verifier's checks', 'The budget' and 'One link per epoch': a matrix's own blinding rows `B_T`, `B_CP` for `ChannelParams`), [RFC-0073](RFC-0073-weight-mask-expansion.md) ('The inputs' and 'One link per epoch': the expansion of `masks_seed`, the check of a regenerated epoch, and rebuilt states that serve only the link)
+- Amended by: [RFC-0065](RFC-0065-masked-channel-params.md) ('The inputs', 'The transcript', 'The difference row', 'The proximity rows', 'The verifier's checks', 'The budget' and 'One link per epoch': a matrix's own blinding rows `B_T`, `B_CP` for `ChannelParams`), draft [RFC-0073](RFC-0073-weight-mask-expansion.md) ('The inputs', 'The budget' and 'One link per epoch': the expansion of `masks_seed`, the check of a regenerated epoch, the epoch record, and the successor's state, fresh or rebuilt; in effect when it is accepted)
 - Origin: [#485](https://github.com/AbdelStark/tessera/issues/485), from the simulator argument ([`docs/zk/simulator.md`](../zk/simulator.md) §6.4, requirement R3)
 
 ## Summary
@@ -56,7 +56,7 @@ The RFC also gives what RFC-0012 left undefined: the transcript, the query count
   - **`K`** is the model's refresh key, 32 bytes drawn from the operating system's CSPRNG when epoch 0 is committed.
   - **Kept apart.** `K` is secret-class and kept apart from every epoch's state file, in the operator's key store, so that a state file alone gives its own epoch's seed and no other.
   - **One model, one key.** `K` is never shared between model entries. Two models under one `K` would take the same masks in each epoch, and at a column both open, the difference of their symbols would reveal the difference of their weights.
-- **The expansion is fixed.** The map from `masks_seed` to an epoch's masks and blinding rows is [RFC-0073](RFC-0073-weight-mask-expansion.md)'s, versioned and with a conformance vector (RFC-0040). Any build that expands by the same version remakes the same link. Before it links an epoch it regenerated from its seed, the prover checks that the regenerated commitment is the epoch's, and a state it rebuilds serves only the link (RFC-0073 'Regenerated commitments and rebuilt states').
+- **The expansion is fixed.** The map from `masks_seed` to an epoch's masks and blinding rows is draft [RFC-0073](RFC-0073-weight-mask-expansion.md)'s, versioned and with a conformance vector (RFC-0040). Any build that expands by the same version remakes the same link. Before it links an epoch it regenerated from its seed, the prover checks the regenerated commitment against the epoch record, and a state it rebuilds serves only the link (draft RFC-0073 'The regeneration checks', 'Fresh and rebuilt states').
 - **The claim list.** The matrices' shapes, which matrices have committed rows, and each matrix's `commitment_id_T` (its row block `B` included, RFC-0031) come from a claim list whose weights the commitment holds. The prover has it, and the verifier takes it as an input.
 - **The matrices.** Every `WeightMatrix` `T` with committed rows, `m_T > 0`, in RFC-0040's order. A matrix with no committed rows is not linked, as it has no proximity row in a proof either ([RFC-0049](RFC-0049-weight-proximity.md#the-schedule)).
 - **Positions.** Committed row `j < m_T` is the `j`-th committed data row in RFC-0040's order, the index RFC-0049's proximity row uses. Both epochs share the layout, so row `j` holds the same weights in both. The blinding rows follow the data rows, `m_T + i` for blinding row `i < B_T`, the matrix's own count ([RFC-0065](RFC-0065-masked-channel-params.md#channelparams-blinding-rows)): `B_W`, and `B_CP` for `ChannelParams`.
@@ -190,7 +190,7 @@ pub struct MatrixLink {
 | `e`, at its end | `B_T − 4`, `B_T − 3`: the difference row's pair; `B_T − 2`, `B_T − 1`: the proximity row's | the link's distinct queried columns join `opened_columns`, within the `τ_link` of headroom `reserve` keeps |
 | `e + 1`, at its start | 0, 1: the difference row's pair; 2, 3: the proximity row's | its state starts with the link's distinct queried columns in `opened_columns` |
 
-- **The state.** Epoch `e + 1`'s state starts with `next_blinding_row = 4`, and its first proof reserves from row 4. Epoch 0, which no link starts, reserves from row 0.
+- **The state.** Epoch `e + 1`'s state starts with `next_blinding_row = 4`, and its first proof reserves from row 4, when it is fresh: written by the first link from the epoch record's latest epoch. Any other state the link writes for `e + 1` is rebuilt, at `B_T − 4` (draft RFC-0073 'Fresh and rebuilt states'). Epoch 0, which no link starts, reserves from row 0.
 - **Columns for proofs.** Epoch `e + 1`'s proofs share `P_W − 2τ_link` columns: the link's at its start and the next link's headroom at its end. At `live-64` that is 673 proofs (`(2^16 − 244)/97`), against RFC-0012's 674, and the rows' bound stays 681.
 - **One count.** These are RFC-0012's four rows at each end of an epoch, used once each. RFC-0012 'Failure modes' should read "the four blinding rows", and the `reserve` precondition is `next_blinding_row + r_T ≤ B_T − 4` ([RFC-0065](RFC-0065-masked-channel-params.md#the-reservation)): six rows of `B_W` for a single-claim matrix.
 - **The parameters.** 'The transcript' gives `τ_link` and `g_link` per layout. The production layout's are `ni-100`'s `τ_W` and `g_query`, since the link is non-interactive, and `reserve`'s headroom is `τ_link`.
@@ -202,22 +202,22 @@ A second link from epoch `e` would reveal what one hides:
 - **The proximity pair.** Both links' old proximity rows would carry the same designated pair. Their difference would reveal a combination of the weights alone, if #394 keeps the blinding rows out of the proximity combination.
 
 So every link from epoch `e` is one link: the same bytes, however many times it is made.
-- **A function of `K`, the epoch and the weights.** Both epochs' seeds come from `K` ('The inputs'). With RFC-0073's expansion they fix both commitments, their rows and both roots. The transcript is then a function of the roots and the rows, and `query_nonce` is the least nonce that meets `g_link`.
+- **A function of `K`, the epoch and the weights.** Both epochs' seeds come from `K` ('The inputs'). With draft RFC-0073's expansion they fix both commitments, their rows and both roots. The transcript is then a function of the roots and the rows, and `query_nonce` is the least nonce that meets `g_link`.
 - **What it closes.** A remade link opens the same columns with the same pairs, and reveals nothing a first one did not. That holds for each way a second link could otherwise arise:
   - a resend after a crash, before or after the first was sent;
   - a lost or a restored budget record;
   - two nodes that make the link from one epoch;
   - a verifier that claims to hold no link.
-- **Not proofs.** Determinism covers the link alone. Two nodes proving from copies of one epoch's state, or a state restored from a stale backup, still reuse blinding rows: RFC-0012's `reserve` assumes one writer per state. A restored record older than the state's last transition must not `reserve`, and a state rebuilt from `K` never does: its rows start at `B_T − 4` ([RFC-0073](RFC-0073-weight-mask-expansion.md#regenerated-commitments-and-rebuilt-states)).
+- **Not proofs.** Determinism covers the link alone. Two nodes proving from copies of one epoch's state, or a state restored from a stale backup, still reuse blinding rows: RFC-0012's `reserve` assumes one writer per state. A restored record older than the state's last transition must not `reserve`. Under draft [RFC-0073](RFC-0073-weight-mask-expansion.md#fresh-and-rebuilt-states), `reserve` runs only at the epoch record's latest epoch, and a rebuilt state's rows start at `B_T − 4`.
 - **Forward secrecy among epochs.** A leaked state file gives its own epoch's seed only, as with fresh seeds, since each seed is derived from `K` and not from the one before. A leaked `K` gives every epoch's.
 
 RFC-0012's state machine gains a transition, for the budget's bookkeeping:
 
 | Event | Precondition | Effect |
 |---|---|---|
-| `link` (before the `WeightLinkProof` is sent) | Every reservation of epoch `e` has recorded its queries or aborted | Writes epoch `e + 1`'s state, from row 4 with the link's columns opened, and the `WeightLinkProof` beside it. Then burns rows `B_T − 4` to `B_T − 1` of epoch `e`, records the link's columns there, and closes epoch `e` to `reserve` |
+| `link` (before the `WeightLinkProof` is sent) | Every reservation of epoch `e` has recorded its queries or aborted; epoch `e`'s commitment passes the regeneration check against the epoch record (draft RFC-0073) | If `e` is the record's latest epoch, appends `R_W'` to the record first, and the state it writes for `e + 1` is fresh; otherwise `R_W'` must be the record's next root, and that state is rebuilt (draft RFC-0073). Writes epoch `e + 1`'s state, fresh from row 4 with the link's columns opened, or rebuilt at `B_T − 4`, and the `WeightLinkProof` beside it. Then burns rows `B_T − 4` to `B_T − 1` of epoch `e`, records the link's columns there, and closes epoch `e` to `reserve` |
 
-- **The order.** Epoch `e + 1`'s state and the link are persisted first (fsync, atomic rename), and closing epoch `e` is the commit point.
+- **The order.** The epoch record's append comes first, so from then on epoch `e` takes no `reserve` whatever happens (draft RFC-0073). Epoch `e + 1`'s state and the link are persisted next (fsync, atomic rename), and closing epoch `e` is the commit point. A crash between the append and `e + 1`'s state leaves no such state, and the one written on restart is rebuilt.
   - **Not yet usable.** Epoch `e + 1` takes no `reserve` until epoch `e` is closed.
   - **A crash before the commit point** leaves epoch `e` open with nothing sent. On restart, an existing epoch `e + 1` state and link are kept, never rewritten, and the commit is completed.
   - **A crash after it** leaves both epochs and the link in place.

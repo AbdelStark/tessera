@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.2 (CPU witness engine), v0.3 (CPU prover), v0.5 (GPU prover), v1.0 (405B)
-- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Kernels': constant subtrees in closed form; 'Testing Strategy'); [RFC-0054](RFC-0054-token-groups.md) ('Pass structure': P2, 'Leaf levels', 'Proof units' and 'Fusion' for the leaf stage; Alternative 2; OQ-0018-1; 'Drawbacks'; 'Testing Strategy'); [RFC-0055](RFC-0055-windowed-stages.md) ('Pass structure': P3 and P3b for a reduction stage larger than memory; 'Drawbacks'); [RFC-0056](RFC-0056-native-working-sets.md) ('Pass structure': what stage 1 holds for `SoftmaxRow`'s score instances); [RFC-0057](RFC-0057-one-proof-unit.md) ('Witness engine', 'Partitioning', 'Pass structure', 'Memory scheduler', 'Release schedule', 'Drawbacks', 'Testing Strategy': one proof unit per proof, no layer-range units); [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) ('Kernels', in `tessera-protocol/2`: round kernels up to degree 10 at a reduction stage, [#565](https://github.com/AbdelStark/tessera/issues/565))
+- Amended by: [RFC-0034](RFC-0034-causal-blocks.md) ('Kernels': constant subtrees in closed form; 'Testing Strategy'); [RFC-0054](RFC-0054-token-groups.md) ('Pass structure': P2, 'Leaf levels', 'Proof units' and 'Fusion' for the leaf stage; Alternative 2; OQ-0018-1; 'Drawbacks'; 'Testing Strategy'); [RFC-0055](RFC-0055-windowed-stages.md) ('Pass structure': P3 and P3b for a reduction stage larger than memory; 'Drawbacks'); [RFC-0056](RFC-0056-native-working-sets.md) ('Pass structure': what stage 1 holds for `SoftmaxRow`'s score instances); [RFC-0057](RFC-0057-one-proof-unit.md) ('Witness engine', 'Partitioning', 'Pass structure', 'Memory scheduler', 'Release schedule', 'Drawbacks', 'Testing Strategy': one proof unit per proof, no layer-range units); [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) ('Kernels', in `tessera-protocol/2`: round kernels up to degree 10 at a reduction stage, [#565](https://github.com/AbdelStark/tessera/issues/565)); draft [RFC-0073](RFC-0073-weight-mask-expansion.md) ('Crash consistency': the weights' masks and blinding rows come from the epoch's `masks_seed`; in effect when it is accepted)
 
 ## Summary
 
@@ -139,7 +139,7 @@ Budgets per device and host come from `ProverConfig.memory_budget`. The planner 
 
 ### Crash consistency
 
-- Before `Round1`, the prover writes a per-proof secret seed (from the OS CSPRNG) to a 0600 file via atomic rename. Every masking value, mask polynomial and blinding choice derives from it through a PRG with per-purpose labels.
+- Before `Round1`, the prover writes a per-proof secret seed (from the OS CSPRNG) to a 0600 file via atomic rename. Every masking value, mask polynomial and blinding choice of the proof's advice derives from it through a PRG with per-purpose labels. The weights' masks and blinding rows derive from the epoch's `masks_seed` instead (INV-ZK-3, draft [RFC-0073](RFC-0073-weight-mask-expansion.md)), and the rows a proof uses are its reservation's.
 - Every phase is a deterministic function of inputs, the per-proof seed, the session seed and verifier messages. After a crash, the prover reruns completed phases to rebuild state and resumes; messages already sent are reproduced byte for byte and compared before continuing.
 - The per-proof seed file is deleted after `Round3Response` is sent.
 

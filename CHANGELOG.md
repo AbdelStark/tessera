@@ -15,25 +15,51 @@ All notable changes to the prover release train are recorded here: the crates un
   - **AES-128-CTR proves.** One block of NIST SP 800-38A's CTR vector under a committed key, and three blocks padded to four, range-checked by a `BitDecompose { 8, 0 }` of the key and the plaintext, prove through the real leaf stage and the stage prover in 3 stages. A verifier of the tests, which runs the production LogUp tree driver, accepts them, its openings the committed padded tables' extensions. The schedule is RFC-0072's AES row at `B = 1` and `B = 3`: 97 selections, 30 per-channel `ConstMul`s, 127 lookups, 154 instances, 154 evaluations and 332 split values, the leaf stage's 205 lookup inputs that are not public and 127 outputs, the independent count of RFC-0072's rules stage by stage.
   - **Tests.** An S-box output off its table, and a padded block's S-box outputs taken as 0, are `Reject(Lookup { table })` of the S-box; a changed split value, and a public counter changed on the verifier's side, `Reject(Sumcheck { stage: 0, round: 0 })`; `Gf256Mul { 3 }`'s lookup run on another column than `shifted`'s, its leaf value that column's, `Reject(Sumcheck { stage: 1, round: n_1 })`, which a verifier merging the two lookups' claims on `shifted` accepts; multiplicities that miss the padded positions fail LogUp. Each operation downstream of an S-box proves and verifies over the padded witness, every witness differing from the zero-padded one at padded positions. The tests' verifier computes its public tensors from the public inputs alone, so a round constant changed on either side is `Reject(Sumcheck { stage: 0, round: 0 })`; and a committed lookup output, multiplicity column or input other than the one LogUp and the stages read fails exactly its own opening targets, `Reject(Evaluation { commitment: Advice })`, and is accepted with exactly those removed.
 - The weight masks' expansion, specified as a draft ([#147](https://github.com/AbdelStark/tessera/issues/147)):
-  - **RFC-0073, 'Expanding an Epoch's Mask Seed into the Weights' Masks and Blinding Rows'.** It amends RFC-0004, RFC-0012, RFC-0040, RFC-0064 and 01 §6's INV-ARCH-2; the amendments take effect when it is accepted.
+  - **RFC-0073, 'Expanding an Epoch's Mask Seed into the Weights' Masks and Blinding Rows'** (Draft).
+    - **Where its amendments are written:** RFC-0004, RFC-0012, RFC-0018, RFC-0040, RFC-0064, 01 §6, 02 §1, 05 §3, 06 §7 and the simulator's R6.
+    - **Each is marked as a draft's,** and takes effect when the RFC is accepted.
+    - **SPEC.md** reserves the number, as it does RFC-0021's.
     - **The gap.** RFC-0064 makes a link a function of the model's refresh key `K`, the epoch and the weights, so that a link remade after a crash is the same bytes. RFC-0040 left the expansion of `masks_seed` into the masks and blinding rows to #147. Until it was fixed, only the build that made a link could remake it.
-    - **The stream.** BLAKE3's extended output of `derive_key` under a domain of RFC-0004, read as 64-bit little-endian words. A word below `p` is the next value of `Fp`, and any other is skipped, never reduced. Which words are skipped says nothing about the values, and INV-ARCH-2 now allows that branch.
+    - **The stream.** BLAKE3's extended output of `derive_key` under a domain of RFC-0004, read as 64-bit little-endian words. A word below `p` is the next value of `Fp`, and any other is skipped, never reduced. INV-ARCH-2 admits that branch, and the addresses a parallel kernel compacts to, as one narrow exception: a public, fixed test that reads only the candidate word. The skip pattern stays secret-class.
     - **The masks and the blinding rows.** Each committed row's `P_W` mask coefficients come from `weights-mask`, by committed row, and each blinding row's `k_T` values from `weights-blinding`, by blinding row. Both are keyed by `masks_seed` and addressed by the matrix's `commitment_id`, so any row can be drawn alone.
-    - **Regenerated commitments and rebuilt states.**
-      - A regenerated commitment is used only once its public artifact equals the epoch's.
-      - Each combined row drawn from the seed is checked at one store column before it is sent.
-      - A state rebuilt for an epoch that had one serves only its link, its rows starting at `B_T − 4`, since a reproduced commitment would otherwise reserve its burned rows again.
-      - `commit-weights` commits epoch 0 once per key.
-    - **Versions.** This is version 1, `tessera-protocol/2`'s. A change takes new domains and a new protocol version, so the claim list names the expansion.
-    - **Cost at 405B.** 654 GB of stream output per epoch. Under RFC-0012's proximity generator, every proof draws all of it too: about 1.2 GPU-s, which 08's weight-pass budget does not count (OQ-0073-5).
-    - **The conformance vector** `spec/vectors/weight-masks/` is specified, for #147's implementation to write: seeds, streams, a skipped word, and `tiny-2-minimal`'s masked commitment at `test-small/1`.
+    - **Narrow matrices.** Until #564, `commit-weights` refuses a `tessera-protocol/2` commitment with any committed matrix of `k_T < k_W`, before drawing anything. `τ_W` is computed for `k_W`'s rate:
+      - at `live-64`, `k_T = P_W` gives 40.3 bits instead of 64;
+      - once `k_T + P_W ≥ n_T`, a combined row passes every column check with any values on `H`.
+
+      The verifier's refusal is #564's.
+    - **The key and the epoch record.** `K` lives in `WeightRefreshKey` (`0x0304`, `.twk`, secret), bound to `D`. Beside it, `WeightEpochRecord` (`0x0305`, `.twe`, private) lists every epoch's `R_W` and is only ever appended to. The key store has one writer, and proofs read the record, never `K`.
+    - **Fresh and rebuilt states.** A deterministic commitment can be made again, so a state written over burned rows would reuse them (simulator §5, R6).
+      - A state is fresh only when written for an epoch the record has just appended: epoch 0 by `commit-weights`, `e + 1` by the first link from the latest epoch.
+      - Every other state is rebuilt, at `B_T − 4` with no opened column, and serves only its epoch's link.
+      - `reserve` runs only at the record's latest epoch.
+      - A lost or stale record fails closed.
+    - **The regeneration checks.**
+      - A regenerated commitment is checked against the record's root before anything is written or sent.
+      - Each combined row drawn from the seed is checked at one column, with the codeword store or through a kept Merkle tree.
+    - **Versions.** This is version 1, `tessera-protocol/2`'s. The expansion is tier A, so a change takes new domains and a new protocol version, and the claim list names it.
+    - **Secrets.** `K`, `masks_seed` and a stream's chaining value and output reader are key material: heap-held, zeroized, never `Clone` or `Debug`, and never read through `tessera_hash::Hasher`.
+    - **Cost at 405B.** 654 GB of stream output per epoch. Under RFC-0012's proximity generator every proof draws all of it, about 1.2 GPU-s; 216 GB if #394 keeps the blinding rows out of the proximity row. 08's weight-pass budget counts none of it (OQ-0073-5).
+    - **The conformance vector** `spec/vectors/weight-masks/` is specified, for #147's implementation to write. It holds seeds, streams and a skipped word in each domain. Its models are `tiny-2-minimal`'s masked commitment, and `synthetic`, refused at `test-small/1` and committed under a test layout where its empty `ChannelParams` draws nothing.
     - **Open questions** for #147:
-      - where `K` is kept;
-      - a claim list with a matrix narrower than its mask, which leaves that matrix's proximity test vacuous once `k_T ≤ P_W/3`, for the verifier to refuse;
       - the weights' proximity point in `tessera-protocol/2`;
       - the bytes of `WeightReservation`;
       - paying for the per-proof draws.
-    - **Review.** One independent adversarial reading. It found the rebuilt state's budget reset, the per-proof cost of the proximity row's blinding rows, INV-ARCH-2, the version rule against 02 §1, the narrow matrices, the index spaces, the regeneration check's reach and the vector's gaps, all fixed or raised as open questions.
+    - **Review.** Two independent adversarial readings.
+      - **The first found:**
+        - the rebuilt state's budget reset;
+        - the per-proof cost of the proximity row's blinding rows;
+        - INV-ARCH-2;
+        - the version rule;
+        - the narrow matrices;
+        - the index spaces;
+        - the regeneration check's reach;
+        - the vector's gaps.
+      - **The second accepted the expansion itself.** It found:
+        - that narrow matrices lose soundness below `k_W`, not only below `P_W`, with an exact forgery past `n_T` (now #564);
+        - that "fresh only the first time" could not be decided after a loss, which the epoch record replaces;
+        - the scope of the INV-ARCH-2 exception;
+        - the key material that 05 §3 and OBS-2 did not name;
+        - smaller gaps, among them RFC-0018's crash consistency, R6 and the 216 GB figure.
   - RFC-0004's domain table gains `weights-mask` and `weights-blinding`. The headers of RFC-0004 and RFC-0040 now name RFC-0064's amendments too.
 
 - The SHA-256 circuit proves end to end on the CPU stage prover ([#526](https://github.com/AbdelStark/tessera/issues/526), RFC-0072 'Migration' slice 3, 'Testing Strategy' 'The circuits'), tests only: the key commitment, one block with `k_s` and `salt_k` committed and its digest bound, proves and verifies in 14 stages, as do three key commitments (`M = 3`) and three public messages of two blocks. A digest one bit off on the verifier's side, and a round-0 carry bit off committed by the prover, are rejected at stage 1's final check, and each is accepted with exactly the stage-1 instance it breaks removed: the word's `AssertEqual`, or the carry's recomposition with the chain that only its claim reads.
