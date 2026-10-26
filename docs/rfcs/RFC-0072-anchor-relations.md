@@ -7,8 +7,8 @@
 - Amends:
   - [RFC-0066](RFC-0066-bits-and-sha256.md) '`BitDecompose`' (recomposition's relation and its claim on `x`), '`AssertEqual`' (a public input pads with zeros), 'Where the zero-checks run' (their messages), 'Drawbacks' (stacking), and its open questions OQ-0066-1 and OQ-0066-2, which this RFC closes;
   - [RFC-0010](RFC-0010-proof-schedule.md#relations) 'Relations' (recomposition's row, which sums its bit axis, the selection relation, `ConstMul` by a constant per channel), 'Stages' (termination at public tensors) and 'Batching within a stage' (a recomposition's zero-check point);
-  - [RFC-0037](RFC-0037-stage-schedule.md#layers-and-kinds) 'Layers and kinds' (a graph with no checkpoint), 'The committed first checkpoint' (no committed selection output), 'Claims and atoms' (public tensors, `ConstAdd`'s shift, `Slice`, `GatherPublic` and a per-channel `ConstMul` as relations, combined selections, one point), 'Splits' (a combined selection's value), 'Stages and their instances' (stage 1's new zero-checks, the stage count) and 'The layer point' (no site for `BitDecompose` and `AssertEqual`, and the logits when there are some);
-  - [RFC-0035](RFC-0035-padded-rows.md#zero-check-points) 'Zero-check points': a recomposition's `eq` takes the highest of its instance's coordinates;
+  - [RFC-0037](RFC-0037-stage-schedule.md#layers-and-kinds) 'Layers and kinds' (a graph with no checkpoint), 'The committed first checkpoint' (the committed outputs stage 1 proves), 'Claims and atoms' (public tensors, `ConstAdd`'s shift, `Slice`, `GatherPublic` and a per-channel `ConstMul` as relations, combined selections, one point), 'Splits' (a combined selection's value), 'Stages and their instances' (stage 1's new zero-checks, the stage count) and 'The layer point' (no site for `BitDecompose` and `AssertEqual`, and the logits when there are some);
+  - [RFC-0035](RFC-0035-padded-rows.md#zero-check-points) 'Zero-check points' (a recomposition's `eq` takes the highest of its instance's coordinates) and 'What a padded row holds' (`ConstAdd` adds its constant at real positions only);
   - [RFC-0045](RFC-0045-leaf-layout.md#the-split) 'Sites' (none for `BitDecompose` and `AssertEqual`) and 'The split' (a public tensor's value is not sent);
   - [RFC-0006](RFC-0006-compiler-ir.md#gadget-selection) 'Gadget selection': `BitDecompose` and `AssertEqual` take gadgets;
   - [RFC-0046](RFC-0046-advice-segments.md#segments) 'Segments': a graph with no layers;
@@ -30,7 +30,7 @@ This RFC fills each gap with RFC-0010's existing machinery and adds no new kind 
 - **The selection relation.** `GatherPublic` and `Slice` reduce a claim through one sumcheck over the selected axis, against a public 0/1 kernel, of degree 2 (OQ-0066-2).
 - **`ConstMul` by a constant per channel** is RFC-0010's `Elementwise` with the constant a public operand.
 - **Combined selections.** Within one claim, selections of one tensor along one axis at one point are one selection, whose kernel weighs theirs by their coefficients. Without that, the two selections that read each level of a SHA-256 sum's value, its even and odd rows, would double the instances below it at every level. Claims are never merged across a stage, so no claim goes unchecked and no Llama schedule changes.
-- **Padded positions** hold what their operation computes from padded inputs, for virtual and public tensors too.
+- **Padded positions** are 0, except where a lookup's table gives otherwise: a `ConstAdd` adds its constant at real positions only.
 - **The bit zero-checks** run in stage 1 and send their evaluations under `stage/1/evals` (OQ-0066-1). Recomposition is one zero-check summed over the bit axis, which needs no value before `γ`. `BitDecompose` and `AssertEqual` take gadget ids. A false bit fails stage 1's final check, `Reject(Sumcheck)`.
 
 A SHA-256 block of a message with committed bytes holds 680 zero-checks, 2,528 selections, 352 `BitFn` products and 96 masked `Mul`s: about 3,400 instances once selections combine, against about 71,700 if they did not. A frame's SHA-256 takes 14 stages, the leaf stage included, whatever its block count. AES-128-CTR takes 3.
@@ -74,6 +74,7 @@ A SHA-256 block of a message with committed bytes holds 680 zero-checks, 2,528 s
 - **No logits.** A graph with no logits leaves no claim on them and has no scoring site.
 - **Advice segments.** With `L = 0`, every tile is in segment 0, and any further segments are empty ([RFC-0046](RFC-0046-advice-segments.md#segments) 'An empty segment').
 - **In a model's graph.** #146 adds the circuits to a batch's graph after the model's nodes. Their nodes are then epilogue nodes, outside the layers, under the same rules. They read no checkpoint.
+- **Not inside a layer.** A layer template holding a `ConstAdd`, a selection or a per-channel `ConstMul` is refused (`ERR-INTERNAL`): their stacked forms, a per-layer constant on a padded layer among them, are not specified. The Llama lowering emits none.
 
 ### Public tensors
 
@@ -89,27 +90,35 @@ A SHA-256 block of a message with committed bytes holds 680 zero-checks, 2,528 s
 
 ### Padded positions
 
-Every tensor's padded positions hold what its operation computes from its inputs' padded positions, as RFC-0035 'What a padded row holds' says. That holds for virtual and public tensors too:
+Every tensor's padded positions hold what its operation computes from its inputs' padded positions, as RFC-0035 'What a padded row holds' says, with one exception. That holds for virtual and public tensors too:
 - graph inputs and constants pad with zeros, and a per-channel constant is 0 at padded channels;
+- **a `ConstAdd` adds its constant at real positions only**, `y = x + ψ·c` with `ψ` 1 on the tensor's real positions, so its padded positions are its input's;
 - a selection's padded rows on its selected axis are 0, and its other padded positions are its input's;
 - an `Expand` is 0 past `len`, as its coefficient `LT(r_a, len)` says;
-- a `ConstAdd`'s padded positions are its input's plus its constant;
+- a `Rotate`'s padded rows are 0, as its kernel is (RFC-0037);
 - a lookup's are the lookup of what its node computes there (RFC-0045), such as `AesSbox(0) = 0x63`.
 
-So the prover's witness and stage tables, and the verifier's public tensors, are computed over the padded shapes. With `M` messages or `B` blocks not a power of two, SHA-256's padded messages run the compression on zero bits and their sums' constants. AES's padded blocks run on zero counters under zero round keys, since each round key's `Expand` is 0 past `B`, and give a public constant, not `AES_k(0)`.
+Every other operation maps zeros to zeros, and RFC-0035's checks pin the gadgets' padded rows to 0. So a padded position is non-zero only downstream of a lookup that is **non-zero at padding**: one whose table's value at the key its node computes from zero inputs, its key form's constant term (RFC-0009), is non-zero or absent. `Exp2Frac`, `Pow2` and `AesSbox` at key 0 are such tables (RFC-0035); `Requant`'s and `Silu`'s are not.
+
+So the prover's witness and stage tables, and the verifier's public tensors, are computed over the padded shapes. With `M` messages or `B` blocks not a power of two:
+- SHA-256's padded messages are 0 throughout: their bits, sums and carries.
+- AES's padded blocks run on zero counters under zero round keys, since each round key's `Expand` is 0 past `B`. Their S-box outputs are then `AesSbox(0) = 0x63` and its consequences, a public constant per position, not `AES_k(0)`.
 
 A committed graph input's padded positions are computed by nothing. RFC-0006 'Committed graph inputs' admits a graph only when a `BitDecompose` or a `OneHot` reads each committed advice input, and their checks pin its padded positions: RFC-0066's input padding check, or `OneHot`'s row selector. AES-128-CTR alone is a fragment, whose key and plaintext a larger graph proves (#146).
 
 ### Linear operations that are not coordinate maps
 
-- **`ConstAdd`** moves its constant into the claim's value: `ỹ(r) = x̃(r) + c̃(r)`. Its constant is a public atom, with the atom's coefficient `a` and layer weights `w`, so a claim `a·Σ_ℓ w(ℓ)·ỹ_ℓ(r) = v` becomes `a·Σ_ℓ w(ℓ)·x̃_ℓ(r) = v − a·Σ_ℓ w(ℓ)·c̃_ℓ(r)`.
-  - A constant of one value contributes `c`.
-  - A constant per channel contributes `c̃(r_c)`, its channel coordinates' extension with zeros at padded channels.
-  - At padded positions the operation computes `x + c` ('Padded positions'), which is what this extension gives.
+- **`ConstAdd`** moves its constant into the claim's value: `ỹ(r) = x̃(r) + c̃(r)·ψ̃(r)`, with `ψ̃(r) = Π_a LT(r_a, n_a)` over the tensor's axes. Its constant is a public atom, with the atom's coefficient `a` and layer weights `w`, so a claim `a·Σ_ℓ w(ℓ)·ỹ_ℓ(r) = v` becomes `a·Σ_ℓ w(ℓ)·x̃_ℓ(r) = v − a·Σ_ℓ w(ℓ)·c̃_ℓ(r)·ψ̃(r)`.
+  - A constant of one value contributes `c·ψ̃(r)`.
+  - A constant per channel contributes `c̃(r_c)·ψ̃(r)`, its channel coordinates' extension with zeros at padded channels.
+  - That is what the operation computes, its constant at real positions only ('Padded positions').
 - **`ConstMul` by a constant per channel** is RFC-0010's `Elementwise`: `Ỹ(r) = Σ_x eq(r, x)·c̃(x_c)·X̃(x)`, degree 3, the constant a public operand broadcast over the other axes. It leaves one claim on `X`. A scalar `ConstMul` stays a coefficient.
 - **`Slice` and `GatherPublic`** are selections, below.
-- **A committed output.** A `ConstAdd` or a per-channel `ConstMul` whose output is declared committed is proven as RFC-0037's committed outputs are, by an equality zero-check in stage 1. A selection whose output is declared committed, which RFC-0006 and the IR admit, is refused when the schedule is derived (`ERR-INTERNAL`): its relation is a sum over the selected axis, not the pointwise `f` that equality zero-check reads. `BitFn`'s output is virtual (RFC-0066). Neither circuit declares one.
-- **`Sum`.** RFC-0010 maps a `Sum` claim to `2^j·x̃(½, …, ½ ‖ r)`, a sum over the whole padded cube of the summed axes, which is the operation's only when its input is 0 there. Padded positions need not be 0 ('Padded positions'). From zero inputs only a `ConstAdd` and a lookup into a table that is non-zero at key 0, `Exp2Frac`, `Pow2` or `AesSbox` (RFC-0035 'What a padded row holds'), make them non-zero. Every other operation keeps them 0, the gadgets' padded rows included, which RFC-0035's checks pin. So a `Sum` over an axis whose length is not a power of two is refused when the schedule is derived (`ERR-INTERNAL`) when a `ConstAdd` or such a lookup lies upstream of its input in the graph. An `Expand` along the summed axis is the exception, being 0 past `len` whatever its input. No circuit or Llama graph has a `Sum`, and the compiler's schedule tests sum an `Expand` along its own axis.
+- **A committed output.** RFC-0037's equality zero-check proves a committed output whose node computes it pointwise: `ConstMul` (scalar or per channel), `ConstAdd`, `Add`, `Sub` and `Mul`, with `f` the operation itself (`ConstAdd`'s `x + c·ψ`). A committed output of any other linear or degree-2 node, a selection, `Sum`, `SumSquares`, `Rotate`, `Transpose`, `Reshape` or `Expand` among them, is refused when the schedule is derived (`ERR-INTERNAL`), although RFC-0006 and the IR admit the declaration. `BitFn`'s output is virtual (RFC-0066). Neither circuit declares one, and the Llama lowering commits only those five.
+- **Summing relations.** `Sum`, `SumSquares` and `MatMulAct` sum over an axis of an input, `MatMulAct` over its inner axis. Their relations are the operations only when that input is 0 at the axis's padded positions, since RFC-0010 sums over the whole padded cube. `MatMulWeight` sums over its input axis against weights that are 0 there.
+  - **The rule.** Such a relation over an axis whose length is not a power of two is refused when the schedule is derived (`ERR-INTERNAL`), when a lookup non-zero at padding ('Padded positions') lies upstream of its input in the graph.
+  - **The exception.** The input may be an `Expand` or a selection along that axis, which are 0 at its padded positions whatever their input.
+  - **Where it applies.** No circuit sums over a padded axis. Llama's lookups (`Requant`, `Silu`) are 0 at padding, and its gadgets' padded rows are pinned to 0 (RFC-0035), so no Llama schedule changes. The compiler's schedule tests sum an `Expand` along its own axis.
 
 ### The selection relation
 
@@ -153,7 +162,7 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
 
 `n_y` is the variables of `x`'s shape. `k_b = ⌈log2 low⌉` and `k_h = ⌈log2 high⌉` are the bit axes' variables, which are the lowest.
 
-**Recomposition.** It is one zero-check over `y`, summed over the bit axis, `k = max(k_b, k_h)` variables:
+**Recomposition.** It is one zero-check over `y`, summed over the bit axis, `k = max(k_b, k_h)` variables, `k_b` when `high = 0`:
 
 ```text
 0 = Σ_{(i, y) ∈ {0,1}^{k + n_y}} eq(z_y, y)·[2^{−k}·x̃(y) − W_b(i)·b̂(i ‖ y) − 2^{low}·W_h(i)·ĥ(i ‖ y)]
@@ -295,7 +304,7 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
   - So does one AES-128-CTR block under a committed key.
   - An S-box output off its table is `Reject(Lookup { table })`.
 - **Calibration.** Over F65537, a witness with one non-Boolean bit passes stage 1's booleanity check at the rate `n/|F|`, within confidence bounds, with scripted challenges. There `low + high ≤ 16` (RFC-0066 Lemma 1).
-- **No change elsewhere.** The Llama schedules' vectors (`spec/vectors/schedule/`), each Llama stage's evaluation count, `cargo xtask gen-vectors --check` and the verifier's stage tests are unchanged.
+- **No change elsewhere.** The Llama schedules' vectors (`spec/vectors/schedule/`), each Llama stage's evaluation count, `cargo xtask gen-vectors --check` and the verifier's stage tests are unchanged, and no Llama schedule meets the summing-relation, committed-output or layer refusals.
 
 ## Open Questions
 

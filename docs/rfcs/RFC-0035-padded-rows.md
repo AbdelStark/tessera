@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0058](RFC-0058-inverse-cdf-columns.md#padded-rows) ('InverseCdf's padding zero-check pins its partition `Z` too), [RFC-0066](RFC-0066-bits-and-sha256.md) ('Zero-check points': its zero-checks run in stage 1), [RFC-0071](RFC-0071-request-slots.md) ('The row selector': a batch's real rows, a sum over its requests), [RFC-0072](RFC-0072-anchor-relations.md) ('Zero-check points': a recomposition's `eq` takes the highest of its instance's coordinates)
+- Amended by: [RFC-0058](RFC-0058-inverse-cdf-columns.md#padded-rows) ('InverseCdf's padding zero-check pins its partition `Z` too), [RFC-0066](RFC-0066-bits-and-sha256.md) ('Zero-check points': its zero-checks run in stage 1), [RFC-0071](RFC-0071-request-slots.md) ('The row selector': a batch's real rows, a sum over its requests), [RFC-0072](RFC-0072-anchor-relations.md) ('Zero-check points': a recomposition's `eq` takes the highest of its instance's coordinates), [RFC-0072](RFC-0072-anchor-relations.md) ('What a padded row holds': `ConstAdd` at real positions only)
 - Supersedes, on acceptance:
   - [RFC-0009](RFC-0009-gadgets.md) 'RsqrtRow', 'SoftmaxRow' relation 3, 'OneHot' and 'InverseCdf': the row selector `ψ`;
   - [RFC-0017](RFC-0017-scoring.md#in-circuit-scoring-mixture) 'In-circuit scoring', constraints 3 and 4: the row selector `ψ`;
@@ -64,7 +64,7 @@ with the head factor only for per-head rows. `LT` has an `O(n)` closed form ([RF
 
 ### What a padded row holds
 
-On a padded row, every gadget computes its witness from the row's inputs as on a real row, with `ψ = 0` in the relations below. The token is 0 and the activations are 0. A lookup at key 0 returns its table's value there, which is 0 for every table but three: the scoring bound's `Exp2Frac` and `Pow2`, and the AES S-box. The AES and SHA-256 circuits of RFC-0015 also add their own constants. RFC-0011 rule 4 skips a row only when every entry of it is 0, so a padded row that holds one of these values is committed. A padded row's witness is therefore determined, as a real row's is.
+On a padded row, every gadget computes its witness from the row's inputs as on a real row, with `ψ = 0` in the relations below. The token is 0 and the activations are 0. A lookup at key 0 returns its table's value there, which is 0 for every table but three: the scoring bound's `Exp2Frac` and `Pow2`, and the AES S-box. The AES and SHA-256 circuits of RFC-0015 also add their own constants. A `ConstAdd` adds its constant at real positions only, so its padded positions are its input's ([RFC-0072](RFC-0072-anchor-relations.md#padded-positions)). RFC-0011 rule 4 skips a row only when every entry of it is 0, so a padded row that holds one of these values is committed. A padded row's witness is therefore determined, as a real row's is.
 
 No real output reads a padded row:
 
