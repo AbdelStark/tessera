@@ -310,7 +310,7 @@ In the proof, the verifier checks the leaf stage's lookups (RFC-0019 step 7) bef
 
 ### Sizes
 
-From the compiler's schedule on `tiny-2-minimal` (2 layers, `d_model` 64, vocabulary 512) with a generation request, one session, the anchor built as above. The schedule is `derive_composed_schedule` with `model_natives`. The opening points are counted on the anchor's part alone, proven by the CPU stage prover with its tokens public.
+Exploratory figures recorded during the initial design from the compiler's schedule on `tiny-2-minimal` (2 layers, `d_model` 64, vocabulary 512) with a generation request, one session, the anchor built as above. They have not been rerun during this draft's takeover review; the implementation must reproduce them before treating them as conformance evidence. The schedule is `derive_composed_schedule` with `model_natives`. The opening points are counted on the anchor's part alone, proven by the CPU stage prover with its tokens public.
 
 | Batch | Frames | Stages | Instances | Evaluations | Split values | Pool claims | Zero-checks | Anchor tensors | Opening points |
 |---|---|---|---|---|---|---|---|---|---|
