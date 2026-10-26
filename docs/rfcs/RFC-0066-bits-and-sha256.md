@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-25
 - Target milestone: v0.4
+- Amended by: [RFC-0072](RFC-0072-anchor-relations.md) ('`BitDecompose`' and 'Where the zero-checks run': recomposition summed over the bit axis, its claim on `x` at `y`'s coordinates, and the zero-checks' messages; OQ-0066-1 and OQ-0066-2, closed)
 - Amends:
   - [RFC-0006](RFC-0006-compiler-ir.md#operation-set) 'Operation set': three operations join the closed set, `BitDecompose`, `BitFn` and `AssertEqual`, and `Bitwise` is AES's alone;
   - RFC-0006 'Range analysis': the three operations' ranges and integrality rules;
@@ -60,7 +61,7 @@ BitDecompose { low: u8, high: u8 },   // x → b [.., low], h [.., high]; high m
   - **Elsewhere**, range analysis takes a committed advice input's declared range as given: through any other operation, and at the positions a `Slice` or a gather leaves out, that range is a precondition another operation of the graph must prove. RFC-0006 'Committed graph inputs' states which operations prove it, and range analysis refuses a graph that leaves an element of a committed input unproven (#527).
 - **Relations** (RFC-0010 'Relations'):
   - **Booleanity**, one `ZeroCheck` per output: `0 = Σ_x eq(z, x)·b̃(x)·(1 − b̃(x))`, as `OneHot`'s, and the same for `h`.
-  - **Recomposition**, one `ZeroCheck`: `0 = Σ_y eq(z, y)·x̃(y) − Σ_{(y, i)} eq(z, y)·w(i)·b̃(y ‖ i) − Σ_{(y, j)} eq(z, y)·2^{low}·w(j)·h̃(y ‖ j)`, with `w(i) = 2^i` on real bits and 0 on padded ones. Its first sum is `x̃(z)`, a claim on `x`. The others are sumchecks of degree 2, `w` public: the verifier evaluates `w̃(r) = Σ_{i < n} 2^i·eq(r, i)`, at most 62 terms, or `Π_k (1 − r_k + r_k·2^{2^k})` when the axis's `n` bits are a power of two.
+  - **Recomposition**, one `ZeroCheck`: `0 = Σ_y eq(z, y)·x̃(y) − Σ_{(y, i)} eq(z, y)·w(i)·b̃(y ‖ i) − Σ_{(y, j)} eq(z, y)·2^{low}·w(j)·h̃(y ‖ j)`, with `w(i) = 2^i` on real bits and 0 on padded ones. [RFC-0072](RFC-0072-anchor-relations.md#the-bit-zero-checks-oq-0066-1) proves it as one zero-check summed over the bit axis, which leaves its claim on `x` at `y`'s coordinates of its final point. `w` is public: the verifier evaluates `w̃(r) = Σ_{i < n} 2^i·eq(r, i)`, at most 62 terms, or `Π_k (1 − r_k + r_k·2^{2^k})` when the axis's `n` bits are a power of two.
   - **Padding.** A bit axis pads to the next power of two, 4 for a carry of 3. A padded slot has weight 0 in recomposition, so booleanity alone leaves it 0 or 1, two witnesses. One `ZeroCheck` per output whose `n` bits are not a power of two pins those slots to 0, as `OneHot`'s vocabulary check pins its padded entries (RFC-0009 'OneHot'): `0 = Σ_x eq(z, x)·(1 − LT(x_bit, n))·b̃(x)`, over the bit axis's coordinates `x_bit`, `LT` public.
   - **Padded rows.** The other axes' padded positions hold what the operation computes from their padded inputs, as every gadget's do (RFC-0035 'What a padded row holds').
   - **Completeness there is the graph's.** Range analysis bounds real positions only, so a graph must compute values in `[0, 2^{low + high})` at padded positions too. `BitDecompose(ConstAdd(−1)(p))`, with `p` declared `[1, 256]`, gives `−1` there, which no bits recompose. The SHA-256 circuit's padded inputs are zero bits and zero bytes, and its sums of bits and constants stay within their carries, so its padded positions decompose.
@@ -113,9 +114,9 @@ Every `ZeroCheck` runs in stage 1 (RFC-0010 'Batching within a stage'), at the p
   2. its booleanity checks;
   3. its bit-padding checks;
   4. its recomposition.
-- **Virtual claims.** A claim one leaves on a virtual tensor, such as recomposition's `x̃(z)` or `AssertEqual`'s `ã(z)`, is a stage-1 claim. RFC-0037 reduces it through the tensor's producer in later stages, as it does any other.
-- **The calculator.** Each instance is one entry `n_i` of RFC-0014's `zero_checks`, the variables of its point `z`: `x`'s for recomposition, the output's for booleanity and bit padding, the committed input's for its padding check, and the two tensors' for `AssertEqual`.
-- **Messages.** Their messages, labels and batching are open (OQ-0066-1).
+- **Virtual claims.** A claim one leaves on a virtual tensor, such as recomposition's on `x` or `AssertEqual`'s on `a`, is a stage-1 claim. RFC-0037 reduces it through the tensor's producer in later stages, as it does any other.
+- **The calculator.** Each instance is one entry `n_i` of RFC-0014's `zero_checks`, the variables of its `eq` at the point `z`: `x`'s for recomposition, the output's for booleanity and bit padding, the committed input's for its padding check, and the two tensors' for `AssertEqual`.
+- **Messages.** [RFC-0072](RFC-0072-anchor-relations.md#the-bit-zero-checks-oq-0066-1) sends their evaluations under `stage/1/evals`, with no new label.
 
 ### The SHA-256 circuit
 
@@ -234,7 +235,7 @@ RFC-0006 'Range analysis' adds:
 ## Drawbacks
 
 - The IR's closed operation set grows by three, and the verifier's lowering must mirror them (#150, #159).
-- Stage 1 gains 680 zero-check instances per block: 368 booleanity checks, 128 bit-padding checks for the round carries and 184 recompositions. A batch of frames holds hundreds of blocks, so the schedule should stack instances of one kind (OQ-0066-1).
+- Stage 1 gains 680 zero-check instances per block: 368 booleanity checks, 128 bit-padding checks for the round carries and 184 recompositions. A batch of frames holds hundreds of blocks. RFC-0072 does not stack them, and its OQ-0072-1 asks whether the largest instance bounds their error.
 - A frame's SHA-256 is a long sequential graph: 6,032 nodes per block, 64 per round. The value trees hold 3,864 of them, 21 for each of the block's 184 sums. Its size grows with the block count, not with `M`.
 
 ## Migration / Rollout
@@ -259,7 +260,7 @@ RFC-0006 'Range analysis' adds:
 
 ## Open Questions
 
-- **OQ-0066-1: the zero-checks' messages.** The schedule's relations (#526) settle:
+- **OQ-0066-1 (resolved): the zero-checks' messages.** [RFC-0072](RFC-0072-anchor-relations.md#the-bit-zero-checks-oq-0066-1) settles each point below. The evaluations go under `stage/1/evals`, and recomposition is one zero-check summed over the bit axis. `AssertEqual` sends each side that is not public, `BitDecompose` and `AssertEqual` take gadget ids, a false bit is `Reject(Sumcheck)`, and nothing is stacked. The schedule's relations (#526) settle:
   - where each claim the new zero-checks leave is sent, and under which label;
   - how recomposition's two sums, over `n_y + log2 low` and `n_y + log2 high` variables, are batched with `x̃(z)`;
   - what `AssertEqual` sends when neither side is public;
@@ -267,8 +268,8 @@ RFC-0006 'Range analysis' adds:
   - the reject reason of each failing check;
   - stacking instances of one kind.
 
-  They also amend RFC-0010 'Batching within a stage', RFC-0037 'Stages and their instances' and RFC-0014's counts. Until then, gadget selection refuses the three operations (`ERR-QUANT-ARCH`), so no proof contains them.
-- **OQ-0066-2: `GatherPublic`'s relation.** `ROTR`, `SHR` and the message's assembly reduce claims through `GatherPublic`, as AES's `ShiftRows` does. A public-kernel sumcheck `ỹ(r_row ‖ r) = Σ_k G(r_row, k)·x̃(k ‖ r)`, with `G(r, k) = Σ_{j : idx_j = k} eq(r, j)`, of degree 2, is the candidate for #526.
+  They also amend RFC-0010 'Relations', RFC-0037 'Stages and their instances' and RFC-0014's counts. Until #526 lands, gadget selection refuses the three operations (`ERR-QUANT-ARCH`), so no proof contains them.
+- **OQ-0066-2 (resolved): `GatherPublic`'s relation.** [RFC-0072](RFC-0072-anchor-relations.md#the-selection-relation)'s selection relation is this candidate, for `Slice` too. `ROTR`, `SHR` and the message's assembly reduce claims through `GatherPublic`, as AES's `ShiftRows` does. A public-kernel sumcheck `ỹ(r_row ‖ r) = Σ_k G(r_row, k)·x̃(k ‖ r)`, with `G(r, k) = Σ_{j : idx_j = k} eq(r, j)`, of degree 2, is the candidate for #526.
 
 ## References
 

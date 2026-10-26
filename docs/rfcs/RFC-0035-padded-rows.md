@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0058](RFC-0058-inverse-cdf-columns.md#padded-rows) ('InverseCdf's padding zero-check pins its partition `Z` too), [RFC-0066](RFC-0066-bits-and-sha256.md) ('Zero-check points': its zero-checks run in stage 1), [RFC-0071](RFC-0071-request-slots.md) ('The row selector': a batch's real rows, a sum over its requests)
+- Amended by: [RFC-0058](RFC-0058-inverse-cdf-columns.md#padded-rows) ('InverseCdf's padding zero-check pins its partition `Z` too), [RFC-0066](RFC-0066-bits-and-sha256.md) ('Zero-check points': its zero-checks run in stage 1), [RFC-0071](RFC-0071-request-slots.md) ('The row selector': a batch's real rows, a sum over its requests), [RFC-0072](RFC-0072-anchor-relations.md) ('Zero-check points': a zero-check's variables are its `eq`'s, so a recomposition's are its input's)
 - Supersedes, on acceptance:
   - [RFC-0009](RFC-0009-gadgets.md) 'RsqrtRow', 'SoftmaxRow' relation 3, 'OneHot' and 'InverseCdf': the row selector `ψ`;
   - [RFC-0017](RFC-0017-scoring.md#in-circuit-scoring-mixture) 'In-circuit scoring', constraints 3 and 4: the row selector `ψ`;
@@ -107,7 +107,7 @@ The relation has degree 3, and the verifier evaluates its public factor `1 − �
 
 ### Zero-check points
 
-`RFC-0010` lists `ZeroCheck` as a relation kind, but no document said where its point `z` comes from. Each stage `k` that holds `ZeroCheck` instances draws one point just before `γ_k`, after `ρ_k` in `tessera-protocol/2`: coordinates `z_c` for `c = 0, 1, …` under `stage/{k}/zero/{c}`, one per variable of its largest `ZeroCheck`. An instance of `n_i` variables takes the last `n_i` coordinates, as forests take their root points ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)). `OneHot`'s booleanity check runs in stage 1 with the padding zero-checks, at the same point. So do [RFC-0066](RFC-0066-bits-and-sha256.md#where-the-zero-checks-run)'s zero-checks, after these, in node order: `BitDecompose`'s padding check of a committed input, booleanity, bit-padding and recomposition checks, and `AssertEqual`'s.
+`RFC-0010` lists `ZeroCheck` as a relation kind, but no document said where its point `z` comes from. Each stage `k` that holds `ZeroCheck` instances draws one point just before `γ_k`, after `ρ_k` in `tessera-protocol/2`: coordinates `z_c` for `c = 0, 1, …` under `stage/{k}/zero/{c}`, one per variable of its largest `ZeroCheck`. A zero-check's variables are its `eq`'s, so a recomposition summed over its bit axis counts its input's ([RFC-0072](RFC-0072-anchor-relations.md#the-bit-zero-checks-oq-0066-1)). An instance of `n_i` variables takes the last `n_i` coordinates, as forests take their root points ([RFC-0010](RFC-0010-proof-schedule.md#tree-levels)). `OneHot`'s booleanity check runs in stage 1 with the padding zero-checks, at the same point. So do [RFC-0066](RFC-0066-bits-and-sha256.md#where-the-zero-checks-run)'s zero-checks, after these, in node order: `BitDecompose`'s padding check of a committed input, booleanity, bit-padding and recomposition checks, and `AssertEqual`'s.
 
 ### Soundness
 

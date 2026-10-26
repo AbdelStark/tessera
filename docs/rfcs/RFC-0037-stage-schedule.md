@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-17
 - Target milestone: v0.3
-- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('The claim pool' and 'Invariants': `ChannelParams` claims in the pool), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The layer point', `ρ_1` is the leaf stage's layer sumcheck point; 'Splits' and 'Messages and transcript', the leaf stage's values and labels), [RFC-0069](RFC-0069-one-layer-claims.md) ('Layers and kinds' and 'Stages and their instances': the one read at one layer, and no relation proving such a claim; 'The claim pool', in `tessera-protocol/2`: a piece at one layer takes its layer tensor's own mask row), [RFC-0070](RFC-0070-mask-batching.md) (INV-SCH-3, in `tessera-protocol/2`: the mask claims reach the masks' batching), [RFC-0071](RFC-0071-request-slots.md) ('`Rotate`': a row's position in a batch is its place in its request)
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('The claim pool' and 'Invariants': `ChannelParams` claims in the pool), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The layer point', `ρ_1` is the leaf stage's layer sumcheck point; 'Splits' and 'Messages and transcript', the leaf stage's values and labels), [RFC-0069](RFC-0069-one-layer-claims.md) ('Layers and kinds' and 'Stages and their instances': the one read at one layer, and no relation proving such a claim; 'The claim pool', in `tessera-protocol/2`: a piece at one layer takes its layer tensor's own mask row), [RFC-0070](RFC-0070-mask-batching.md) (INV-SCH-3, in `tessera-protocol/2`: the mask claims reach the masks' batching), [RFC-0071](RFC-0071-request-slots.md) ('`Rotate`': a row's position in a batch is its place in its request), [RFC-0072](RFC-0072-anchor-relations.md) ('Layers and kinds': a graph with no checkpoint has no layers; 'Claims and atoms': public tensors, `ConstAdd`, and `Slice` and `GatherPublic` as relations; 'Stages and their instances': RFC-0066's zero-checks in stage 1)
 - Supersedes, on acceptance:
   - [RFC-0010](RFC-0010-proof-schedule.md#relations) 'Relations': `Rotate`'s identity and its one claim on its input, and the claims of the linear maps added here;
   - [RFC-0010](RFC-0010-proof-schedule.md#stages) 'Stages' and 'Batching within a stage': how a stage stacks layers, splits claims and orders its instances, and the layer point;
@@ -69,6 +69,7 @@ The lowering's checkpoints `c_0, …, c_L` are the residual stream after the emb
   - a graph input, such as the positions or the layer's own weight, classes and multipliers.
 
   The lowering emits such layers for a claim list that rescales every layer's sites alike ([RFC-0038](RFC-0038-uniform-layers.md)). The schedule refuses any other graph with `ERR-INTERNAL`.
+- **No checkpoint.** A lowering with no checkpoint has no layers, `L = 0` and `λ = 0`. Every node is outside them, every tensor a kind without a layer index, and stage 1's layer point has no coordinate, as for the anchor's circuits ([RFC-0072](RFC-0072-anchor-relations.md#graphs-without-layers)).
 - **Kinds.**
   - The outputs at position `p` form one stacked kind, `X_κ[ℓ, …]`.
   - The layer input `X_in[ℓ] = c_ℓ` is a stacked kind.
@@ -134,11 +135,12 @@ A claim names a kind and a point, `X̃_κ(r ‖ ρ) = v` for a stacked kind with
 Through a linear node, a claim on its output becomes terms on its inputs, as [RFC-0010](RFC-0010-proof-schedule.md#relations) 'Relations' places them:
 - `Transpose`, `Expand` and `Reshape` map coordinates as above.
 - A `ConstMul` by one constant multiplies the coefficient. A constant per layer multiplies the layer weights.
+- `ConstAdd` adds its constant's extension to the claim's value. A `ConstMul` by a constant per channel, `Slice` and `GatherPublic` are relations, not maps: their outputs are virtual atoms ([RFC-0072](RFC-0072-anchor-relations.md#linear-operations-that-are-not-coordinate-maps)).
 - A claim on the layer input reads its slices: `Σ_ℓ w(ℓ)·X̃_in[ℓ](r) = w(0)·c̃_0(r) + Σ_{ℓ≥1} w(ℓ)·X̃_last[ℓ − 1](r)`, with `X_last` the kind of the layer's last output. Every slice is committed.
 
 **Atoms.** After substitution, a claim is a sum of atoms. An atom is a coefficient, a kind, a point and layer weights.
 - Atoms on one kind at one point merge, their layer weights adding.
-- An atom is virtual (a sumcheck relation's output), committed (advice or a weight) or public (the verifier computes it).
+- An atom is virtual (a sumcheck relation's output), committed (advice or a weight) or public (the verifier computes it). A tensor is public when it is a public input or a constant, or the output of a node that is not gadget-backed and whose inputs are all public ([RFC-0072](RFC-0072-anchor-relations.md#public-tensors)).
 - Atoms are listed in the order substitution reaches them, depth first, inputs in their node's order. A merged atom keeps its first place.
 
 ### Splits
@@ -161,7 +163,7 @@ The verifier computes a claim's public atoms and moves them to its value. The cl
 - **Stage index.** The leaf stage is stage 0, and an instance's stage is one more than its claim's.
 - **Instances.** Stage `k` runs, in order:
   - one instance per virtual atom that stage `k − 1` leaves after its splits, in atom order: the atom's producing relation, stacked as its kind, at the atom's point, with the atom's value as its claim;
-  - in stage 1, after them, the zero-checks in node order: RFC-0035's padding zero-checks, `OneHot`'s booleanity, and the equality zero-checks of committed outputs.
+  - in stage 1, after them, the zero-checks in node order: RFC-0035's padding zero-checks, `OneHot`'s booleanity, and the equality zero-checks of committed outputs. RFC-0066's follow, `BitDecompose`'s then `AssertEqual`'s in node order, as [RFC-0072](RFC-0072-anchor-relations.md#the-bit-zero-checks-oq-0066-1) sends them.
 - **Stacked instances.** A stacked instance takes the atom's layer weights `w` as a public factor over the layer variables, in place of `eq(ρ, ·)`. The verifier evaluates `w̃(ρ') = Σ_ℓ eq(ρ', ℓ)·w(ℓ)` in `O(L)`, the sum running over the whole cube of `2^λ` layers: a padded layer's weight, such as `eq(ρ, ℓ)`, need not be 0.
 - **No claim at one layer is proven by a relation.** A virtual atom with `Layers::One` weights is refused (`ERR-INTERNAL`): in `tessera-protocol/2` it would be revealed at a Boolean layer coordinate, where its kind's mask vanishes. A claim at one layer is a committed atom's, which reaches the pool with its layer tensor's own mask ([RFC-0069](RFC-0069-one-layer-claims.md)).
 - **INV-SCH-2.** Each virtual atom is one instance.

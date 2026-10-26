@@ -6,6 +6,17 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- The anchor circuits' relations, specified ([#526](https://github.com/AbdelStark/tessera/issues/526)):
+  - **RFC-0072, 'Proving the Anchor Circuits: Graphs Without Layers, Public Tensors, Selections and the Bit Zero-Checks'.**
+    - **The gap.** Neither AES-128-CTR nor SHA-256 could enter a proof. The schedule assumed layers and logits; `GatherPublic`, `Slice` and a `ConstMul` by a constant per channel had no relation; no rule made a tensor public; and RFC-0066 left the zero-checks' messages open (OQ-0066-1, OQ-0066-2).
+    - **Graphs without layers.** A lowering with no checkpoint has `L = 0`: every node is outside the layers, as a model's epilogue is, which is where #146 puts the circuits.
+    - **Public tensors.** A tensor computed from public tensors alone is public. The verifier evaluates its claims, and a lookup that reads one sends no split value for it.
+    - **The selection relation.** `ỹ(r_lo ‖ r_a ‖ r_hi) = Σ_k S̃(r_a, k)·x̃(r_lo ‖ k ‖ r_hi)` over the selected axis only, degree 2, with one claim on `x`. It covers `GatherPublic` and `Slice`, so no claim takes a Boolean coordinate. `ConstAdd` moves its constant into the claim's value.
+    - **The bit zero-checks.** They run in stage 1 and send their evaluations under `stage/1/evals`, with no new label. Recomposition is one zero-check summed over the bit axis, with the outputs zero-extended, so nothing is sent before `γ` and `x`'s claim moves to `y`'s coordinates. `AssertEqual` sends each side that is not public. `BitDecompose` and `AssertEqual` take gadget ids and no leaf site. A false bit fails stage 1's final check, `Reject(Sumcheck { stage: 1, round: n_1 })`, and an S-box output off its table fails LogUp, `Reject(Lookup { table })`.
+    - **Sizes,** from the builders. A SHA-256 block holds 680 zero-checks, 2,441 selections, 335 `BitFn` products and 79 masked `Mul`s. Its longest chain is 8 relations, 12 with committed bytes, whatever the block count. AES-128-CTR holds 97 selections, 30 `ConstMul`s per channel and 127 lookup nodes, with a chain of 2.
+    - **OQ-0072-1** asks whether the calculator should bound stage 1's zero-checks by the largest instance rather than their sum, since they share one point.
+    - It amends RFC-0006, RFC-0010, RFC-0014, RFC-0035, RFC-0037, RFC-0045 and RFC-0066.
+
 - R10's rank check on the compiled schedule, `cargo xtask check-mask-rank` ([#488](https://github.com/AbdelStark/tessera/issues/488); R10 stays open for the leaf stage's `tessera-protocol/2` points):
   - **`tessera_compiler::schedule::masks`.** It extracts every mask row's revealed functionals from the composed schedule and the advice and weight layouts:
     - pool atoms on committed advice tensors, each row its placed tensor's, and a one-layer read's its layer's (RFC-0069);

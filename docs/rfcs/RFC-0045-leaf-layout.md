@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('Open Questions': opening `ChannelParams` claims), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The leaf point', `P` without the tree index's coordinate; 'The split', the values of sites in the layers sent once per site and tensor, after a layer sumcheck)
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('Open Questions': opening `ChannelParams` claims), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The leaf point', `P` without the tree index's coordinate; 'The split', the values of sites in the layers sent once per site and tensor, after a layer sumcheck), [RFC-0072](RFC-0072-anchor-relations.md) ('The split': a public tensor's value is not sent)
 - Supersedes, on acceptance:
   - [RFC-0008](RFC-0008-logup-and-tables.md#batching) 'Batching' and 'Fraction tree': how an instance lays out its lookups, and the order of its lookup tree's leaves;
   - [RFC-0037](RFC-0037-stage-schedule.md#the-layer-point) 'The layer point' and 'Splits': the point `r_s` of a site's tensors, and the leaf stage's split values.
@@ -102,7 +102,7 @@ The lookup tree's leaf `i` holds column entry `σ_h(i)`, where `σ_h` keeps bit 
 
 **What is sent.**
 - The values go under `stage/0/split`, after `logup/values`, followed in the same `Vec<Fp2>` (`TreeProof.splits`) by the atom split values of any split leaf claim ([RFC-0037](RFC-0037-stage-schedule.md#splits)).
-- For each site in node order, and each of its real layers in order (once for a site outside the layers), the prover sends one value per tensor its lookups read.
+- For each site in node order, and each of its real layers in order (once for a site outside the layers), the prover sends one value per tensor its lookups read. It sends none for a public tensor, which the verifier evaluates at the block's point ([RFC-0072](RFC-0072-anchor-relations.md#public-tensors)).
 - Each value is the tensor's evaluation at its point.
 - The tensors of a site at a layer come in this order:
   1. lookup by lookup, in RFC-0009's order;
