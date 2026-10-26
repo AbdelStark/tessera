@@ -86,6 +86,20 @@
 //! table definitions are found again by hashing. The map is only looked up, never iterated, so
 //! no id depends on its order, and its keys are random per process, so a claim list cannot
 //! choose definitions that collide.
+//!
+//! # Graphs without a lowering
+//!
+//! The IR also holds the operations RFC-0066 and RFC-0072 add for the anchor circuits: `Sub`,
+//! `ConstAdd`, `Sum`, `Slice`, `GatherPublic`, `Bitwise`, `BitDecompose`, `BitFn` and
+//! `AssertEqual`, a `ConstMul` by a constant per channel, and lookups into `AesSbox`, `Gf256Mul`
+//! and `Bitwise8`. The lowering creates none of them. A [`GraphBuilder`] makes a graph of them,
+//! with no checkpoint, no sequence length and no residual route, and checks RFC-0006's shape and
+//! arity rules node by node; its module documentation lists them.
+//!
+//! The checks that read a graph after the lowering, range analysis, gadget selection, the
+//! schedule, the advice layout, the token axes and the gadgets' relations, prove the Llama
+//! lowering's operations only. Each refuses a node of any other operation, the first in node
+//! order, with its own typed error, until #150 adds that operation's relations to it.
 
 use std::collections::HashMap;
 
@@ -94,6 +108,9 @@ use tv_tables::{TableId, TableKind, exp_maps_to_zero};
 
 use crate::claims::{Profile, QuantPoint, Site, WeightType};
 use crate::validation::{PublicPart, Rescale};
+
+mod builder;
+pub use builder::{BuildError, Capacity, GraphBuilder, Rule};
 
 /// A tensor's dense id, in creation order (03 §3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -153,6 +170,10 @@ pub enum Role {
     Classes(WeightRef),
     /// The affine multiplier of each output channel of a weight, committed with it.
     Multipliers(WeightRef),
+    /// A public or advice-committed input a [`GraphBuilder`] declares, numbered from 0 among
+    /// the builder's inputs in declaration order: a circuit's message bits, initial value, masks
+    /// or committed bytes (RFC-0066 'The graph'), for example.
+    Input(u32),
 }
 
 /// A graph input: a tensor no node produces, with its declared type and range `[lo, hi]`
@@ -199,6 +220,74 @@ impl Shape {
     }
 }
 
+/// A permutation of a tensor's axes, one to four, held inline: `Transpose`'s output axis `i` is
+/// its input axis `perm[i]`. It reads as the slice of those axes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Perm {
+    axes: [u8; 4],
+    rank: u8,
+}
+
+impl Perm {
+    /// The permutation listing `axes`; `None` past four. Whether they permute a tensor's axes is
+    /// [`Rule::Permutation`]'s question, which a [`GraphBuilder`] asks of each `Transpose`.
+    pub fn new(axes: &[u8]) -> Option<Self> {
+        let mut perm = Self {
+            axes: [0; 4],
+            rank: u8::try_from(axes.len()).ok()?,
+        };
+        perm.axes.get_mut(..axes.len())?.copy_from_slice(axes);
+        Some(perm)
+    }
+
+    /// The axes, output axis by output axis.
+    pub fn as_slice(&self) -> &[u8] {
+        self.axes.get(..usize::from(self.rank)).unwrap_or(&[])
+    }
+}
+
+impl core::ops::Deref for Perm {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        self.as_slice()
+    }
+}
+
+impl TryFrom<Vec<u8>> for Perm {
+    /// The axes given back, more than four of them.
+    type Error = Vec<u8>;
+
+    fn try_from(axes: Vec<u8>) -> Result<Self, Vec<u8>> {
+        Self::new(&axes).ok_or(axes)
+    }
+}
+
+/// A Boolean function of bits, as its multilinear polynomial (RFC-0066 '`BitFn { f }`').
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BoolFn {
+    /// `a ⊕ b`: `a + b − 2ab`.
+    Xor,
+    /// `a ⊕ b ⊕ c`: `a + b + c − 2ab − 2ac − 2bc + 4abc`.
+    Xor3,
+    /// `a ∧ b`: `ab`.
+    And,
+    /// FIPS 180-4's `(e ∧ f) ⊕ (¬e ∧ g)`: `ef + g − eg`.
+    Ch,
+    /// The majority of three bits: `ab + ac + bc − 2abc`.
+    Maj,
+}
+
+impl BoolFn {
+    /// Its number of inputs: two for `Xor` and `And`, three for `Xor3`, `Ch` and `Maj`.
+    pub const fn arity(self) -> usize {
+        match self {
+            BoolFn::Xor | BoolFn::And => 2,
+            BoolFn::Xor3 | BoolFn::Ch | BoolFn::Maj => 3,
+        }
+    }
+}
+
 /// A tensor of the graph.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Tensor {
@@ -219,7 +308,9 @@ pub enum Broadcast {
     Leading,
 }
 
-/// The operations the Llama lowering creates, with RFC-0006's names and parameters.
+/// The operations of the verifier's IR, with RFC-0006's names and parameters: the Llama
+/// lowering's, then those RFC-0066 and RFC-0072 add for the anchor circuits, which only a
+/// [`GraphBuilder`] creates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Op {
     /// The committed one-hot token vectors.
@@ -232,7 +323,9 @@ pub enum Op {
         /// The weight.
         weight: WeightRef,
     },
-    /// Multiplication by a public constant.
+    /// Multiplication by a public constant: one value, or one per channel of the last axis
+    /// (RFC-0072 'Linear operations that are not coordinate maps'). The lowering's are all one
+    /// value.
     ConstMul {
         /// The constant's index.
         c: u32,
@@ -277,7 +370,7 @@ pub enum Op {
     /// A permutation of the axes.
     Transpose {
         /// Output axis `i` is input axis `perm[i]`.
-        perm: [u8; 3],
+        perm: Perm,
     },
     /// An axis inserted and the input repeated along it.
     Expand {
@@ -298,24 +391,75 @@ pub enum Op {
         /// `σ`.
         sigma: u8,
     },
-    /// A single-input lookup, SiLU's here.
+    /// A single-input lookup: SiLU's in the lowering; `AesSbox` and `Gf256Mul` in AES's
+    /// (RFC-0072 'Gadgets and leaf sites').
     TableMap {
         /// The table.
         table: TableId,
     },
+    /// Elementwise difference, `a − b`.
+    Sub,
+    /// Addition of a public constant, one value or one per channel of the last axis, at real
+    /// positions only (RFC-0072 'Padded positions').
+    ConstAdd {
+        /// The constant's index.
+        c: u32,
+    },
+    /// The sum along an axis.
+    Sum {
+        /// The axis summed.
+        axis: u8,
+    },
+    /// Rows `start` to `start + len − 1` of an axis (RFC-0072 'The selection relation').
+    Slice {
+        /// The axis cut.
+        axis: u8,
+        /// The first row kept.
+        start: u32,
+        /// The rows kept.
+        len: u32,
+    },
+    /// The rows of the outermost axis that a public constant lists, in its order (RFC-0072 'The
+    /// selection relation').
+    GatherPublic {
+        /// The index constant's index.
+        index: u32,
+    },
+    /// A byte operation of two operands, by lookup into a `Bitwise8` table: AES's alone
+    /// (RFC-0066).
+    Bitwise {
+        /// The `Bitwise8` table.
+        table: TableId,
+    },
+    /// The committed bits of a true integer in two parts: `low` result bits and `high` carry
+    /// bits, each output's bit axis innermost (RFC-0066 '`BitDecompose { low, high }`').
+    BitDecompose {
+        /// The result bits.
+        low: u8,
+        /// The carry bits; 0 for none, and no second output.
+        high: u8,
+    },
+    /// A Boolean function of two or three bit tensors (RFC-0066 '`BitFn { f }`').
+    BitFn {
+        /// The function.
+        f: BoolFn,
+    },
+    /// The relation `a = b` elementwise, with no output (RFC-0066 '`AssertEqual`').
+    AssertEqual,
 }
 
-/// At most two tensor ids, held inline: a node's inputs or outputs.
+/// At most three tensor ids, held inline: a node's inputs, up to `BitFn`'s three, or its
+/// outputs, up to two.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct Ids {
-    ids: [TensorId; 2],
+    ids: [TensorId; 3],
     len: u8,
 }
 
 impl Ids {
     fn of(ids: &[TensorId]) -> Result<Self, LowerError> {
         let mut held = Self {
-            ids: [TensorId(0); 2],
+            ids: [TensorId(0); 3],
             len: u8::try_from(ids.len()).map_err(|_| LowerError::Internal)?,
         };
         let slots = held.ids.get_mut(..ids.len()).ok_or(LowerError::Internal)?;
@@ -404,23 +548,36 @@ pub enum Route {
     TwoSteps,
 }
 
-/// The lowered graph of one sequence.
+/// Where a constant's values lie among all constants' values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Span {
+    start: u32,
+    len: u32,
+}
+
+/// The graph of one sequence, as [`lower`] gives it, or a graph a [`GraphBuilder`] made.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Graph {
+    /// The sequence's length; 0 for a graph without a lowering.
     n: u32,
     tensors: Vec<Tensor>,
     inputs: Vec<Input>,
     nodes: Vec<Node>,
-    constants: Vec<i64>,
+    /// Every constant's values, constant after constant.
+    constant_values: Vec<i64>,
+    /// Each constant's values among them, by index.
+    constant_spans: Vec<Span>,
     shift_classes: Vec<ShiftClasses>,
     weights: Vec<(WeightRef, TensorId)>,
     tables: Vec<LoweredTable>,
     checkpoints: Vec<TensorId>,
-    routes: [Route; 2],
+    /// The residual sites' routes; `None` for a graph without a lowering.
+    routes: Option<[Route; 2]>,
 }
 
 impl Graph {
-    /// The sequence's length.
+    /// The sequence's length, from 1 to `max_context` for a lowered graph; 0 for a graph a
+    /// [`GraphBuilder`] made from nothing, which has no sequence.
     pub fn length(&self) -> u32 {
         self.n
     }
@@ -450,9 +607,25 @@ impl Graph {
         self.nodes.get(usize::try_from(id.0).ok()?)
     }
 
-    /// The constants, by index. Every constant the Llama lowering creates is one value.
+    /// Every constant's values, constant after constant in index order. Every constant the Llama
+    /// lowering creates is one value, so in a lowered graph entry `c` is constant `c`. A graph a
+    /// [`GraphBuilder`] made may hold constants of several values: read one by its index with
+    /// [`Graph::constant`].
     pub fn constants(&self) -> &[i64] {
-        &self.constants
+        &self.constant_values
+    }
+
+    /// Constant `index`'s values: one, or one per channel, or a gather's indices.
+    pub fn constant(&self, index: u32) -> Option<&[i64]> {
+        let span = self.constant_spans.get(usize::try_from(index).ok()?)?;
+        let start = usize::try_from(span.start).ok()?;
+        let end = start.checked_add(usize::try_from(span.len).ok()?)?;
+        self.constant_values.get(start..end)
+    }
+
+    /// The number of constants.
+    pub fn constant_count(&self) -> usize {
+        self.constant_spans.len()
     }
 
     /// The shift-class sets, by index.
@@ -465,29 +638,79 @@ impl Graph {
         &self.weights
     }
 
-    /// The lowering's tables, by id: RoPE's, then each `Exp` and `Silu` table in order of first
-    /// use. Gadget selection's tables follow them and are not here.
+    /// The graph's own tables, by id: the lowering's, RoPE's and then each `Exp` and `Silu` table
+    /// in order of first use; then those a [`GraphBuilder`] declared, in order of declaration.
+    /// Gadget selection's tables follow them and are not here.
     pub fn tables(&self) -> &[LoweredTable] {
         &self.tables
     }
 
-    /// The table `id`, one of the lowering's.
+    /// The table `id`, one of the graph's own.
     pub fn table(&self, id: TableId) -> Option<&LoweredTable> {
         self.tables.get(usize::try_from(id.0).ok()?)
     }
 
     /// The checkpoints `c_0, …, c_L`: the residual after the embedding and after each layer
-    /// (RFC-0037 'Layers and kinds').
+    /// (RFC-0037 'Layers and kinds'). A graph a [`GraphBuilder`] made has none unless declared.
     pub fn checkpoints(&self) -> &[TensorId] {
         &self.checkpoints
     }
 
-    /// The route of a residual site, `AttnResidual` or `MlpResidual`; `None` for another site.
+    /// The route of a residual site, `AttnResidual` or `MlpResidual`; `None` for another site,
+    /// and for a graph a [`GraphBuilder`] made from nothing.
     pub fn route(&self, site: Site) -> Option<Route> {
+        let routes = self.routes.as_ref()?;
         match site {
-            Site::AttnResidual => self.routes.first().copied(),
-            Site::MlpResidual => self.routes.get(1).copied(),
+            Site::AttnResidual => routes.first().copied(),
+            Site::MlpResidual => routes.get(1).copied(),
             _ => None,
+        }
+    }
+
+    /// The first node, in node order, of an operation the Llama lowering never creates: `Sub`,
+    /// `ConstAdd`, `Sum`, `Slice`, `GatherPublic`, `Bitwise`, `BitDecompose`, `BitFn`,
+    /// `AssertEqual`, a `ConstMul` whose constant is not one value, or a `TableMap` into a table
+    /// other than `Silu`. The checks after the lowering prove the lowering's operations only,
+    /// and each refuses such a node until #150 gives it that operation's relations. A node past
+    /// `u32` ids, which no graph holds, is named as `u32::MAX`.
+    pub(crate) fn first_non_llama(&self) -> Option<NodeId> {
+        let index = self
+            .nodes
+            .iter()
+            .position(|node| !self.is_llama(node.op()))?;
+        Some(NodeId(u32::try_from(index).unwrap_or(u32::MAX)))
+    }
+
+    /// Whether `op` is one of the Llama lowering's operations, with the parameters it gives
+    /// them (RFC-0044).
+    fn is_llama(&self, op: &Op) -> bool {
+        match *op {
+            Op::OneHot { .. }
+            | Op::MatMulWeight { .. }
+            | Op::Add
+            | Op::Reshape
+            | Op::SumSquares { .. }
+            | Op::RsqrtRow { .. }
+            | Op::Mul { .. }
+            | Op::Requant { .. }
+            | Op::Rotate { .. }
+            | Op::Transpose { .. }
+            | Op::Expand { .. }
+            | Op::MatMulAct { .. }
+            | Op::SoftmaxRow { .. } => true,
+            Op::ConstMul { c } => self.constant(c).is_some_and(|values| values.len() == 1),
+            Op::TableMap { table } => self
+                .table(table)
+                .is_some_and(|t| matches!(t.kind, TableKind::Silu { .. })),
+            Op::Sub
+            | Op::ConstAdd { .. }
+            | Op::Sum { .. }
+            | Op::Slice { .. }
+            | Op::GatherPublic { .. }
+            | Op::Bitwise { .. }
+            | Op::BitDecompose { .. }
+            | Op::BitFn { .. }
+            | Op::AssertEqual => false,
         }
     }
 }
@@ -518,9 +741,11 @@ impl Graph {
         self.tensors[tensor.0 as usize].kind = kind;
     }
 
-    /// Replaces constant `index`.
+    /// Replaces constant `index`, of one value.
     pub(crate) fn set_constant(&mut self, index: u32, value: i64) {
-        self.constants[index as usize] = value;
+        let span = self.constant_spans[index as usize];
+        assert_eq!(span.len, 1, "a constant of one value");
+        self.constant_values[span.start as usize] = value;
     }
 }
 
@@ -568,12 +793,13 @@ pub fn lower(public: &PublicPart<'_>, n: u32) -> Result<Graph, LowerError> {
             tensors: Vec::new(),
             inputs: Vec::new(),
             nodes: Vec::new(),
-            constants: Vec::new(),
+            constant_values: Vec::new(),
+            constant_spans: Vec::new(),
             shift_classes: Vec::new(),
             weights: Vec::new(),
             tables: Vec::new(),
             checkpoints: Vec::new(),
-            routes,
+            routes: Some(routes),
         },
         known: HashMap::new(),
         positions: TensorId(0),
@@ -720,7 +946,9 @@ impl Lowering<'_, '_> {
             Kind::Virtual,
         )?;
         let swapped = self.node1(
-            Op::Transpose { perm: [1, 0, 2] },
+            Op::Transpose {
+                perm: swap_outer()?,
+            },
             &[scaled],
             &[n, h, dh],
             Kind::Virtual,
@@ -915,7 +1143,9 @@ impl Lowering<'_, '_> {
         let (n, h, dh) = (self.n, self.h, self.dh);
         let split = self.node1(Op::Reshape, &[x], &[n, k, dh], Kind::Virtual)?;
         let head_major = self.node1(
-            Op::Transpose { perm: [1, 0, 2] },
+            Op::Transpose {
+                perm: swap_outer()?,
+            },
             &[split],
             &[k, n, dh],
             Kind::Virtual,
@@ -1206,8 +1436,10 @@ impl Lowering<'_, '_> {
 
     /// A new constant of one value; its index.
     fn constant(&mut self, value: i64) -> Result<u32, LowerError> {
-        let index = next_id(self.graph.constants.len())?;
-        push(&mut self.graph.constants, value)?;
+        let index = next_id(self.graph.constant_spans.len())?;
+        let start = next_id(self.graph.constant_values.len())?;
+        push(&mut self.graph.constant_values, value)?;
+        push(&mut self.graph.constant_spans, Span { start, len: 1 })?;
         Ok(index)
     }
 
@@ -1234,6 +1466,11 @@ fn weight_before(point: QuantPoint) -> Result<WeightRef, LowerError> {
             .ok_or(LowerError::Internal),
         QuantPoint::Embed | QuantPoint::FinalNorm => Err(LowerError::Internal),
     }
+}
+
+/// `[1, 0, 2]`: the permutation that swaps a rank-3 tensor's two outer axes, the heads' layouts'.
+fn swap_outer() -> Result<Perm, LowerError> {
+    Perm::new(&[1, 0, 2]).ok_or(LowerError::Internal)
 }
 
 /// The greatest class index of a site of `classes` classes.

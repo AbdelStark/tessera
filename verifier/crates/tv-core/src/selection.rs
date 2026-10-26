@@ -65,7 +65,11 @@ pub struct Selection {
 ///
 /// # Errors
 /// The existing RFC-0007 gadget-domain errors, `Memory` for failed allocation, or `Internal`
-/// for inconsistent metadata produced by the verifier's own lowering. No secret data is read.
+/// for inconsistent metadata produced by the verifier's own lowering. A graph that holds an
+/// operation the lowering never creates (RFC-0066, RFC-0072: `Sub`, `ConstAdd`, `Sum`, `Slice`,
+/// `GatherPublic`, `Bitwise`, `BitDecompose`, `BitFn`, `AssertEqual`, a `ConstMul` by a constant
+/// per channel or a `TableMap` into an anchor table) is `Internal` before any gadget is numbered,
+/// until #150 selects their gadgets. No secret data is read.
 pub fn derive(graph: &Graph, policy: GadgetPolicy) -> Result<Selection, ClaimsError> {
     crate::range_checks::catalog(graph, policy)
 }

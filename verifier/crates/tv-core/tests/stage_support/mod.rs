@@ -401,6 +401,18 @@ impl Witness {
                     }
                     vec![y]
                 }
+                // The anchor circuits' operations: no lowered graph holds one.
+                op @ (Op::Sub
+                | Op::ConstAdd { .. }
+                | Op::Sum { .. }
+                | Op::Slice { .. }
+                | Op::GatherPublic { .. }
+                | Op::Bitwise { .. }
+                | Op::BitDecompose { .. }
+                | Op::BitFn { .. }
+                | Op::AssertEqual) => {
+                    panic!("the reference evaluates the lowering's operations, not {op:?}")
+                }
             };
             for (&o, v) in node.outputs().iter().zip(outs) {
                 assert_eq!(v.len(), size(o), "{:?}", node.op());

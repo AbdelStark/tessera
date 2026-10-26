@@ -9,7 +9,7 @@
 //! axis can be as long as the sequence. With `x` a node's first input and `a` its token axis:
 //!
 //! 1. **Inputs.** `Tokens` and `Positions` have it at axis 0; every other input (weights,
-//!    classes, multipliers) has none.
+//!    classes, multipliers, and a builder's inputs) has none.
 //! 2. **Kept.** `ConstMul`, `Rotate`, `Requant`, `TableMap`, `RsqrtRow` and `OneHot` keep `a`,
 //!    which for `OneHot` is its tokens' axis 0 (the vocabulary axis is appended).
 //!    - `Add` keeps `a` and needs its second input's to be `a`.
@@ -31,9 +31,14 @@
 //!    never create one: only the two inputs of rule 1 do.
 //!
 //! RFC-0054's other rules name operations this lowering never emits (`Sub`, `ConstAdd`, `Sum`,
-//! `Slice`, `GatherPublic`, `Argmax`, `InverseCdf`, `Bitwise`): [`Op`] has no variant for them.
+//! `Slice`, `GatherPublic`, `Argmax`, `InverseCdf`, `Bitwise`). A graph that holds one of the
+//! anchor circuits' operations (RFC-0066, RFC-0072), or a `ConstMul` by a constant per channel
+//! or a `TableMap` into one of their tables, has no token groups yet: RFC-0054 has no rule for
+//! RFC-0066's operations, and RFC-0072 leaves token groups on such a graph to #146. It is refused
+//! at the first such node, before any axis is derived.
 //!
-//! **Refusals**, each [`AxisError::Refused`] at its node, `Inconclusive(ERR-INTERNAL)`:
+//! **Refusals**, each [`AxisError::Refused`] at its node, `Inconclusive(ERR-INTERNAL)`: a node
+//! of an operation of the paragraph above;
 //! `Add` with inputs whose axes differ; `Mul` whose operand breaks its broadcast's rule;
 //! `MatMulWeight` contracting it; `SumSquares` removing it; `Reshape` with element counts that
 //! differ or no axis that keeps it whole; `MatMulAct` or `SoftmaxRow` whose `x` has it elsewhere
@@ -91,6 +96,9 @@ impl TokenAxes {
             .try_reserve_exact(count)
             .map_err(|_| AxisError::Memory)?;
         known.resize(count, None);
+        if let Some(node) = graph.first_non_llama() {
+            return Err(AxisError::Refused { node });
+        }
         for input in graph.inputs() {
             let axis = match input.role {
                 Role::Tokens | Role::Positions => {
@@ -105,7 +113,7 @@ impl TokenAxes {
                     }
                     Some(0)
                 }
-                Role::Weight(_) | Role::Classes(_) | Role::Multipliers(_) => None,
+                Role::Weight(_) | Role::Classes(_) | Role::Multipliers(_) | Role::Input(_) => None,
             };
             let slot = known
                 .get_mut(index(input.tensor)?)
@@ -209,6 +217,16 @@ impl TokenAxes {
                     }
                     a
                 }
+                // The anchor circuits' operations, refused above (module documentation).
+                Op::Sub
+                | Op::ConstAdd { .. }
+                | Op::Sum { .. }
+                | Op::Slice { .. }
+                | Op::GatherPublic { .. }
+                | Op::Bitwise { .. }
+                | Op::BitDecompose { .. }
+                | Op::BitFn { .. }
+                | Op::AssertEqual => return Err(refused),
             };
             for &output in node.outputs() {
                 if let (Some(o), Some(a)) = (out, a) {

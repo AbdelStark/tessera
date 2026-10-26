@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Integer intervals derived from the verifier's public graph (RFC-0006, SP-7).
+//!
+//! The transfer functions are the Llama lowering's operations'. A node of another operation, one
+//! the anchor circuits add (RFC-0066, RFC-0072), or a `TableMap` into one of their tables, is
+//! [`RangeError::Unsupported`] until #150 gives range analysis their rules (RFC-0006 'Range
+//! analysis' as RFC-0066 'Ranges' amends it).
 
-use crate::lowering::{Broadcast, Graph, Node, Op, TensorId};
+use crate::lowering::{Broadcast, Graph, Node, NodeId, Op, TensorId};
 use tv_tables::TableKind;
 
 /// An inclusive i128 interval, or unbounded when exact endpoint arithmetic overflows.
@@ -30,6 +35,14 @@ pub enum RangeError {
     Memory,
     /// The verifier's derived graph breaks its internal representation rules.
     Internal,
+    /// `node`'s operation has no transfer function here yet: `Sub`, `ConstAdd`, `Sum`, `Slice`,
+    /// `GatherPublic`, `Bitwise`, `BitDecompose`, `BitFn`, `AssertEqual`, a `ConstMul` whose
+    /// constant is not one value, or a `TableMap` into `AesSbox` or `Gf256Mul`. A fault of the
+    /// verifier, `Inconclusive(ERR-INTERNAL)`: no lowering of a claim list creates one.
+    Unsupported {
+        /// The first such node, in node order.
+        node: NodeId,
+    },
 }
 
 /// Derive every tensor's integer interval, in tensor-id order (RFC-0006 'Range analysis').
@@ -40,7 +53,8 @@ pub enum RangeError {
 ///
 /// # Errors
 /// [`RangeError::Memory`] for unavailable storage; [`RangeError::Internal`] for a graph whose
-/// operands or parameters break the lowering's representation. Integer overflow makes the
+/// operands or parameters break the lowering's representation; [`RangeError::Unsupported`] at
+/// the first node of an operation the module documentation names. Integer overflow makes the
 /// affected interval unbounded instead of wrapping.
 pub fn analyze(graph: &Graph) -> Result<Vec<Interval>, RangeError> {
     let mut ranges = Vec::new();
@@ -58,7 +72,10 @@ pub fn analyze(graph: &Graph) -> Result<Vec<Interval>, RangeError> {
             Interval(Some((i128::from(input.lo), i128::from(input.hi)))),
         )?;
     }
-    for node in graph.nodes() {
+    for (index, node) in graph.nodes().iter().enumerate() {
+        let unsupported = RangeError::Unsupported {
+            node: NodeId(u32::try_from(index).map_err(|_| RangeError::Internal)?),
+        };
         let first = operand(node, 0)?;
         let a = get(&ranges, first)?;
         let output = match *node.op() {
@@ -81,14 +98,12 @@ pub fn analyze(graph: &Graph) -> Result<Vec<Interval>, RangeError> {
                 }
             }
             Op::ConstMul { c } => {
-                let constant = graph
-                    .constants()
-                    .get(usize::try_from(c).map_err(|_| RangeError::Internal)?)
-                    .ok_or(RangeError::Internal)?;
-                a.product(Interval(Some((
-                    i128::from(*constant),
-                    i128::from(*constant),
-                ))))
+                let constant = match graph.constant(c).ok_or(RangeError::Internal)? {
+                    &[value] => value,
+                    // A constant per channel (RFC-0072): its least and greatest values.
+                    _ => return Err(unsupported),
+                };
+                a.product(Interval(Some((i128::from(constant), i128::from(constant)))))
             }
             Op::Add => a.add(get(&ranges, operand(node, 1)?)?),
             Op::SumSquares { axis } => {
@@ -171,8 +186,20 @@ pub fn analyze(graph: &Graph) -> Result<Vec<Interval>, RangeError> {
             }
             Op::TableMap { table } => match graph.table(table).ok_or(RangeError::Internal)?.kind {
                 TableKind::Silu { .. } => Interval(Some((-128, 127))),
+                // The anchor's byte tables: `[0, 255]` (RFC-0006, as RFC-0066 amends it).
+                TableKind::AesSbox | TableKind::Gf256Mul { .. } => return Err(unsupported),
                 _ => return Err(RangeError::Internal),
             },
+            // The anchor circuits' operations (RFC-0066 'Ranges', RFC-0072).
+            Op::Sub
+            | Op::ConstAdd { .. }
+            | Op::Sum { .. }
+            | Op::Slice { .. }
+            | Op::GatherPublic { .. }
+            | Op::Bitwise { .. }
+            | Op::BitDecompose { .. }
+            | Op::BitFn { .. }
+            | Op::AssertEqual => return Err(unsupported),
         };
         let expected = if matches!(node.op(), Op::SoftmaxRow { .. }) {
             2

@@ -309,7 +309,31 @@ impl<'p> Plan<'p> {
                         },
                     )?;
                 }
-                _ => {}
+                // The lowering's other operations have no stacked family.
+                Op::Requant { .. }
+                | Op::TableMap { .. }
+                | Op::OneHot { .. }
+                | Op::MatMulWeight { .. }
+                | Op::ConstMul { .. }
+                | Op::Add
+                | Op::Reshape
+                | Op::SumSquares { .. }
+                | Op::Mul { .. }
+                | Op::Rotate { .. }
+                | Op::Transpose { .. }
+                | Op::Expand { .. }
+                | Op::MatMulAct { .. } => {}
+                // No site is an anchor circuit's node: `model_sites` takes them from gadget
+                // selection, which refuses those operations (RFC-0072).
+                Op::Sub
+                | Op::ConstAdd { .. }
+                | Op::Sum { .. }
+                | Op::Slice { .. }
+                | Op::GatherPublic { .. }
+                | Op::Bitwise { .. }
+                | Op::BitDecompose { .. }
+                | Op::BitFn { .. }
+                | Op::AssertEqual => return Err(internal()),
             }
         }
         if forest_trees.next().is_some() {

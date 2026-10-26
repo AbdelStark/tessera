@@ -153,6 +153,18 @@ pub fn tags(graph: &Graph) -> Vec<Vec<Option<u32>>> {
                 out[r.0 as usize] = Some(rows);
                 xt.clone()
             }
+            // The anchor circuits' operations: no lowered graph holds one.
+            op @ (Op::Sub
+            | Op::ConstAdd { .. }
+            | Op::Sum { .. }
+            | Op::Slice { .. }
+            | Op::GatherPublic { .. }
+            | Op::Bitwise { .. }
+            | Op::BitDecompose { .. }
+            | Op::BitFn { .. }
+            | Op::AssertEqual) => {
+                panic!("the reference tags the lowering's operations, not {op:?}")
+            }
         };
         out[y.0 as usize] = Some(result);
     }

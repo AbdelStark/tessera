@@ -591,9 +591,15 @@ fn walk(
     policy: GadgetPolicy,
     capture: bool,
 ) -> Result<(Vec<Interval>, Tables<'_>), ClaimsError> {
+    // Gadget selection proves the Llama lowering's gadgets only: a graph holding an operation of
+    // the anchor circuits is refused before any of its gadgets is numbered (RFC-0066, RFC-0072;
+    // #150 adds them).
+    if graph.first_non_llama().is_some() {
+        return Err(ClaimsError::Internal);
+    }
     let ranges = analyze(graph).map_err(|e| match e {
         RangeError::Memory => ClaimsError::Memory,
-        RangeError::Internal => ClaimsError::Internal,
+        RangeError::Internal | RangeError::Unsupported { .. } => ClaimsError::Internal,
     })?;
     let mut tables = Tables {
         base: graph.tables(),
@@ -604,7 +610,7 @@ fn walk(
     };
     let mut next = 0u32;
     for node in graph.nodes() {
-        if !is_gadget(node.op()) {
+        if !is_gadget(node.op())? {
             continue;
         }
         let id = GadgetId(next);
@@ -652,6 +658,10 @@ fn check_gadget(
         }
         Op::TableMap { table: tid } => {
             let base = graph.table(tid).ok_or(ClaimsError::Internal)?;
+            if matches!(base.kind, TableKind::AesSbox | TableKind::Gf256Mul { .. }) {
+                // AES's lookups take their gadgets with #150 (RFC-0072 'AES's lookups').
+                return Err(ClaimsError::Internal);
+            }
             let TableKind::Silu {
                 b, ref r_by_class, ..
             } = base.kind
@@ -738,15 +748,36 @@ fn check_gadget(
     Ok(())
 }
 
-fn is_gadget(op: &Op) -> bool {
-    matches!(
-        op,
+/// Whether `op` takes a gadget here: the Llama lowering's gadget-backed operations do. The
+/// anchor circuits' are `Internal` until #150 selects their gadgets (RFC-0072 'Gadgets and leaf
+/// sites'); `walk` refuses a graph holding one before this is asked.
+fn is_gadget(op: &Op) -> Result<bool, ClaimsError> {
+    match op {
         Op::OneHot { .. }
-            | Op::Requant { .. }
-            | Op::TableMap { .. }
-            | Op::SoftmaxRow { .. }
-            | Op::RsqrtRow { .. }
-    )
+        | Op::Requant { .. }
+        | Op::TableMap { .. }
+        | Op::SoftmaxRow { .. }
+        | Op::RsqrtRow { .. } => Ok(true),
+        Op::MatMulWeight { .. }
+        | Op::ConstMul { .. }
+        | Op::Add
+        | Op::Reshape
+        | Op::SumSquares { .. }
+        | Op::Mul { .. }
+        | Op::Rotate { .. }
+        | Op::Transpose { .. }
+        | Op::Expand { .. }
+        | Op::MatMulAct { .. } => Ok(false),
+        Op::Sub
+        | Op::ConstAdd { .. }
+        | Op::Sum { .. }
+        | Op::Slice { .. }
+        | Op::GatherPublic { .. }
+        | Op::Bitwise { .. }
+        | Op::BitDecompose { .. }
+        | Op::BitFn { .. }
+        | Op::AssertEqual => Err(ClaimsError::Internal),
+    }
 }
 
 fn copy_shifts(shifts: &[u8]) -> Result<Vec<u8>, ClaimsError> {
@@ -900,14 +931,34 @@ fn finish_catalog(
         .map_err(|_| ClaimsError::Memory)?;
     let mut request_sets = state.trace.iter();
     for (index, node) in graph.nodes().iter().enumerate() {
-        if !is_gadget(node.op()) {
+        if !is_gadget(node.op())? {
             continue;
         }
         let requests = request_sets.next().ok_or(ClaimsError::Internal)?;
         let prefix = match node.op() {
             Op::TableMap { table } => Some(*table),
             Op::SoftmaxRow { exp_table, .. } => Some(*exp_table),
-            _ => None,
+            Op::OneHot { .. } | Op::Requant { .. } | Op::RsqrtRow { .. } => None,
+            // `is_gadget` admits no other operation.
+            Op::MatMulWeight { .. }
+            | Op::ConstMul { .. }
+            | Op::Add
+            | Op::Reshape
+            | Op::SumSquares { .. }
+            | Op::Mul { .. }
+            | Op::Rotate { .. }
+            | Op::Transpose { .. }
+            | Op::Expand { .. }
+            | Op::MatMulAct { .. }
+            | Op::Sub
+            | Op::ConstAdd { .. }
+            | Op::Sum { .. }
+            | Op::Slice { .. }
+            | Op::GatherPublic { .. }
+            | Op::Bitwise { .. }
+            | Op::BitDecompose { .. }
+            | Op::BitFn { .. }
+            | Op::AssertEqual => return Err(ClaimsError::Internal),
         };
         let capacity = requests
             .len()

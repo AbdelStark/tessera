@@ -127,6 +127,14 @@
 //! point has as many coordinates as its largest `ZeroCheck`. The stage count is one more than the
 //! number of reduction stages, which does not depend on `L` or `n` (INV-SCH-4).
 //!
+//! # Operations
+//!
+//! The schedule proves the Llama lowering's operations. A graph that holds another, one the
+//! anchor circuits add (`Sub`, `ConstAdd`, `Sum`, `Slice`, `GatherPublic`, `Bitwise`,
+//! `BitDecompose`, `BitFn`, `AssertEqual`), a `ConstMul` by a constant per channel or a
+//! `TableMap` into one of their tables, is [`ScheduleError::Unsupported`] at the first such node,
+//! before its layers are read, until #150 derives their relations (RFC-0072).
+//!
 //! # Errors
 //!
 //! Every [`ScheduleError`] is a fault of the verifier, `Inconclusive(ERR-INTERNAL)`, or
@@ -707,7 +715,8 @@ pub enum ScheduleError {
     },
     /// A claim reaches what the schedule does not prove: a `Reshape` that is no identity, a
     /// per-layer constant in a stacked claim, a public atom, or a relation of another shape, at
-    /// `node`.
+    /// `node`; or `node` is the first of an operation the module documentation's 'Operations'
+    /// names.
     Unsupported {
         /// The node.
         node: NodeId,
@@ -890,6 +899,10 @@ pub(crate) struct Layout {
 
 impl Layout {
     pub(crate) fn of(graph: &Graph) -> Result<Self, ScheduleError> {
+        // 'Operations': the anchor circuits' nodes, before anything else is read.
+        if let Some(node) = graph.first_non_llama() {
+            return Err(ScheduleError::Unsupported { node });
+        }
         let checkpoints = graph.checkpoints();
         let layers = checkpoints
             .len()
@@ -1161,6 +1174,19 @@ fn same_op(op: &Op, rep: &Op, layer: u32) -> bool {
         }
         (Op::Requant { lo, hi, .. }, Op::Requant { lo: l, hi: h, .. }) => lo == l && hi == h,
         (Op::SoftmaxRow { sigma, .. }, Op::SoftmaxRow { sigma: s, .. }) => sigma == s,
+        // 'Operations': `Layout::of` refuses these first; no template holds them.
+        (
+            Op::Sub
+            | Op::ConstAdd { .. }
+            | Op::Sum { .. }
+            | Op::Slice { .. }
+            | Op::GatherPublic { .. }
+            | Op::Bitwise { .. }
+            | Op::BitDecompose { .. }
+            | Op::BitFn { .. }
+            | Op::AssertEqual,
+            _,
+        ) => false,
         _ => op == rep,
     }
 }
@@ -2227,48 +2253,69 @@ impl Deriving<'_, '_> {
         sum_vars(&dims(self.graph, id)?)
     }
 
-    /// Constant `c` of the graph, in the field.
+    /// Constant `c` of the graph, of one value, in the field. 'Operations' refuses a constant
+    /// per channel before the derivation starts.
     fn constant(&self, c: u32) -> Result<Fp, ScheduleError> {
-        let value = *self
-            .graph
-            .constants()
-            .get(index(c)?)
-            .ok_or(ScheduleError::Internal)?;
-        Ok(signed(value))
+        match self.graph.constant(c) {
+            Some(&[value]) => Ok(signed(value)),
+            _ => Err(ScheduleError::Internal),
+        }
+    }
+}
+
+/// What the schedule makes of an operation: a gadget, a site of the leaf stage; linear, its
+/// claims mapped to its inputs' (RFC-0010 'Relations', `Linear`; RFC-0037 'Head layouts'); or a
+/// sumcheck relation that proves its output. The anchor circuits' operations are none of these
+/// yet: `Layout::of` refuses them first ('Operations').
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Treatment {
+    Gadget,
+    Linear,
+    Relation,
+    Refused,
+}
+
+/// The treatment of `op`, with an arm for every operation.
+fn treatment(op: &Op) -> Treatment {
+    match op {
+        Op::OneHot { .. }
+        | Op::Requant { .. }
+        | Op::RsqrtRow { .. }
+        | Op::SoftmaxRow { .. }
+        | Op::TableMap { .. } => Treatment::Gadget,
+        Op::Reshape | Op::Transpose { .. } | Op::Expand { .. } | Op::ConstMul { .. } | Op::Add => {
+            Treatment::Linear
+        }
+        Op::MatMulWeight { .. }
+        | Op::MatMulAct { .. }
+        | Op::Mul { .. }
+        | Op::SumSquares { .. }
+        | Op::Rotate { .. } => Treatment::Relation,
+        Op::Sub
+        | Op::ConstAdd { .. }
+        | Op::Sum { .. }
+        | Op::Slice { .. }
+        | Op::GatherPublic { .. }
+        | Op::Bitwise { .. }
+        | Op::BitDecompose { .. }
+        | Op::BitFn { .. }
+        | Op::AssertEqual => Treatment::Refused,
     }
 }
 
 /// Whether an operation is gadget-backed: a site of the leaf stage.
 fn is_gadget(op: &Op) -> bool {
-    matches!(
-        op,
-        Op::OneHot { .. }
-            | Op::Requant { .. }
-            | Op::RsqrtRow { .. }
-            | Op::SoftmaxRow { .. }
-            | Op::TableMap { .. }
-    )
+    treatment(op) == Treatment::Gadget
 }
 
-/// Whether an operation is linear in its inputs, its claims mapped to its inputs' (RFC-0010
-/// 'Relations', `Linear`; RFC-0037 'Head layouts').
+/// Whether an operation is linear in its inputs, its claims mapped to its inputs'.
 fn is_linear(op: &Op) -> bool {
-    matches!(
-        op,
-        Op::Reshape | Op::Transpose { .. } | Op::Expand { .. } | Op::ConstMul { .. } | Op::Add
-    )
+    treatment(op) == Treatment::Linear
 }
 
 /// Whether an operation's output is proven by a sumcheck relation.
 fn is_relation(op: &Op) -> bool {
-    matches!(
-        op,
-        Op::MatMulWeight { .. }
-            | Op::MatMulAct { .. }
-            | Op::Mul { .. }
-            | Op::SumSquares { .. }
-            | Op::Rotate { .. }
-    )
+    treatment(op) == Treatment::Relation
 }
 
 /// Whether a `Reshape` from `from` to `to` maps coordinates as the identity: in each group of
