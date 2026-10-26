@@ -510,7 +510,10 @@ pub fn derive_schedule(lowering: &Lowering) -> Result<StageSchedule, CompileErro
 /// - a `BitDecompose` or an `AssertEqual`, whose stage-1 zero-checks are not derived yet;
 /// - logits that no node produces, or a claim that reaches an operation RFC-0037 maps no claim
 ///   through yet, such as `Slice` or `GatherPublic`;
-/// - a matmul with a public operand, which its relation does not read as `Public`.
+/// - a matmul with one public operand, which its relations do not read as `Public`;
+/// - a leaf site that reads a public tensor, whose value the leaf layout still sends in the split
+///   (RFC-0045 'The split' sends none);
+/// - a graph with layers whose schedule has no stage 1, which draws the layer point.
 ///
 /// A claim that reaches a public tensor takes it as a [`PublicTerm`], and so does one through a
 /// `ConstAdd` its shift; a relation's public operand leaves no claim (RFC-0072 'Public tensors'
@@ -719,6 +722,31 @@ fn derive(
                 rule: "a logits site reads the graph's logits",
             })?),
         };
+        // RFC-0045 'The split' sends no value for a lookup's public input, which the verifier
+        // evaluates itself (RFC-0072 'Public tensors' 'In the leaf stage'). The leaf layout still
+        // sends one value per read, so until it leaves public reads out (#526's AES slice), such a
+        // site is refused rather than given a split message the RFC does not have.
+        let (site_node, tensor) = match site {
+            Site::Gadget {
+                node: NodeRef::Position(position),
+                input,
+            } => {
+                let node = layers.node(position, 0);
+                (Some(node), input_of(graph, node, input))
+            }
+            Site::Gadget {
+                node: NodeRef::Node(node),
+                input,
+            } => (Some(node), input_of(graph, node, input)),
+            Site::Logits => (lm, logits.unwrap_or(TensorId(u32::MAX))),
+        };
+        if derivation.is_public(Kind::Tensor(tensor)) {
+            return refuse(
+                site_node,
+                "a leaf site reads no public tensor: the leaf layout does not leave its value out \
+                 of the split yet",
+            );
+        }
         let vars = derivation.vars(kind);
         let point = (0..vars)
             .map(|index| Coord::Leaf { site: s, index })
@@ -752,6 +780,15 @@ fn derive(
             }
         }
         stages.push(stage);
+    }
+    // Stage 1 draws the layer point `ρ_1` at which the leaf stage's per-layer claims stack
+    // (RFC-0037 'The layer point'). A graph with no virtual leaf part and no zero-check has no
+    // stage 1 (RFC-0072 'No reduction stage'), which only a graph without layers may lack.
+    if layers.count > 0 && stages.len() == 1 {
+        return refuse(
+            None,
+            "a graph with layers has a stage 1, which draws its layer point",
+        );
     }
     let pool = derivation.into_pool();
     Ok(StageSchedule {
@@ -799,6 +836,9 @@ fn leaf_sites(graph: &Graph, layers: &LayerMap, logits: bool) -> Vec<Site> {
 /// RFC-0072's refusals that read the graph alone, before any claim (`ERR-INTERNAL`), in this
 /// order:
 ///
+/// - **A matmul with one public operand** ('Public tensors' 'As an operand'): its relations read
+///   no operand as `Public`, whether or not a claim reaches it. With both operands public, its
+///   output is public, and no instance arises.
 /// - **A committed output** of a node that is not a gadget is proven by stage 1's equality
 ///   zero-check only for a pointwise `ConstMul`, `ConstAdd`, `Add`, `Sub` or `Mul` ('Linear
 ///   operations that are not coordinate maps' 'A committed output'): any other's, a selection's,
@@ -814,7 +854,19 @@ fn check_graph(
     tables: &[TableSpec],
     producers: &[Option<(NodeId, u32)>],
 ) -> Result<(), CompileError> {
+    let public = public_tensors(graph);
+    let is_public = |t: &TensorId| public.get(t.0 as usize).copied().unwrap_or(false);
     for node in &graph.nodes {
+        // A matmul's relations read their operands as witness tables, never as `Public` (RFC-0072
+        // 'Public tensors' 'As an operand'). With both operands public its output is public and
+        // no instance arises; with one, the relation would need a public read it does not have.
+        let matmul = matches!(node.op, Op::MatMulWeight { .. } | Op::MatMulAct { .. });
+        if matmul && node.inputs.iter().any(is_public) && !node.inputs.iter().all(is_public) {
+            return refuse(
+                Some(node.id),
+                "a matmul's operands are not public, unless both are",
+            );
+        }
         let committed = node.outputs.iter().any(|t| {
             graph
                 .tensors

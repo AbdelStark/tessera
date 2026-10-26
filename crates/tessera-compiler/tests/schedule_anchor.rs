@@ -51,6 +51,11 @@ const COMMITTED: &str = "a committed output is of a ConstMul, ConstAdd, Add, Sub
 /// RFC-0072 'Linear operations that are not coordinate maps': 'Summing relations'.
 const SUMS: &str = "a Sum, SumSquares or MatMulAct over an axis whose length is not a power of \
                     two sums an input that is 0 at its padded positions";
+/// RFC-0045 'The split' sends no value for a lookup's public input; the leaf layout still does.
+const PUBLIC_SITE: &str = "a leaf site reads no public tensor: the leaf layout does not leave its \
+                           value out of the split yet";
+/// RFC-0072 'Public tensors' 'As an operand': a matmul reads no operand as `Public`.
+const MATMUL: &str = "a matmul's operands are not public, unless both are";
 /// Stage 1's bit zero-checks are #526's second slice.
 const BITS: &str = "the schedule derives no bit zero-check of a BitDecompose or an AssertEqual yet";
 /// A claim through a selection waits for the selection relation (#526's third slice).
@@ -268,21 +273,34 @@ fn term(source: PublicSource, point: Vec<Coord>, coefficient: Vec<Factor>) -> Pu
 /// A key a test computes from the public inputs `p` and `q`.
 type PublicKey = fn(&mut GraphBuilder, TensorId, TensorId) -> TensorId;
 
-/// RFC-0072 'Public tensors' 'Their claims': a claim on a public tensor is the verifier's to
-/// evaluate. The walk stops at the public tensor itself, by the closure, not at a relation below
-/// it: a product or a selection of public inputs, and a public input read directly, are each one
-/// public term, with no atom, no part and no instance. The leaf stage is then the schedule.
+/// RFC-0072 'Public tensors' 'Their claims', 'In the leaf stage'; RFC-0045 'The split': a
+/// lookup's public input sends no split value, and the verifier evaluates it itself. The leaf
+/// layout still sends one value per read, so a leaf site whose input is public is refused until it
+/// leaves them out: a product or a selection of public inputs, a public input read directly, and
+/// a table lookup of public bytes, as AES's counter blocks would be.
+///
+/// A key that adds a committed tensor to the same public tensor reads no public tensor, and is
+/// admitted. The walk then stops at the public tensor itself, by the closure, not at a relation
+/// below it: one public term at the leaf point, beside the committed atom, which the claim is
+/// ready on; no instance arises.
 #[test]
-fn a_claim_on_a_public_tensor_is_a_public_term() {
-    // The schedule of `requant(key(p, q))`, `key` of `shape`, and `key`.
-    let schedule = |key: PublicKey, shape: &[u32]| {
+fn a_leaf_site_reads_no_public_tensor_and_a_claim_stops_at_one() {
+    // The schedule of `requant(key(p, q))`, or `requant(x + key(p, q))` with `x` committed, `key`
+    // of `shape`; the key and `x`.
+    let schedule = |key: PublicKey, shape: &[u32], plus_committed: bool| {
         let mut g = GraphBuilder::new();
         let p = g.input(decl(&[4, 8], NodeKind::Public, 0, 1)).expect("p");
         let q = g.input(decl(&[4, 8], NodeKind::Public, 0, 1)).expect("q");
+        let x = g.input(decl(shape, ADVICE, -100, 100)).expect("x");
         let k = key(&mut g, p, q);
-        requant(&mut g, k, shape, -128, 127);
+        let site = if plus_committed {
+            one(&mut g, Op::Add, &[x, k], virt(shape))
+        } else {
+            k
+        };
+        requant(&mut g, site, shape, -128, 127);
         let graph = g.finish();
-        (layerless(&graph, &[]).expect("a schedule"), graph, k)
+        (layerless(&graph, &[]), graph, k, x)
     };
     let keys: [(&str, PublicKey, Vec<u32>); 3] = [
         (
@@ -305,12 +323,16 @@ fn a_claim_on_a_public_tensor_is_a_public_term() {
         ("a public input", |_, p, _| p, vec![4, 8]),
     ];
     for (name, key, shape) in keys {
-        let (schedule, graph, k) = schedule(key, &shape);
+        let (refused, ..) = schedule(key, &shape, false);
+        assert_eq!(refusal(refused), PUBLIC_SITE, "{name}");
+        let (admitted, graph, k, x) = schedule(key, &shape, true);
+        let admitted = admitted.unwrap_or_else(|e| panic!("{name}: {e:?}"));
         let vars = if shape[0] == 4 { 5 } else { 4 };
-        let [claim] = schedule.stages[0].claims.as_slice() else {
+        let [claim] = admitted.stages[0].claims.as_slice() else {
             panic!("{name}: one leaf claim");
         };
-        assert!(claim.atoms.is_empty(), "{name}: {:?}", claim.atoms);
+        let kinds: Vec<Kind> = claim.atoms.iter().map(|a| a.kind).collect();
+        assert_eq!(kinds, [Kind::Tensor(x)], "{name}: the committed atom");
         assert_eq!(
             claim.public,
             [term(
@@ -320,9 +342,21 @@ fn a_claim_on_a_public_tensor_is_a_public_term() {
             )],
             "{name}"
         );
-        assert!(claim.parts.is_empty() && !claim.split, "{name}: no part");
-        assert_eq!(schedule.stage_count(), 1, "{name}: no instance");
+        assert!(!claim.split && claim.parts.len() == 1, "{name}: ready");
+        assert_eq!(admitted.stage_count(), 1, "{name}: no instance");
         assert_eq!(stage_count(&graph), 1, "{name}: the report's count");
+    }
+    // A lookup of public bytes, and one of committed bytes.
+    for kind in [NodeKind::Public, ADVICE] {
+        let mut g = GraphBuilder::new();
+        let x = g.input(decl(&[4], kind, 0, 255)).expect("bytes");
+        substitute(&mut g, x, &[4]);
+        let result = layerless(&g.finish(), &sbox());
+        if kind == NodeKind::Public {
+            assert_eq!(refusal(result), PUBLIC_SITE, "an S-box of public bytes");
+        } else {
+            result.expect("an S-box of committed bytes");
+        }
     }
 }
 
@@ -467,7 +501,8 @@ fn a_committed_const_add_or_channel_scale_is_one_zero_check() {
 /// A `Mul` by a public row scale (`Trailing`), a public channel scale (`Leading`) or a public
 /// first operand leaves one claim, on its other operand, at that operand's coordinates; a
 /// committed `Mul`'s zero-check leaves `Y`'s and its other operand's. A product of public
-/// operands is public, and leaves no instance.
+/// operands is public: no instance proves it, and a leaf site reading it is refused until the
+/// leaf layout leaves its value out.
 #[test]
 fn a_mul_with_a_public_operand_leaves_no_claim_on_it() {
     // `requant(a·b)` with the operands' shapes and kinds, then the stage-1 instance's claims.
@@ -522,14 +557,13 @@ fn a_mul_with_a_public_operand_leaves_no_claim_on_it() {
         assert_eq!(claim.kind, Kind::Tensor(operand), "{name}");
         assert_eq!(claim.point, instance.challenges[coords].to_vec(), "{name}");
     }
-    // Both public: the product is public, a public term of the leaf claim.
-    let (schedule, ..) = product(
-        (&[5, 3][..], public),
-        (&[5][..], public),
-        Broadcast::Trailing,
-    );
-    assert_eq!(schedule.stage_count(), 1);
-    assert_eq!(schedule.stages[0].claims[0].public.len(), 1);
+    // Both public: the product is public, and the requantization's leaf site reads it.
+    let mut g = GraphBuilder::new();
+    let x = g.input(decl(&[5, 3], public, -100, 100)).expect("a");
+    let w = g.input(decl(&[5], public, -100, 100)).expect("b");
+    let y = one(&mut g, mul(), &[x, w], virt(&[5, 3]));
+    requant(&mut g, y, &[5, 3], -128, 127);
+    assert_eq!(refusal(layerless(&g.finish(), &[])), PUBLIC_SITE);
     // A committed product with a public scale: `Y`'s claim, then `a`'s.
     let mut g = GraphBuilder::new();
     let x = g.input(decl(&[5, 3], ADVICE, -100, 100)).expect("a");
@@ -543,26 +577,57 @@ fn a_mul_with_a_public_operand_leaves_no_claim_on_it() {
     assert_eq!(kinds, [Kind::Tensor(y), Kind::Tensor(x)]);
 }
 
-/// A matmul's relations read their operands as tables of the witness, not as `Public`: a matmul
-/// with a public operand is refused (`ERR-INTERNAL`), rather than given a claim on it. No graph
-/// of the circuits or the lowering has one.
+/// RFC-0072 'Public tensors' 'As an operand': a matmul's relations read their operands as tables
+/// of the witness, not as `Public`. A matmul with exactly one public operand is refused
+/// (`ERR-INTERNAL`) when the schedule is derived, whether or not a claim reaches it: a
+/// `MatMulWeight` with a public `X`, and a `MatMulAct` with one public input, either one. A
+/// `MatMulAct` of two public inputs is public, so no instance proves it: a claim that reaches it
+/// takes it as a public term. No graph of the circuits or the lowering has either.
 #[test]
-fn a_matmul_with_a_public_operand_is_refused() {
-    let mut g = GraphBuilder::new();
-    let x = g
-        .input(decl(&[3, 8], NodeKind::Public, -100, 100))
-        .expect("x");
-    let weight = WeightRef {
-        ty: WeightType::Q,
-        layer: 0,
+fn a_matmul_with_one_public_operand_is_refused() {
+    let public = NodeKind::Public;
+    for read in [true, false] {
+        let mut g = GraphBuilder::new();
+        let x = g.input(decl(&[3, 8], public, -100, 100)).expect("x");
+        let weight = WeightRef {
+            ty: WeightType::Q,
+            layer: 0,
+        };
+        let w = g.weight(weight, 8, 8).expect("a weight");
+        let y = one(&mut g, Op::MatMulWeight { weight }, &[x, w], virt(&[3, 8]));
+        if read {
+            requant(&mut g, y, &[3, 8], -128, 127);
+        }
+        assert_eq!(
+            refusal(layerless(&g.finish(), &[])),
+            MATMUL,
+            "MatMulWeight, its output read {read}"
+        );
+    }
+    // `requant(c + A·B)`, `A` and `B` of `kinds`, `c` committed.
+    let product = |kinds: [NodeKind; 2]| {
+        let mut g = GraphBuilder::new();
+        let a = g.input(decl(&[2, 3, 4], kinds[0], -100, 100)).expect("a");
+        let b = g.input(decl(&[2, 4, 3], kinds[1], -100, 100)).expect("b");
+        let c = g.input(decl(&[2, 3, 3], ADVICE, -100, 100)).expect("c");
+        let op = Op::MatMulAct {
+            transpose_rhs: false,
+        };
+        let z = one(&mut g, op, &[a, b], virt(&[2, 3, 3]));
+        let s = one(&mut g, Op::Add, &[c, z], virt(&[2, 3, 3]));
+        requant(&mut g, s, &[2, 3, 3], -128, 127);
+        let graph = g.finish();
+        (layerless(&graph, &[]), z)
     };
-    let w = g.weight(weight, 8, 8).expect("a weight");
-    let y = one(&mut g, Op::MatMulWeight { weight }, &[x, w], virt(&[3, 8]));
-    requant(&mut g, y, &[3, 8], -128, 127);
-    assert_eq!(
-        refusal(layerless(&g.finish(), &[])),
-        "a matmul's operands are not public"
-    );
+    for kinds in [[public, ADVICE], [ADVICE, public]] {
+        assert_eq!(refusal(product(kinds).0), MATMUL, "MatMulAct of {kinds:?}");
+    }
+    let (schedule, z) = product([public, public]);
+    let schedule = schedule.expect("a public MatMulAct");
+    let claim = &schedule.stages[0].claims[0];
+    assert_eq!(claim.public.len(), 1);
+    assert_eq!(claim.public[0].source, PublicSource::Tensor(z));
+    assert_eq!(schedule.stage_count(), 1, "no instance");
 }
 
 // ----- Graphs without layers ---------------------------------------------------------------------

@@ -85,7 +85,7 @@ A SHA-256 block of a message with committed bytes holds 680 zero-checks, 2,528 s
   - A tensor declared committed is committed, whatever its inputs.
 - **Their claims.** An atom on a public tensor is public (RFC-0037 'Claims and atoms'). The verifier computes the tensor from public data and evaluates its extension at the atom's point, `O(size)`, then moves the atom to the claim's value, as RFC-0037 'Splits' does. The atom reaches no instance and no pool. A claim whose atoms are all public has no part: the verifier computes its value, and nothing is sent or checked for it. Such claims arise in the leaf stage, on a lookup's public input, whose value RFC-0045 'The split' does not send.
 - **Once per point.** The verifier evaluates a public tensor, or a selection's kernel, once per distinct point. A stage's instances of one relation and one size end at its last challenges, so their reads of one public operand share a point.
-- **As an operand.** A relation's operand that is public is read as `Public` (RFC-0010 'Relations'): the verifier evaluates it at the instance's point, a broadcast operand such as an `SHR` mask at its own coordinates of that point, and the proof sends nothing for it. The same holds for a public input of a committed output's equality zero-check. A matmul cannot read an operand as public: a `MatMulWeight` or `MatMulAct` with a public operand is refused when the schedule is derived (`ERR-INTERNAL`). Neither circuit nor Llama has one.
+- **As an operand.** A relation's operand that is public is read as `Public` (RFC-0010 'Relations'): the verifier evaluates it at the instance's point, a broadcast operand such as an `SHR` mask at its own coordinates of that point, and the proof sends nothing for it. The same holds for a public input of a committed output's equality zero-check. A matmul cannot read an operand as public: a `MatMulWeight` or `MatMulAct` with exactly one public operand is refused when the schedule is derived (`ERR-INTERNAL`). One whose operands are both public is a public tensor ('What is public'). Neither circuit nor Llama has either.
 - **In the leaf stage.** A lookup that reads a public tensor, such as AES's counter blocks, sends no split value for it (RFC-0045 'The split'). The verifier evaluates it at the block's point.
 
 ### Padded positions
@@ -205,7 +205,7 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
 ### Messages, rejections and stages
 
 - **An empty leaf stage.** A graph with no lookup and no product tree, such as SHA-256 alone, still runs the leaf stage: it squeezes `α` and `β` and absorbs empty `logup/roots`, `logup/values` and `stage/0/split` (RFC-0010 'Tree levels').
-- **No reduction stage.** A graph whose leaf stage leaves no virtual part has no stage 1, unless it has zero-checks. Its pool then holds the committed parts of the leaf stage's claims, after the leaf stage's splits.
+- **No reduction stage.** A graph whose leaf stage leaves no virtual part has no stage 1, unless it has zero-checks. Its pool then holds the committed parts of the leaf stage's claims, after the leaf stage's splits. A graph with layers needs stage 1, which draws the layer point `ρ_1` that stacks the leaf stage's claims, so one with no stage 1 is refused (`ERR-INTERNAL`).
 
 - **Messages.** No label is added.
   - Stage 1's new instances send their evaluations under `stage/1/evals`, instance by instance, in the table's order within each.
@@ -290,7 +290,7 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
    - graphs without layers, public tensors, `ConstAdd`, a per-channel `ConstMul`, the non-zero-at-padding analysis, and the summing-relation, committed-output and layer-template refusals, in the schedule and the stage prover. The commitment report's stage count follows 'Messages, rejections and stages', tested equal to the schedule's on graphs of these operations. Their padded positions are the zero padding the witness and stage tables already use: no graph this slice proves is non-zero at padding. The batch refusal of 'Real positions' is tested once #551's lowering builds a graph of two requests;
    - the bit zero-checks: gadget selection, stage 1's instances and their alternative witnesses. The leaf stage gives `BitDecompose` and `AssertEqual` no site, and derives token axes only in token groups;
    - the selection relation, combined selections, `BitFn` and the SHA-256 block, whose stage count the report then matches;
-   - AES's lookups and its block, with the witness and stage tables over padded shapes: a padded block's `AesSbox(0)` and its consequences, as the leaf stage's multiplicities already count them.
+   - AES's lookups and its block, with the witness and stage tables over padded shapes: a padded block's `AesSbox(0)` and its consequences, as the leaf stage's multiplicities already count them. The leaf layout sends no value for a lookup's public input (RFC-0045 'The split'). Until it does, the schedule refuses a leaf site that reads a public tensor.
 3. **#146** puts the circuits into a batch's graph and statement, and **#150** and **#159** mirror the relations in the verifier.
 
 ## Testing Strategy

@@ -4,13 +4,43 @@
 //! maps'; RFC-0037 'Claims and atoms', 'Splits'): values both parties compute from public data,
 //! which move to the claim's value, and the public tables a relation reads its constants from.
 
-use tessera_compiler::schedule::PublicSource;
+use tessera_compiler::schedule::{PublicSource, public_tensors};
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
 use tessera_ir::{Graph, NodeId, Op, TensorId};
 use tessera_poly::{evaluate_base, less_than};
 
 use super::tables::{axis_vars, pad};
 use super::{StageError, WitnessSource};
+
+/// Which tensors of a graph are public, by tensor id (RFC-0072 'Public tensors'): the mask
+/// [`public_value`] checks a tensor source against before it reads any value, so that no
+/// secret-class tensor is copied into a public table (05 §3 OBS-6). Computed once per graph, in
+/// one pass over its nodes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PublicTensors {
+    mask: Vec<bool>,
+}
+
+impl PublicTensors {
+    /// The public tensors of `graph`, as
+    /// [`public_tensors`](tessera_compiler::schedule::public_tensors) closes them.
+    pub fn of(graph: &Graph) -> Self {
+        Self {
+            mask: public_tensors(graph),
+        }
+    }
+
+    /// Whether `tensor` is public.
+    pub fn contains(&self, tensor: TensorId) -> bool {
+        self.mask.get(tensor.0 as usize).copied().unwrap_or(false)
+    }
+
+    /// Whether the mask is `graph`'s, by its tensor count: a cheap guard against a mask of another
+    /// graph.
+    fn fits(&self, graph: &Graph) -> bool {
+        self.mask.len() == graph.tensors.len()
+    }
+}
 
 /// The value of `source` at `point` (RFC-0072 'Public tensors', 'Linear operations that are not
 /// coordinate maps'), which both parties compute from public data, in `O(size)`:
@@ -29,21 +59,25 @@ use super::{StageError, WitnessSource};
 /// The point lists the lowest variable first: the last axis's coordinates first (RFC-0010
 /// 'Multilinear extensions'). The prover passes its witness, which holds every tensor; a verifier
 /// passes the public tensors it computes itself from the public graph inputs and constants
-/// through the nodes that are not gadget-backed. Either way the values are public-class (05 §3).
+/// through the nodes that are not gadget-backed. Either way only public-class values are read
+/// (05 §3): a tensor source that `public`, the graph's [`PublicTensors`], does not mark is refused
+/// before any value is read.
 ///
 /// # Errors
 ///
-/// [`StageError::Internal`] when `values` lacks the tensor, the point does not have the tensor's
-/// variables, or a shift names a node that is not a `ConstAdd` of the graph.
+/// [`StageError::Internal`] when the tensor is not public in `graph` or `public` is not `graph`'s
+/// mask, `values` lacks the tensor, the point does not have the tensor's variables, or a shift
+/// names a node that is not a `ConstAdd` of the graph.
 pub fn public_value<W: WitnessSource + ?Sized>(
     graph: &Graph,
+    public: &PublicTensors,
     source: PublicSource,
     values: &W,
     point: &[GoldilocksExt2],
 ) -> Result<GoldilocksExt2, StageError> {
     match source {
         PublicSource::Tensor(tensor) => {
-            let table = public_table(graph, values, tensor)?;
+            let table = public_table(graph, public, values, tensor)?;
             evaluate_base::<GoldilocksExt2>(&table, point).map_err(|_| StageError::Internal {
                 rule: "a public term's point has its tensor's coordinates",
             })
@@ -54,12 +88,24 @@ pub fn public_value<W: WitnessSource + ?Sized>(
 
 /// The table of the public tensor `tensor`, its values those `values` holds, padded per dimension
 /// with zeros: what [`public_value`] evaluates, and what a relation reads a public operand from.
-/// Public-class data, which the verifier computes too, so it lives in a plain table.
+/// Public-class data, which the verifier computes too, so it lives in a plain table; a tensor that
+/// `public` does not mark is refused before its values are read.
 pub(super) fn public_table<W: WitnessSource + ?Sized>(
     graph: &Graph,
+    public: &PublicTensors,
     values: &W,
     tensor: TensorId,
 ) -> Result<Vec<Goldilocks>, StageError> {
+    if !public.fits(graph) {
+        return Err(StageError::Internal {
+            rule: "a public mask is its graph's",
+        });
+    }
+    if !public.contains(tensor) {
+        return Err(StageError::Internal {
+            rule: "a public table is of a public tensor",
+        });
+    }
     let shape = &graph
         .tensors
         .get(tensor.0 as usize)

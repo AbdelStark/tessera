@@ -450,16 +450,6 @@ fn evaluations(
             vec![(kind, point, layers)]
         })
     };
-    if matches!(
-        plan.relation,
-        Relation::MatMulWeight | Relation::MatMulAct { .. }
-    ) {
-        for i in 0..node.inputs.len() {
-            if derivation.is_public(input(i)?.0) {
-                return refuse(id, "a matmul's operands are not public");
-            }
-        }
-    }
     let target = plan.point.as_slice();
     Ok(match plan.relation {
         Relation::Native { .. } => {

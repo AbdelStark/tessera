@@ -43,7 +43,7 @@ use tessera_compiler::CompileError;
 use tessera_compiler::Lowering;
 use tessera_compiler::schedule::{
     Atom, Claim, Coord, Factor, Layers, NodeRef, Part, Relation, Source, StageSchedule,
-    nonzero_at_padding, public_tensors,
+    nonzero_at_padding,
 };
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
 use tessera_ir::{Graph, Op, TensorId};
@@ -55,7 +55,7 @@ use tessera_tables::TableSpec;
 
 use relations::{Arena, build};
 
-pub use public::public_value;
+pub use public::{PublicTensors, public_value};
 
 /// Public points drawn once for a complete mixed stage, before its gamma.
 pub struct NativeContext<'a> {
@@ -190,8 +190,8 @@ pub struct StageProver<'a, W: WitnessSource + ?Sized> {
     tables: &'a [TableSpec],
     schedule: &'a StageSchedule,
     witness: &'a W,
-    /// Whether each tensor is public, by tensor id (RFC-0072 'Public tensors').
-    public: Vec<bool>,
+    /// The graph's public tensors (RFC-0072 'Public tensors').
+    public: PublicTensors,
     /// The challenges drawn so far, by coordinate.
     coords: HashMap<Coord, GoldilocksExt2>,
     /// Each stage's claims' values: one per layer for a leaf claim in the layers, else one.
@@ -237,7 +237,7 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
             tables,
             schedule,
             witness,
-            public: public_tensors(graph),
+            public: PublicTensors::of(graph),
             coords: HashMap::new(),
             claims: Vec::new(),
             parts: Vec::new(),
@@ -355,7 +355,8 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
         let splits = self.split_values(0)?;
         // With no reduction stage, as for a graph whose leaf claims all reach committed or
         // public tensors, no stage 1 draws `ρ_1` after the leaf stage: its pool values are final
-        // here. Only a graph without layers has no stage 1, so none is stacked.
+        // here (RFC-0072 'No reduction stage'). The schedule refuses a graph with layers and no
+        // stage 1, so none of them is stacked.
         if self.schedule.stages.len() == 1 {
             self.fill_pool(0)?;
         }
@@ -664,7 +665,7 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
         let mut sum = GoldilocksExt2::ZERO;
         for term in &claim.public {
             let point = self.point(&term.point)?;
-            let value = public_value(self.graph, term.source, self.witness, &point)?;
+            let value = public_value(self.graph, &self.public, term.source, self.witness, &point)?;
             sum += self.coefficient(&term.coefficient, 0)? * value;
         }
         Ok(sum)

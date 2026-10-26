@@ -466,14 +466,9 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         let tensor = *node.inputs.get(i).ok_or(StageError::Internal {
             rule: "a relation's node has its inputs",
         })?;
-        let public = matches!(instance.node, NodeRef::Node(_))
-            && self.public.get(tensor.0 as usize).copied().unwrap_or(false);
-        if public {
-            return Ok(Operand::Public(public_table(
-                self.graph,
-                self.witness,
-                tensor,
-            )?));
+        if matches!(instance.node, NodeRef::Node(_)) && self.public.contains(tensor) {
+            let table = public_table(self.graph, &self.public, self.witness, tensor)?;
+            return Ok(Operand::Public(table));
         }
         let table = operand(*next)?;
         *next += 1;
