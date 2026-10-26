@@ -8,7 +8,7 @@
 
 | Tier | Surfaces | Promise |
 |---|---|---|
-| **A: protocol** | TCE schemas of every artifact and message, the protocol version string, the claim-list schema, table definitions, parameter-set definitions, verifier verdict semantics and exit codes | Frozen per protocol version. A change requires a new protocol version and a superseding RFC. Readers support the current and previous protocol version ([09 §3](09-release-and-versioning.md#3-protocol-and-schema-versions)). |
+| **A: protocol** | TCE schemas of every artifact and message, the protocol version string, the claim-list schema, table definitions, parameter-set definitions, verifier verdict semantics and exit codes; under draft [RFC-0073](../rfcs/RFC-0073-weight-mask-expansion.md#versions), the weights' mask expansion | Frozen per protocol version. A change requires a new protocol version and a superseding RFC. Readers support the current and previous protocol version ([09 §3](09-release-and-versioning.md#3-protocol-and-schema-versions)). |
 | **B: interfaces** | `tessera`, `tessera-verify` and `tessera-quant` CLIs, the Python `tessera_quant` top-level functions, the Rust items re-exported at the root of `tessera-prover` and `tv-core` | SemVer from 1.0. Before 1.0, breaking changes are allowed in minor releases and listed in the changelog. |
 | **C: internal** | Everything else | No promise. |
 
@@ -62,6 +62,19 @@ tessera recorder ref    --listen ADDR --upstream ADDR --log-dir DIR --key FILE -
                         # software reference recorder (RFC-0015)
 tessera inspect         FILE                                                # renders a TCE artifact as text (RFC-0003)
 ```
+
+Under draft [RFC-0073](../rfcs/RFC-0073-weight-mask-expansion.md#the-model-entry), in effect when it is accepted:
+- **The entry.** In `tessera-protocol/2`, the plan's claim list's protocol, `commit-weights`, `weights refresh` and `prove` take a model entry's directory with `--entry DIR` in place of a free path for a state or a link. The entry holds every epoch's state, `.twr` and link under fixed names, beside the epoch record, and is locked as a whole.
+  - **In `tessera-protocol/1`,** `commit-weights --out` and `prove --weights` are unchanged, and `weights refresh` does not exist.
+  - **The other protocol's flags** are `ERR-USAGE`.
+- **The key.** `commit-weights` and `weights refresh` also take `--refresh-key KEY.twk`.
+- **The model and the plan.** `weights refresh` also takes `--model MODEL.d` and `--plan plan.tep`, as `commit-weights` does: it regenerates commitments from `K`, which needs `D`'s weights and the claim list, and checks a presented `.twl` against the claim list.
+- **Presented artifacts.** `weights refresh` and `prove` take `--present ARTIFACT`, repeatable. Each can only refuse or burn. Accepted kinds:
+  - a `WeightCommitmentPublic` (`.twr`);
+  - a `WeightLinkProof` (`.twl`);
+  - a `VerifierLedger`, for this entry's chain of roots and their used rows, its other chains ignored;
+  - once `Round1`'s schema version 2 exists, a kept `Round1` or `NiProof`.
+- **Not yet listed.** These flags join this listing with the code that implements them (#147, #153).
 
 `audit share` is the prover's side of the coin toss over a manifest ([RFC-0016](../rfcs/RFC-0016-audit-sampling.md#sample-derivation) step 2):
 - **One answer.** The first commitment for a manifest gets a fresh share. The share is kept in `--state`, with the manifest, the `tessera.audit-policy/1` policy and the commitment, before it is printed. The same commitment and policy again get the same share.

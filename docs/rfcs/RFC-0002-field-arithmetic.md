@@ -4,6 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-15
 - Target milestone: v0.1
+- Amended by: draft [RFC-0073](RFC-0073-weight-mask-expansion.md) ('Timing': a stream of RFC-0004 rejecting its words, INV-ARCH-2's one exception; in effect when it is accepted)
 
 ## Summary
 
@@ -108,7 +109,7 @@ pub fn batch_inverse<F: Field>(xs: &mut [F]) -> Result<(), ZeroElement>; // Zero
 
 ### Timing
 
-All prover arithmetic is branch-free in the values: conditional corrections use masks or `select`, never `if` on data. This satisfies INV-ARCH-2 ([01 §6](../spec/01-architecture.md#6-concurrency-and-determinism)) at the instruction level. Variable-time exponentiation is permitted only on public exponents (all exponents in this design are public constants).
+All prover arithmetic is branch-free in the values: conditional corrections use masks or `select`, never `if` on data. This satisfies INV-ARCH-2 ([01 §6](../spec/01-architecture.md#6-concurrency-and-determinism)) at the instruction level. The one exception INV-ARCH-2 admits is not arithmetic on a value: a stream of RFC-0004 rejecting a word of `P` or more (draft [RFC-0073](RFC-0073-weight-mask-expansion.md#the-stream)). Variable-time exponentiation is permitted only on public exponents (all exponents in this design are public constants).
 
 ### The verifier's implementation
 

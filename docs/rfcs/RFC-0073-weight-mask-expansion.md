@@ -1,0 +1,550 @@
+# RFC-0073: Expanding an Epoch's Mask Seed into the Weights' Masks and Blinding Rows
+
+- Status: Draft. The documents it amends carry its amendments, each marked as a draft's, in the change that proposes it. They take effect, and lose the mark, when it is accepted.
+- Authors: @AbdelStark
+- Created: 2026-10-26
+- Target milestone: v0.4
+- Amends:
+  - [RFC-0040](RFC-0040-weight-commitment-artifacts.md#weightcommitmentstate) '`WeightCommitmentState`' (`masks_seed`) and 'Encoding, leaves and roots' (the codewords): the expansion of `masks_seed` into a `tessera-protocol/2` commitment's masks and blinding rows, normative and versioned, which RFC-0040 left to #147;
+  - [RFC-0004](RFC-0004-hashing-and-transcript.md#hash-function-and-domains) 'Hash function and domains': the domains `weights-mask` and `weights-blinding`, read as streams;
+  - [RFC-0012](RFC-0012-weight-commitment.md#budget-state-machine):
+    - 'Layout' and 'Column answers': where each row's mask and each blinding row's values come from, the narrow-matrix refusal, and evaluated column answers checked against the root;
+    - 'Budget state machine': `reserve` at the latest epoch only, raising the record's cursor and column count in one write, `record_queries` writing the state only, and a `link` that writes its successor fresh only right after its append;
+    - 'Failure modes': a lost state, and a corrupted one refused until moved aside;
+  - [RFC-0040](RFC-0040-weight-commitment-artifacts.md#command-line) 'Command line': in `tessera-protocol/2`, `commit-weights` writes a model entry, not a free state path;
+  - [RFC-0064](RFC-0064-weight-linking-proof.md#the-inputs) 'The inputs', 'The budget', 'One link per epoch' and 'Testing Strategy': the expansion a link is remade with, the model entry, the epoch record, the successor's state, the lock in place of the pending-reservation precondition, and the link's error codes;
+  - [RFC-0018](RFC-0018-gpu-prover-runtime.md#crash-consistency) 'Crash consistency' and 'Determinism': the per-proof seed draws the advice's masks, not the weights', a kernel may compact a stream's words, and the CPU prover's advice stream is a known violation until #567;
+  - [RFC-0002](RFC-0002-field-arithmetic.md#timing) 'Timing': the stream's rejection;
+  - [01 §6](../spec/01-architecture.md#6-concurrency-and-determinism) INV-ARCH-2: a stream's skipped words, as a narrow exception;
+  - [02 §1](../spec/02-public-api.md#1-stability-tiers): the expansion is tier A; [02 §2.2](../spec/02-public-api.md#22-tessera-rust-prover-side): a note that `commit-weights`, `weights refresh` and, in `tessera-protocol/2`, `prove` take a model entry's directory (`--entry`) and presented artifacts (`--present`), whose flags join the listing with their code;
+  - [03 §5](../spec/03-data-model.md#5-artifact-catalog): `WeightRefreshKey` (`0x0304`) and `WeightEpochRecord` (`0x0305`), whose rows join the catalog with the code that reads them, since `tessera-codec`'s registry test reads it;
+  - [05 §3](../spec/05-observability.md#3-data-classification-and-redaction) and OBS-2: `K`, `masks_seed` and a stream's state are key material;
+  - [06 §5](../spec/06-security.md#5-threats-and-mitigations) (timing, and the column budget's residual) and [06 §7](../spec/06-security.md#7-secrets-handling): the exception, the residual, and the key artifact;
+  - [04 §5](../spec/04-error-model.md#5-failure-modes-and-system-response): the model entry's failure modes;
+  - [`docs/zk/simulator.md`](../zk/simulator.md#5-aborted-sessions) §5 and §9, R6: a rebuilt state reserves nothing.
+- Origin: [#147](https://github.com/AbdelStark/tessera/issues/147), from RFC-0064's requirement ([#485](https://github.com/AbdelStark/tessera/issues/485))
+- Related: [#564](https://github.com/AbdelStark/tessera/issues/564) (the verifier's refusal of narrow weight matrices)
+
+## Summary
+
+In `tessera-protocol/2` each weight matrix commits `B_T` blinding rows after its `m_T` data rows, and every committed row carries a vanishing mask of `P_W` coefficients (RFC-0012, RFC-0013, RFC-0065). Both come from the epoch's `masks_seed`, which RFC-0064 derives from the model's refresh key `K`, so that a link remade after a crash, from a lost budget state or on a second node is the same bytes. That holds only while every build expands a seed into the same values. RFC-0040 left the expansion to #147.
+
+This RFC fixes it. Each committed row's mask and each blinding row's values come from a stream of their own: BLAKE3's extended output under a domain of RFC-0004, keyed by the seed and addressed by the matrix's `commitment_id` and the row. The stream is read as 64-bit little-endian words, and a word that is not below `P` is skipped, so every value is exactly uniform on `Fp`. A masked commitment is then a function of the weights, the claim list, the row block, the epoch and `K`, and so is a link.
+
+A commitment that can be made again can also be proven from again, with rows its earlier proofs revealed. So each model entry lives in one directory under fixed names, locked as a whole, beside a durable record of its epochs. The record holds each epoch's root and the latest epoch's high-water marks.
+- A state is fresh, with rows to reserve, only when written right after the append that makes its epoch the record's latest. Every other state is rebuilt and serves only its epoch's link.
+- `reserve` runs only at the latest epoch, from the record's marks, raised as 'The cursor and the count' says.
+
+What the prover cannot detect from its own files is stated as a rule on files, exact over histories without crashes and conservative after one, with its per-epoch bound and with what an operator can present to catch it. That is a rollback of the record together with every file that would refute it, or a copy of the entry. An exhaustive model of these rules checks the statement. The model covers three epochs and two links, a backup after every write, every version of every entry file or its loss, and both regimes: rows ending an epoch first, and columns, as in production. Nothing the verifier receives or checks changes.
+
+## Motivation
+
+- **RFC-0064 needs it.** 'The inputs' makes a link a deterministic function of `K`, the epoch and the weights, and adds: "Until [#147 specifies the expansion], a link may be remade only by the build that made it." A second build that expanded a seed differently would commit other masks under the same epoch, and its link would open other columns with other pairs: the second link that 'One link per epoch' forbids.
+- **RFC-0040 asks for it.** "The expansion of `masks_seed` into the masks and blinding rows is normative and versioned, with a conformance vector; #147 specifies it."
+- **Other parts need a row's values alone**, without replaying the rows before it:
+  - the codeword store's fallback, which regenerates the rows it answers from the seed (RFC-0012 'Column answers');
+  - each proof, which draws the masks and blinding values its combined rows reach;
+  - a link, which reaches both epochs' rows (RFC-0064);
+  - a commitment made in parallel by several devices, and the byte-identical CPU and GPU commitments of [#174](https://github.com/AbdelStark/tessera/issues/174).
+- **RFC-0004 has no stream.** `H` gives 32 bytes, and the transcript is public and sequential; INV-ZK-3 forbids drawing masks from it anyway.
+- **Determinism has a cost.** RFC-0064 kept a state's budget as the only record of the rows an epoch has burned. Once an epoch's commitment can be made again, a lost, restored or copied state, or a remade link, can write a fresh budget over burned rows ([`docs/zk/simulator.md`](../zk/simulator.md#5-aborted-sessions) §5, R6). Telling a fresh state from a rebuilt one needs a record the state files do not hold, and a fixed place to look for them.
+
+## Goals
+
+- Every value a masked weight commitment draws is a function of `masks_seed` and public data, the same in every implementation and on every device.
+- Each committed row's mask and each blinding row's values are addressable alone.
+- The values are exactly uniform on `Fp`, and independent across rows, matrices, commitments and epochs, under the random-oracle model the simulator argument takes for hashes ([`docs/zk/simulator.md`](../zk/simulator.md#2-model) §2).
+- One primitive, RFC-0004's BLAKE3, at one compression per 64 bytes of output.
+- **No row reserved twice and no column opened past `P_W`**, decided from the model entry's directory and from the artifacts the operator presents. Every loss, crash, restore that leaves a refuting file, and concurrent process is covered. What remains is stated as a rule on files and checked against an exhaustive model of the rules.
+- A conformance vector from an independent oracle, buildable from this text, and a version that any change must bump.
+
+## Non-Goals
+
+- **The advice's per-proof mask stream** (RFC-0011 'Streaming procedure', RFC-0018 'Crash consistency', [#156](https://github.com/AbdelStark/tessera/issues/156)). It may take 'The stream' below under a domain of its own.
+- **How the masked rows are opened, reserved and budgeted** within an epoch: RFC-0012, RFC-0013, RFC-0064 and RFC-0065.
+- **The verifier.** It never holds a seed and never expands one. Soundness does not depend on the masks, which are the prover's own choice (RFC-0064 'Zero knowledge'). Its refusal of narrow weight matrices is [#564](https://github.com/AbdelStark/tessera/issues/564)'s.
+- **`tessera-protocol/1`,** which masks no weight row and commits no blinding row (RFC-0040).
+
+## Proposed Design
+
+### The seeds
+
+As RFC-0040 and RFC-0064 give them:
+- **`K`**, the model's refresh key, is 32 bytes from the operating system's CSPRNG, drawn when epoch 0 is committed and kept apart from every state file, in its own artifact ('The model entry').
+- **`masks_seed_e = H("weights-refresh", K ‖ u32(e))`** is epoch `e`'s seed, and epoch `e`'s `WeightCommitmentState` holds it.
+- **Nothing else seeds the expansion:** no per-proof value and no transcript value (INV-ZK-3).
+
+### The stream
+
+For a domain `d` of RFC-0004 and an input `x`:
+
+```text
+S(d, x)  = BLAKE3.derive_key(context = "tessera/v1/" + d, key_material = x), extended output
+w_t      = u64_le(S(d, x)[8t .. 8t + 8]),                         t = 0, 1, 2, …
+v_i      = the i-th word w_t < P, in increasing t,                  i = 0, 1, 2, …
+```
+
+- **The extended output** is BLAKE3's root output blocks `0, 1, 2, …` (the BLAKE3 specification, §2.6). Its first 32 bytes are RFC-0004's `H(d, x)`.
+- **Words** are read in order, eight per 64-byte output block.
+- **Values.** A word below `P` is the next value. A word of `P` or more is skipped, never reduced. Skipping one has probability `(2^32 − 1)/2^64 < 2^{-32}`: about 19 words in a whole 405B epoch.
+- **Uniform.** Each value is exactly uniform on `Fp` and independent of the others, given uniform words. Reducing the word modulo `P` would give the values below `2^32 − 1` twice the probability of the others, which RFC-0004 refuses for challenges and this RFC refuses for masks.
+- **No bound.** The prover's loop has none, as RFC-0004's challenges have none on the prover's side.
+- **The one secret-dependent branch allowed.** The acceptance test is public and fixed, `w_t < P`. It reads the candidate word alone, and a rejected word is discarded whole.
+  - **What follows.** In the random-oracle model, which words are skipped is independent of every value any stream yields and of every other secret. So neither the branch's timing nor the addresses a parallel kernel compacts the values to reveal them. INV-ARCH-2, amended, admits exactly this, for the streams of RFC-0004.
+  - **The skip pattern stays secret-class.** It is a function of the seed (05 §3, OBS-6). No log, metric, report or `Debug` form carries a stream's skips, its position or their count.
+- **Cost.** An input of 72 bytes is two BLAKE3 blocks: one compression for the first, then one per output block of 64 bytes.
+
+### The masks and the blinding rows
+
+Let `T` be a weight matrix with:
+- `m_T` committed data rows;
+- `B_T` blinding rows: `B_W`, or `ChannelParams`' `B_CP` ([RFC-0065](RFC-0065-masked-channel-params.md#channelparams-blinding-rows));
+- message width `k_T`;
+- `cid_T`, its `commitment_id` in `tessera-protocol/2`, whose `rows` is `m_T + B_T` ([RFC-0040](RFC-0040-weight-commitment-artifacts.md#encoding-leaves-and-roots), [RFC-0031](RFC-0031-commitment-id.md#the-descriptor)).
+
+Rows are numbered two ways:
+- **Committed row `j`** counts from 0 over the committed rows in RFC-0040's order. For `j < m_T` it is the `j`-th committed data row in increasing structural row `r` (RFC-0040 'The matrices'), never `r` itself, which counts the skipped rows. Then comes blinding row `i = j − m_T` (RFC-0064 'Positions').
+- **Blinding row `i`** counts from 0 over the `B_T` blinding rows: the numbering of RFC-0065's reservation.
+
+Then:
+
+| Domain | Input, 72 bytes | Values |
+|---|---|---|
+| `weights-mask` | `masks_seed: [u8; 32] ‖ cid_T: Digest ‖ u64(j)`, for each committed row `j < m_T + B_T` | `v_0 … v_{P_W − 1}`: the row's mask coefficients `m_0 … m_{P_W − 1}`, `m_0` first |
+| `weights-blinding` | `masks_seed: [u8; 32] ‖ cid_T: Digest ‖ u64(i)`, for each blinding row `i < B_T` | `v_0 … v_{k_T − 1}`: the row's values in natural order, `v_x` at position `x`, the evaluation at `ω_{k_T}^x` |
+
+- **Encoding.** Committed row `j` is encoded as [RFC-0011](RFC-0011-advice-commitment.md#encoding) 'Encoding' says, at the weights' rate.
+  - The codeword is `g_j = f_j + Z_H·m_j`, with `m_j(X) = Σ_{s < P_W} m_s·X^s` from its `weights-mask` stream.
+  - `f_j` is the polynomial whose evaluations on `H` are committed data row `j`'s values (RFC-0040 'The matrices'), or blinding row `j − m_T`'s.
+  - Every other step of RFC-0040 'Encoding, leaves and roots' is unchanged.
+- **Every committed row is masked,** data and blinding rows alike, each from its own stream. No value is read twice: a stream gives exactly the values above, and nothing reads its later words.
+- **Roles are not drawn.** Every blinding row is drawn the same way. A proof's reservation gives each its role: the evaluation rows' pair `β_T`, a claim's mask row, or the proximity pair. It does so after the commitment and before the seed ([RFC-0065](RFC-0065-masked-channel-params.md#the-reservation)).
+- **The input is injective.** Its parts have fixed widths, and each domain has one input format, so two rows, two purposes or two commitments never share a stream.
+- **Why `cid_T`.** It binds the layout, the matrix, its width, the row block, the rows and the epoch (RFC-0031). Two commitments made under one epoch number, such as one under another row block, therefore draw independent masks. The budget, the record and the rebuilt-state rule below are per commitment, `R_W`: only the commitment the record lists is the epoch's.
+- **A matrix with no committed row**, `ChannelParams` when no weight has one, has `B_CP = 0` and draws nothing.
+- **Narrow matrices: until #564, `k_T ≥ k_W`.** A `tessera-protocol/2` commitment is made only when every committed matrix has `k_T ≥ k_W = 2^{layout.log2_k}`. Otherwise `commit-weights` refuses it with `ERR-USAGE`, before drawing anything.
+  - **Why `k_W`.** The parameter set's `τ_W` is computed for `k_W`'s rate, `(k_W + P_W)/n_W` (RFC-0012 'Layout', RFC-0014), and a narrower matrix's rate is higher. At `live-64`, `k_T = P_W` gives 40.3 bits of proximity instead of 64.
+  - **A full-rate code.** Once `k_T + P_W ≥ n_T`, the masked code is all of `Fp^{n_T}`. A row that differs from the true combination passes each queried column with probability `(n_T − 1)/n_T` or more, and nothing is left of the proximity bound.
+  - **An exact forgery.** Once `k_T + P_W > n_T`, the row `u + (X^{n_T} − 7^{n_T})·h`, with `deg h < k_T + P_W − n_T`, passes every column check. Its values on `H` range over `k_T + P_W − n_T` dimensions, enough to meet any one evaluation claim, and any values at all once `P_W ≥ n_T`. `d_model = 128` at `live-64` is such a case: `k_Q = 2^{14}` and `P_W = n_Q = 2^{16}`.
+  - **Not RFC-0011's bound.** RFC-0011's `P ≤ k` is the advice's decoding bound at rate 1/2. It does not bound the weights' soundness.
+  - **The rest is #564's.** A prover's refusal does not bind a malicious prover. The verifier's refusal of such a claim list, and whether narrow matrices are refused or padded to `k_W`, are [#564](https://github.com/AbdelStark/tessera/issues/564)'s. If #564 pads them, this rule follows its padding.
+
+### What it fixes
+
+- **A commitment.** A masked commitment is a function of `D`'s weights, the claim list (its layout and shapes, RFC-0040), the row block `B`, the epoch and `masks_seed_e`, hence `K`: its codewords, column chains, roots and `R_W`.
+- **A link.** It is a function of `K`, the epoch, the weights and the claim list, as RFC-0064 'One link per epoch' requires: both commitments are, its transcript is a function of their roots and rows, and its nonce is the least.
+- **Any row, alone.** Every row's mask and every blinding row's values can be drawn without the rows before them. That serves devices committing in parallel, a proof's combined rows, a link's rows in both epochs, and the store's fallback for the rows it answers.
+
+### The model entry
+
+```rust
+pub struct WeightRefreshKey {            // schema 0x0304, version 1, secret, .twk, in the key store
+    pub root_0: Digest,                  // R_W of epoch 0: the model entry it serves
+    pub key: [u8; 32],                   // K
+}
+pub struct WeightEpochRecord {           // schema 0x0305, version 1, private, epochs.twe in the entry
+    pub roots: Vec<Digest>,              // R_W of epochs 0, 1, …, latest, in order
+    pub marks: [BudgetMark; 10],         // the latest epoch's, in WeightMatrix order
+    pub retired: bool,                   // true once the entry check has found the record stale
+}
+pub struct BudgetMark {
+    pub next_blinding_row: u32,          // the first blinding row not burned
+    pub opened_columns: u32,             // τ_W per reservation since the epoch's start, plus its start's
+}
+```
+
+- **TCE.** The fields in order. `roots` lists at least epoch 0's root. A decoder refuses an empty list with `ERR-CODEC-NONCANONICAL` at its length, as RFC-0067 refuses a required list that is empty.
+- **The latest epoch** is `roots.len() − 1`, and its root is the last.
+- **The marks.**
+  - **How they move.** Within an epoch, the marks only grow. An append replaces them with the new epoch's start: row 4, and the link's distinct columns. Epoch 0 starts at row 0 and no column.
+  - **The column count is counted up front.** `reserve` adds its session's `τ_W` in the same write that raises the cursor, so cursor and count move together. Counted so, the count is never below the distinct columns opened.
+  - **A matrix with no committed rows,** `ChannelParams` at `e_CP = 0` with `B_CP = 0`, keeps marks of 0. No check compares them.
+- **Closed and open.** Both are taken over the matrices with committed rows only:
+  - **closed:** each such matrix's `next_blinding_row` is `B_T`, as a link leaves it;
+  - **open:** each is at most `B_T − 4`;
+  - **anything else** is refused, `ERR-USAGE`.
+- **One directory per model entry**, under fixed names:
+  - `epochs.twe`, the record;
+  - `epoch-<e>.twc` and `epoch-<e>.twr`, epoch `e`'s state and public commitment;
+  - `link-<e>.twl`, the link from epoch `e` to `e + 1`.
+
+  `<e>` is decimal, with no leading zero.
+- **What else the directory may hold.** It may hold the atomic writer's leftover temporary files and `run-manifest.json` (05 §6), which every check ignores. Every entry file is written by the atomic rename of [RFC-0040 '`WeightCommitmentState`'](RFC-0040-weight-commitment-artifacts.md#weightcommitmentstate): a new file beside the target, written, flushed, renamed over it, the directory flushed. This RFC names that temporary file `.<name>.<16 hex digits>.tmp`, the digits drawn at random, the name `tessera-codec`'s writer already gives it. Any other file, a name such as `epoch-01.twc` included, makes the entry check refuse.
+- **The path rules,** RFC-0067 'The path' for every entry file and for the directory.
+  - **Each file** is a regular file, neither a symbolic link nor a file of several hard links, else `ERR-USAGE`. A path that is not a regular file is refused before it is opened, by metadata that does not follow links, and the file opened must be the one checked, by device and inode.
+  - **The directory** is not a symbolic link, and is resolved once when the entry is opened.
+  - **When.** The rules hold at open and again before every write. A second name for an entry file, a hard or a symbolic link from another directory, would otherwise let two locks share one record.
+- **Commands and `--entry`.** In `tessera-protocol/2`, the plan's claim list's protocol, `commit-weights`, `weights refresh` and `prove` take the entry with `--entry DIR`. They write a state, the record or a link nowhere else.
+  - **`weights refresh` also takes `--model` and `--plan`,** as `commit-weights` does. It regenerates commitments from `K`, which needs `D`'s weights and the claim list, and it checks a presented `.twl` against the claim list.
+  - **In `tessera-protocol/1`,** `commit-weights --out` and `prove --weights` are unchanged, and `weights refresh` does not exist (RFC-0064 'Non-Goals').
+  - **The other protocol's flag** is `ERR-USAGE`.
+  - **Copies elsewhere.** A published `.twr` or `.twl` may be copied out of the entry, but only the entry's own files decide anything.
+- **The key** lives in the operator's key store, apart from the entry and every state file. It is created once, with mode 0600, and never replaced: written to a temporary file, then given its name by a call that fails if the name exists (`link`, or `renameat2` with `RENAME_NOREPLACE`).
+  - **Its readers.** Only `commit-weights` and `weights refresh` read it, never a proof. A command that reads it refuses a key whose `root_0` is not the record's first root.
+  - **A missing key** (the name does not exist) is `ERR-USAGE`. Any other failure to read it is `ERR-RES-IO`.
+- **The record** is written by atomic rename, as every file of the entry is. It holds nothing derived from a secret: the roots are public, and the marks are the budget's cursor (05 §3 PRIVATE). So a run manifest names it with its envelope digest (05 §6).
+- **One model.** A key, a record or a state of another model entry fails the root checks below, so no field names `D`.
+
+### One proof at a time per entry: the lock
+
+The lock is RFC-0067's lock for the verifier's ledger, applied to the entry directory:
+- **On the directory itself.** A writer takes an exclusive advisory lock on the entry directory, through `std::fs::File::try_lock` (`flock` on Linux and macOS), resolved once when it opens the entry.
+  - **A second writer** does not wait: its `try_lock` fails, and it is refused with `ERR-RES-IO`, as RFC-0067 refuses one. It tries again later.
+  - **No file releases it.** The lock is not a file. Removing or renaming a file in the directory releases nothing, and neither does renaming the directory, which keeps its inode.
+  - **No stale lock.** The system releases the lock when its process ends, so no operator step clears it.
+  - **Where it cannot be taken.** On a Unix where `std` cannot lock a directory, every writer is refused.
+- **Before each rename** a writer checks, by device and inode, that the file it replaces is still the one it last read or wrote, and that the entry's path still names the directory it locked. Otherwise it writes nothing, `ERR-RES-IO`.
+  - **A file it creates,** such as epoch `e + 1`'s, is placed with a call that fails if the name exists, `ERR-RES-IO`. An existing file of that name is kept (RFC-0064 'One link per epoch').
+  - **The window RFC-0067 states remains.** An operator could replace the directory between the check and the rename, and move the writer's temporary file into the new one. Closing it needs a rename relative to the locked directory's handle, which `std` does not offer.
+- **Local file systems only.** The entry directory is on a local file system. The prover cannot decide whether a shared file system honours `flock`, so none is supported, as RFC-0067 rules for the ledger.
+- **The span.** A writer holds the lock for its whole transition:
+  - `commit-weights`, throughout;
+  - a proof, from its entry check through its `record_queries` or `abort`;
+  - a link, from its entry check through closing epoch `e`;
+  - a rebuild.
+- **One proof at a time per entry.** A proof's columns are counted at its `reserve`, but are opened only at `record_queries`. One proof at a time keeps every opened column inside a count a `reserve` has checked. In live mode the verifier's pace holds the lock, up to `ERR-PROTO-TIMEOUT`.
+- **One node per entry.** The record does not partition the budget between nodes.
+- **Commands that only read**, such as `tessera inspect`, take no lock and decide nothing.
+
+### The entry check
+
+Every command that writes runs it first, under the lock, and refuses on the first failure:
+1. **The record** is present: else `ERR-USAGE`, and the model entry has failed closed.
+   - Unlike RFC-0067's missing ledger, which is `ERR-RES-IO`, no retry can help here.
+   - A record that cannot be read is `ERR-RES-IO`.
+   - One that does not decode carries its decoder's code, `ERR-CODEC-*`.
+   - A record with `retired` set is `ERR-USAGE`, and stays so.
+2. **Every entry file decodes.** A state, `.twr` or `.twl` that exists but cannot be read is `ERR-RES-IO`, and one that does not decode carries its decoder's `ERR-CODEC-*`.
+   - Such a file is never treated as lost: a corrupted file may be the one that would refute a rolled-back record.
+   - The operator moves it aside, which makes it lost, and every rule for a lost file then applies. Since that can open the residual ('What the prover cannot detect'), the operator does so only as 'The operator's duty' says: then, before any proof, `weights refresh` runs with the latest published `.twr` and every kept `Round1` presented.
+3. **The directory holds only its fixed names**, under the path rules, and the files 'The model entry' lets every check ignore: else `ERR-USAGE`.
+4. **No file of the entry is past the record or differs from it.**
+   - No `epoch-<e>.twc` or `epoch-<e>.twr` exists for `e` past the latest epoch, at any version, and none has a root other than the record's for its epoch.
+   - No `link-<e>.twl` exists for `e + 1` past the latest, and none names roots other than the record's.
+   - **The latest epoch's state, if present, is open.** A link always appends before it closes its epoch, so a closed latest state means an append was lost.
+5. **Presented artifacts.** The operator may present artifacts to `weights refresh` and `prove` with `--present`, repeatable. Each can only refuse or burn, never grant a reservation. Accepted kinds, by schema, and the roots each names:
+   - a `WeightCommitmentPublic` (`0x0301`, `.twr`) names its epoch's root;
+   - a `WeightLinkProof` (`0x0303`, `.twl`) names two;
+   - a `VerifierLedger` (`0x0701`) names the `(epoch, root)` pairs of this entry's chain only: the chain under the entry's claim list whose epoch-0 root is the record's first root. Its other chains, another model's or a retired entry's, are ignored, so one verifier's ledger serves several entries;
+   - once `Round1`'s schema version 2 fixes `WeightReservation`'s bytes (OQ-0073-4), a `Round1` (`0x0510`) or a `NiProof` (`0x0520`) the operator kept outside the entry names the root and epoch it was proven against.
+
+   What the entry check does with them:
+   - **A root past the record** names an epoch the record does not list, or a root other than the record's for its epoch.
+     - **Authenticated, it marks the record stale.** That is a `.twl` whose old root the record lists and that passes RFC-0064's checks against the claim list, or a root that `weights refresh` regenerates from `K` for its epoch.
+     - **Not authenticated, it refuses this command only,** `ERR-USAGE`, and marks nothing stale. So an artifact a malicious verifier forged cannot retire the entry.
+   - **Reservations** are a ledger's `used_blinding_rows` for a root of this entry's chain, and a kept `Round1`'s or `NiProof`'s.
+     - **Of the latest root,** they raise the marks as 'The cursor and the count' says. A reservation is never authenticated: a false one only burns rows and columns, at most the rest of the epoch, which costs a refresh. Rows past `B_T` are refused, `ERR-USAGE`.
+     - **Of an earlier epoch the record lists,** they are ignored: that epoch is closed.
+     - **Of a root past the record,** the artifact names that root, and the rule above applies: a kept `Round1` of a later epoch refuses before any proof, as the latest `.twr` does.
+   - **The raise is written into the record.** `reserve` writes it with its own record write. `weights refresh` writes it before anything else, so one presentation to it covers every later command.
+   - **Anything else.** An artifact that cannot be read is `ERR-RES-IO`, and one that does not decode carries its decoder's `ERR-CODEC-*`. A decodable artifact of another kind is `ERR-USAGE`. `commit-weights` takes no `--present`: it runs no entry check.
+- **Stale persists.** A record that fails item 4, or meets an authenticated item 5, is stale. The prover rewrites it with `retired` set, then refuses with `ERR-USAGE`. Every later command refuses the retired record, whatever the entry then holds: removing the file a check named does not un-retire it. The entry has failed closed, and the operator starts a new model entry under a new key, as RFC-0064 does when `K` is lost.
+
+### Fresh and rebuilt states
+
+- **A fresh state** is written only by the transition that appends its epoch to the record, right after the append:
+  - **`commit-weights`, for epoch 0.**
+    1. It refuses an entry directory that holds any file but those every check ignores, and an existing key path, with `ERR-USAGE`.
+    2. It draws `K` and commits epoch 0, refusing a narrow matrix.
+    3. It writes the key, then a record of one root, whose marks are row 0 and no column.
+    4. It writes epoch 0's state, from row 0, then the `.twr`.
+
+    Epoch 0 is therefore committed once per key. A key written with no record beside it is unused: the operator may move it aside and commit again.
+  - **The first link from the record's latest epoch `e`, for `e + 1`.**
+    1. In one write of the record it appends `R_W'` and sets the marks to `e + 1`'s start: row 4, and the link's distinct columns.
+    2. Only then does it write `e + 1`'s state, from row 4 (RFC-0064 'The budget'), then `e + 1`'s `.twr` and the link.
+    3. Then it closes epoch `e`.
+
+    Every file of epoch `e + 1` is written after the append, so no crash leaves a file past the record.
+- **Every other state is rebuilt.** That covers a state regenerated from `K` after a loss, and one written by a link remade from an epoch that is no longer the latest.
+  - In a rebuilt state, every matrix with committed rows has `next_blinding_row = B_T − 4`, where `reserve` always fails and the link's rows begin, and every `opened_columns` is empty.
+  - It serves only the link from its epoch, which opens what any link from that epoch opens (RFC-0064 'One link per epoch').
+- **`reserve`** works only on the state at `epoch-<latest>.twc`, whose public part hashes to the record's last root. Every other state is `ERR-USAGE`. Its conditions:
+  - **The latest state exists.** If it is lost, `ERR-WITNESS-BUDGET`: `weights refresh` rebuilds it and links it.
+  - **The previous epoch is closed:** for a latest epoch `e ≥ 1`, `epoch-<e−1>.twc` is closed (RFC-0064 'Not yet usable'). Else `ERR-WITNESS-BUDGET`: `weights refresh` completes the unfinished link first, rebuilding `e − 1`'s state if it is lost, then closing it.
+  - **The cursor and the count.** This is the one statement of where `reserve` starts. RFC-0012, RFC-0064, the simulator and this RFC's other sections cite it.
+    - **From the record's marks:** the cursor is their `next_blinding_row`, the count their `opened_columns`.
+    - **A record behind the latest epoch's state** is raised to it: its cursor to the state's, and its count by `τ_W` for every `r_T` rows that adds, rounded up, at the largest `τ_W` of the layout's parameter sets.
+    - **A presented reservation of the latest root** (item 5) raises them the same way, from the cursor so raised.
+    - **Nothing else moves them.** The count is not raised to the state's `|opened_columns|`, nor left at the record's while the cursor alone is raised. A restored state's set lacks the columns of the proofs it lost, and a restored record's count lacks the proofs since its version, so either reading lets the next proofs open more than `P_W` columns. The gate's negative controls show both.
+    - **A latest-epoch state behind the marks** is raised to them, and its rows below them count as burned.
+
+    That covers a restored state, a restored record, and a crash between the two writes.
+  - **Rows and columns.** RFC-0012's preconditions hold on the cursor and on the count, else `ERR-WITNESS-BUDGET`: `cursor + r_T ≤ B_T − 4`, and `count + τ_W ≤ P_W − τ_link`.
+  - **The order.** One write of the record raises each opened matrix's cursor by `r_T` and its count by the session's `τ_W`. Then the state is written, then `Round1` is built.
+- **`record_queries`** writes the state only: the session's distinct query indices join `opened_columns`. The record's count was raised at `reserve`.
+- **`weights refresh`** runs the entry check with what is presented to it, and writes the raised marks into the record (item 5). Then, in order, it:
+  1. completes every unfinished link below the latest epoch: one whose `link-<e>.twl` or closed `epoch-<e>.twc` is missing;
+  2. rebuilds a lost latest state;
+  3. links from the latest epoch when its `reserve` would fail for rows or columns. That is decided under the link's lock, so two refreshes append one epoch.
+- **No pending reservation decides a link.** RFC-0064's precondition, that every reservation of epoch `e` has recorded its queries or aborted, is decided by the lock. A link holds it, and a proof holds it from its entry check to its `record_queries` or `abort`.
+  - **Without #156,** finding the lock free means every earlier holder has died and its reservation is aborted. Its rows stay burned, and its columns were never revealed.
+  - **#156's resume** holds the lock and resumes only while the record's marks are its reservation's, which an append replaces.
+- **Crashes fail safe.**
+  - A crash between a link's append and the fresh state's write leaves no state. The state written on restart is then rebuilt, since its epoch's append is no longer the last: one refresh lost, never a row.
+  - A crash between the record and the state of a `reserve` leaves the state behind the marks, which raise it. A crash before `record_queries`' write loses only the state's set of columns, which the count already covers.
+- **After a lost state.** The prover rebuilds the record's latest epoch at its canonical path and links it. That link appends the successor, which is fresh. Older epochs it rebuilds serve their links only.
+
+### What the prover cannot detect
+
+- **Detected,** and refused or made safe by the rules above:
+  - a crash at any point;
+  - a lost state, record, key or directory;
+  - a corrupted entry file;
+  - a second process on the entry, a removed file included;
+  - a second name for an entry file, a hard or a symbolic link;
+  - a restore that leaves a refuting file (below) in place, whatever else it rolls back.
+- **The residual rule,** with nothing presented. Call the truth the last record the prover wrote, and `L` the latest epoch of the record on disk.
+  - **The precondition.** The prover cannot detect an entry whose record is present, decodes, is not retired and is behind the truth, and whose files all decode. It then proves with rows and columns already revealed only in these two cases:
+    - **Across a link** (`L` below the truth's latest epoch): no state or `.twr` of an epoch past `L` and no link from `L` or a later epoch is present, at any version, and `epoch-L.twc` is absent or open.
+    - **Within the epoch** (`L` the truth's latest): `epoch-L.twc` is present, and its cursor, raised to the record's marks, is behind the truth's.
+  - **Exact without crashes, conservative with them.** Over a history without crashes, every entry in these two cases does prove with revealed rows and columns. After a crash the truth may be a record whose transition revealed nothing: a reservation or an append that died before its message. A restore behind it reuses nothing. A lost key does the same: `weights refresh` refuses, and nothing past the budget is proven. The rule then errs only toward harm that does not happen.
+  - **What else is harmless.** A lost latest state within the epoch is rebuilt at `B_T − 4`, which no reservation passes. Columns follow rows: the count moves with the cursor, so a cursor not behind the truth's has a count not behind it.
+  - **A copy of the entry,** under another path or on another node, proves beside it with no rule to see the other: the second residual case.
+- **The bound is per matrix and per epoch.** Each rollback or copy lets the proofs that follow spend an epoch's budget once more, in every epoch it reaches:
+  - **Rows,** up to `B_T − 4` in epoch 0 and `B_T − 8` in a later epoch: 4,092 and 4,088 at 405B, 12,276 and 12,272 for `ChannelParams`.
+  - **Columns,** up to `P_W − τ_link` in epoch 0 and `P_W − 2τ_link` later, each beyond the `P_W` already opened: 65,414 and 65,292 at `live-64`. Past `P_W`, Lemma 3 no longer hides the opened rows.
+  - **A rollback** reaches every epoch from the restored record's latest to the truth's latest.
+  - **A copy** reaches every epoch both copies prove in, for as long as both prove: its bound has no end in time.
+  - **Several events** add their bounds.
+- **The evidence.** An executable model of these rules, [`docs/testing/weight-entry-model/`](../testing/weight-entry-model/README.md), replays every restore, loss, corruption, crash, copy and alias it builds. Its gate checks this rule both ways against the harm it observes, and the per-epoch bound, as 'Testing Strategy' states.
+- **What a presented artifact catches.** Each case is caught only by an artifact that records what the rolled-back files lost:
+  - **Across a link,** the latest epoch's published `.twr`, its link, this entry's chain in a ledger's `weight_roots`, or a kept `Round1` of a later epoch refuse every command, and an authenticated one retires the entry.
+  - **Within an epoch,** only the kept `Round1`s of every proof sent since the backup cover every reservation. That needs `Round1`'s schema version 2 (OQ-0073-4). A verifier's ledger holds only the rows of proofs it accepted (RFC-0067 'Updates'), so it catches a rollback only when every proof since the backup was accepted. An honest proof can be refused after its combined rows were sent: `Reject(UBoundExceeded)`, or a live session that times out after `Round2Response`. Its rows are in no ledger.
+  - **A copy** is caught only when its proofs and the other copy's are serialized, each presented with the other's reservations. Copies that prove concurrently are not caught.
+- **What the verifiers catch.**
+  - **Rows.** A verifier whose ledger holds a reused row refuses the proof at RFC-0019 step 5, `Reject(Budget)` ([#158](https://github.com/AbdelStark/tessera/issues/158)).
+  - **A superseded root.** A verifier that accepted a later link refuses a proof against the earlier root at step 4.
+  - **In live mode,** both checks run before the verifier reveals its seed share, so the prover sends it no combined row.
+  - **What they miss.** A non-interactive proof is whole when it is sent, so a verifier that refuses it has already received the reused pairs. A verifier whose ledger never saw the earlier proofs accepts. Verifiers that pool their views see both.
+  - **Columns.** No verifier catches reused columns. `VerifierLedger` records no opened columns (RFC-0019 'Ledger'), though step 13 says it does ([#569](https://github.com/AbdelStark/tessera/issues/569)).
+- **The operator's duty,** as RFC-0064 already makes it for a state:
+  - never restore the record or a state;
+  - never remove a file the entry check names as past the record or differing from it;
+  - move a corrupted entry file aside only as recovery from a possible rollback, and then, before any proof, run `weights refresh` with the latest published `.twr` and every kept `Round1` presented;
+  - never copy an entry to prove beside it;
+  - keep every `Round1` sent, outside the entry;
+  - after any restore, run `weights refresh` with the latest published `.twr` and those `Round1`s presented, before any proof. It retires a record rolled back across a link, and writes the raise for a rollback within an epoch into the record.
+
+### The regeneration checks
+
+- **A regenerated commitment.** A prover that regenerates an epoch's whole commitment from a seed checks that its `WeightCommitmentPublic` hashes to the record's root for that epoch, before anything else. A difference is `ERR-USAGE`: the key, the state, the weights, the claim list or the build's expansion is not the epoch's.
+  - **Before any write or send.** The check comes before any state, record entry or link is written from the regenerated commitment, and before anything is sent. A link persisted from a wrong commitment would be kept and resent on every restart (RFC-0064 'One link per epoch').
+  - **A part of a commitment** cannot be hashed to `R_W`. What a proof draws in part is checked by the next item.
+- **Each combined row, before it is sent.** A prover that draws the masks and blinding values its combined rows need, rather than holding the whole commitment, checks each combined row at one column before sending it. The column is drawn from its CSPRNG, so that no structured error can hide at a fixed column. It is never sent, and nothing about it is revealed. A failure is `ERR-USAGE`.
+  - **With the codeword store**, the column is read from the store and checked against the matrix root, as RFC-0012 'Column answers' reads columns.
+  - **Without the store**, the prover regenerates the column's symbol in every row, then the column's chain and leaf. It checks the leaf against the root through the matrix's Merkle tree, which a node that answers columns keeps: `2n_T` digests per matrix.
+  - **Why one column suffices.** A wrong mask coefficient or blinding value adds to the combined codeword a polynomial of degree below `k_T + P_W`. One wrong value adds a polynomial that is non-zero at every point of the coset, since neither `Z_H` nor a Lagrange factor vanishes off `H`. A wrong expansion's pseudorandom error vanishes at a given point with probability about `1/P`.
+- **Evaluated column answers.** A column answer evaluated rather than read from the store is checked against the matrix root before it is sent, as a stored one is: its leaf and the multiproof the answer carries anyway (RFC-0012 'Column answers').
+
+### Errors
+
+One code per failure. `ERR-WITNESS-BUDGET`'s remedy is `weights refresh` (04 §5), and every failure it marks below is one that command repairs.
+
+| Failure | Code |
+|---|---|
+| The entry's lock is held, or a file or the directory changed under a writer (device and inode), or a file to create already exists | `ERR-RES-IO` |
+| The record, the key, an entry file or a presented artifact cannot be read | `ERR-RES-IO` |
+| The record, the key, an entry file or a presented artifact does not decode, an empty `roots` included | the decoder's `ERR-CODEC-*` (`ERR-CODEC-NONCANONICAL` for an empty `roots`) |
+| The record is absent, or retired | `ERR-USAGE` |
+| The record is stale: a file past it or differing from it, a closed latest state, or an authenticated later artifact (it is then retired) | `ERR-USAGE` |
+| A file the entry may not hold; an entry file or directory that is a symbolic link, or a file of several hard links | `ERR-USAGE` |
+| A state that is neither closed nor open | `ERR-USAGE` |
+| A presented artifact of another kind; a presented reservation with rows past `B_T`; a presented later artifact that is not authenticated (this command only) | `ERR-USAGE` |
+| The key is absent (its name does not exist) when `weights refresh` needs it, or its `root_0` is not the record's first root | `ERR-USAGE` |
+| The other protocol's flags (`--entry` against `--out` or `--weights`) | `ERR-USAGE` |
+| A regeneration check or a combined row's column check fails | `ERR-USAGE` |
+| `reserve` on a state other than the latest epoch's, or of another root | `ERR-USAGE` |
+| `reserve` with the latest state lost, or the previous epoch not closed | `ERR-WITNESS-BUDGET` |
+| `reserve` with too few rows or columns left at the latest epoch, a rebuilt state included | `ERR-WITNESS-BUDGET` |
+| `commit-weights` with a narrow matrix, a non-empty entry or an existing key path | `ERR-USAGE` |
+
+### Versions
+
+- **This is version 1** of the expansion. Its domains are `weights-mask` and `weights-blinding`.
+- **What a new version is.** Any change to what this RFC fixes: the primitive, a domain, an input, the order, the reduction or the rows that draw. A new version takes new domains, so that two versions never give related values from one seed.
+- **The protocol version names it.** `tessera-protocol/2` expands by version 1, and `tessera-protocol/1` expands nothing (RFC-0040). The expansion is a tier-A surface (02 §1), so a new version is a new protocol version. The claim list states its protocol version (RFC-0007), so a rebuilt epoch's expansion is known from public data. `WeightCommitmentState`'s schema does not change.
+- **The other inputs of `cid_T`** are frozen with it: RFC-0040's layout and RFC-0065's `B_CP`. A change to either within a protocol version would break every rebuild, so it is a protocol-version change too.
+- **A build that expands by another version** fails the regeneration check, and refuses.
+
+### Secrets
+
+| Value | Class | Held as |
+|---|---|---|
+| `K` | SECRET key material (05 §3, OBS-2) | `Secret<HeapKey<32>>`, from the CSPRNG or the key artifact; read only by `commit-weights` and `weights refresh` |
+| `masks_seed_e` | SECRET key material | On the heap inside the state's `Secret` (RFC-0040), filled straight from the derivation's output reader, never returned by value |
+| A hasher with a secret input: `weights-refresh`'s, over `K`, and a stream's, over `masks_seed ‖ cid_T`, whose chaining value draws every row of one matrix in one domain | SECRET key material | `Secret<Box<blake3::Hasher>>`, cleared when it drops |
+| A stream's output reader | SECRET key material | `Secret<Box<blake3::OutputReader>>`, constructed in its box, or with any stack copy cleared, as [#567](https://github.com/AbdelStark/tessera/issues/567) requires |
+| Mask coefficients, blinding values, a stream's skip pattern, position and count | SECRET | `SecretBuf` and the commitment's `Secret` rows (OBS-6) |
+| The epoch record | PRIVATE | `epochs.twe` in the entry: public roots and the budget's cursor |
+
+- **Never through the public hasher.** `tessera_hash::Hasher` and `tessera_hash::hash` derive `Clone` and `Debug`, hold the state by value, and never clear it. `blake3`'s `zeroize` feature implements `Zeroize` but clears nothing on drop. So no secret-class input goes through `tessera_hash`, `K` included: `weights-refresh`, `weights-mask` and `weights-blinding` each take a `Secret<Box<blake3::Hasher>>`. The file that does it is a reader in `secret-access.toml`. The CPU prover's advice stream (`crates/tessera-prover/src/cpu/random.rs`) is no model: it moves its reader through the stack, which #567 fixes.
+- **Never `Debug`, readers included.** `blake3::OutputReader`'s `Debug` prints its position: the words a stream has drawn, and so its skips. The rule against `Debug` is load-bearing for readers, not cosmetic.
+- **Nothing derived from them is logged.** No log, metric, error or report carries a seed, a stream's words, its position or its skips (OBS-1).
+
+### What is revealed, and why it stays hidden
+
+The expansion sends nothing itself. Every revealed value that depends on it is hidden by a value it draws, under the PRG hybrid of the simulator argument (§2):
+
+| Revealed | Hidden by | What it needs from the expansion |
+|---|---|---|
+| Opened column symbols, at most `P_W` distinct per matrix and epoch, the link's included | Each row's mask (Lemma 3) | Each row's `m_j` uniform, independent of every other row's and of the weights |
+| Combined rows and their combined masks: evaluation, proximity, the link's difference | Each row's designated blinding pair or mask row, and that pair's own masks (Lemma 5, RFC-0013 'Masks of combined masks') | Each blinding row's values uniform, independent of every other row's values and of every mask |
+| Blinding claims `q` | One functional of a fresh pair (RFC-0013 'Hiding openings') | The same |
+| Masked evaluations `W'(q)` and `ChannelParams`' `v_i` | A mask row `R`, two blinding rows (RFC-0013, RFC-0065) | The same |
+| Two epochs' columns and the link | Each epoch's own masks | Independent seeds: `H("weights-refresh", K ‖ u32(e))` per epoch |
+| Every one of these, across the proofs of an epoch | Each pair and mask row used by one proof (R6) | No row reserved twice: 'The model entry' to 'What the prover cannot detect' |
+
+- **A malicious verifier** controls no input of the expansion. The seed is secret, the addresses are public and fixed before any session, and the transcript plays no part. A root it supplies can only refuse, and a reservation it supplies only burn: neither grants a reservation. A forged later root that the prover cannot authenticate refuses one command and retires nothing.
+- **`ε_PRG`.** In the random-oracle model, a verifier learns anything about a stream only by querying the oracle at an input that holds its 256-bit seed. That has probability at most `Q_H·2^{-256}` for `Q_H` queries. It counts once per epoch a view spans, and once more for `K` (RFC-0064 'Zero knowledge').
+- **Leaks.** A leaked state gives its own epoch's seed, and so every mask and blinding row of that epoch, which with the epoch's combined rows and columns reveals folds of the weights. A leaked `K` gives every epoch's. RFC-0064's forward secrecy among epochs holds, and proofs never read `K`.
+- **A malicious prover** gains nothing. The verifier never checks the expansion, and a prover that expands otherwise risks only its own secrecy and the determinism of its links.
+
+### Cost at 405B
+
+At RFC-0012's 461,310 committed rows, 49,144 of them blinding rows (826 fewer with `ChannelParams`' 56 data rows, RFC-0065):
+- **Per epoch.** The commitment draws 461,310 mask streams of `2^{16}` values and 49,144 blinding streams of `2^{20}`: 3.02·10^10 and 5.15·10^10 values, 654 GB of output and about 1.02·10^10 compressions. A counter mode over `H` would take twice as many with the chaining value of its 64-byte prefix cached, and four times as many without.
+- **Per proof.** A combined row's mask is `Σ_j c_j·m_j` over every row its coefficients reach, and its values `Σ_j c_j·A_j` likewise.
+  - **Under RFC-0012's generator.** The evaluation rows reach every data row, and the proximity row every data and blinding row. So a proof draws every mask and every blinding value, the whole 654 GB: about 1.2 GPU-s at RFC-0004's 530 GB/s per H100, unless the prover keeps them.
+  - **If #394 keeps the blinding rows out of the proximity combination,** a proof draws the data rows' masks and its reservation's rows: 412,166 rows × `2^{16}` × 8 bytes, 216 GB, about 0.41 GPU-s.
+- **Per link.** Its rows reach both epochs' rows: about 1.3 TB, once per epoch.
+
+### The conformance vector
+
+`spec/vectors/weight-masks/` holds `masks.json`, written by `generate.py`. That oracle is standard-library Python, written from this RFC. It takes its BLAKE3 from `hash/`'s oracle, which checks it against the official vectors at extended length, and its encoding and layout from `encoding/` and `weights/`. The file holds:
+- **`refresh`.** A fixed `K` and `masks_seed_e` for `e` in 0, 1 and `2^32 − 2`, the last epoch a link can reach: RFC-0064 refuses a link from epoch `2^32 − 1`.
+- **`streams`.** For both domains, under the `cid_T` of `tiny-2-minimal`'s `Embed` and `ChannelParams` at epoch 0 (below), with epoch 0's seed:
+  - the inputs: row 0, the matrix's last row (`m_T + B_T − 1` for `weights-mask`, `B_T − 1` for `weights-blinding`) and `2^{64} − 1`;
+  - for each, the first 24 words, three output blocks, and the values they give.
+- **`rejection`.** One input in each domain whose stream has a word of `P` or more among its first eight. Each is found once by a search outside the oracle, about `2^{29}` BLAKE3 calls, and pinned by its domain and bytes. The oracle checks the word and that the values skip it.
+- **`models`.** Both are committed in `tessera-protocol/2` with the row block `B = 4`, at epochs 0 and 1 from the fixed `K`.
+  - **`tiny-2-minimal`** at `test-small/1`. Its `PublicQuantSpec`, the one its `test-small/1` claim list in `spec/vectors/claims/` holds, gives a `ChannelParams` to five weight types: Q, K, O, Gate and Down. So `e_CP = 5`, `B_CP = 32 + 2·4·4 = 64`, and `r_CP = 14`. Its `ChannelParams` commits structural rows 2 to 5, 8 to 11 and 14 to 15, so a build that indexes by `r` fails it.
+  - **`synthetic`** (`spec/vectors/weights/`). At `test-small/1` it is refused before anything is drawn: its `K` and `V` have `k_T = 128 < k_W`. It is committed under the test layout `WeightLayoutParams { log2_k: 7, log2_inv_rate: 2, mask_coeffs: 32, blinding_rows: 32 }`. There every committed matrix has `k_T ≥ 128`, and its `ChannelParams`, with no claim, no committed row and `B_CP = 0`, draws nothing.
+
+  Per committed matrix:
+  - `m_T`, `e_T`, `B_T` and `cid_T`;
+  - one SHA-256 (`hashlib`, independent of the BLAKE3 under test) of all its mask coefficients, rows in committed order, each `u64` little-endian, and one of all its blinding values;
+  - the first and last values of each;
+  - the root.
+
+  Then `R_W`.
+
+`cargo xtask gen-vectors` writes it, and `tessera-pcs` checks it. The verifier reads none of it, since it never expands a seed.
+
+## Alternatives Considered
+
+1. **A counter mode over `H`:** `H("weights-mask", seed ‖ cid ‖ u64(j) ‖ u64(block))`, 32 bytes each. Every implementation already has `H`. Rejected: twice the compressions per 405B epoch, 2.0·10^10 against 1.0·10^10, even with the 64-byte prefix's chaining value cached, and four times without it; and twice the cost of every proof's draws. The extended output is BLAKE3's own, and `hash/`'s oracle and `tv-hash` already check it against the official vectors at extended length.
+2. **One stream per matrix or per epoch**, as the CPU prover's per-proof advice masks are drawn today. Rejected: a row's values would need every row before it. The fallback, the reservation's rows, the link's rows and parallel commitment all read rows alone.
+3. **A stream per row, values and mask together.** It saves 49,144 stream starts per 405B epoch. Rejected: a reader of masks alone would draw `k_T` values first for each blinding row. Such readers are a proof under #394's exclusion of the blinding rows from the proximity combination, and a fallback that answers data rows only.
+4. **AES-128-CTR or ChaCha20.** Rejected: a second primitive on the commitment path, which RFC-0004 keeps to BLAKE3. On a GPU, BLAKE3's 7 rounds per 64 bytes cost less than ChaCha20's 20.
+5. **128-bit words reduced modulo `P`.** A bias near `2^{-64}` per value, and twice the stream. Rejected for exactness, as RFC-0004 rejects it for challenges.
+6. **The matrix id in place of `cid_T`.** It saves 31 bytes and one compression per stream. Rejected: two commitments from one seed would share every mask.
+7. **Drawing from the transcript.** Rejected: INV-ZK-3. Its values are public.
+8. **Fresh masks per commitment, from the CSPRNG**, with no expansion to fix. Rejected: RFC-0064's links would not be remade as the same bytes, which is what 'One link per epoch' rests on.
+9. **Telling a rebuilt state from the state itself.** Rejected: a fresh state written a second time, by a remade link or after a loss, is byte for byte the first. Only a record of what was written decides it.
+10. **The record in the key store, beside `K`.** Rejected. Every `reserve` reads the record, which would bring `K`'s store into every proof. A record restored with the key store alone would also be judged against no state, while beside the states its staleness shows.
+11. **A free path for every state and link.** Rejected: a stale record could not find the later states that refute it.
+12. **Partitioning the budget between nodes in the record.** Rejected for now: one node proves per entry. Several would need the record to arbitrate between them, a shared counter with compare-and-swap, which no local file gives.
+
+## Drawbacks
+
+- **Positions move.** A value's word depends on how many words before it were skipped, so a GPU kernel that draws words in parallel must compact them. The fast path, no skipped word, holds for a row with probability about `1 − 2^{-12}` at `2^{20}` values. The conformance vector pins a skip in each domain.
+- **Per-proof draws.** Under RFC-0012's proximity generator a 405B proof draws the whole 654 GB, about 1.2 GPU-s, or reads a store of it. RFC-0012 counts that only for its fallback, and 08 §2 still says the weight column answers add no GPU time, under a weight-pass budget of 0.24 GPU-s that alerts above 0.5. OQ-0073-5 points to the cost-model issue, [#568](https://github.com/AbdelStark/tessera/issues/568).
+- **More state to keep.** Two more artifacts, a fixed directory and a lock per model entry. The operator must never restore the record or a state, must keep every sent `Round1`, and must present the latest published artifacts and those `Round1`s after any restore.
+- **One proof at a time per model entry.** The lock spans a whole proof, and in live mode the verifier's pace holds it. Throughput per model is one proof's until the budget can be partitioned.
+- **A lost record ends the model entry,** as a lost key does.
+- **Small models leave `tessera-protocol/2`** until #564 decides whether to pad them: every committed matrix needs `k_T ≥ k_W`.
+- **One more normative format** that every prover implementation must follow, which no verifier test can check.
+
+## Migration / Rollout
+
+- **#147** implements:
+  - the domains;
+  - the expansion and the conformance vector;
+  - the masked commitment;
+  - the model entry: its directory, its lock, its path rules, the key and the record, 02 §2.2's `--entry` for `commit-weights`, `weights refresh` and `prove` in `tessera-protocol/2`, `--refresh-key` for the first two and `--present` for the last two, with RFC-0040 'Command line', and 04 §5's rows;
+  - `reserve`'s rules on the latest epoch and the marks;
+  - the regeneration checks.
+
+  Both workspaces' domain lists and `spec/vectors/hash/`'s oracle follow RFC-0004's table (RFC-0031), `weights-link` and `weights-refresh` included, which neither has yet. 03 §5's catalog gains `0x0304` and `0x0305`, and 02 §2.2 its flags, with the code that reads them: `tessera-codec`'s registry test reads the catalog.
+- **#153** remakes links with the expansion, in the entry directory, and writes successors fresh or rebuilt by the record.
+- **#156** may draw the per-proof advice masks from 'The stream' under a domain of RFC-0004 of its own. Its resume path holds the entry's lock and never writes a state: a resumed session uses the state its reservation was persisted in, and resumes only while the record's marks are that reservation's.
+- **#564** gives the verifier's refusal of narrow matrices, before any `tessera-protocol/2` verifier ships.
+- **#174** compares CPU and GPU commitments on it.
+- **`tessera-protocol/1`** is unchanged.
+
+## Testing Strategy
+
+- **The vector.** `tessera-pcs` reproduces `masks.json`: every stream, both rejections, the seeds, and each model's digests, roots and `R_W`. It also reproduces `synthetic`'s refusal at `test-small/1`.
+- **The skip.** A stub word source drives the skip branch: the words `P`, `2^{64} − 1` and `P − 1` give one value, `P − 1`.
+- **Independence.** Changing the seed, `cid_T`, the row or the domain changes the first output block. Two epochs from one `K` give different roots for the same weights.
+- **Determinism.** Regenerating a commitment from one `K` and epoch gives the same bytes, rows drawn in any order or in parallel.
+- **Narrow matrices.** `commit-weights` refuses `k_T = k_W/2` with `ERR-USAGE` before drawing, and accepts `k_T = k_W`.
+- **The regeneration checks.**
+  - A state whose seed, epoch or weights are not the record's root's is refused with `ERR-USAGE` before any write or message.
+  - A build whose expansion differs fails the check of a combined row at one column, with the store and without it.
+  - An evaluated column answer with one wrong symbol is caught against the root before it is sent.
+- **The model entry: the gate.** The executable model of these rules is [`docs/testing/weight-entry-model/`](../testing/weight-entry-model/README.md): standard-library Python, whose `gate.py` exits non-zero on any failure below. S4 ports it as a test of `tessera-pcs` (`tests/weight_entry_model.rs`), whose rules are the code's; until then it runs by hand on every change to these rules.
+  - **Its state space.** It replays three epochs and two links, with a backup after every write. Each of the eight entry files is at every version it had, lost, or present but undecodable. The record, the three states, two `.twr` and two links make eight.
+  - **Two regimes.** Rows end an epoch first in one, and columns, as at `live-64` and `ni-100`, in the other.
+  - **What is presented.** It runs with nothing presented; with the latest `.twr`; with that and a real ledger, which holds only accepted proofs' rows, one proof per epoch refused after its rows were revealed, beside another model's chain; with the latest `.twr` and every kept `Round1`; and with every kept `Round1` alone.
+  - **The pass condition.** Every outcome that reuses a row or opens a column past `P_W` is in 'What the prover cannot detect''s rule, and every outcome in the rule does. That is 0 mismatches either way, in every run and both regimes, and no outcome past the per-epoch bound. With every kept `Round1` presented, with or without the latest `.twr`, none remains.
+  - **With crashes.** A crash at every write of a scripted history, then the record alone or the whole entry restored to every backup: no harmful outcome lies outside the rule. Some in it are harmless, the conservative direction.
+  - **These are refused or made safe, 0 rows reused:**
+    - a crash after every write, and a second crash during recovery;
+    - a second process, any file removed;
+    - a hard- or symbolic-link alias of the entry, one made during a proof included;
+    - a corrupted entry file, and one moved aside before `weights refresh` runs with the latest `.twr` and the kept `Round1`s;
+    - a restored latest state or record alone;
+    - a restored record with a refuting file present;
+    - a closed latest state under a rolled-back record;
+    - a lost latest state;
+    - a matrix with `B_T = 0`;
+    - a forged presented root, which refuses one command and retires nothing;
+    - serialized copies, each presented the other's reservations;
+    - a ledger that also holds another model's and a retired entry's chains;
+    - a rollback within an epoch whose kept `Round1`s are presented once, to `weights refresh`.
+  - **Concurrent copies reuse rows,** as the residual states, and copies proving in turn reuse rows in every epoch, within the per-epoch bound times the number of other copies.
+  - **The residual's bound** is checked per epoch on every outcome of the full replay, and on whole-entry restores in epoch 0 and later.
+  - **The negative controls.**
+    - RFC-0012's `record_queries` row as it read before this RFC over-opens columns under a restored state.
+    - A column count raised by `record_queries` in place of `reserve` over-opens columns in the column regime when a ledger is presented.
+    - Two other readings of 'The cursor and the count' over-open columns outside the rule at `B_T = 64`: the count raised to the state's `|opened_columns|`, and the cursor alone raised.
+    - Without the path rules, an alias reuses rows; with them at open only, an alias made during a proof does.
+    - A presented raise that `weights refresh` does not write into the record reuses rows.
+    - A ledger read beyond this entry's chain refuses every command.
+    - A corrupted refuting file read as lost reuses rows.
+    - Closed and open read over every matrix, a `B_T = 0` one included, refuse every command.
+- **The model entry, case by case.** Each of these is a test:
+  - `commit-weights` refuses a non-empty entry or an existing key, and creates the key without replacing;
+  - a key whose `root_0` is not the record's is refused;
+  - a lost record, a stale one, and a retired one refuse every transition, and a retired one stays retired after the file a check named is removed;
+  - a file of a non-canonical name, a symbolic link, and a file of two hard links are refused;
+  - a presented later root that is not authenticated refuses this command and marks nothing stale, and a presented reservation past `B_T` is refused;
+  - `reserve` before the previous epoch is closed is `ERR-WITNESS-BUDGET`, and `weights refresh` completes the link;
+  - an exhausted epoch-0 state and a rebuilt one both refuse `reserve`, and a link from either writes a fresh successor exactly when epoch 0 is the record's latest.
+- **Secrets.** A hasher with a secret input and a stream's reader have neither `Clone` nor `Debug` (`compile_fail`), and are cleared on drop. No event carries a skip, a position or a count.
+- **Hiding.** #147's distinguisher separates two weight sets in three negative controls: an expansion that ignores the row, giving two rows one mask; one that ignores the epoch; and a successor written fresh over a lost epoch. It does not separate them under this RFC.
+
+## Open Questions
+
+- **OQ-0073-1.** Settled by 'The model entry': `K` lives in its own artifact in the key store, naming the entry by its epoch-0 root.
+- **OQ-0073-2.** Settled for the prover by 'Narrow matrices: until #564, `k_T ≥ k_W`'. The verifier's refusal is #564's.
+- **OQ-0073-3.** Where `pcs/weights/{T}/xi` goes in `tessera-protocol/2`, which RFC-0049 leaves to #147. RFC-0014's transcript schedule and RFC-0049's schedule must decide it, by amendment, before #147's opening slice.
+  - RFC-0014 still lists it at row 7, after the stages, so the fold pass could not form the proximity row in its one read (INV-WC-4).
+  - Recommended: row 3, right after the seed, as in `tessera-protocol/1`, with `⌈log2(m_T + B_T)⌉` coordinates. The proximity pair is fixed by `Round1`'s reservation before the seed.
+  - The pair's coefficients themselves are [#394](https://github.com/AbdelStark/tessera/issues/394)'s (R1, R2).
+- **OQ-0073-4.** `WeightReservation`'s bytes, which RFC-0065 defines in content only. RFC-0036, which owns `Round1`'s schema version 2, and RFC-0065 must decide them, by amendment, before #147's `Round1` slice. Recommended:
+  - `WeightReservation { matrices: Vec<MatrixReservation> }`, with `MatrixReservation { matrix: u8, first_row: u32 }`;
+  - placed after `advice` in `Round1`'s schema version 2, as RFC-0014's sketch orders it, and absorbed with `Round1` under `round1`;
+  - ids out of order are `ERR-CODEC-NONCANONICAL` at the id's byte, as RFC-0036 'Matrix ids' rules.
+- **OQ-0073-5.** Paying for the per-proof draws ('Cost at 405B'): about 1.2 GPU-s per 405B proof under RFC-0012's proximity generator, 0.41 if #394 excludes the blinding rows. That is a cost-model issue against RFC-0020 and 08, [#568](https://github.com/AbdelStark/tessera/issues/568), decided with #394. Its options:
+  - regenerate on the GPUs, and amend 08's weight-pass budget;
+  - keep the masks and blinding values in a secret store of 654 GB per epoch beside the codewords, read in full by every proof;
+  - exclude the blinding rows from the proximity combination (#394).
+
+## References
+
+- [RFC-0004](RFC-0004-hashing-and-transcript.md), [RFC-0011](RFC-0011-advice-commitment.md) 'Encoding', [RFC-0012](RFC-0012-weight-commitment.md), [RFC-0013](RFC-0013-zero-knowledge.md), [RFC-0014](RFC-0014-interaction-and-soundness.md) 'Soundness budget', [RFC-0019](RFC-0019-verifier.md) 'Check order', [RFC-0031](RFC-0031-commitment-id.md), [RFC-0040](RFC-0040-weight-commitment-artifacts.md), [RFC-0064](RFC-0064-weight-linking-proof.md), [RFC-0065](RFC-0065-masked-channel-params.md), [RFC-0067](RFC-0067-verifier-ledger-encoding.md).
+- [`docs/zk/simulator.md`](../zk/simulator.md) §2 (the PRG hybrid), §3 (Lemmas 3 and 5), §5 (R6) and §6.
+- O'Connor, Aumasson, Neves, Wilcox-O'Hearn, 'BLAKE3: one function, fast everywhere', 2020, §2.6 (extendable output).
