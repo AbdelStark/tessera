@@ -115,7 +115,7 @@ Every `ZeroCheck` runs in stage 1 (RFC-0010 'Batching within a stage'), at the p
   3. its bit-padding checks;
   4. its recomposition.
 - **Virtual claims.** A claim one leaves on a virtual tensor, such as recomposition's on `x` or `AssertEqual`'s on `a`, is a stage-1 claim. RFC-0037 reduces it through the tensor's producer in later stages, as it does any other.
-- **The calculator.** Each instance is one entry `n_i` of RFC-0014's `zero_checks`, the variables of its `eq` at the point `z`: `x`'s for recomposition, the output's for booleanity and bit padding, the committed input's for its padding check, and the two tensors' for `AssertEqual`.
+- **The calculator.** Each instance is one entry `n_i` of RFC-0014's `zero_checks`, its instance's variables: `x`'s and its bit axis's for recomposition ([RFC-0072](RFC-0072-anchor-relations.md#the-bit-zero-checks-oq-0066-1)), the output's for booleanity and bit padding, the committed input's for its padding check, and the two tensors' for `AssertEqual`.
 - **Messages.** [RFC-0072](RFC-0072-anchor-relations.md#the-bit-zero-checks-oq-0066-1) sends their evaluations under `stage/1/evals`, with no new label.
 
 ### The SHA-256 circuit

@@ -6,12 +6,12 @@
 - Target milestone: v0.4
 - Amends:
   - [RFC-0066](RFC-0066-bits-and-sha256.md) '`BitDecompose`' (recomposition's relation and its claim on `x`), '`AssertEqual`' (a public input pads with zeros), 'Where the zero-checks run' (their messages), and its open questions OQ-0066-1 and OQ-0066-2, which this RFC closes;
-  - [RFC-0010](RFC-0010-proof-schedule.md#relations) 'Relations' (recomposition's row and its `eq` variables, the selection relation, `ConstMul` by a constant per channel), 'Stages' (termination at public tensors), 'Batching within a stage' (a zero-check's variables) and 'Sumcheck messages' (a value sent once);
-  - [RFC-0037](RFC-0037-stage-schedule.md#layers-and-kinds) 'Layers and kinds' (a graph with no checkpoint), 'Claims and atoms' (public tensors, `ConstAdd`, `Slice` and `GatherPublic`), 'Splits' (a value sent once), 'Stages and their instances' (stage 1's new zero-checks, equal claims, the stage count) and 'The layer point' (the gadgets with leaf sites, and the logits when there are some);
-  - [RFC-0035](RFC-0035-padded-rows.md#zero-check-points) 'Zero-check points': a row-summed zero-check's variables;
-  - [RFC-0045](RFC-0045-leaf-layout.md#the-split) 'Sites' (a gadget with lookups or product trees) and 'The split' (a public tensor's value is not sent);
+  - [RFC-0010](RFC-0010-proof-schedule.md#relations) 'Relations' (recomposition's row, which sums its bit axis, the selection relation, `ConstMul` by a constant per channel), 'Stages' (termination at public tensors) and 'Batching within a stage' (a recomposition's zero-check point);
+  - [RFC-0037](RFC-0037-stage-schedule.md#layers-and-kinds) 'Layers and kinds' (a graph with no checkpoint), 'Claims and atoms' (public tensors, `ConstAdd`, `Slice` and `GatherPublic`, combined selections), 'Stages and their instances' (stage 1's new zero-checks, the stage count) and 'The layer point' (no site for `BitDecompose` and `AssertEqual`, and the logits when there are some);
+  - [RFC-0035](RFC-0035-padded-rows.md#zero-check-points) 'Zero-check points': a recomposition's `eq` takes the highest of its instance's coordinates;
+  - [RFC-0045](RFC-0045-leaf-layout.md#the-split) 'Sites' (none for `BitDecompose` and `AssertEqual`) and 'The split' (a public tensor's value is not sent);
   - [RFC-0006](RFC-0006-compiler-ir.md#gadget-selection) 'Gadget selection': `BitDecompose` and `AssertEqual` take gadgets;
-  - [RFC-0014](RFC-0014-interaction-and-soundness.md#soundness-calculator) 'Soundness calculator': each `ZeroCheck`'s variables.
+  - [RFC-0014](RFC-0014-interaction-and-soundness.md#soundness-calculator) 'Soundness calculator': a recomposition's `zero_checks` entry.
 - Origin: [#526](https://github.com/AbdelStark/tessera/issues/526)
 
 ## Summary
@@ -27,11 +27,11 @@ This RFC fills each gap with RFC-0010's existing machinery and adds no message, 
 - **Public tensors.** A tensor computed from public tensors alone is public: the verifier evaluates its claims itself.
 - **The selection relation.** `GatherPublic` and `Slice` reduce a claim through one sumcheck over the selected axis, against a public 0/1 kernel, of degree 2 (OQ-0066-2).
 - **`ConstMul` by a constant per channel** is RFC-0010's `Elementwise` with the constant a public operand.
-- **Equal values are sent once.** Within a stage, a value of one tensor at one point is sent where it first occurs, and equal claims are one claim. Without that, the two selections that read each level of a SHA-256 sum's value would double its instances at every level.
+- **Combined selections.** Within one claim, selections of one tensor along one axis at one point are one selection, whose kernel weighs theirs by their coefficients. Without that, the two selections that read each level of a SHA-256 sum's value, its even and odd rows, would double the instances below it at every level. Claims are never merged across a stage, so no claim goes unchecked and no Llama schedule changes.
 - **Padded positions** hold what their operation computes from padded inputs, for virtual and public tensors too.
 - **The bit zero-checks** run in stage 1 and send their evaluations under `stage/1/evals` (OQ-0066-1). Recomposition is one zero-check summed over the bit axis, which needs no value before `γ`. `BitDecompose` and `AssertEqual` take gadget ids. A false bit fails stage 1's final check, `Reject(Sumcheck)`.
 
-A SHA-256 block that holds committed bytes, as every block the anchor hashes does, holds 680 zero-checks, 2,528 selections, 352 `BitFn` products and 96 masked `Mul`s. That is about 3,500 instances once equal claims merge, against about 55,000 if they did not. A frame's SHA-256 takes 14 stages, the leaf stage included, whatever its block count. AES-128-CTR takes 3.
+A SHA-256 block of a message with committed bytes holds 680 zero-checks, 2,528 selections, 352 `BitFn` products and 96 masked `Mul`s: about 3,400 instances once selections combine, against about 71,700 if they did not. A frame's SHA-256 takes 14 stages, the leaf stage included, whatever its block count. AES-128-CTR takes 3.
 
 ## Motivation
 
@@ -46,7 +46,7 @@ A SHA-256 block that holds committed bytes, as every block the anchor hashes doe
   - Its sums add their round constant with `ConstAdd`.
   - The `SHR` masks, the message's public bits, the digest, AES's counters and its round constants are public.
   - RFC-0037 'Claims and atoms' names public atoms but says nothing of how a tensor becomes one.
-- **AES's key schedule** masks each round key to its columns with a `ConstMul` whose constant has one value per byte. No relation proves it.
+- **AES's key schedule** masks each round key to its columns with a `ConstMul` whose constant has one value per byte. No RFC states its relation.
 
 ## Goals
 
@@ -87,17 +87,14 @@ A SHA-256 block that holds committed bytes, as every block the anchor hashes doe
 
 Every tensor's padded positions hold what its operation computes from its inputs' padded positions, as RFC-0035 'What a padded row holds' says. That holds for virtual and public tensors too:
 - graph inputs and constants pad with zeros, and a per-channel constant is 0 at padded channels;
-- a selection's unselected rows are 0, and its other padded positions are its input's;
+- a selection's padded rows on its selected axis are 0, and its other padded positions are its input's;
 - an `Expand` is 0 past `len`, as its coefficient `LT(r_a, len)` says;
 - a `ConstAdd`'s padded positions are its input's plus its constant;
 - a lookup's are the lookup of what its node computes there (RFC-0045), such as `AesSbox(0) = 0x63`.
 
-So the prover's witness and stage tables, and the verifier's public tensors, are computed over the padded shapes. With `M` messages or `B` blocks not a power of two, SHA-256's padded messages run the compression on zero bits and their sums' constants, and AES's padded blocks encrypt zero counters.
+So the prover's witness and stage tables, and the verifier's public tensors, are computed over the padded shapes. With `M` messages or `B` blocks not a power of two, SHA-256's padded messages run the compression on zero bits and their sums' constants. AES's padded blocks run on zero counters under zero round keys, since each round key's `Expand` is 0 past `B`, and give a public constant, not `AES_k(0)`.
 
-A committed graph input's padded positions are computed by nothing, so a check pins them to 0:
-- RFC-0066 pins those a `BitDecompose` reads with its input padding check.
-- A lookup that reads a committed advice graph input with padded positions, directly or moved, contributes the same check at its place in node order. AES's plaintext `[16, B]` takes it when `B` is not a power of two.
-- No Llama lookup reads a committed advice input, so no Llama schedule gains one.
+A committed graph input's padded positions are computed by nothing. RFC-0006 'Committed graph inputs' admits a graph only when a `BitDecompose` or a `OneHot` reads each committed advice input, and their checks pin its padded positions: RFC-0066's input padding check, or `OneHot`'s row selector. AES-128-CTR alone is a fragment, whose key and plaintext a larger graph proves (#146).
 
 ### Linear operations that are not coordinate maps
 
@@ -125,23 +122,24 @@ Points list low variables first (RFC-0010 'Multilinear extensions'). Here `r_a` 
   - A gather's indices are not a concatenation of bits in general (RFC-0037 'Head layouts').
   - A `Slice` aligned to a power of two would map coordinates, but its claim on `x` would then have Boolean coordinates on the axis, which `tessera-protocol/2`'s masks cannot cover (R8).
 
-### Equal values in a stage
+### Combined selections
 
-Two relations of one stage can leave claims on one tensor at one point. Each level of a SHA-256 sum's value is read by two selections, its even and its odd rows, in one stage, with one point. RFC-0037 makes one instance per claim, so each level would double the instances below it. A block would then hold about 55,000 instances, 85,000 final evaluations and 31,000 split values, against about 3,500, 4,600 and 4,500.
+Each level of a SHA-256 sum's value is `Add(even, ConstMul(odd))`: two selections of one tensor, its even and its odd rows. A claim on the level's output substitutes to two virtual atoms, the selections, at one point. RFC-0037 makes one instance per virtual atom, and each instance leaves its own claim on the tensor below, so each level would double the instances below it.
 
-- **A value is sent once.** Within a stage's messages, its final evaluations then its splits, a value is sent at its first place and not again: an operand's evaluation of one tensor at one point, a virtual atom's of one kind at one point with one set of layer weights, or a committed group's of the same atoms and coefficients at one point. Every later place reads the value already sent, in its own checks.
-- **The same point** is the schedule's: the same coordinates of the same challenges, which both parties derive from the graph (INV-SCH-1). Values are never compared, so a coincidence of field elements merges nothing.
-- **One claim.** The claims are then one claim, which one instance proves, or the pool receives once.
-- **Not their sum.** Adding two claims' values into one claim on twice the tensor would be unsound. A prover with a false input claim could pick the two errors to cancel in the merged claim and satisfy the final check.
-- **The Llama schedules** hold no such pair, so their messages and proofs are unchanged.
+- **The rule.** Within one claim, virtual atoms that select rows of one tensor along one axis, at one point with one set of layer weights, are one atom: `Σ_t a_t·y_t` with `a_t` their coefficients. It is a selection of that tensor with the kernel `K = Σ_t a_t·S_t`, and the relation above proves it with `K̃` in place of `S̃`. "One point" is RFC-0037's, under which atoms of one kind already merge.
+- **Its value.** When the combination is the claim's only part, the claim is ready. Otherwise its split sends one value for it, weighted by 1, at its first atom's place (RFC-0037 'Splits').
+- **The verifier's evaluation.** `K̃(r_a, r'_k) = Σ_t a_t·S̃_t(r_a, r'_k)`, each term as above.
+- **Soundness.** The combination is a linear functional of `x`, so its identity is one sumcheck, of degree 2. The members' own values are never sent and never needed.
+- **No merging across claims.** Two claims on one tensor at one point stay two claims, each with its instance. Merging them by value would leave all but one unchecked: AES's ×2 and ×3 S-box lookups read one tensor at one leaf point, and SHA-256's first round reduces three claims on its first message word to one point. Llama's composed schedule holds such pairs too, so a merge would also change `tessera-protocol/1`'s messages.
+- **Llama** has no selection, so this rule never applies to it.
 
 ### The bit zero-checks (OQ-0066-1)
 
-They run in stage 1, after its other zero-checks, in node order, each node's checks in the table's order (RFC-0066 'Where the zero-checks run'). Each is one instance at the zero-check point `z` (RFC-0035 'Zero-check points'). An instance's `eq` variables take `z`'s last coordinates.
+They run in stage 1, after its other zero-checks, in node order, each node's checks in the table's order (RFC-0066 'Where the zero-checks run'). Each is one instance at the zero-check point `z` (RFC-0035 'Zero-check points'): an instance of `n_i` variables takes `z`'s last `n_i` coordinates, and its `eq` the highest of them.
 
 | Check | Identity | Instance variables | `eq` variables | Evaluations, in order | Degree |
 |---|---|---|---|---|---|
-| Input padding, of a committed input a `BitDecompose` or a lookup reads ('Padded positions') | `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·x̃(x)` | `n_x` | `n_x` | `x̃` | 3 |
+| Input padding, of a committed input a `BitDecompose` reads | `0 = Σ_x eq(z, x)·(1 − ψ̃(x))·x̃(x)` | `n_x` | `n_x` | `x̃` | 3 |
 | Booleanity of `b`, of `h` | `0 = Σ_x eq(z, x)·b̃(x)·(1 − b̃(x))` | `n_y + k_b`, `n_y + k_h` | all | `b̃`, `h̃` | 3 |
 | Bit padding of `b`, of `h` | `0 = Σ_x eq(z, x)·(1 − LT(x_bit, n))·b̃(x)` | `n_y + k_b`, `n_y + k_h` | all | `b̃`, `h̃` | 3 |
 | Recomposition | below | `n_y + k` | `n_y` | `x̃` unless public, `b̃`, `h̃` | 2 |
@@ -159,7 +157,7 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
 - **Zero-extended outputs.** `b̂` is `b` with its bit axis padded with zeros to `k` variables, so `b̂(i ‖ y) = b̃(i_{< k_b} ‖ y)·Π_{t ≥ k_b}(1 − i_t)`, and `ĥ` likewise. `h` is absent when `high = 0`. `W_b` and `W_h` vanish where the extension does, so the factor changes no sum, but both parties use this polynomial.
 - **Why it holds.** For each `y` the sum over `i` is `x(y) − Σ_{i < low} 2^i b_i − 2^{low}·Σ_{j < high} 2^j h_j`, RFC-0066's recomposition, and the `eq` over `y` zero-checks it, with error `n_y/|Fp2|`.
 - **Its claims.** At the instance's final point `r' = r'_i ‖ r'_y`:
-  - `x̃(r'_y)`, a claim on `x` at `y`'s coordinates. It goes to the next stage when `x` is virtual, and to the pool when it is committed, such as the AES ciphertext a frame's hash reads (#146). When `x` is public the verifier evaluates it and the proof sends nothing.
+  - `x̃(r'_y)`, a claim on `x` at `y`'s coordinates. It goes to the next stage when `x` is virtual, as a SHA-256 sum's value is, and to the pool when it is committed, as the key commitment's bytes are. When `x` is public the verifier evaluates it and the proof sends nothing.
   - `b̃(r'_{i, < k_b} ‖ r'_y)` and `h̃(r'_{i, < k_h} ‖ r'_y)`, claims on committed outputs, for the pool.
 - **The verifier's check** computes the public factors itself: `eq(z_y, r'_y)`, the zero-extensions' products, and the weights on `k` variables, `W̃_b(r) = Σ_{i < low} 2^i·eq(r, i)` in `O(low·k)`, or `Π_{t < k}(1 − r_t + r_t·2^{2^t})` when `low = 2^k`, and `W̃_h` likewise with `high`.
 - **Why one instance.** Stage 1 batches its instances with `γ`, after each instance's claim is fixed (RFC-0010 'Batching within a stage'). RFC-0066 wrote recomposition as `x̃(z)` minus two sums of `n_y + k_b` and `n_y + k_h` variables. As three instances, the two sums' values, unknown to the verifier, would have to be sent before `γ`, a new message. Summed over the bit axis, the instance's claim is 0, and `x`'s claim moves from `z` to `r'_y`.
@@ -167,12 +165,12 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
 
 **`AssertEqual` with neither side public** sends `ã(r')` then `b̃(r')`, two claims at one point on two tensors, each to its destination. With one side public, the proof sends only the other.
 
-**Which variables count.** A zero-check's error is over its point, so the variables that count are its `eq`'s: `n_y` for recomposition, all of an instance's for the others. RFC-0014's `zero_checks` lists them, one entry per instance. Stage 1's zero-check point has as many coordinates as the largest of them (RFC-0035).
+**Which variables count.** A zero-check errs over its `eq`'s variables, `n_y` for recomposition. RFC-0014's `zero_checks` lists each instance's variables, `n_y + k` for recomposition, as the calculators count `OneHot`'s row-summed checks today: an overcount, never an undercount. Stage 1's zero-check point has as many coordinates as the largest instance (RFC-0035).
 
 ### Gadgets and leaf sites
 
 - **Gadget ids.** `BitDecompose` and `AssertEqual` are gadget-backed (RFC-0066), so each takes a gadget, numbered in node order with every other ([RFC-0006](RFC-0006-compiler-ir.md#gadget-selection) 'Gadget selection'). Their preconditions are statement checks ([RFC-0039](RFC-0039-statement-fields.md)): `low + high ≤ 62`, and each input's range, which the verifier re-derives (SP-7). `BitFn` is virtual and takes none. No Llama graph holds either operation, so no Llama gadget id moves.
-- **No leaf site.** Their relations are stage 1's zero-checks. They hold no lookup and no product tree, so the leaf stage gives them no site: a site is a gadget with lookups or product trees (RFC-0045 'Sites').
+- **No leaf site.** Their relations are stage 1's zero-checks, so the leaf stage gives them no site: RFC-0045's sites are every gadget node but these two. `OneHot` keeps its site, and no Llama site moves.
 - **AES's lookups.** `TableMap` into `AesSbox` and `Gf256Mul`, and `Bitwise` into `Bitwise8`, are lookup gadgets. Each is a site outside the layers in the leaf stage, in node order (RFC-0045), with RFC-0008's keys: the input for a `TableMap`, `a + 2^8·b` for a `Bitwise8`.
 
 ### Messages, rejections and stages
@@ -185,36 +183,37 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
   - Splits go under `stage/{k}/split` (RFC-0037).
   - A stage that holds a `BitFn` of degree 4, `Xor3` or `Maj`, sends round polynomials of 4 values (RFC-0010 'Sumcheck messages').
 - **Rejections.**
-  - A false bit, a false carry, a padded slot set to 1, an input whose decomposition does not recompose, or a digest one bit off: the prover commits a value no honest witness has. Stage 1's final check fails, `Reject(Sumcheck { stage: 1, round: n_1 })`, with `n_1` stage 1's rounds.
+  - A false bit, a false carry, a padded slot set to 1, or an input whose decomposition does not recompose: the prover commits a value no honest witness has. A digest one bit off makes the statement false, so some committed value must be wrong. Either way stage 1's final check fails, `Reject(Sumcheck { stage: 1, round: n_1 })`, with `n_1` stage 1's rounds.
   - A prover that lies in a round instead fails the stage's final check, a split's check or a later stage's, or the opening (`Reject(Evaluation)`, RFC-0019 step 9). A round only derives `p(1)` and checks its message's length.
   - None is `Reject(Gadget)`: a batched nonlinear relation names no gadget ([gadget finals](../testing/gadget-finals.md) 'Rejection order and alternatives').
   - An S-box, `Gf256Mul` or `Bitwise8` output off its table fails LogUp: `Reject(Lookup { table })` in `tessera-protocol/1` (RFC-0008), `Reject(LogUpIdentity { round })` in `tessera-protocol/2` (RFC-0019 step 7).
 - **Stages.** The stage count, the leaf stage included, is one more than the longest chain of sumcheck relations down to committed or public tensors (RFC-0037 'Stages and their instances'). A chain starts at a lookup's input in the leaf stage, or at a zero-check, which counts itself. `Add`, `Sub`, scalar `ConstMul`, `ConstAdd`, `Reshape`, `Transpose` and `Expand` cost none.
 
-**The circuits' sizes,** counted from `tessera_compiler::anchor`'s builders:
+**The circuits' sizes,** counted from `tessera_compiler::anchor`'s builders and their schedules under these rules:
 
-| Circuit | Zero-checks | Selections | `BitFn` | `Mul` | `ConstMul` per channel | Lookups | Longest chain |
-|---|---|---|---|---|---|---|---|
-| SHA-256, per block of public bytes | 680 | 2,441 | 335 | 79 | 0 | 0 | 8 |
-| SHA-256, per block holding committed bytes | 680 | 2,528 | 352 | 96 | 0 | 0 | 12 |
-| SHA-256, the key commitment (one block, 32 committed bytes, bound) | 690 | 2,523 | 349 | 97 | 0 | 0 | 12 |
-| AES-128-CTR, per circuit | 0 | 97 | 0 | 0 | 30 | 127 | 2 |
+| Circuit | Zero-checks | Selections | `BitFn` | `Mul` | `ConstMul` per channel | Lookups | Instances | Evaluations | Split values | Stages |
+|---|---|---|---|---|---|---|---|---|---|---|
+| SHA-256, per block of public bytes | 680 | 2,441 | 335 | 79 | 0 | 0 | 2,945 | 4,237 | 627 | 10 |
+| SHA-256, per block of a message with committed bytes | 680 | 2,528 | 352 | 96 | 0 | 0 | 3,436 | 4,764 | 697 | 14 |
+| SHA-256, the key commitment (one block, 32 committed bytes, bound) | 690 | 2,523 | 349 | 97 | 0 | 0 | 3,431 | 4,739 | 681 | 14 |
+| AES-128-CTR, per circuit | 0 | 97 | 0 | 0 | 30 | 127 | 154 | 359 | 0 | 3 |
 
-- **Per block.** The 680 zero-checks are 368 booleanity checks, 128 bit-padding checks for the round carries and 184 recompositions. The per-block rows count a block after the first. A first block reads the initial value, part of which is public: 2,415, 331 and 79 for public bytes.
+- **Per block.** The 680 zero-checks are 368 booleanity checks, 128 bit-padding checks for the round carries and 184 recompositions. The per-block rows count a block after the first, at `M = 1`. A first block reads the initial value, part of which is public: 2,415, 331 and 79 for public bytes. A frame's last block can hold padding alone, and still costs the committed row, since its words are `Slice`s of the assembled bits.
+- **Without combined selections** a block would hold about 55,000 instances of public bytes and 71,700 with committed bytes, 85,000 and 103,000 evaluations, 31,000 and 34,000 split values.
 - **Per graph.** The binding adds 8 `AssertEqual`s. Each `BitDecompose { 8, 0 }` of committed bytes adds its booleanity, its recomposition and, when its input has padded positions, its padding check.
 - **Chain length.**
   - A public message's chain is a word's `SHR` (a selection, then a `Mul`), its `σ`'s `Xor3`, and the sum's five levels of selections. That is 8 relations below the zero-check, 9 with it, so 10 stages.
-  - Committed bytes add a message word's `Slice`, `Xor`, `Mul` and selection: 12 below the zero-check, so 14 stages.
+  - Committed bytes add a message word's `Slice`, `Xor`, `Mul` and selection: 12 relations below the zero-check, so 14 stages.
   - Each block's carries and words are committed, so the chain does not grow with the block count (INV-SCH-4).
 - **AES.** Its lookups' keys reach committed or public tensors through at most two relations, a selection and a `ConstMul` or MixColumns' two selections, so 3 stages.
 
 ### Soundness
 
 - **The new relations** are sumcheck identities of RFC-0010's form, with public factors the verifier computes: the selection kernel, the weights `W`, the zero-extensions and `ψ`. Each instance counts in its stage's `m` and its rounds in `n·d`, as the calculator counts every instance (RFC-0014).
-- **Each zero-check** errs with probability at most its `eq` variables over `|Fp2|`, one `zero_checks` entry.
+- **Each zero-check** errs with probability at most its `eq`'s variables over `|Fp2|`, and its `zero_checks` entry counts at least as many.
 - **Public atoms** are computed by the verifier, with no error.
 - **Uniqueness** is RFC-0066's: Lemma 1 for the bits, given each decomposition's input, and the lookups' outputs, unique for their keys. The committed inputs' padded positions are pinned ('Padded positions'). `BitFn` and the selections' outputs are virtual.
-- **Equal values.** A value sent once is one value in every check that reads it, so merging the claims adds no freedom ('Equal values in a stage').
+- **Combined selections.** A combination is one linear functional of its tensor, proven by its own sumcheck; no claim is merged with another ('Combined selections').
 
 ## Alternatives Considered
 
@@ -230,13 +229,17 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
    - **A tighter bound.** Every zero-check of stage 1 shares the point `z`. A cheating prover must make each false relation's zero-check vanish there, and each does so with probability at most its own variables over `|Fp2|`. So the largest entry bounds the event, not their sum (OQ-0072-1).
    - **Why rejected.** Stacking needs a layout of identical members that the circuits' sequential rounds do not have.
 4. **A committed copy of each gathered tensor.** It needs no relation but commits 2,528 more tensors per block.
-5. **Each sum's value as one relation.** `x̃(r) = Σ_k 2^k·rows̃(r ‖ k)` over the row axis is a selection-like sumcheck with the public kernel `2^k`.
+5. **Merging equal claims across a stage**, by sending a value once.
+   - **The advantage.** It would also cut Llama's composed stage 2, whose natives repeat claims.
+   - **Why rejected.** It is sound only for claims that read one sent value through one map, and the leaf stage's per-site values, derived values and native claims do not. Merged otherwise, it leaves claims unchecked ('Combined selections'). It would also change `tessera-protocol/1`'s messages for Llama.
+6. **Each sum's value as one relation.** `x̃(r) = Σ_k 2^k·rows̃(r ‖ k)` over the row axis is a selection-like sumcheck with the public kernel `2^k`.
    - **What it saves.** The value levels would cost one stage instead of five, so the chains would be 4 and 8.
    - **Why not now.** The IR has no operation for it. RFC-0066 builds the value in five levels so that range analysis bounds it exactly, and a new operation would need that range rule.
 
 ## Drawbacks
 
-- **Many small instances.** A block adds about 3,500 instances to its stages, once equal claims merge. Each is front-padded to its stage's rounds (RFC-0010).
+- **Many small instances.** A block adds about 3,000 to 3,400 instances to its stages. Each is front-padded to its stage's rounds (RFC-0010).
+- **The calculator's union.** A block adds those instances and about 2,400 zero-check variables at `M = 1`, so 500 blocks add about `2^{−106.5}` to the soundness error (OQ-0072-1).
 - **Public tensors.** The verifier evaluates every public tensor at each of its claims' points, `O(size)` each. Its largest is the message's public bits, `512·N·M` entries.
 - **Deeper schedules.** A batch that carries a frame's SHA-256 has 14 stages, against the Llama templates' 3 or 4, both counting the leaf stage. Every stage has its own rounds and messages.
 
@@ -244,7 +247,7 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
 
 1. **This RFC.**
 2. **#526, in slices:**
-   - graphs without layers, public tensors, `ConstAdd`, equal values sent once, and the witness and stage tables over padded shapes, in the schedule and the stage prover;
+   - graphs without layers, public tensors, `ConstAdd`, combined selections, and the witness and stage tables over padded shapes, in the schedule and the stage prover;
    - the bit zero-checks: gadget selection, stage 1's instances and their alternative witnesses;
    - the selection relation, `BitFn` and the SHA-256 block;
    - AES's lookups and its block.
@@ -252,8 +255,12 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
 
 ## Testing Strategy
 
-- **Equal values.** The SHA-256 schedule's instances, evaluations and split values per stage equal an independent count's. A prover that sends a value again at its second place has one evaluation too many, `Reject(Sumcheck { stage: k, round: n_k })`.
-- **Padded positions.** SHA-256 with `M = 3` messages and AES with `B = 3` blocks prove and verify. A committed plaintext with a non-zero padded byte is rejected at its padding check.
+- **Combined selections.** The SHA-256 schedule's instances, evaluations and split values per stage equal an independent count's. A combined selection with one member's kernel changed is rejected at its stage's final check.
+- **No claim unchecked.** Each of these is rejected:
+  - AES-128-CTR's ×3 lookup run on a key column other than `shifted`'s, with its leaf value that column's;
+  - a round-0 carry off in the SHA-256 key commitment;
+  - in the Llama composed schedule, one `RsqrtRow` native's sum-of-squares value off.
+- **Padded positions.** SHA-256 with `M = 3` messages and AES with `B = 3` blocks prove and verify.
 - **Relations.** Each proves and verifies, through a verifier written from this RFC, with a changed input entry rejected:
   - the selection relation for a rotation, the value levels' even and odd rows, the message's assembly, a `Slice` on axes 0 and 1, and a `len` that is not a power of two;
   - each `BitFn` on random bits;
@@ -270,11 +277,11 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
   - So does one AES-128-CTR block under a committed key.
   - An S-box output off its table is `Reject(Lookup { table })`.
 - **Calibration.** Over F65537, a witness with one non-Boolean bit passes stage 1's booleanity check at the rate `n/|F|`, within confidence bounds, with scripted challenges. There `low + high ≤ 16` (RFC-0066 Lemma 1).
-- **No change elsewhere.** The Llama schedules' vectors (`spec/vectors/schedule/`), `cargo xtask gen-vectors --check` and the verifier's stage tests pass unchanged.
+- **No change elsewhere.** The Llama schedules' vectors (`spec/vectors/schedule/`), each Llama stage's evaluation count, `cargo xtask gen-vectors --check` and the verifier's stage tests are unchanged.
 
 ## Open Questions
 
-- **OQ-0072-1. The zero-checks' bound.** RFC-0014's union row sums the variables of every `ZeroCheck` sharing stage 1's point. The largest is a bound, since one false relation's check vanishes at `z` with probability at most its own variables over `|Fp2|`, whatever the others do. Should the calculator count it so? It would remove the zero-checks' share of the union, about 1,480 variables per block at `M = 1`. That share is a minority: the stages' instances add about 3,500 per block.
+- **OQ-0072-1. The zero-checks' bound.** RFC-0014's union row sums the variables of every `ZeroCheck` sharing stage 1's point. The largest is a bound, since one false relation's check vanishes at `z` with probability at most its own variables over `|Fp2|`, whatever the others do. Should the calculator count it so? It would remove the zero-checks' share of the union, about 2,400 variables per block at `M = 1` as counted (1,480 of them `eq` variables). The stages' instances add about 3,400 per block.
 
 ## References
 

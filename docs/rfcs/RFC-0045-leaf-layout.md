@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('Open Questions': opening `ChannelParams` claims), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The leaf point', `P` without the tree index's coordinate; 'The split', the values of sites in the layers sent once per site and tensor, after a layer sumcheck), [RFC-0072](RFC-0072-anchor-relations.md) ('Sites': a gadget with lookups or product trees; 'The split': a public tensor's value is not sent)
+- Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('Open Questions': opening `ChannelParams` claims), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The leaf point', `P` without the tree index's coordinate; 'The split', the values of sites in the layers sent once per site and tensor, after a layer sumcheck), [RFC-0072](RFC-0072-anchor-relations.md) ('Sites': no site for `BitDecompose` and `AssertEqual`; 'The split': a public tensor's value is not sent)
 - Supersedes, on acceptance:
   - [RFC-0008](RFC-0008-logup-and-tables.md#batching) 'Batching' and 'Fraction tree': how an instance lays out its lookups, and the order of its lookup tree's leaves;
   - [RFC-0037](RFC-0037-stage-schedule.md#the-layer-point) 'The layer point' and 'Splits': the point `r_s` of a site's tensors, and the leaf stage's split values.
@@ -46,7 +46,7 @@ Two trees of different heights agree on their lowest coordinate and on their hig
 
 A block is one lookup of one gadget site at one layer, over its domain: the tensor the lookup runs over, per-dimension padded ([RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) rule 1), in that tensor's index order. It has `2^k` entries, with `k` the sum of the axes' `⌈log2 len⌉`.
 - **Padded positions.** A position of the padding holds the lookup of what the node computes there ([RFC-0035](RFC-0035-padded-rows.md#what-a-padded-row-holds)). A masked score is the constant tuple `(K_0, 0)` ([RFC-0030](RFC-0030-masked-exponentials.md#relation-1-every-position-looked-up)).
-- **Sites.** A site is a gadget node that holds lookups or product trees. `BitDecompose` and `AssertEqual`, whose relations are zero-checks, are none ([RFC-0072](RFC-0072-anchor-relations.md#gadgets-and-leaf-sites)). A template position is one site for all its layers, with one block per real layer and lookup; a padded layer has none. A prologue or epilogue site has one block per lookup.
+- **Sites.** A site is a gadget node, but `BitDecompose` and `AssertEqual`, whose relations are stage 1's zero-checks ([RFC-0072](RFC-0072-anchor-relations.md#gadgets-and-leaf-sites)). A template position is one site for all its layers, with one block per real layer and lookup; a padded layer has none. A prologue or epilogue site has one block per lookup.
 
 ### The column
 
