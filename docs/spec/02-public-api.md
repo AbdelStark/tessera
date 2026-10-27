@@ -280,7 +280,7 @@ does not establish production-preset performance or zero knowledge.
 ```rust
 pub struct VerifierConfig {
     pub params: ParamSet,
-    pub limits: ResourceLimits,  // max artifact bytes, max memory, max wall time
+    pub limits: ResourceLimits,  // max artifact bytes, max memory, max wall time; max anchor blocks (draft RFC-0074)
     pub accept_bound: UBound,    // public policy threshold on Û, fixed-point bits
     pub weights: WeightCommitmentPublic, // trusted epoch artifact (RFC-0040)
 }

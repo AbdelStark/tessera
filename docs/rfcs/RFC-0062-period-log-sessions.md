@@ -18,6 +18,7 @@
   - [04 §3](../spec/04-error-model.md#3-error-codes): `ERR-CODEC-DIGEST` covers a period's log.
 - Origin: [#498](https://github.com/AbdelStark/tessera/issues/498)
 - Amended by: [RFC-0063](RFC-0063-request-boundaries.md#which-requests-a-period-draws-from):
+- Amended by: draft [RFC-0074](RFC-0074-anchor-binding.md) ('Who is named': the size bound among a request's frame checks; in effect when it is accepted)
   - 'The period's log', 'Security Argument' and 'Drawbacks': a request's frames span its end's period and the one before, which settles requests that cross a boundary;
   - 'The session rules': they hold in both periods of a request's window;
   - 'Testing Strategy': the first unknown tag is 5.
@@ -104,7 +105,7 @@ For a session `s` with an entry in the period's verified log:
 3. **One use per counter.** No two `Frame` entries of `s` with one `frame_seq`.
 
 The rules are properties of the session in the period, checked in their order, so a session that breaks rules 1 and 3 is named under rule 1.
-- **Who is named.** The verifier checks requests in `statement.batch` order. For each, it checks its session's rules first, then RFC-0059's checks of its own frames, then its sampler key (RFC-0061). The first failure is the verdict: `Reject(Anchor { request_id: Some(r), kind })`, `r` the request being checked.
+- **Who is named.** The verifier checks requests in `statement.batch` order. For each, it checks its session's rules first, then RFC-0059's checks of its own frames, then its sampler key (RFC-0061). Under draft [RFC-0074](RFC-0074-anchor-binding.md#the-anchors-inputs), in effect when it is accepted, the anchor's size bound follows the lengths among its own frames' checks, before the sampler key. The first failure is the verdict: `Reject(Anchor { request_id: Some(r), kind })`, `r` the request being checked.
 - **The kinds.** Rule 1 is `Session`, a new kind (tag 4). Rules 2 and 3 are `Frames`.
 - **One verdict.** A session that breaks a rule names the first request of the batch in that session, whichever frames of the session broke it. With [RFC-0063](RFC-0063-request-boundaries.md#the-requests-rules)'s window, a break in one period names the first request of the batch whose window holds a frame in that period ('Who is named'). In RFC-0059's 'Verifier check 2, amended', this replaces two things. The third item, the open before the session's frames, is now rule 1 and `Session`. The naming sentences, under which the later of two requests sharing a counter was named, give way to this rule.
 - **What the rules do not include.**

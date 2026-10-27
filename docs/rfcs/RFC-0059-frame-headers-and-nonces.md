@@ -14,6 +14,7 @@
 - Origin: [#137](https://github.com/AbdelStark/tessera/issues/137)
 - Amended by: [RFC-0061](RFC-0061-sampling-randomness.md): a session commits no sampler key. The session-open frame is 52 bytes and its entry drops `sampler_commitment`; the circuits open the sampler key against the commitment the verifier pins.
 - Amended by: [RFC-0062](RFC-0062-period-log-sessions.md): 'Session identity' and 'Verifier check 2, amended': the session rules over the period's log settle what this RFC left to #498, and fix which request and kind a break names.
+- Amended by: draft [RFC-0074](RFC-0074-anchor-binding.md) ('The plaintext': at most two frames of no token per request; 'The circuits': the zeros past a frame's length in its last AES block are public inputs; in effect when it is accepted)
 
 ## Summary
 
@@ -106,7 +107,7 @@ and `ciphertext = TCE(TokenFrame) ⊕ (K_0 ‖ K_1 ‖ …)[0..length]`.
 u64_le(request_id) ‖ u16_le(direction tag: 0 = In, 1 = Out) ‖ u32_le(frame_index) ‖ u64_le(n) ‖ u32_le(token_0) ‖ … ‖ u32_le(token_{n−1})
 ```
 
-- **Shape.** Its length is `22 + 4n` bytes, and `n ≥ 0`.
+- **Shape.** Its length is `22 + 4n` bytes, and `n ≥ 0`. Under draft [RFC-0074](RFC-0074-anchor-binding.md#the-anchors-inputs), in effect when it is accepted, the serving stack sends at most two frames of `n = 0` per request, and the reference cipher refuses a third. This duty is not an empty-frame count check by the verifier: the verifier enforces RFC-0074's aggregate block bound.
 - **Agreement with the header.** The plaintext's `request_id`, direction and `frame_index` equal the header's, and its count is `(length − 22)/4`. A decrypted frame that disagrees is refused. The circuits fix the plaintext's whole 22-byte prefix to these public values ('The circuits').
 - **Secrecy.** The plaintext and the tokens are secret-class (05 §3). The ciphertext, the header and their digest are public.
 
@@ -139,11 +140,11 @@ sampler_commitment = SHA-256( "tessera-sampler-key/v1" ‖ K_p ‖ salt   )     
 
 To RFC-0015 'Circuits':
 - **The counter blocks** of step 2 are public inputs, built by the verifier from the frame's entry: `session_id[0..8] ‖ u32_be(frame_seq) ‖ u32_be(i)`.
-- **The plaintext's prefix**, its first 22 bytes, is a public input too: `request_id`, the direction tag, `frame_index` and the count `(length − 22)/4`, from the entry. Only the token bytes after it are the prover's.
+- **The plaintext's prefix**, its first 22 bytes, is a public input too: `request_id`, the direction tag, `frame_index` and the count `(length − 22)/4`, from the entry. Only the token bytes after it are the prover's, and draft [RFC-0074](RFC-0074-anchor-binding.md#the-token-byte-binding) makes the zeros past `length` in the frame's last AES block public too.
 - **The header** of step 5, which enters SHA-256 as constants, includes `frame_seq`.
 - **The sampler commitment** is opened. SHA-256 over `"tessera-sampler-key/v1" ‖ K_p ‖ salt`, with the base key `K_p` and the salt committed, equals the batch's pinned `sampler_commitment` ([RFC-0061](RFC-0061-sampling-randomness.md#the-circuits)). The key the in-circuit PRF uses (RFC-0017 'Sampler PRF', #152) is derived from `K_p` and the pin's nonce, class bits and start.
 
-Check 4's public inputs are, then, the entries' digests, the sessions' key commitments, the pin's commitment, nonce, class bits and start, the counter blocks and the plaintexts' prefixes, all supplied by the verifier.
+Check 4's public inputs are, then, the entries' digests, the sessions' key commitments, the pin's commitment, nonce, class bits and start, the counter blocks and the plaintexts' prefixes, and the zeros past each frame's length in its last block (draft RFC-0074), all supplied by the verifier.
 
 ### The log entry
 

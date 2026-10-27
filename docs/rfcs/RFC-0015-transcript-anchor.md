@@ -28,6 +28,7 @@
   - 'Log format': `SessionCarry`, and a batch's entries read from its period's log;
   - 'Prover pre-check', 'Verifier checks' 2 and INV-ANC-2: the session rules over the period's log.
 - Amended by: [RFC-0066](RFC-0066-bits-and-sha256.md) ('Circuits' steps 3 and 4: the SHA-256 circuit's construction, its cost, and the binding's zero-check), [RFC-0071](RFC-0071-request-slots.md) ('Circuits' and 'Prover pre-check': in a batch, a request's frames bind its own slot's rows, and a failing request is left out)
+- Amended by: draft [RFC-0074](RFC-0074-anchor-binding.md) ('Circuits' steps 1 to 5: the circuits a batch's graph holds and their inputs from the log, the AES-128-CTR graph to the node, the plaintext committed per session and range-checked, and the binding's two `AssertEqual`s; 'Verifier checks' 2 and 4 and 'Prover pre-check': the size bound, and the tail zeros as public inputs; 'Testing Strategy': which reordering is rejected; in effect when it is accepted)
 
 ## Summary
 
@@ -141,9 +142,9 @@ The signed message is `"tessera-manifest/v1" ‖ TCE(manifest without signature)
 
 For each request in the batch and each direction, the following hold. In a batch of several requests, request `r`'s tokens are its slot's rows `r·S + p`, prompt then outputs ([RFC-0071](RFC-0071-request-slots.md#the-statement-and-the-batching)).
 
-These steps are amended by [RFC-0059 'The circuits'](RFC-0059-frame-headers-and-nonces.md#the-circuits): the counter blocks and each plaintext's 22-byte prefix are public inputs, and the sampler commitment is opened too.
+These steps are amended by [RFC-0059 'The circuits'](RFC-0059-frame-headers-and-nonces.md#the-circuits): the counter blocks and each plaintext's 22-byte prefix are public inputs, and the sampler commitment is opened too. draft [RFC-0074](RFC-0074-anchor-binding.md#the-composed-graph), in effect when it is accepted, fixes steps 2 to 5 in a batch's graph: AES-128-CTR to the node, once per anchor session with its key taken from the key commitment's committed bytes, and one SHA-256 per frame over a slice of the session's ciphertext.
 
-1. **Token bytes.** The committed token stream feeds both the forward pass (`OneHot`, RFC-0009) and the frame plaintext: each token's four little-endian bytes are committed advice, range-checked to 8 bits, with `token = Σ_b byte_b 2^{8b}` (linear).
+1. **Token bytes.** The committed token stream feeds both the forward pass (`OneHot`, RFC-0009) and the frame plaintext: each token's four little-endian bytes are committed advice, range-checked to 8 bits, with `token = Σ_b byte_b 2^{8b}` (linear). draft [RFC-0074](RFC-0074-anchor-binding.md#the-token-byte-binding) states the relations: the bytes are the session's committed plaintext, `BitDecompose { 8, 0 }` range-checks it, and two `AssertEqual`s bind its public bytes to their values and its token bytes, recomposed, to the token axis's rows.
 2. **AES-128-CTR.** The key schedule runs once per session; each 16-byte counter block runs 10 rounds with S-box lookups (`AesSbox`), MixColumns through `Gf256Mul { 2 }`, `Gf256Mul { 3 }` and byte XORs (`Bitwise8 { xor }`). Ciphertext bytes are `plaintext ⊕ keystream`.
    - **The lowering.** `tessera_compiler::anchor` lowers it into the IR (RFC-0006):
      - the byte operations as `TableMap` and `Bitwise` lookups;
@@ -187,7 +188,7 @@ Before `Round1`, the prover re-encrypts its stored transcripts, checks the sessi
 - **The order.** Per request, in `statement.batch` order, the pre-check runs the verifier's order:
   1. the session's rules in each period of the window that holds a frame of it, with one key (RFC-0063 rule 4);
   2. the request's rules 1, 2, 3 and 5;
-  3. the lengths;
+  3. the lengths, then the request's size bound (draft [RFC-0074](RFC-0074-anchor-binding.md#the-anchors-inputs));
   4. at the session's first request in the batch, the window's counters ([RFC-0063](RFC-0063-request-boundaries.md#the-requests-rules) 'One counter across the window');
   5. the replay: a transcript of the session is held, its keys open the session's key commitment, and each logged frame has a stored plaintext at its counter, with the entry's request, direction, index and length, that re-seals to the entry's digest.
 
@@ -199,11 +200,11 @@ Before `Round1`, the prover re-encrypts its stored transcripts, checks the sessi
 ### Verifier checks
 
 1. Manifest signature under a pinned recorder key; unknown scheme rejected.
-2. A request's frames are all its frames in its end's period and the one before, read from those periods' verified logs, with no inclusion proof. Its session keeps the session rules in each of them ([RFC-0062](RFC-0062-period-log-sessions.md)). The request has one end, every frame before it, each position once, and its inbound frames before its outbound ones ([RFC-0063](RFC-0063-request-boundaries.md#the-requests-rules)). The statement's lengths count all its frames. Every frame of every sampled request present (`frame_index` contiguous from 0, matching the statement's lengths), the `frame_seq` values of a session's frames distinct, each frame's `length` one a plaintext has, and the session's open entry before its frames ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#verifier-check-2-amended)). For a batch that decodes with temperature, each request's frames lie within one pin's window and its grace, the pin of the batch's first request ([RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies)).
+2. A request's frames are all its frames in its end's period and the one before, read from those periods' verified logs, with no inclusion proof. Its session keeps the session rules in each of them ([RFC-0062](RFC-0062-period-log-sessions.md)). The request has one end, every frame before it, each position once, and its inbound frames before its outbound ones ([RFC-0063](RFC-0063-request-boundaries.md#the-requests-rules)). The statement's lengths count all its frames. Every frame of every sampled request present (`frame_index` contiguous from 0, matching the statement's lengths), the `frame_seq` values of a session's frames distinct, each frame's `length` one a plaintext has, and the session's open entry before its frames ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#verifier-check-2-amended)). For a batch that decodes with temperature, each request's frames lie within one pin's window and its grace, the pin of the batch's first request ([RFC-0061](RFC-0061-sampling-randomness.md#which-pin-applies)). Under draft [RFC-0074](RFC-0074-anchor-binding.md#the-anchors-inputs) 'The size bound', in effect when it is accepted, a request's frames hold at most `2·n_r + 4` SHA-256 blocks after its lengths are checked, `n_r` its tokens.
 3. The batch's requests equal the audit sample's requests for this manifest ([RFC-0016](RFC-0016-audit-sampling.md#verifier-checks)).
-4. The circuits' public inputs are exactly these digests and key commitments, the pinned sampler commitment with its nonce, class bits and start, the frames' counter blocks and the plaintexts' prefixes ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#the-circuits), [RFC-0061](RFC-0061-sampling-randomness.md#the-circuits)).
+4. The circuits' public inputs are exactly these digests and key commitments, the pinned sampler commitment with its nonce, class bits and start, the frames' counter blocks and the plaintexts' prefixes ([RFC-0059](RFC-0059-frame-headers-and-nonces.md#the-circuits), [RFC-0061](RFC-0061-sampling-randomness.md#the-circuits)), and under draft [RFC-0074](RFC-0074-anchor-binding.md#the-token-byte-binding), in effect when it is accepted, their last blocks' tail zeros.
 
-Checks 1 and 2 fail as `Reject(Anchor { request_id, kind })`, with the kinds of [RFC-0043](RFC-0043-rejection-payloads.md#anchor) and no request for the manifest's signature. Check 3 is RFC-0016's. Check 4 cannot fail on its own: the verifier makes the entries' digests, the commitments, the pin's nonce, class bits and start, the counter blocks and the plaintexts' prefixes the circuits' public inputs itself.
+Checks 1 and 2 fail as `Reject(Anchor { request_id, kind })`, with the kinds of [RFC-0043](RFC-0043-rejection-payloads.md#anchor) and no request for the manifest's signature. Check 3 is RFC-0016's. Check 4 cannot fail on its own: the verifier makes the entries' digests, the commitments, the pin's nonce, class bits and start, the counter blocks and the plaintexts' prefixes the circuits' public inputs itself, and under draft RFC-0074 their last blocks' tail zeros.
 
 ### Invariants
 
@@ -232,7 +233,7 @@ v0.4: frames, log, manifest, signatures, circuits, reference recorder, prover pr
 
 - AES-128 circuit against FIPS-197 appendix vectors; CTR mode against NIST SP 800-38A F.5.1; SHA-256 circuit against NIST CAVP short and long message vectors; key commitment against a direct computation.
 - Alternative witnesses rejected: one flipped ciphertext bit, one wrong carry bit in SHA-256, a key differing in one bit, a token whose bytes do not recompose.
-- Log: inclusion proofs verify for random positions; a missing frame (gap in `frame_index`) and a reordered frame are rejected; a manifest signed by an unpinned key is rejected; `prev_manifest` chain breaks are detected.
+- Log: inclusion proofs verify for random positions; a missing frame (gap in `frame_index`) and a reordered frame are rejected (under draft [RFC-0074](RFC-0074-anchor-binding.md#rejections), in effect when it is accepted: a reordered frame is an inbound frame logged after an outbound one, `Frames`, and entries of one direction logged out of `frame_index` order are not refused); a manifest signed by an unpinned key is rejected; `prev_manifest` chain breaks are detected.
 - Reference recorder: forwarded bytes are unchanged (byte-for-byte comparison); digests match an offline recomputation; period rotation produces a valid chain.
 - End to end: `e2e_anchor_mismatch` in [07 §6](../spec/07-testing-strategy.md#6-end-to-end-tests).
 - Cost: the commitment report's anchor share is below 0.01% for 405B.

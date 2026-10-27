@@ -5,6 +5,7 @@
 - Created: 2026-10-18
 - Target milestone: v0.3
 - Amended by: [RFC-0071](RFC-0071-request-slots.md) ('Short query blocks': in a batch, `Q' = min(Q, S)` and the keys are a slot's), [RFC-0072](RFC-0072-anchor-relations.md) ('Segments': a graph with no layers has every tile in segment 0)
+- Amended by: draft [RFC-0074](RFC-0074-anchor-binding.md) ('Goals': the anchor's inputs from the logs; in effect when it is accepted)
 - Supersedes, on acceptance:
   - [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) 'Canonical advice layout' rule 5: which tiles and rows each segment holds;
   - [RFC-0034](RFC-0034-causal-blocks.md#causal-layout) 'Causal layout': an attention tile's query count;
@@ -25,7 +26,7 @@ The verifier checks a queried column by recomputing each segment's chain over th
 
 ## Goals
 
-- One segment assignment for every row, from the claim list and the batch alone.
+- One segment assignment for every row, from the claim list and the batch alone; under draft RFC-0074, in effect when it is accepted, also from the anchor's inputs in the batch's logs.
 - One attention tile shape, as RFC-0041 defines it.
 
 ## Non-Goals

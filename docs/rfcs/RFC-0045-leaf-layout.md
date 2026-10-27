@@ -5,6 +5,7 @@
 - Created: 2026-10-18
 - Target milestone: v0.3
 - Amended by: [RFC-0052](RFC-0052-channel-params-claims.md) ('Open Questions': opening `ChannelParams` claims), [RFC-0068](RFC-0068-leaf-stage-zero-knowledge.md) (in `tessera-protocol/2`: 'The leaf point', `P` without the tree index's coordinate; 'The split', the values of sites in the layers sent once per site and tensor, after a layer sumcheck), [RFC-0072](RFC-0072-anchor-relations.md) ('Sites': no site for `BitDecompose` and `AssertEqual`; 'The split': a public tensor's value is not sent)
+- Amended by: draft [RFC-0074](RFC-0074-anchor-binding.md) ('The verifier's derivation': the anchor's sites and blocks from the batch's logs; in effect when it is accepted)
 - Supersedes, on acceptance:
   - [RFC-0008](RFC-0008-logup-and-tables.md#batching) 'Batching' and 'Fraction tree': how an instance lays out its lookups, and the order of its lookup tree's leaves;
   - [RFC-0037](RFC-0037-stage-schedule.md#the-layer-point) 'The layer point' and 'Splits': the point `r_s` of a site's tensors, and the leaf stage's split values.
@@ -134,7 +135,7 @@ The lookup tree's leaf `i` holds column entry `σ_h(i)`, where `σ_h` keeps bit 
 
 ### The verifier's derivation
 
-The verifier derives the sites, the blocks, their offsets and the instances' heights from the claim list. It uses its own lowering (RFC-0044) and gadget selection (RFC-0006), and nothing the prover sends. It reads `P` from the transcript.
+The verifier derives the sites, the blocks, their offsets and the instances' heights from the claim list. It uses its own lowering (RFC-0044) and gadget selection (RFC-0006), and nothing the prover sends. It reads `P` from the transcript. Under draft [RFC-0074](RFC-0074-anchor-binding.md#the-leaf-stage-and-token-groups), in effect when it is accepted, the anchor's sites and blocks come from the batch's verified logs.
 
 ## Alternatives Considered
 

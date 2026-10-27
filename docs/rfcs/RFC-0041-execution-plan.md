@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-18
 - Target milestone: v0.3
-- Amended by: [RFC-0050](RFC-0050-gadget-advice-columns.md) ('Production order': canonical gadget auxiliary order), [RFC-0071](RFC-0071-request-slots.md) ('Non-Goals', 'Tiles', 'The plan' and 'Drawbacks': a batch's tiles, query blocks within one request)
+- Amended by: [RFC-0050](RFC-0050-gadget-advice-columns.md) ('Production order': canonical gadget auxiliary order), [RFC-0071](RFC-0071-request-slots.md) ('Non-Goals', 'Tiles', 'The plan' and 'Drawbacks': a batch's tiles, query blocks within one request), draft [RFC-0074](RFC-0074-anchor-binding.md) ('Motivation', 'Goals', 'Production order' and 'The plan': the anchor's inputs from the log, and its tiles after the model's nodes, a runtime expansion of the plan; in effect when it is accepted)
 - Supersedes, on acceptance:
   - [RFC-0006](RFC-0006-compiler-ir.md#tiling-and-the-execution-plan) 'Tiling and the execution plan': what a tile holds, the production order, and the plan's contents. The plan carries the claim list and one sequence's tiles. It holds neither row ranges, nor stage membership, nor devices.
   - [RFC-0011](RFC-0011-advice-commitment.md#canonical-advice-layout) 'Canonical advice layout' rule 2: tensors are allocated tile by tile, in this RFC's production order;
@@ -25,7 +25,7 @@ This RFC defines the tiles of a sequence, which partition its committed values, 
 ## Motivation
 
 - **An undefined tier-A schema** ([02 §1](../spec/02-public-api.md#1-stability-tiers)).
-- **The layout depends on the order.** The verifier derives the advice layout itself, from the claim list and the batch descriptor (INV-PCS-1), and checks the prover's `layout_digest` against its own ([RFC-0031](RFC-0031-commitment-id.md#layout_digest)).
+- **The layout depends on the order.** The verifier derives the advice layout itself, from the claim list and the batch descriptor (INV-PCS-1), and under draft RFC-0074 also from the anchor's inputs from the log, and checks the prover's `layout_digest` against its own ([RFC-0031](RFC-0031-commitment-id.md#layout_digest)).
   - Two implementations of an informal order would place tensors at different offsets.
   - Every honest proof would then be rejected at RFC-0019 step 4.
   - The order must be stated exactly.
@@ -40,7 +40,7 @@ This RFC defines the tiles of a sequence, which partition its committed values, 
 ## Goals
 
 - Tiles that partition every committed value of a sequence's lowering, each value in exactly one tile.
-- One production order, computable from the claim list and a sequence's length alone, for the prover's passes and the verifier's layout.
+- One production order, computable from the claim list and a sequence's length alone, for the prover's passes and the verifier's layout. Under draft RFC-0074, in effect when it is accepted, the anchor's tiles also read the batch's logs.
 - A plan that is a pure function of the model's public part and the parameter set, deterministic to the byte, with no secret value.
 
 ## Non-Goals
@@ -84,6 +84,8 @@ The tiles of a sequence come in this order:
 2. the `Node` and `Attention` tiles, in node order. The attention node's tiles take its place, by KV head, then query block. This orders the prologue's nodes, each layer's, then the epilogue's;
 3. the `Table` tiles, by table id, for each table that a lookup reads.
 
+Under draft RFC-0074, in effect when it is accepted, in a batch's graph the anchor's committed inputs and its nodes' committed outputs come after the model's nodes' tiles and before the greedy certificate's maximum and the `Table` tiles (draft [RFC-0074](RFC-0074-anchor-binding.md#the-advice-layout-and-the-openings)).
+
 Within a tile, values come in this order:
 - the node's outputs, in output order;
 - then the gadget's committed auxiliary values, in the canonical role order of [RFC-0050](RFC-0050-gadget-advice-columns.md), refining RFC-0009. Graph outputs are not duplicated; virtual top limbs have no advice tensor.
@@ -93,6 +95,8 @@ An attention tile's exponentials take the variable order `(i_hi, h, q, i_lo)` of
 `Q` must be a power of two, since RFC-0034's layout takes its logarithm. A claim list with another `query_block` fails RFC-0007 step 6 ([RFC-0039](RFC-0039-statement-fields.md#the-checks): `Layout`).
 
 ### The plan
+
+Under draft [RFC-0074](RFC-0074-anchor-binding.md#the-advice-layout-and-the-openings), in effect when it is accepted, the anchor's tiles are a runtime expansion of the plan, as RFC-0053's `GreedyMaximum` is: the plan, a function of the model's public part, holds none of them.
 
 ```rust
 pub struct ExecutionPlan {          // schema 0x0202, version 1, private, .tep

@@ -8,7 +8,7 @@
   - [RFC-0007](RFC-0007-claim-list.md#schema) 'Schema': `ClaimList`'s `scoring` and `anchor` fields, and `CommitmentLayout`'s `WeightLayoutParams`; 'Verifier validation', step 7;
   - [RFC-0012](RFC-0012-weight-commitment.md#layout) 'Layout': the fields of `WeightLayoutParams`, which `R_W` hashes.
 - Origin: [#85](https://github.com/AbdelStark/tessera/issues/85)
-- Amended by: [RFC-0027](RFC-0027-logits-exponent.md) ('Motivation': `PublicQuantSpec` now carries the logits' scale), [RFC-0065](RFC-0065-masked-channel-params.md) ('Schema': `WeightLayoutParams.blinding_rows` is a single-claim matrix's `B_W`, and `ChannelParams`' `B_CP` follows from it)
+- Amended by: [RFC-0027](RFC-0027-logits-exponent.md) ('Motivation': `PublicQuantSpec` now carries the logits' scale), [RFC-0065](RFC-0065-masked-channel-params.md) ('Schema': `WeightLayoutParams.blinding_rows` is a single-claim matrix's `B_W`, and `ChannelParams`' `B_CP` follows from it), draft [RFC-0074](RFC-0074-anchor-binding.md) ('Scoring and the anchor': the anchor joins no field, and step 7 reads the scoring template alone; in effect when it is accepted)
 
 ## Summary
 
@@ -91,9 +91,9 @@ pub struct WeightLayoutParams {
 RFC-0007's `scoring` and `anchor` fields leave the schema. Each comes back when an implementation defines it, by amending RFC-0007's schema:
 
 - **Scoring.** It comes back with the first predictor that needs a model-level public parameter: temperature sampling (#152) or the mixture (#155). Each needs the logits' scale. Greedy decoding (#127) needs none.
-- **The anchor.** It comes back with the anchor circuits (#137 to #146), in v0.4.
+- **The anchor.** It comes back with the anchor circuits (#137 to #146), in v0.4. Draft [RFC-0074](RFC-0074-anchor-binding.md#the-claim-list-and-the-statement), in effect when it is accepted, finds that it does not: the circuits state nothing a model or deployment chooses, and every proof is anchored.
 
-While no release has written a claim list, the schema changes in place (09 §3). After that, a change is a new version of the schema and of the protocol. RFC-0007 'Verifier validation' step 7, "Scoring and anchor templates name supported variants", applies once the fields exist.
+While no release has written a claim list, the schema changes in place (09 §3). After that, a change is a new version of the schema and of the protocol. RFC-0007 'Verifier validation' step 7, "Scoring and anchor templates name supported variants", applies once the fields exist; under draft RFC-0074 it reads the scoring template alone.
 
 ### Emission
 
