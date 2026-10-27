@@ -379,9 +379,11 @@ fn live_round1_keeps_the_session_clock_and_checks_before_revealing() {
         kind: CheckKind,
         duration: Duration,
         seen: bool,
+        last: Option<CheckKind>,
     }
     impl Observer for Delay {
         fn check_completed(&mut self, event: CheckEvent) {
+            self.last = Some(event.kind);
             if event.kind == self.kind && !self.seen {
                 self.seen = true;
                 std::thread::sleep(self.duration);
@@ -391,6 +393,7 @@ fn live_round1_keeps_the_session_clock_and_checks_before_revealing() {
     for (kind, wait, delay) in [
         (CheckKind::Claims, 300, 300),
         (CheckKind::WeightReservation, 0, 550),
+        (CheckKind::Transcript, 0, 550),
     ] {
         let (c, s, mut p, mut cfg) = live_fixture();
         cfg.limits.max_wall_time = Duration::from_millis(500);
@@ -406,6 +409,7 @@ fn live_round1_keeps_the_session_clock_and_checks_before_revealing() {
             kind,
             duration: Duration::from_millis(delay),
             seen: false,
+            last: None,
         };
         inconclusive(
             live.on_round1_observed(&p.round1, &share, &mut observer)
@@ -413,11 +417,30 @@ fn live_round1_keeps_the_session_clock_and_checks_before_revealing() {
             ErrorCode::Time,
         );
         assert!(observer.seen);
+        if kind == CheckKind::Claims {
+            // Expiry is caught in the work phase, before transcript/seed handling.
+            assert_eq!(observer.last, Some(CheckKind::Statement));
+        }
         inconclusive(
             live.on_round1(&p.round1, &share).unwrap_err(),
             ErrorCode::ProtocolOrder,
         );
     }
+    let (c, s, _, mut cfg) = live_fixture();
+    cfg.limits.max_wall_time = Duration::from_millis(500);
+    let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+    let mut observer = Delay {
+        kind: CheckKind::Params,
+        duration: Duration::from_millis(550),
+        seen: false,
+        last: None,
+    };
+    inconclusive(
+        live.start_observed(&mut observer).unwrap_err(),
+        ErrorCode::Time,
+    );
+    assert!(observer.seen);
+    inconclusive(live.start().unwrap_err(), ErrorCode::ProtocolOrder);
 }
 
 #[test]

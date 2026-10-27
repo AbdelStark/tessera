@@ -36,6 +36,9 @@
 //! step 1 twice in a row, the decoding and then the driver's own limits; joining two consecutive
 //! reports of one check whose first passed gives one step 1 per message.
 //!
+//! Observer callback time consumes the verification budget. If the last callback exhausts it,
+//! the call returns `ERR-RES-TIME` even when all checks it already reported passed.
+//!
 //! # Which work belongs to which check
 //!
 //! The driver's checks run in one sequence, and each step's report covers the code from its

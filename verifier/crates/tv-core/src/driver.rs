@@ -113,6 +113,17 @@ fn conclude<T>(tracker: &mut Tracker<'_>, result: Check<T>) -> Check<T> {
     tracker.close(outcome(&result));
     result
 }
+/// Reporting can consume the remaining budget too; check before releasing a successful value.
+fn conclude_with_deadline<T>(
+    tracker: &mut Tracker<'_>,
+    result: Check<T>,
+    started: Option<Instant>,
+    limits: ResourceLimits,
+) -> Check<T> {
+    let value = conclude(tracker, result)?;
+    deadline(started.ok_or_else(internal)?, limits)?;
+    Ok(value)
+}
 fn into_verdict(result: Check<AcceptReport>) -> Verdict {
     match result {
         Ok(report) => Verdict::Accept(report),
@@ -446,8 +457,14 @@ pub fn verify_non_interactive_bytes_observed(
 ) -> Verdict {
     let mut tracker = Tracker::new(observer);
     tracker.enter(CheckKind::Input);
-    let result = verify_ni_bytes(claims, statement, bytes, cfg, &mut tracker);
-    into_verdict(conclude(&mut tracker, result))
+    let started = Instant::now();
+    let result = verify_ni_bytes(claims, statement, bytes, cfg, &mut tracker, started);
+    into_verdict(conclude_with_deadline(
+        &mut tracker,
+        result,
+        Some(started),
+        cfg.limits,
+    ))
 }
 fn verify_ni_bytes(
     claims: &ClaimList,
@@ -455,8 +472,8 @@ fn verify_ni_bytes(
     bytes: &[u8],
     cfg: &VerifierConfig,
     tracker: &mut Tracker<'_>,
+    started: Instant,
 ) -> Check<AcceptReport> {
-    let started = Instant::now();
     let limits = DecodeLimits {
         max_total_bytes: cfg.limits.max_artifact_bytes,
         ..DecodeLimits::MESSAGE
@@ -516,8 +533,14 @@ pub fn verify_non_interactive_observed(
 ) -> Verdict {
     let mut tracker = Tracker::new(observer);
     tracker.enter(CheckKind::Input);
-    let result = verify_ni(claims, statement, proof, cfg, &mut tracker, Instant::now());
-    into_verdict(conclude(&mut tracker, result))
+    let started = Instant::now();
+    let result = verify_ni(claims, statement, proof, cfg, &mut tracker, started);
+    into_verdict(conclude_with_deadline(
+        &mut tracker,
+        result,
+        Some(started),
+        cfg.limits,
+    ))
 }
 mod live;
 pub use live::LiveVerifier;

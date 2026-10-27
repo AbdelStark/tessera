@@ -103,13 +103,16 @@ impl LiveVerifier {
         let mut tracker = Tracker::new(observer);
         tracker.enter(CheckKind::Params);
         let result = self.start_inner();
-        let result = conclude(&mut tracker, result);
+        self.finish(&mut tracker, result).map_err(Into::into)
+    }
+    fn finish<T>(&mut self, tracker: &mut Tracker<'_>, result: Check<T>) -> Check<T> {
+        let result = conclude_with_deadline(tracker, result, self.started, self.cfg.limits);
         if result.as_ref().is_err_and(|error| {
             !matches!(error, Failure::Inconclusive(e) if e.code == ErrorCode::ProtocolOrder)
         }) {
             self.state = State::Done;
         }
-        result.map_err(Into::into)
+        result
     }
     fn start_inner(&mut self) -> Check<protocol::SeedCommit> {
         if !matches!(self.state, State::Created) {
@@ -185,7 +188,7 @@ impl LiveVerifier {
         let mut tracker = Tracker::new(observer);
         tracker.enter(CheckKind::Input);
         let result = self.round1(message, prover, &mut tracker);
-        conclude(&mut tracker, result).map_err(Into::into)
+        self.finish(&mut tracker, result).map_err(Into::into)
     }
     fn round1(
         &mut self,
@@ -282,7 +285,7 @@ impl LiveVerifier {
         let mut tracker = Tracker::new(observer);
         tracker.enter(CheckKind::Input);
         let result = self.round2(message, &mut tracker);
-        conclude(&mut tracker, result).map_err(Into::into)
+        self.finish(&mut tracker, result).map_err(Into::into)
     }
     fn round2(
         &mut self,
@@ -343,7 +346,7 @@ impl LiveVerifier {
         let mut tracker = Tracker::new(observer);
         tracker.enter(CheckKind::Input);
         let result = self.round3(message, &mut tracker);
-        into_verdict(conclude(&mut tracker, result))
+        into_verdict(self.finish(&mut tracker, result))
     }
     fn round3(
         &mut self,
@@ -413,6 +416,7 @@ impl LiveVerifier {
         phase: Phase,
     ) -> Self {
         let mut session = Self::new(claims, statement, cfg);
+        session.started = Some(Instant::now());
         session.state = match phase {
             Phase::Round1 { session_id } => State::Committed {
                 id: session_id,
@@ -496,6 +500,63 @@ mod tests {
 
     #[cfg(feature = "test-params")]
     #[test]
+    fn final_observer_work_cannot_release_live_queries_or_acceptance() {
+        use crate::observe::CheckEvent;
+        struct Delay(CheckKind);
+        impl Observer for Delay {
+            fn check_completed(&mut self, event: CheckEvent) {
+                if event.kind == self.0 {
+                    std::thread::sleep(Duration::from_millis(550));
+                }
+            }
+        }
+        let proof = NiProof::open(
+            include_bytes!("../../tests/fixtures/driver/live-messages.tnp"),
+            &DecodeLimits::MESSAGE,
+        )
+        .unwrap();
+        let seed = *include_bytes!("../../tests/fixtures/driver/live-seed.bin");
+        for round in [2, 3] {
+            let (claims, _, mut cfg) = super::super::tests::fixture();
+            cfg.limits.max_wall_time = Duration::from_millis(500);
+            let phase = if round == 2 {
+                Phase::Round2 {
+                    first: proof.round1.to_tce().unwrap(),
+                    seed,
+                }
+            } else {
+                Phase::Round3 {
+                    first: proof.round1.to_tce().unwrap(),
+                    second: proof.round2.to_tce().unwrap(),
+                    queries: include_bytes!("../../tests/fixtures/driver/queries.tce").to_vec(),
+                    seed,
+                }
+            };
+            let mut session = LiveVerifier::at(claims, proof.round1.statement.clone(), cfg, phase);
+            let verdict = if round == 2 {
+                session
+                    .on_round2_observed(&proof.round2, &mut Delay(CheckKind::Queries))
+                    .unwrap_err()
+            } else {
+                session.on_round3_observed(&proof.round3, &mut Delay(CheckKind::Complete))
+            };
+            assert!(matches!(
+                verdict,
+                Verdict::Inconclusive(VerifierError {
+                    code: ErrorCode::Time
+                })
+            ));
+            assert!(matches!(
+                session.on_round3(&proof.round3),
+                Verdict::Inconclusive(VerifierError {
+                    code: ErrorCode::ProtocolOrder
+                })
+            ));
+        }
+    }
+
+    #[cfg(feature = "test-params")]
+    #[test]
     fn completed_recorded_session_is_consumed_and_nonzero_exact_bound_rejects() {
         let (claims, _, cfg) = super::super::tests::fixture();
         let proof = NiProof::open(
@@ -510,6 +571,7 @@ mod tests {
             queries: include_bytes!("../../tests/fixtures/driver/queries.tce").to_vec(),
             seed: *include_bytes!("../../tests/fixtures/driver/live-seed.bin"),
         };
+        session.started = Some(Instant::now());
         session.state = state(&proof.round2);
         assert!(matches!(
             session.on_round3(&proof.round3),
