@@ -22,7 +22,7 @@
   - [RFC-0019](RFC-0019-verifier.md#check-order) 'Check order' step 1 (the manifest's signature before its log), step 2 (no `tessera-protocol/2` parameter set yet) and step 4 (the interim cap, the resource decision, the size bound among the frames' checks, the composed layout's maximum);
   - [02 §3.2](../spec/02-public-api.md#32-verifier): `ResourceLimits.max_anchor_blocks`;
   - [07 §6](../spec/07-testing-strategy.md#6-end-to-end-tests): `e2e_anchor_mismatch`'s two cases and their verdicts;
-  - [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) 'Committed tensors', 'Hiding', R10's gap list, item 10: the anchor in a batch's graph, and the token binding's selection claim on the tokens.
+  - [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) 'Committed tensors', 'Hiding', R10's gap list, item 9: the anchor in a batch's graph, and the token binding's selection claim on the tokens.
 - Origin: [#146](https://github.com/AbdelStark/tessera/issues/146)
 
 ## Summary

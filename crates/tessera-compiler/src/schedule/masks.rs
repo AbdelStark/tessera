@@ -62,11 +62,19 @@
 //! # The check ([`check`])
 //!
 //! Values with the same row and full point, layer weights included, are one value, a public
-//! relation, and merge; so do identical folds, never one with a value. A committed stacked value
-//! whose per-layer constants differ between layers weighs its layers by `eq(ρ, ℓ)·c_ℓ` (RFC-0037
-//! 'Claims and atoms'), so it merges only with values of its own coefficient
-//! ([`Functional::scale`]). A functional whose length is not its row's width is refused
-//! ([`Finding::Width`]), never sketched. Each indeterminate takes a deterministic pseudo-random [`GoldilocksExt2`] value, `½`,
+//! relation, and merge; so do identical folds, never one with a value. On committed advice
+//! (RFC-0013 'Committed tensors', #556), a piece whose per-layer coefficient polynomial
+//! `(c_t(0), …, c_t(L − 1))` vanishes in every real layer contributes `0` to both data and mask
+//! rows and reveals no functional; one whose `c_t(ℓ)` is non-zero and equal across `0 ≤ ℓ < L`
+//! (`a_t`) adds `a_t·V'_t(p)` (`scale = None`), so uniform non-zero pieces at `p` merge; and one
+//! stacked over `λ ≥ 1` layer variables whose `c_t(ℓ)` differs between real layers has masked
+//! extension `P'_t(r ‖ ρ) = Σ_{ℓ < L} eq(ρ, ℓ)·c_t(ℓ)·X̃_{κ,ℓ}(r) + Z(r ‖ ρ)·R̃_{X_κ}(r_col)`
+//! (mask coefficient `1` in RFC-0011 step 2), so it merges only with pieces at `(r ‖ ρ)` carrying
+//! the exact same per-layer polynomial ([`Functional::scale`]). A weight or `ChannelParams` claim
+//! whose coefficient carries per-layer constants that differ between layers is forbidden by
+//! RFC-0037 and RFC-0013 and refused by name ([`Finding::ScaledWeight`]). A functional whose
+//! length is not its row's width is refused ([`Finding::Width`]), never sketched. Each
+//! indeterminate takes a deterministic pseudo-random [`GoldilocksExt2`] value, `½`,
 //! `0` and `1` themselves. Each functional is sketched against `m + 8` random product vectors,
 //! `⟨eq(p), ⊗_j (a_j, b_j)⟩ = Π_j ((1 − p_j)·a_j + p_j·b_j)`, and the sketches are eliminated over
 //! `Fp2`. Full rank proves the functionals generically independent; a deficiency is reported as
@@ -91,7 +99,7 @@
 //!
 //! It reads the compiled [`StageSchedule`], which does not hold every revealed point of
 //! `tessera-protocol/2`. RFC-0013 'Committed tensors' 'Hiding' states R10's gap as one list, these
-//! ten items in this order, and makes it block #154 and #159; each is to be added as its
+//! nine items in this order, and makes it block #154 and #159; each is to be added as its
 //! geometry is compiled:
 //! 1. the leaf stage's values of gadget outputs and auxiliary columns at their leaf read points
 //!    (RFC-0068 step 5's `v_{s,t}` on value forms); the schedule's leaf sites are gadget inputs
@@ -110,24 +118,19 @@
 //! 6. the multiplicities' claims;
 //! 7. the tree levels' masks, the identity sumcheck's root levels (RFC-0032) and the `SoftmaxRow`
 //!    leaf mask;
-//! 8. the masked value of a committed group whose layer weights carry per-layer constants
-//!    (RFC-0037 'Claims and atoms'), which no RFC specifies in `tessera-protocol/2` yet (#556): on
-//!    the advice the check keeps such a value apart from every other ([`Functional::scale`]) and
-//!    reads it through the stacked kind's mask row; on a weight matrix it refuses it
-//!    ([`Finding::ScaledWeight`]), since a matrix's pair would drop it as its first claim's value;
-//! 9. batches of several requests (RFC-0071, `R ≥ 2`): a claim list is checked for one request;
-//! 10. the anchor's circuits (RFC-0066, RFC-0072), whose schedules this check does not lower:
-//!     their committed bits and bytes, once they join a batch's graph (#146, #526).
+//! 8. batches of several requests (RFC-0071, `R ≥ 2`): a claim list is checked for one request;
+//! 9. the anchor's circuits (RFC-0066, RFC-0072), whose schedules this check does not lower:
+//!    their committed bits and bytes, once they join a batch's graph (#146, #526).
 //!
 //! Outside R10 altogether, other lemmas cover the masking polynomials' `G(r)` and RFC-0070's
 //! batching (`M`, `S`, `r*`; Lemma 4a), and the combined rows, the advice groups' blinding rows
 //! and the proximity rows (Lemmas 5 to 7).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
-use tessera_ir::{ClaimList, CommitmentClass, TensorId};
+use tessera_ir::{ClaimList, CommitmentClass, NodeId, Op, TensorId};
 use tessera_pcs::{WeightLayout, WeightMatrix, WeightShapes};
 
 use std::sync::Arc;
@@ -277,6 +280,27 @@ pub enum Role {
     Fold,
 }
 
+/// A symbolic `LT(coords, len)` factor of a coefficient product whose `coords` contain at least
+/// one challenge indeterminate ([`Src::Var`]).
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct LtFactor {
+    /// The dropped axis's coordinates, the lowest bit first, after stripping trailing zero bits of
+    /// `len`.
+    pub coords: Vec<Src>,
+    /// The reduced bound `len`, `0 < len < 2^{coords.len()}` and odd.
+    pub len: u32,
+}
+
+/// The canonical per-layer coefficient polynomial `(c_t(0), …, c_t(L − 1))` of a committed stacked
+/// advice piece whose per-layer constants differ between real layers (RFC-0013 'Committed
+/// tensors', #556).
+///
+/// Each entry pairs a sorted monomial of symbolic [`LtFactor`]s with its reduced [`Goldilocks`]
+/// scalar in each real layer `0 ≤ ℓ < L`, keeping only monomials that are non-zero in at least one
+/// real layer.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PerLayerScale(Vec<(Vec<LtFactor>, Vec<Goldilocks>)>);
+
 /// A linear functional `⟨R, eq(point)⟩` of one mask row.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Functional {
@@ -287,11 +311,12 @@ pub struct Functional {
     /// The value's identity: its full point, layer coordinates included, or a fold's `r''`.
     /// Functionals of one role, one key and one scale are one value.
     pub key: Vec<Src>,
-    /// The coefficient of a committed stacked value whose per-layer constants differ between
-    /// layers, `Factor::Constant` of a template position that is not uniform: its layers weigh
-    /// `eq(ρ, ℓ)·c_ℓ` (RFC-0037 'Claims and atoms'), so it is another value than an unscaled one
-    /// at its point. `None` for every other functional.
-    pub scale: Option<Vec<Vec<Factor>>>,
+    /// The canonical per-layer coefficient polynomial of a committed stacked advice piece whose
+    /// `c_t(ℓ)` differs between real layers (RFC-0013 'Committed tensors', RFC-0037 'The claim
+    /// pool', #556): its masked extension carries unit mask coefficient `1·Z(r ‖ ρ)·R̃_{X_κ}(r_col)`,
+    /// so it merges only with pieces at `(r ‖ ρ)` carrying the exact same `c_t`. `None` for every
+    /// uniform piece (`a_t·V'_t(p)`) and every fold.
+    pub scale: Option<PerLayerScale>,
     /// Where it comes from: several once merged.
     pub origins: Vec<Origin>,
 }
@@ -363,8 +388,8 @@ pub struct MaskSystem {
 }
 
 /// A weight claim whose coefficient carries a per-layer constant that differs between layers
-/// (`Factor::Constant` of a template position that is not uniform): its layers weigh
-/// `eq(ρ, ℓ)·c_ℓ`, a value no RFC masks in `tessera-protocol/2` (#556).
+/// (`Factor::Constant` of a template position that is not uniform), which RFC-0037 'Claims and
+/// atoms' and RFC-0013 'Weights' forbid (#556).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ScaledWeight {
     /// The matrix.
@@ -551,8 +576,8 @@ impl fmt::Display for Finding {
             }) => write!(
                 f,
                 "weight matrix {matrix:?}{}: {origin} weighs its layers by the constants of \
-                 position {position}, which differ between layers; no RFC masks such a weight \
-                 value in tessera-protocol/2 (R10, #556)",
+                 position {position}, which differ between layers; RFC-0037 and RFC-0013 forbid \
+                 such a weight claim (R10, #556)",
                 tensor(*t)
             ),
             Self::Width {
@@ -843,12 +868,11 @@ impl<'a> Builder<'a> {
     fn advice_atom(&mut self, atom: &Atom, origin: Origin) -> Result<(), CompileError> {
         let lambda = self.schedule.layers.vars;
         let r = self.rounds.point(&atom.point)?;
-        let mut scale = None;
-        let (row, data, rho) = match (atom.kind, &atom.layers) {
-            (Kind::Tensor(t), Layers::None) => (MaskRow::Tensor(t), t, Vec::new()),
+        let (row, data, rho, layers) = match (atom.kind, &atom.layers) {
+            (Kind::Tensor(t), Layers::None) => (MaskRow::Tensor(t), t, Vec::new(), vec![0]),
             (kind, &Layers::One(layer)) if !matches!(kind, Kind::Tensor(_)) => {
                 let t = self.tensor(kind, layer)?;
-                (MaskRow::Tensor(t), t, Vec::new())
+                (MaskRow::Tensor(t), t, Vec::new(), vec![layer])
             }
             (kind, Layers::Eq(rho)) if !matches!(kind, Kind::Tensor(_)) => {
                 let t = self.tensor(kind, 0)?;
@@ -856,7 +880,7 @@ impl<'a> Builder<'a> {
                     if !rho.is_empty() {
                         return Err(internal("a kind of one layer has no layer coordinate"));
                     }
-                    (MaskRow::Tensor(t), t, Vec::new())
+                    (MaskRow::Tensor(t), t, Vec::new(), vec![0])
                 } else {
                     // Every layer's tensor has layer 0's shape, so one column order serves; the
                     // last layer's is checked against it.
@@ -866,14 +890,13 @@ impl<'a> Builder<'a> {
                             "a stacked kind's layers share one column sub-point",
                         ));
                     }
-                    let scaled = atom.coefficient.iter().flatten().any(|factor| {
-                        matches!(factor, Factor::Constant(NodeRef::Position(p))
-                            if !self.schedule.layers.uniform(*p))
-                    });
-                    if scaled {
-                        scale = Some(atom.coefficient.clone());
-                    }
-                    (MaskRow::Stacked(kind), t, self.rounds.point(rho)?)
+                    let all_layers: Vec<u32> = (0..self.schedule.layers.count).collect();
+                    (
+                        MaskRow::Stacked(kind),
+                        t,
+                        self.rounds.point(rho)?,
+                        all_layers,
+                    )
                 }
             }
             _ => {
@@ -881,6 +904,11 @@ impl<'a> Builder<'a> {
                     "an advice pool atom weighs its layers by eq or one",
                 ));
             }
+        };
+        let scale = match self.classify_coefficient(&atom.coefficient, &layers)? {
+            CoeffClass::Zero => return Ok(()),
+            CoeffClass::Uniform => None,
+            CoeffClass::Scaled(scale) => Some(scale),
         };
         let order = self.column_order(data, r.len())?;
         let mut ordered: Vec<Src> = order.iter().map(|&j| r[j]).collect();
@@ -903,6 +931,139 @@ impl<'a> Builder<'a> {
             origins: vec![origin],
         };
         self.push(row, Some(data), vars, self.log2_k, functional)
+    }
+
+    /// Evaluates `products` across `layers` into its canonical polynomial over [`Goldilocks`] and
+    /// classifies it as identically zero, uniform non-zero across `layers`, or per-layer-scaled
+    /// (RFC-0013 'Committed tensors', #556).
+    fn classify_coefficient(
+        &self,
+        products: &[Vec<Factor>],
+        layers: &[u32],
+    ) -> Result<CoeffClass, CompileError> {
+        let two = Goldilocks::ONE.double();
+        let half = two.inverse().unwrap_or(Goldilocks::ZERO);
+        let mut map: BTreeMap<Vec<LtFactor>, Vec<Goldilocks>> = BTreeMap::new();
+        for product in products {
+            let mut scalars = vec![Goldilocks::ONE; layers.len()];
+            let mut monomial: Vec<LtFactor> = Vec::new();
+            let mut zero_product = false;
+            for factor in product {
+                match factor {
+                    Factor::Minus => {
+                        for s in &mut scalars {
+                            *s = -*s;
+                        }
+                    }
+                    Factor::Pow2(j) => {
+                        let p = two.pow(u64::from(*j));
+                        for s in &mut scalars {
+                            *s *= p;
+                        }
+                    }
+                    Factor::Constant(node_ref) => match *node_ref {
+                        NodeRef::Node(id) => {
+                            let c = self.constant_at(id)?;
+                            for s in &mut scalars {
+                                *s *= c;
+                            }
+                        }
+                        NodeRef::Position(pos) => {
+                            if pos >= self.schedule.layers.width {
+                                return Err(internal(
+                                    "a coefficient's template position is in range",
+                                ));
+                            }
+                            for (slot, &layer) in scalars.iter_mut().zip(layers) {
+                                if layer >= self.schedule.layers.count {
+                                    *slot = Goldilocks::ZERO;
+                                } else {
+                                    *slot *=
+                                        self.constant_at(self.schedule.layers.node(pos, layer))?;
+                                }
+                            }
+                        }
+                    },
+                    Factor::Lt { coords, len } => {
+                        let r = self.rounds.point(coords)?;
+                        if r.len() >= 64 || u64::from(*len) > (1u64 << r.len()) {
+                            return Err(internal("an Expand's length fits its axis"));
+                        }
+                        if *len == 0 {
+                            zero_product = true;
+                        } else if u64::from(*len) < (1u64 << r.len()) {
+                            let tz = len.trailing_zeros() as usize;
+                            let r = &r[tz..];
+                            let reduced_len = *len >> tz;
+                            let mut const_coords = Vec::with_capacity(r.len());
+                            let mut all_const = true;
+                            for &src in r {
+                                match src {
+                                    Src::Zero => const_coords.push(Goldilocks::ZERO),
+                                    Src::One => const_coords.push(Goldilocks::ONE),
+                                    Src::Half => const_coords.push(half),
+                                    Src::Var(_) => {
+                                        all_const = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            if all_const {
+                                let v = less_than_field(&const_coords, reduced_len);
+                                for s in &mut scalars {
+                                    *s *= v;
+                                }
+                            } else {
+                                monomial.push(LtFactor {
+                                    coords: r.to_vec(),
+                                    len: reduced_len,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            if !zero_product && scalars.iter().any(|&v| v != Goldilocks::ZERO) {
+                monomial.sort();
+                let entry = map
+                    .entry(monomial)
+                    .or_insert_with(|| vec![Goldilocks::ZERO; layers.len()]);
+                for (acc, v) in entry.iter_mut().zip(scalars) {
+                    *acc += v;
+                }
+            }
+        }
+        map.retain(|_, values| values.iter().any(|&v| v != Goldilocks::ZERO));
+        if map.is_empty() {
+            Ok(CoeffClass::Zero)
+        } else if map
+            .values()
+            .all(|values| values.iter().all(|&v| v == values[0]))
+        {
+            Ok(CoeffClass::Uniform)
+        } else {
+            Ok(CoeffClass::Scaled(PerLayerScale(map.into_iter().collect())))
+        }
+    }
+
+    /// The scalar constant of a `ConstMul` node in [`Goldilocks`].
+    fn constant_at(&self, id: NodeId) -> Result<Goldilocks, CompileError> {
+        let Some(node) = self.lowering.graph.nodes.get(id.0 as usize) else {
+            return Err(internal("a coefficient's constant node exists"));
+        };
+        let Op::ConstMul { c } = node.op else {
+            return Err(internal("a coefficient's constant is a ConstMul's"));
+        };
+        match self
+            .lowering
+            .graph
+            .constants
+            .get(c.0 as usize)
+            .map(Vec::as_slice)
+        {
+            Some(&[scalar]) => Ok(Goldilocks::from_i64(scalar)),
+            _ => Err(internal("a coefficient's ConstMul is by one constant")),
+        }
     }
 
     fn weight_atom(&mut self, atom: &Atom, origin: Origin) -> Result<(), CompileError> {
@@ -1309,19 +1470,99 @@ fn tests(stream: &mut Stream, count: usize, width: u32) -> Vec<Vec<(Fp2, Fp2)>> 
         .collect()
 }
 
-/// Merges functionals of one role and one key, a public relation: the first keeps its place
-/// and gathers the others' origins.
-fn merge(functionals: &[Functional]) -> Vec<Functional> {
-    let mut merged: Vec<Functional> = Vec::new();
-    for functional in functionals {
-        match merged.iter_mut().find(|m| {
-            m.role == functional.role && m.key == functional.key && m.scale == functional.scale
-        }) {
-            Some(m) => m.origins.extend(&functional.origins),
-            None => merged.push(functional.clone()),
+/// Classification of a committed advice piece's coefficient polynomial across real layers.
+enum CoeffClass {
+    /// `c_t(ℓ) ≡ 0` in every real layer: contributes `0` to both data and mask rows.
+    Zero,
+    /// `c_t(0) = … = c_t(L − 1) ≢ 0` (or one layer): masked as `a_t·V'_t(p)` (`scale = None`).
+    Uniform,
+    /// `c_t(ℓ)` differs between real layers: masked with unit mask coefficient `1·Z(r ‖ ρ)·R̃`.
+    Scaled(PerLayerScale),
+}
+
+/// `LT(r, len) = Σ_{a = 0}^{len − 1} eq(r, a)` over `{0, 1}^{r.len()}`, `r[0]` the lowest bit, in
+/// `O(r.len())` field operations. Caller ensures `r.len() < 64` and
+/// `u64::from(len) <= 1u64 << r.len()`.
+fn less_than_field<F: Field>(r: &[F], len: u32) -> F {
+    let n = r.len();
+    let bound = u64::from(len);
+    if bound == 0 {
+        return F::ZERO;
+    }
+    if bound == (1u64 << n) {
+        return F::ONE;
+    }
+    let mut sum = F::ZERO;
+    let mut prefix = F::ONE;
+    for j in (0..n).rev() {
+        let rj = r[j];
+        if (bound >> j) & 1 == 1 {
+            sum += prefix * (F::ONE - rj);
+            prefix *= rj;
+        } else {
+            prefix *= F::ONE - rj;
         }
     }
-    merged
+    sum
+}
+
+impl PerLayerScale {
+    /// Evaluates `(c_t(0), …, c_t(L − 1))` at `assignment` over `Fp2`.
+    fn evaluate(&self, assignment: &Assignment) -> Vec<Fp2> {
+        let Some((_, first)) = self.0.first() else {
+            return Vec::new();
+        };
+        let mut totals = vec![Fp2::ZERO; first.len()];
+        for (monomial, scalars) in &self.0 {
+            let mut factor = Fp2::ONE;
+            for lt in monomial {
+                let coords: Vec<Fp2> = lt.coords.iter().map(|&s| assignment.value(s)).collect();
+                factor *= less_than_field(&coords, lt.len);
+            }
+            for (acc, &s) in totals.iter_mut().zip(scalars) {
+                *acc += factor * Fp2::from(s);
+            }
+        }
+        totals
+    }
+}
+
+/// Merges functionals of one role, one key and one evaluated per-layer scale, a public relation:
+/// the first keeps its place and gathers the others' origins. A per-layer-scaled functional whose
+/// evaluated polynomial vanishes in every layer at `assignment` reveals nothing and is dropped;
+/// one whose evaluated polynomial is uniform across layers merges as `None` (RFC-0013 'Committed
+/// tensors', #556).
+fn merge(functionals: &[Functional], assignment: &Assignment) -> Vec<Functional> {
+    let mut merged: Vec<(Functional, Option<Vec<Fp2>>)> = Vec::new();
+    for functional in functionals {
+        let eval_scale = match &functional.scale {
+            None => None,
+            Some(scale) => {
+                let values = scale.evaluate(assignment);
+                if values.is_empty() || values.iter().all(|&v| v == Fp2::ZERO) {
+                    continue;
+                }
+                if values.iter().all(|&v| v == values[0]) {
+                    None
+                } else {
+                    Some(values)
+                }
+            }
+        };
+        match merged.iter_mut().find(|(m, m_scale)| {
+            m.role == functional.role && m.key == functional.key && *m_scale == eval_scale
+        }) {
+            Some((m, _)) => m.origins.extend(&functional.origins),
+            None => {
+                let mut kept = functional.clone();
+                if eval_scale.is_none() {
+                    kept.scale = None;
+                }
+                merged.push((kept, eval_scale));
+            }
+        }
+    }
+    merged.into_iter().map(|(f, _)| f).collect()
 }
 
 /// Merges values of one type tensor at one point, which are one value. Blinding claims never
@@ -1373,7 +1614,7 @@ pub fn check(system: &MaskSystem, seed: u64) -> Vec<Finding> {
             });
             continue;
         }
-        let functionals = merge(&row.functionals);
+        let functionals = merge(&row.functionals, &assignment);
         if row.vars < 2 && functionals.iter().any(|f| f.role == Role::Value) {
             findings.push(Finding::Unmaskable {
                 row: row.row,
@@ -1610,7 +1851,8 @@ pub fn check_schedule(
 #[cfg(test)]
 mod tests {
     use super::{
-        Assignment, EXTRA_TESTS, Fp2, Src, Stream, Var, dependencies, merge, sketch, tests,
+        Assignment, EXTRA_TESTS, Fp2, SEED, Src, Stream, Var, dependencies, less_than_field, merge,
+        sketch, tests,
     };
     use super::{Functional, Origin, Role};
     use tessera_field::Field;
@@ -1698,13 +1940,36 @@ mod tests {
             }],
         };
         let p = vec![x(0), x(1)];
-        let merged = merge(&[
-            functional(Role::Value, p.clone()),
-            functional(Role::Fold, p.clone()),
-            functional(Role::Value, p.clone()),
-            functional(Role::Fold, p),
-        ]);
+        let assignment = Assignment::new(SEED);
+        let merged = merge(
+            &[
+                functional(Role::Value, p.clone()),
+                functional(Role::Fold, p.clone()),
+                functional(Role::Value, p.clone()),
+                functional(Role::Fold, p),
+            ],
+            &assignment,
+        );
         let roles: Vec<(Role, usize)> = merged.iter().map(|f| (f.role, f.origins.len())).collect();
         assert_eq!(roles, [(Role::Value, 2), (Role::Fold, 2)]);
+    }
+
+    /// `less_than_field` matches `Σ_{a < len} eq(r, a)` at every bound `0 ≤ len ≤ 2^m`.
+    #[test]
+    fn less_than_field_matches_sum_of_eq() {
+        let mut stream = Stream::new(SEED, 7);
+        for m in 0..=4 {
+            let r: Vec<Fp2> = (0..m).map(|_| stream.fp2()).collect();
+            for len in 0..=(1u32 << m) {
+                let mut brute = Fp2::ZERO;
+                for a in 0..len {
+                    let eq = r.iter().enumerate().fold(Fp2::ONE, |acc, (j, &rj)| {
+                        acc * if (a >> j) & 1 == 1 { rj } else { Fp2::ONE - rj }
+                    });
+                    brute += eq;
+                }
+                assert_eq!(less_than_field(&r, len), brute, "m={m}, len={len}");
+            }
+        }
     }
 }
