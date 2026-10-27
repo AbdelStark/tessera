@@ -10,7 +10,7 @@ use common::{Fp, Fp2, Session, SplitMix64};
 use tessera_field::Field;
 use tessera_hash::Transcript;
 use tessera_sumcheck::{
-    FractionTree, Instance, LeafNumerators, MAX_DEGREE, Prefix, SumcheckError, Table, Term,
+    FractionTree, Instance, LeafNumerators, Prefix, Protocol, SumcheckError, Table, Term,
     prove_batch,
 };
 
@@ -18,8 +18,14 @@ use tessera_sumcheck::{
 fn refused(degree: usize, instances: &[Instance<'_, Fp2>]) -> SumcheckError {
     let session = Session::random(&mut SplitMix64::new(0x60_0301));
     let mut transcript = session.transcript();
-    let error = prove_batch(&mut transcript, Prefix::Tree(0), degree, instances)
-        .expect_err("the batch is refused");
+    let error = prove_batch(
+        &mut transcript,
+        Protocol::One,
+        Prefix::Tree(0),
+        degree,
+        instances,
+    )
+    .expect_err("the batch is refused");
     let fresh: Transcript = session.transcript();
     assert_eq!(
         (transcript.state(), transcript.counter()),
@@ -48,7 +54,7 @@ fn a_sum_of_no_term_is_refused() {
 #[test]
 fn a_term_of_no_factor_or_of_more_than_the_degree_is_refused() {
     let table = [Fp2::ONE; 8];
-    for degree in 1..=MAX_DEGREE {
+    for degree in 1..=Protocol::One.max_degree(Prefix::Tree(0)) {
         let tables = || vec![Table::ext(&table); 2];
         for factors in [0, degree + 1, degree + 4] {
             let terms = vec![
@@ -79,6 +85,7 @@ fn a_term_of_no_factor_or_of_more_than_the_degree_is_refused() {
         assert!(
             prove_batch(
                 &mut session.transcript(),
+                Protocol::One,
                 Prefix::Tree(0),
                 degree,
                 &instances

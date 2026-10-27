@@ -360,6 +360,7 @@ fn level_with<C: Entering>(
 ) -> Result<Passed<C>, SumcheckError> {
     // 1. The caller's instances, before the transcript moves.
     let shape = Shape::of(
+        crate::sumcheck::Protocol::One.max_degree(prefix),
         LEVEL_DEGREE,
         claims
             .iter()

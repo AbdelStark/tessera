@@ -21,7 +21,9 @@ mod common;
 use common::elementwise::extension;
 use common::{Fp, Fp2, Session, SplitMix64, TvFp2, tv_fp, tv_fp2, tv_fp2s, tv_prefix, tv_proof};
 use tessera_field::{Field, PrimeField};
-use tessera_sumcheck::{Prefix, Selected, Selection, SumcheckError, SumcheckProof, prove_batch};
+use tessera_sumcheck::{
+    Prefix, Protocol, Selected, Selection, SumcheckError, SumcheckProof, prove_batch,
+};
 use tv_core::sumcheck as tv;
 
 /// A case's variables: `x`'s below its selected axis, along it and above it, and the output
@@ -109,6 +111,7 @@ impl Case {
             .expect("a point and a kernel");
         let proven = prove_batch(
             &mut session.transcript(),
+            Protocol::One,
             Prefix::Stage(4),
             2,
             &[tables.instance()],

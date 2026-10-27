@@ -32,8 +32,8 @@ use tessera_codec::Ascii;
 use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_sumcheck::{
-    Instance, MatMulAct, MatMulActShape, MatMulWeight, MatMulWeightShape, Prefix, ProvenBatch,
-    RightLayout, prove_batch,
+    Instance, MatMulAct, MatMulActShape, MatMulWeight, MatMulWeightShape, Prefix, Protocol,
+    ProvenBatch, RightLayout, prove_batch,
 };
 
 type Fp = Goldilocks;
@@ -96,7 +96,14 @@ fn ns_per(time: Duration, count: usize) -> f64 {
 /// The instance alone in a stage of degree `degree`, on a fresh transcript.
 fn prove(degree: usize, instance: Instance<'_, Fp2>) -> ProvenBatch<Fp2> {
     let mut transcript = Transcript::new(&context());
-    prove_batch(&mut transcript, Prefix::Stage(0), degree, &[instance]).expect("a valid stage")
+    prove_batch(
+        &mut transcript,
+        Protocol::One,
+        Prefix::Stage(0),
+        degree,
+        &[instance],
+    )
+    .expect("a valid stage")
 }
 
 /// One line of the report.

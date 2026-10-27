@@ -624,6 +624,7 @@ fn verify_composed_with(
         let mut oracle_error = None;
         let passed = sumcheck::verify_batch_with(
             transcript,
+            sumcheck::Protocol::One,
             prefix,
             stage.degree,
             &batch,

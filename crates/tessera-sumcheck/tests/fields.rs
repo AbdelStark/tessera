@@ -28,7 +28,8 @@ use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
 use tessera_poly::{PolyField, RoundPoly, evaluate, evaluate_base};
 use tessera_sumcheck::{
     Forest, Instance, MAX_DEGREE, MatMulAct, MatMulActShape, MatMulWeight, MatMulWeightShape,
-    Prefix, RightLayout, SumcheckProof, SumcheckTranscript, Table, prove_batch, prove_forests,
+    Prefix, Protocol, RightLayout, SumcheckProof, SumcheckTranscript, Table, prove_batch,
+    prove_forests,
 };
 
 /// A transcript over `F65537` and its extension: messages absorbed as TCE `Vec`, challenges
@@ -203,7 +204,8 @@ impl Draw for F65537Ext2 {
     }
 }
 
-/// Random batches over `F`: 1 to 4 instances on 0 to 8 variables, degree 1 to 7, tables of
+/// Random batches over `F`: 1 to 4 instances on 0 to 8 variables, degree 1 to 10, the bound of a
+/// reduction stage of `tessera-protocol/2` (RFC-0013 'Masked extensions' 'Degree'), tables of
 /// random kinds.
 fn random_batches<F: Draw<Base = F65537>>(seed: u64)
 where
@@ -233,8 +235,15 @@ where
             .map(|(_, tables)| Instance::new(tables.iter().map(Values::table).collect()))
             .collect();
         let mut prover = SmallTranscript::new(case);
-        let proven = prove_batch(&mut prover, Prefix::Stage(5), degree, &borrowed)
-            .expect("a well-formed batch");
+        // A reduction stage of tessera-protocol/2, whose bound is MAX_DEGREE (RFC-0013 'Degree').
+        let proven = prove_batch(
+            &mut prover,
+            Protocol::Two,
+            Prefix::Stage(5),
+            degree,
+            &borrowed,
+        )
+        .expect("a well-formed batch");
         let mut verifier = SmallTranscript::new(case);
         check(&mut verifier, "stage/5", degree, &instances, proven.proof());
         assert_eq!(
@@ -680,7 +689,8 @@ where
         })
         .collect();
     let mut prover = SmallTranscript::new(seed);
-    let proven = prove_batch(&mut prover, Prefix::Stage(3), 3, &instances).expect("a stage");
+    let proven =
+        prove_batch(&mut prover, Protocol::One, Prefix::Stage(3), 3, &instances).expect("a stage");
     let claims: Vec<[(Vec<F>, F); 2]> = weight_tables
         .iter()
         .zip(&act_tables)

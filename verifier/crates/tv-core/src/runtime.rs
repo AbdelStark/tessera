@@ -529,6 +529,7 @@ mod tests {
         let instances = [
             (
                 Relation::Native {
+                    kind: crate::schedule::NativeKind::Product,
                     tag: 1,
                     evaluations: 8,
                     zero: true,
@@ -538,6 +539,7 @@ mod tests {
             ),
             (
                 Relation::Native {
+                    kind: crate::schedule::NativeKind::Product,
                     tag: 2,
                     evaluations: 6,
                     zero: false,
@@ -548,6 +550,7 @@ mod tests {
             (Relation::Booleanity, 3, 3),
             (
                 Relation::Native {
+                    kind: crate::schedule::NativeKind::Product,
                     tag: 3,
                     evaluations: 1,
                     zero: true,

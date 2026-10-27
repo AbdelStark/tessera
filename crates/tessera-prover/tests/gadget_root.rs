@@ -6,7 +6,7 @@ use tessera_codec::{Ascii, SecretBuf};
 use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField, QuadraticExtension};
 use tessera_gadgets::{Bracket, CompareColumn as C, RsqrtColumn as R, RsqrtRow, Side};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
-use tessera_sumcheck::{Instance, Prefix, Table, Term, prove_batch};
+use tessera_sumcheck::{Instance, Prefix, Protocol, Table, Term, prove_batch};
 use tessera_tables::{GeneratedTable, Table as _, TableId, TableKind};
 
 fn array(v: &Value) -> &[Value] {
@@ -260,7 +260,8 @@ fn actual_root_columns_and_cpu_binding_proofs_match_every_frozen_model_variant()
         } else {
             Instance::new(residual_tables)
         });
-        let batch = prove_batch::<F, _>(&mut t, Prefix::Stage(1), 4, &instances).unwrap();
+        let batch =
+            prove_batch::<F, _>(&mut t, Protocol::One, Prefix::Stage(1), 4, &instances).unwrap();
         let proof = batch.proof();
         assert_eq!(*batch.gamma(), field(&record["gamma"]));
         assert_eq!(

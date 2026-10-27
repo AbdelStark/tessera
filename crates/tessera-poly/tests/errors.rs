@@ -123,8 +123,9 @@ fn an_eq_table_too_large_to_index_or_allocate_is_refused() {
 }
 
 #[test]
-fn a_round_polynomial_degree_outside_1_to_7_is_refused() {
-    assert_eq!(MAX_DEGREE, 7);
+fn a_round_polynomial_degree_outside_1_to_10_is_refused() {
+    // RFC-0013 'Degree': a reduction stage of tessera-protocol/2 reaches 10.
+    assert_eq!(MAX_DEGREE, 10);
     for degree in [0, MAX_DEGREE + 1, 20] {
         assert_eq!(
             RoundPoly::new(&fp2s(degree)),
@@ -153,7 +154,7 @@ fn every_error_says_what_was_wrong_in_numbers() {
             "2^3, not a = 9",
         ),
         (PolyError::TooLarge { vars: 70 }, "2^70"),
-        (PolyError::Degree { degree: 8 }, "1 to 7, not 8"),
+        (PolyError::Degree { degree: 11 }, "1 to 10, not 11"),
     ];
     for (error, shown) in cases {
         let text = error.to_string();

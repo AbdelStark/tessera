@@ -11,7 +11,10 @@ use common::{
     Fp2, Session, SplitMix64, TestInstance, TestTable, prove, tv_instances, tv_proof, verify,
 };
 use tessera_field::Field;
-use tessera_sumcheck::{MAX_DEGREE, Prefix};
+use tessera_sumcheck::{Prefix, Protocol};
+
+/// `tessera-protocol/1`'s bound, RFC-0014's `d ≤ 7`, which `tv-core`'s checks hold.
+const MAX_DEGREE: usize = Protocol::One.max_degree(Prefix::Stage(1));
 use tv_core::sumcheck::SumcheckError;
 
 /// Proves `instances`, checks that the verifier accepts, then changes each round value and each

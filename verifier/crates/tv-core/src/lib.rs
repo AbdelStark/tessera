@@ -101,12 +101,21 @@
 //! - A message is absorbed as TCE `Vec<Fp2>`: its length as a little-endian `u64`, then each
 //!   element as `c0 ‖ c1`, 8 little-endian bytes each.
 //!
+//! ## Protocol-specific degree bounds
+//!
+//! [`sumcheck::reduce`] and [`sumcheck::verify_batch`] retain protocol/1's bound of seven.
+//! Their explicit counterparts [`sumcheck::reduce_in`] and [`sumcheck::verify_batch_in`] take
+//! the protocol from the validated session: protocol/2 reduction stages (index at least one)
+//! allow ten, while stage zero, trees and merge remain at seven (RFC-0013 'Degree').
+//! [`sumcheck::MAX_DEGREE`] is interpolation capacity, not every sumcheck's acceptance bound.
+//! The explicit counterparts follow exactly the same check order below with the selected bound.
+//!
 //! ## Rounds
 //!
 //! [`sumcheck::reduce`]`(transcript, prefix, d, n, claim, rounds)` checks in this order, and the
 //! first check that fails is the error:
 //!
-//! 1. `1 ≤ d ≤ 7` ([`MAX_DEGREE`](sumcheck::MAX_DEGREE), RFC-0014 'Soundness budget'), else
+//! 1. `1 ≤ d ≤ 7` ([`Protocol::max_degree`](sumcheck::Protocol::max_degree), RFC-0014 'Soundness budget'), else
 //!    `Degree`, before the transcript moves.
 //! 2. Round by round, for `j = 0, …, n − 1`:
 //!    1. round `j` is in the proof, else `MissingRound { round: j }`;

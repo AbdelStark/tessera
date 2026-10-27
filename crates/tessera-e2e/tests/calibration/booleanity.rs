@@ -27,7 +27,8 @@
 
 use tessera_field::Field;
 use tessera_sumcheck::{
-    Elementwise, Input, Prefix, SumcheckProof, SumcheckTranscript, prove_batch, zero_check_point,
+    Elementwise, Input, Prefix, Protocol, SumcheckProof, SumcheckTranscript, prove_batch,
+    zero_check_point,
 };
 
 use super::{F, FIELD, SplitMix64, eq, int, mle, round_value};
@@ -118,8 +119,14 @@ impl NonBoolean {
         let relation = Elementwise::<F>::booleanity(Input::Operand(&bits), self.vars)
             .expect("a booleanity relation");
         let tables = relation.tables(&z).expect("the zero-check point");
-        let proven = prove_batch(&mut lying, PREFIX, DEGREE, &[tables.instance()])
-            .expect("a well-formed instance");
+        let proven = prove_batch(
+            &mut lying,
+            Protocol::One,
+            PREFIX,
+            DEGREE,
+            &[tables.instance()],
+        )
+        .expect("a well-formed instance");
         let proof = SumcheckProof {
             rounds: lying.sent,
             final_evals: proven.proof().final_evals.clone(),

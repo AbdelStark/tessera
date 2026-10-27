@@ -9,9 +9,15 @@ use tessera_field::{Field, PrimeField};
 
 use crate::{PolyError, PolyField};
 
-/// The largest round-polynomial degree: a product of up to seven multilinears, the bound
-/// `d ≤ 7` of RFC-0014 'Soundness budget'.
-pub const MAX_DEGREE: usize = 7;
+/// The largest round-polynomial degree of any sumcheck: 10, the bound of a reduction stage in
+/// `tessera-protocol/2`, whose masked reads raise a round's degree (RFC-0013 'Masked extensions'
+/// 'Degree', RFC-0014 'Soundness budget'). A [`RoundPoly`] holds up to this many evaluations.
+///
+/// It is not every sumcheck's bound: tree levels, and every sumcheck of `tessera-protocol/1`,
+/// stay at 7. A sumcheck's own bound is its protocol's and its kind's
+/// (`tessera_sumcheck::Protocol::max_degree`), and a verifier compares
+/// [`RoundPoly::degree`] with the degree its stage allows.
+pub const MAX_DEGREE: usize = 10;
 
 /// A sumcheck round polynomial `p` of degree `d`, as a round message carries it: its
 /// evaluations at `0, 2, 3, …, d`, `d` values for `1 ≤ d ≤ MAX_DEGREE` (RFC-0010 'Sumcheck

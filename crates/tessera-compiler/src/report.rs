@@ -811,9 +811,14 @@ fn table_class(
     // A native relation's evaluations are its tables, which may grow; the rest is its identity.
     let identity = |relation: Relation| match relation {
         Relation::Native {
-            tag, degree, zero, ..
+            tag,
+            kind,
+            degree,
+            zero,
+            ..
         } => Relation::Native {
             tag,
+            kind,
             degree,
             evaluations: 0,
             zero,

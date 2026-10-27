@@ -27,7 +27,9 @@ mod common;
 use common::elementwise::extension;
 use common::{Fp, Fp2, Session, SplitMix64, TvFp, TvFp2, tv_fp, tv_fp2s, tv_prefix, tv_proof};
 use tessera_field::{Field, PrimeField};
-use tessera_sumcheck::{Input, Prefix, Recomposition, SumcheckError, SumcheckProof, prove_batch};
+use tessera_sumcheck::{
+    Input, Prefix, Protocol, Recomposition, SumcheckError, SumcheckProof, prove_batch,
+};
 use tv_core::sumcheck as tv;
 
 /// `2^j` in the verifier's field.
@@ -118,6 +120,7 @@ impl Case {
         let tables = self.relation().tables(&self.z)?;
         let proven = prove_batch(
             &mut session.transcript(),
+            Protocol::One,
             Prefix::Stage(1),
             degree,
             &[tables.instance()],

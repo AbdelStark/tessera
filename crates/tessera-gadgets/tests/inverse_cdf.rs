@@ -11,7 +11,7 @@ use tessera_field::{F65537, Field, PrimeField};
 use tessera_gadgets::{
     CdfColumn as Col, CdfTerm as T, CompareColumn as C, Edge, GadgetError, InverseCdf, OneHot, Side,
 };
-use tessera_sumcheck::{Elementwise, Prefix, prove_batch};
+use tessera_sumcheck::{Elementwise, Prefix, Protocol, prove_batch};
 use tessera_tables::{GeneratedTable, Table, TableId, TableKind, TableSpec};
 use tv_core::sumcheck as tv;
 
@@ -731,6 +731,7 @@ fn subproof(
     let degree = relation.degree();
     let proven = prove_batch(
         &mut transcript,
+        Protocol::One,
         Prefix::Stage(0),
         degree,
         &[tables.instance()],

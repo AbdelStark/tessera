@@ -6,7 +6,7 @@ use tessera_codec::Ascii;
 use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField, QuadraticExtension};
 use tessera_gadgets::{Bracket, CompareColumn as C, RsqrtColumn as R, RsqrtRow, Side};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
-use tessera_sumcheck::{Instance, Prefix, Table, Term, prove_batch};
+use tessera_sumcheck::{Instance, Prefix, Protocol, Table, Term, prove_batch};
 use tessera_tables::{GeneratedTable, Table as _, TableId, TableKind};
 use tv_core::gadgets::root_products::Products;
 use tv_core::sumcheck::{Instance as TvInstance, Prefix as TvPrefix, SumcheckProof, verify_batch};
@@ -268,7 +268,8 @@ fn cpu_root_product_proofs_and_canonical_witnesses_match_the_independent_oracle(
             tv_hash::transcript::Ascii::new("stage/0/split").unwrap(),
             &bytes,
         );
-        let proven = prove_batch::<F, _>(&mut ours, Prefix::Stage(1), 4, &instances).unwrap();
+        let proven =
+            prove_batch::<F, _>(&mut ours, Protocol::One, Prefix::Stage(1), 4, &instances).unwrap();
         let p = proven.proof();
         assert_eq!(p.rounds.len(), 3);
         for (actual, expected) in p.rounds.iter().zip(case["rounds"].as_array().unwrap()) {

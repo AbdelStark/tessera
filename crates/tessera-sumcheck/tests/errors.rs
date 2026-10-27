@@ -13,14 +13,25 @@ use tessera_field::Field;
 use tessera_hash::Transcript;
 use tessera_sumcheck::{
     Forest, Instance, MAX_DEGREE, MatMulAct, MatMulActShape, MatMulWeight, MatMulWeightShape,
-    Operand, Prefix, RightLayout, SumcheckError, Table, prove_batch, prove_forests,
+    Operand, Prefix, Protocol, RightLayout, SumcheckError, Table, prove_batch, prove_forests,
 };
 
-/// Proves on a fresh transcript and checks that a refusal left it untouched.
+/// Proves on a fresh transcript in `tessera-protocol/1` and checks that a refusal left it
+/// untouched.
 fn refused(degree: usize, instances: &[Instance<'_, Fp2>]) -> SumcheckError {
+    refused_in(Protocol::One, Prefix::Stage(0), degree, instances)
+}
+
+/// [`refused`] in `protocol` under `prefix`.
+fn refused_in(
+    protocol: Protocol,
+    prefix: Prefix,
+    degree: usize,
+    instances: &[Instance<'_, Fp2>],
+) -> SumcheckError {
     let session = Session::random(&mut SplitMix64::new(0x53_0301));
     let mut transcript = session.transcript();
-    let error = prove_batch(&mut transcript, Prefix::Stage(0), degree, instances)
+    let error = prove_batch(&mut transcript, protocol, prefix, degree, instances)
         .expect_err("the batch is refused");
     let fresh: Transcript = session.transcript();
     assert_eq!(
@@ -31,24 +42,75 @@ fn refused(degree: usize, instances: &[Instance<'_, Fp2>]) -> SumcheckError {
     error
 }
 
+/// Each protocol and kind of sumcheck with its bound (RFC-0013 'Masked extensions' 'Degree'):
+/// 10 at a reduction stage of `tessera-protocol/2`, 7 at every other sumcheck.
+const BOUNDS: [(Protocol, Prefix, usize); 9] = [
+    (Protocol::One, Prefix::Stage(0), 7),
+    (Protocol::One, Prefix::Stage(1), 7),
+    (Protocol::One, Prefix::Stage(4), 7),
+    (Protocol::One, Prefix::Tree(0), 7),
+    (Protocol::Two, Prefix::Stage(1), 10),
+    (Protocol::Two, Prefix::Stage(4), 10),
+    (Protocol::Two, Prefix::Stage(0), 7),
+    (Protocol::Two, Prefix::Tree(3), 7),
+    (Protocol::Two, Prefix::Merge, 7),
+];
+
 #[test]
-fn a_degree_outside_1_to_7_is_refused() {
+fn each_protocol_and_kind_has_its_bound() {
+    for (protocol, prefix, max) in BOUNDS {
+        assert_eq!(protocol.max_degree(prefix), max, "{protocol:?} at {prefix}");
+    }
+    assert_eq!(MAX_DEGREE, 10);
+}
+
+#[test]
+fn a_degree_outside_1_to_its_bound_is_refused() {
     let table = [Fp::ONE; 4];
     let instances = [Instance::new(vec![Table::base(&table)])];
-    for degree in [0, MAX_DEGREE + 1, 64, usize::MAX] {
-        assert_eq!(
-            refused(degree, &instances),
-            SumcheckError::Degree { degree }
-        );
-        // The degree is checked first, before the instances.
-        assert_eq!(refused(degree, &[]), SumcheckError::Degree { degree });
+    for (protocol, prefix, max) in BOUNDS {
+        for degree in [0, max + 1, MAX_DEGREE + 1, 64, usize::MAX] {
+            let error = SumcheckError::Degree { degree, max };
+            assert_eq!(refused_in(protocol, prefix, degree, &instances), error);
+            // The degree is checked first, before the instances.
+            assert_eq!(refused_in(protocol, prefix, degree, &[]), error);
+        }
     }
+}
+
+/// RFC-0013 'Testing Strategy' 'The bound, at the sumcheck level': degree 8 is refused in
+/// `tessera-protocol/1` and 11 in `tessera-protocol/2`, with the degree error.
+#[test]
+fn degree_8_is_refused_in_protocol_1_and_11_in_protocol_2() {
+    let table = [Fp::ONE; 4];
+    let instances = [Instance::new(vec![Table::base(&table)])];
+    assert_eq!(
+        refused_in(Protocol::One, Prefix::Stage(1), 8, &instances),
+        SumcheckError::Degree { degree: 8, max: 7 }
+    );
+    assert_eq!(
+        refused_in(Protocol::Two, Prefix::Stage(1), 11, &instances),
+        SumcheckError::Degree {
+            degree: 11,
+            max: 10
+        }
+    );
+    // A tree level of tessera-protocol/2 stays at 7.
+    assert_eq!(
+        refused_in(Protocol::Two, Prefix::Tree(0), 8, &instances),
+        SumcheckError::Degree { degree: 8, max: 7 }
+    );
 }
 
 #[test]
 fn a_batch_without_instances_is_refused() {
-    for degree in 1..=MAX_DEGREE {
-        assert_eq!(refused(degree, &[]), SumcheckError::NoInstances);
+    for (protocol, prefix, max) in BOUNDS {
+        for degree in 1..=max {
+            assert_eq!(
+                refused_in(protocol, prefix, degree, &[]),
+                SumcheckError::NoInstances
+            );
+        }
     }
 }
 
@@ -76,7 +138,7 @@ fn an_instance_with_more_tables_than_the_degree_is_refused() {
             Instance::new(tables),
         ];
         assert_eq!(
-            refused(degree, &instances),
+            refused_in(Protocol::Two, Prefix::Stage(1), degree, &instances),
             SumcheckError::TooManyTables {
                 instance: 1,
                 tables: degree + 1,
@@ -469,8 +531,15 @@ fn matmul_claims_take_one_evaluation_per_operand() {
 fn errors_display_shapes() {
     let cases = [
         (
-            SumcheckError::Degree { degree: 9 },
+            SumcheckError::Degree { degree: 9, max: 7 },
             "a sumcheck has degree 1 to 7, not 9",
+        ),
+        (
+            SumcheckError::Degree {
+                degree: 11,
+                max: 10,
+            },
+            "a sumcheck has degree 1 to 10, not 11",
         ),
         (
             SumcheckError::NoInstances,

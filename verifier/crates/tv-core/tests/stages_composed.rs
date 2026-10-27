@@ -248,6 +248,7 @@ fn program(g: &Graph) -> (Vec<schedule::Deferred>, Vec<Native>, TensorId, Vec<u3
         vec![(soft_node, Some(0))],
         vec![
             Native {
+                kind: schedule::NativeKind::Product,
                 tag: 10,
                 node: soft_node,
                 vars: shape_vars(&dims) + 2 + layout.lambda,
@@ -261,6 +262,7 @@ fn program(g: &Graph) -> (Vec<schedule::Deferred>, Vec<Native>, TensorId, Vec<u3
                 }],
             },
             Native {
+                kind: schedule::NativeKind::Product,
                 tag: 20,
                 node: soft_node,
                 vars: shape_vars(&row_dims) + layout.lambda,
@@ -270,6 +272,7 @@ fn program(g: &Graph) -> (Vec<schedule::Deferred>, Vec<Native>, TensorId, Vec<u3
                 outputs: vec![],
             },
             Native {
+                kind: schedule::NativeKind::Product,
                 tag: 21,
                 node: NodeId(root.0 as u32),
                 vars: shape_vars(&row_dims) + layout.lambda,

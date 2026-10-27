@@ -42,6 +42,12 @@ pub(super) fn append(
         });
         native.push(Native {
             tag: (native.len() + 1) as u32,
+            kind: match kind {
+                Runtime::Tokens => NativeKind::Tokens,
+                Runtime::Key(_) => NativeKind::GreedyKey,
+                Runtime::Selected(_) => NativeKind::GreedySelected,
+                Runtime::Observe => NativeKind::Observe,
+            },
             node,
             vars: nt + nv,
             degree,

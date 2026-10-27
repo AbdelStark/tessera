@@ -206,6 +206,7 @@ fn relation(r: &s::Relation) -> Value {
             tag,
             evaluations,
             zero,
+            ..
         } => json!({"Native":[tag,evaluations,zero]}),
         s::Relation::MatMulWeight { in_vars, out_vars } => {
             json!({"MatMulWeight":[in_vars,out_vars]})

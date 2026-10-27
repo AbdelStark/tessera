@@ -20,7 +20,9 @@
 //!   does, is rejected by a later level or leaves a false leaf claim, checked here against the
 //!   leaves.
 
-use tv_core::sumcheck::{Instance, MAX_DEGREE, Prefix, SumcheckError, SumcheckProof, verify_batch};
+use tv_core::sumcheck::{
+    Instance, MAX_DEGREE, Prefix, Protocol, SumcheckError, SumcheckProof, verify_batch_in,
+};
 use tv_core::tree::{TreeClaim, verify_product_level};
 use tv_field::{Fp, Fp2};
 use tv_hash::transcript::{Ascii, Mode, ParamSetId, SessionContext, Transcript};
@@ -40,8 +42,17 @@ pub const CHANGES: u8 = 16;
 
 /// The session every case runs in.
 pub fn context() -> SessionContext<'static> {
+    context_in(Protocol::One)
+}
+
+/// A session bound to the protocol of a stage case.
+pub fn context_in(protocol: Protocol) -> SessionContext<'static> {
     SessionContext {
-        protocol: Ascii::new("tessera-protocol/1").unwrap(),
+        protocol: Ascii::new(match protocol {
+            Protocol::One => "tessera-protocol/1",
+            Protocol::Two => "tessera-protocol/2",
+        })
+        .unwrap(),
         mode: Mode::NonInteractive,
         params: ParamSetId(Ascii::new("test-small/1").unwrap()),
         statement_digest: [0x59; 32],
@@ -77,6 +88,7 @@ fn product(_: usize, _: &[Fp2], evals: &[Fp2]) -> Option<Fp2> {
 
 /// A batched sumcheck of products, honest and changed.
 pub struct StageCase {
+    pub protocol: Protocol,
     pub prefix: Prefix,
     pub degree: usize,
     pub instances: Vec<Instance>,
@@ -192,9 +204,9 @@ fn change(proof: &mut SumcheckProof, script: &mut Script<'_>) {
     }
 }
 
-/// The case a fuzz input spells. Byte 0 picks a stage (even) or trees (odd).
+/// The case a fuzz input spells. Byte 0 picks a stage (even) or trees (odd); bit 1 selects protocol/2 for a stage.
 ///
-/// - A stage: a byte for the degree `1 + b mod 7`, one for `1 + b mod 4` instances, and for
+/// - A stage: a byte for the degree `1 + b mod 7` (protocol/1), or `1 + b mod 10` (protocol/2), one for `1 + b mod 4` instances, and for
 ///   each instance one for its variables, `b mod 7`, and one for its tables, `1 + b mod d`;
 ///   then a byte for the stage's index and 8 bytes seeding the tables.
 /// - Trees: a byte for `1 + b mod 4` trees, and for each one for its height, `1 + b mod 5`,
@@ -204,8 +216,15 @@ fn change(proof: &mut SumcheckProof, script: &mut Script<'_>) {
 /// change starts with a byte picking the level it changes.
 pub fn case(data: &[u8]) -> Case {
     let mut script = Script::new(data);
-    if script.u8() & 1 == 0 {
-        let degree = 1 + usize::from(script.u8() % 7);
+    let tag = script.u8();
+    if tag & 1 == 0 {
+        let protocol = if tag & 2 == 0 {
+            Protocol::One
+        } else {
+            Protocol::Two
+        };
+        let max = if protocol == Protocol::One { 7 } else { 10 };
+        let degree = 1 + usize::from(script.u8()) % max;
         let shape: Vec<(usize, usize)> = (0..1 + script.u8() % MAX_INSTANCES)
             .map(|_| {
                 let vars = usize::from(script.u8() % (MAX_VARS + 1));
@@ -213,7 +232,7 @@ pub fn case(data: &[u8]) -> Case {
                 (vars, tables)
             })
             .collect();
-        let prefix = Prefix::Stage(u32::from(script.u8()));
+        let prefix = Prefix::Stage(u32::from(script.u8()) + u32::from(protocol == Protocol::Two));
         let mut rng = SplitMix64::new(script.u64());
         let products: Vec<Product> = shape
             .iter()
@@ -229,7 +248,7 @@ pub fn case(data: &[u8]) -> Case {
                 )
             })
             .collect();
-        let mut prover = reference::Transcript::new(&context().to_tce());
+        let mut prover = reference::Transcript::new(&context_in(protocol).to_tce());
         let proof = reference::prove(&mut prover, &prefix.to_string(), degree, &products, None);
         let honest = proof_of(&proof);
         let mut changed = honest.clone();
@@ -237,6 +256,7 @@ pub fn case(data: &[u8]) -> Case {
             change(&mut changed, &mut script);
         }
         Case::Stage(StageCase {
+            protocol,
             prefix,
             degree,
             instances: products
@@ -308,12 +328,13 @@ pub fn case(data: &[u8]) -> Case {
 /// The first check of the crate's order that a proof's shape fails, or `None` when its shape is
 /// right, from the crate documentation alone.
 pub fn structural(
+    max: usize,
     degree: usize,
     instances: &[Instance],
     proof: &SumcheckProof,
 ) -> Option<SumcheckError> {
-    if degree == 0 || degree > MAX_DEGREE {
-        return Some(SumcheckError::Degree { degree });
+    if degree == 0 || degree > max {
+        return Some(SumcheckError::Degree { degree, max });
     }
     let Some(n_max) = instances.iter().map(|i| i.vars).max() else {
         return Some(SumcheckError::NoInstances);
@@ -359,7 +380,16 @@ impl StageCase {
         if self.changed == self.honest {
             return Ok(());
         }
-        if let Some(error) = structural(self.degree, &self.instances, &self.changed) {
+        if let Some(error) = structural(
+            if self.protocol == Protocol::Two {
+                10
+            } else {
+                7
+            },
+            self.degree,
+            &self.instances,
+            &self.changed,
+        ) {
             return Err(error);
         }
         let round = self.challenges.len() as u32;
@@ -387,9 +417,10 @@ impl StageCase {
 
     /// Verifies the changed proof and checks the result against the oracle.
     pub fn check(&self) {
-        let mut transcript = Transcript::new(&context());
-        let outcome = verify_batch(
+        let mut transcript = Transcript::new(&context_in(self.protocol));
+        let outcome = verify_batch_in(
             &mut transcript,
+            self.protocol,
             self.prefix,
             self.degree,
             &self.instances,
@@ -502,7 +533,7 @@ impl TreeCase {
             level: first as u32,
             error,
         };
-        if let Some(error) = structural(3, &instances, &self.changed[first]) {
+        if let Some(error) = structural(7, 3, &instances, &self.changed[first]) {
             assert_eq!(
                 outcome,
                 at_first(error),

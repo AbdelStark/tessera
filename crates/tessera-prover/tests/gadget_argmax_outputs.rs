@@ -6,7 +6,7 @@ use tessera_codec::{Ascii, SecretBuf};
 use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField, QuadraticExtension};
 use tessera_gadgets::OneHot;
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
-use tessera_sumcheck::{Instance, Prefix, Table, prove_batch};
+use tessera_sumcheck::{Instance, Prefix, Protocol, Table, prove_batch};
 fn array(v: &Value) -> &[Value] {
     v.as_array().unwrap()
 }
@@ -106,7 +106,8 @@ fn cpu_teacher_forcing_row_slices_match_all_independent_source_view_proofs() {
                 Instance::new(vec![Table::ext(kernel).public(), Table::ext(values)])
             })
             .collect();
-        let proven = prove_batch::<F, _>(&mut t, Prefix::Stage(2), 2, &instances).unwrap();
+        let proven =
+            prove_batch::<F, _>(&mut t, Protocol::One, Prefix::Stage(2), 2, &instances).unwrap();
         let record = &case["proof"];
         assert_eq!(*proven.gamma(), field(&record["gamma"]));
         assert_eq!(

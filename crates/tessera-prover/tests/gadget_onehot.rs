@@ -6,7 +6,7 @@ use tessera_codec::{Ascii, SecretBuf};
 use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField, QuadraticExtension};
 use tessera_gadgets::{OneHot, OneHotWitness};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
-use tessera_sumcheck::{Instance, Prefix, Table, Term, prove_batch};
+use tessera_sumcheck::{Instance, Prefix, Protocol, Table, Term, prove_batch};
 use tv_core::gadgets::{Plan, onehot::OneHot as TvOneHot};
 use tv_core::sumcheck::{Prefix as TvPrefix, SumcheckError, SumcheckProof, verify_batch};
 use tv_field::{Fp, Fp2};
@@ -207,7 +207,8 @@ fn cpu_witnesses_and_component_proofs_match_independent_onehot_and_omission_vect
                 }
             })
             .collect();
-        let proven = prove_batch::<F, _>(&mut ours, Prefix::Stage(1), 3, &instances).unwrap();
+        let proven =
+            prove_batch::<F, _>(&mut ours, Protocol::One, Prefix::Stage(1), 3, &instances).unwrap();
         let proof = proven.proof();
         assert_eq!(*proven.gamma(), field(&record["gamma"]));
         assert_eq!(

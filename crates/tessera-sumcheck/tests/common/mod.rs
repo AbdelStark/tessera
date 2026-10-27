@@ -20,7 +20,9 @@ pub mod matmul;
 use tessera_codec::Ascii;
 use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
-use tessera_sumcheck::{Instance, Prefix, ProvenBatch, SumcheckProof, Table, prove_batch};
+use tessera_sumcheck::{
+    Instance, Prefix, Protocol, ProvenBatch, SumcheckProof, Table, prove_batch,
+};
 use tv_core::sumcheck as tv;
 
 pub type Fp = Goldilocks;
@@ -388,8 +390,8 @@ pub fn prove(
 ) -> (ProvenBatch<Fp2>, [u8; 32]) {
     let borrowed: Vec<Instance<'_, Fp2>> = instances.iter().map(TestInstance::instance).collect();
     let mut transcript = session.transcript();
-    let proven =
-        prove_batch(&mut transcript, prefix, degree, &borrowed).expect("a well-formed batch");
+    let proven = prove_batch(&mut transcript, Protocol::One, prefix, degree, &borrowed)
+        .expect("a well-formed batch");
     (proven, transcript.state())
 }
 

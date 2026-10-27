@@ -280,6 +280,7 @@ impl Context<'_> {
                 degree,
                 evaluations,
                 zero,
+                ..
             } => (json!({"Native":[tag,evaluations,zero]}), degree),
             s::Relation::MatMulWeight => {
                 let w = &g.tensors[node.inputs[1].0 as usize].shape;

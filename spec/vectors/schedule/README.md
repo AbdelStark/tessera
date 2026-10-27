@@ -22,7 +22,21 @@
 
 A coordinate is written `leaf:{s}:{i}` for coordinate `i` of leaf claim `s`'s point, `layer:{i}` for the layer point `ρ_1`'s, `zero:{i}` for stage 1's zero-check point's, `round:{k}:{j}` for the challenge of round `j` of stage `k`, and `half` for `½`.
 
+## `degrees.json`
+
+`degrees.json` holds each reduction stage's `tessera-protocol/2` round degree ([RFC-0013](../../../docs/rfcs/RFC-0013-zero-knowledge.md#masked-extensions) 'Masked extensions' 'Degree', [#565](https://github.com/AbdelStark/tessera/issues/565)) on the composed schedule `tessera-protocol/2` proves: `derive_composed_schedule` with `model_natives` for the request, never `derive_schedule`'s graph-only schedule, which lacks the natives. Its 44 cases are each conformance claim list of `../claims/`, at `schedule.json`'s `n` of 1, 4, 5 and `max_context`, for the requests `none` and `prefill` at every `n` and `generate` at `n ≥ 2`: the claim lists in `claim-lists.json`'s order, then `n` ascending, then `none`, `prefill` and `generate`. `cargo xtask gen-vectors` writes it from the compiler's schedules and RFC-0013's table (`tessera_compiler::schedule::protocol2_stages`), and checks what the RFC says it records: `[10, 7]` in the 22 cases of the two `servable` lists and `[10, 7, 7]` in the 22 of the `minimal` and `affine` lists.
+
+| Field | Meaning |
+|---|---|
+| `description`, `cases` | the file, as `schedule.json`'s |
+| `cases[]` | `model`, the claim list's `name`, as `schedule.json` names it; `n`, the sequence's positions; `length`, the positions its schedule is lowered at, `max(n, 3)`, since `n` = 1, 2 and 3 share the layout of a 3-row token axis padded to 4; `request`, `none`, `prefill` or `generate`; and `stages[]` |
+| `stages[]` | the reduction stages, `index` from 1: `rounds`, `tessera-protocol/2`'s, `max(max_i n_i, log2 k)` when the stage has a fold and `max_i n_i` otherwise, `log2 k` the claim list's `layout.advice.log2_k`; `d`, the largest of its instances' and its folds' (2); `folds`, one per instance whose claim is a virtual part the stage before left, none for a native or a zero-check; and `instances[]`, in schedule order |
+| `stages[].instances[]` | `relation`, the table's string; `stacked`, true when the instance's layer weights run over `λ ≥ 1` coordinates or it is a `MatMulAct` with two heads or more, false otherwise; `public`, one Boolean per operand, `[]` for a native; `constant`, `scalar`, `channel` or `layer` for an `Equality.ConstMul` and `null` otherwise; and the row's `d_1`, `s` and `d` |
+
+`stacked` is not `schedule.json`'s: that field records layer weights `eq(ρ, ·)`, `Layers::Eq`, which is true at a template position of a graph with `λ = 0`, where this one is false, and false for a `MatMulAct` stacked over heads alone, where this one is true.
+
 ## Who checks them
 
 - `verifier/crates/tv-core` (`tests/schedule_vectors.rs`, [#114](https://github.com/AbdelStark/tessera/issues/114)) lowers each golden claim list of `../claims/` at each length, derives its schedule, and compares it with the case field by field, every coordinate of every point included. It reports every item that differs.
 - `crates/tessera-prover` (`tests/verifier_stages.rs`) proves the stages of each model over the CPU engine's witness and verifies them with the verifier's stage checks.
+- `degrees.json` is a differential vector, as `schedule.json` is: `verifier/crates/tv-core` derives each schedule and each instance's row with code of its own and compares every field in `tests/protocol2_degrees.rs`. `cargo xtask gen-vectors --check` fails when the file differs from what the compiler derives, and `crates/tessera-prover` (`tests/protocol2_degrees.rs`) measures each row of RFC-0013's table on its tiny masked instance. The verifier repeats that measurement independently in `tests/protocol2_rows.rs`, using the test kit's field arithmetic and the RFC's summands.

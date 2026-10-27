@@ -270,6 +270,7 @@ fn native_plan<'a>(
         source: Source::Native(n.tag),
         relation: Relation::Native {
             tag: n.tag,
+            kind: n.kind,
             degree: n.degree,
             evaluations: n.evaluations,
             zero: n.zero,

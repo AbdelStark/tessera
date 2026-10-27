@@ -871,6 +871,7 @@ dependencies = [
  "tessera-field",
  "tessera-ir",
  "tessera-pcs",
+ "tessera-sumcheck",
  "tessera-tables",
 ]
 

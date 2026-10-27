@@ -14,6 +14,9 @@ tessera-codec = { path = "../tessera-codec" }
 tessera-ir = { path = "../tessera-ir" }
 tessera-pcs = { path = "../tessera-pcs" }
 tessera-field = { path = "../tessera-field" }
+# A stage's degree bound, a function of its protocol and kind (RFC-0013 'Masked extensions'
+# 'Degree'), which the schedule's degree derivation checks as the sumcheck engine does.
+tessera-sumcheck = { path = "../tessera-sumcheck" }
 tessera-tables = { path = "../tessera-tables" }
 
 [dev-dependencies]
