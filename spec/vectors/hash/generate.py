@@ -185,11 +185,28 @@ DOMAINS = [
     "claim-list",
     "statement",
 ]
+# RFC-0004 secret-class per-proof domains (RFC-0018, #567): the verifier never computes them,
+# so they live under `prover_streams` rather than `domains`.
+PROVER_DOMAINS = [
+    "advice-masks",
+    "prover-share",
+    "ni-session",
+]
 
 
 def H(domain, data):
     require(domain in DOMAINS, f"unknown domain {domain}")
     return derive_key(PREFIX + domain, data)
+
+
+def H_prover(domain, data, length=32):
+    require(domain in PROVER_DOMAINS, f"unknown prover domain {domain}")
+    return derive_key(PREFIX + domain, data, length)
+
+
+def stream_words(domain, data, word_count):
+    raw = H_prover(domain, data, 8 * word_count)
+    return [int.from_bytes(raw[8 * i : 8 * i + 8], "little") for i in range(word_count)]
 
 
 def splitmix64(state):
@@ -373,13 +390,46 @@ def main():
             {"descriptor": d, "tce": tce.hex(), "commitment_id": H("commitment-id", tce).hex()}
         )
 
+    prover_domains = [
+        {
+            "name": name,
+            "context": PREFIX + name,
+            "digests": [H_prover(name, bytes(i % 251 for i in range(n))).hex() for n in lengths],
+        }
+        for name in PROVER_DOMAINS
+    ]
+    proof_seed = digest_from(rng)
+    mask_words = stream_words("advice-masks", proof_seed, 32)
+    mask_values = [w for w in mask_words if w < P][:24]
+    require(len(mask_values) == 24, "24 canonical mask values from 32 words")
+    # Pinned 32-byte seed whose first block in `advice-masks` has word 6 >= P (0xffffffffbc84bb6d).
+    reject_seed = (384450091).to_bytes(8, "little") + bytes(24)
+    reject_words = stream_words("advice-masks", reject_seed, 16)
+    require(reject_words[6] >= P, "pinned advice-masks seed must hit rejection on word 6")
+    reject_values = [w for w in reject_words if w < P]
+    require(len(reject_values) == 15, "exactly one word rejected in the first two blocks")
+    prover_streams = {
+        "domains": prover_domains,
+        "proof_seed": proof_seed.hex(),
+        "prover_share": H_prover("prover-share", proof_seed).hex(),
+        "ni_session": H_prover("ni-session", proof_seed)[:16].hex(),
+        "advice_masks": [hex64(v) for v in mask_values],
+        "rejection": {
+            "seed": reject_seed.hex(),
+            "rejected_word_index": 6,
+            "words": [hex64(w) for w in reject_words],
+            "values": [hex64(v) for v in reject_values],
+        },
+    }
+
     vectors = {
         "description": (
             "RFC-0004 hashing reference vectors from an independent BLAKE3 (checked against "
             f"{checked} official vectors): H(domain, x) = BLAKE3.derive_key(context, x) for every "
             "domain on inputs of length 0, 1, 64 and 1025 filled with i mod 251; Merkle trees with "
             "canonical multiproofs; chained column digests with row block `block`; commitment_id "
-            "from the TCE of a CommitmentDescriptor (RFC-0031)"
+            "from the TCE of a CommitmentDescriptor (RFC-0031); and secret-class per-proof stream "
+            "domains (#567)"
         ),
         "seed": hex64(SEED),
         "input_lengths": lengths,
@@ -387,6 +437,7 @@ def main():
         "merkle": trees,
         "columns": matrices,
         "commitment_ids": commitment_ids,
+        "prover_streams": prover_streams,
     }
     (HERE / "hash.json").write_text(json.dumps(vectors, indent=1) + "\n")
 

@@ -16,6 +16,6 @@ mod merkle;
 mod transcript;
 
 pub use columns::{ColumnChains, ColumnError};
-pub use domain::{Digest, Domain, Hasher, hash};
+pub use domain::{Digest, Domain, Hasher, ProverDomain, hash};
 pub use merkle::{MerkleError, MerkleTree, MultiProof, merkle_node, verify_multiproof};
 pub use transcript::{Blake3, Mode, ParamSetId, SessionContext, Transcript, TranscriptHash};

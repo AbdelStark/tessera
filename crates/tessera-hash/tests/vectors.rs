@@ -12,7 +12,9 @@ use std::num::NonZeroUsize;
 
 use serde_json::Value;
 use tessera_field::{Goldilocks, PrimeField};
-use tessera_hash::{ColumnChains, Digest, Domain, MerkleTree, hash, verify_multiproof};
+use tessera_hash::{
+    ColumnChains, Digest, Domain, MerkleTree, ProverDomain, hash, verify_multiproof,
+};
 
 fn load() -> Value {
     let path = common::vectors().join("hash/hash.json");
@@ -64,6 +66,40 @@ fn every_domain_matches_the_oracle() {
         for (&len, expected) in lengths.iter().zip(expected) {
             let input: Vec<u8> = (0..len).map(|i| (i % 251) as u8).collect();
             assert_eq!(hash(domain, &input), expected, "{name}, input length {len}");
+        }
+    }
+}
+
+#[test]
+fn prover_stream_domains_match_the_oracle_and_stay_distinct_from_public_domains() {
+    let file = load();
+    let lengths: Vec<u64> = file["input_lengths"]
+        .as_array()
+        .expect("input lengths")
+        .iter()
+        .map(|n| n.as_u64().expect("length"))
+        .collect();
+    let streams = &file["prover_streams"];
+    let entries = streams["domains"].as_array().expect("prover domains");
+    assert_eq!(entries.len(), ProverDomain::ALL.len());
+    for (entry, domain) in entries.iter().zip(ProverDomain::ALL) {
+        let name = entry["name"].as_str().expect("name");
+        assert_eq!(domain.name(), name);
+        assert_eq!(domain.context(), format!("tessera/v1/{name}"));
+        assert_eq!(entry["context"].as_str(), Some(domain.context()));
+        for public in Domain::ALL {
+            assert_ne!(domain.context(), public.context());
+            assert_ne!(domain.context_key(), &hash(public, b""));
+        }
+        let expected = digests(&entry["digests"]);
+        assert_eq!(expected.len(), lengths.len(), "{name}");
+        for (&len, expected) in lengths.iter().zip(expected) {
+            let input: Vec<u8> = (0..len).map(|i| (i % 251) as u8).collect();
+            assert_eq!(
+                blake3::derive_key(domain.context(), &input),
+                expected,
+                "{name}, input length {len}"
+            );
         }
     }
 }

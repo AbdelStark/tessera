@@ -9,7 +9,6 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-blake3 = { version = "1.8", features = ["zeroize"] }
 getrandom = "0.4"
 zeroize = "1.9"
 tessera-hash = { path = "../tessera-hash" }
@@ -28,6 +27,7 @@ tessera-witness = { path = "../tessera-witness" }
 
 [dev-dependencies]
 allocation-counter = "0.8"
+blake3 = "1.8"
 tessera-scoring = { path = "../tessera-scoring" }
 serde_json = "1"
 xtask = { path = "../../xtask" }
