@@ -440,7 +440,7 @@ mod cancellation_tests {
                 .check_columns(&queries, &columns, &[]),
             Ok(())
         );
-        for stop in [1, 3] {
+        for stop in [1, 4] {
             let mut polls = 0;
             assert_eq!(
                 opening

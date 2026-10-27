@@ -36,6 +36,8 @@ allocate nothing, nested impossible columns reserve only the bounded outer vecto
 insufficient memory for honest stages is a reader failure (`ERR-RES-MEMORY`).
 These checks establish packet syntax, not proof acceptance.
 
+`tests/driver_deadline_allocation.rs`, also behind `--features test-params`, expires the clock at the opening boundary and measures that phase's additional work. Under the resulting allocator cap, an expired run must return `ERR-RES-TIME`, while an active run must fail with `ERR-RES-MEMORY`; accepting controls surround them. This independent control prevents a driver that ignores NTT cancellation from calibrating its own passing cap. Each call is process-isolated. The test covers one recorded fixture, not a production time or memory bound.
+
 `tests/driver_work_allocation.rs` runs the complete recorded `test-small` NI proof,
 including arithmetic and openings, with `--features test-params`. Each allocation
 cap runs in its own process: an infallible allocation abort fails the controller,

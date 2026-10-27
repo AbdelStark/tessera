@@ -48,6 +48,11 @@ harness = false
 required-features = ["test-params"]
 
 [[test]]
+name = "driver_deadline_allocation"
+harness = false
+required-features = ["test-params"]
+
+[[test]]
 name = "field_allocation"
 harness = false
 

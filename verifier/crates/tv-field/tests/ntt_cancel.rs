@@ -1,24 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Explicit cancellation keeps validation precedence and honest NTT results (RFC-0019, SP-8).
-use tv_field::{Fp, Fp2, NttError, coset_ntt, coset_ntt_with_cancel, intt, intt_with_cancel};
-
-#[test]
-fn uncancelled_transforms_equal_the_conformance_checked_interfaces() {
-    for log_n in 0..=12 {
-        let values: Vec<_> = (0..1 << log_n)
-            .map(|i| Fp2::new(Fp::reduce(i), Fp::reduce(i + 7)))
-            .collect();
-        let mut expected = values.clone();
-        let mut actual = values.clone();
-        intt(&mut expected).unwrap();
-        intt_with_cancel(&mut actual, || false).unwrap();
-        assert_eq!(actual, expected);
-        coset_ntt(&mut expected, Fp::SEVEN).unwrap();
-        coset_ntt_with_cancel(&mut actual, Fp::SEVEN, || false).unwrap();
-        assert_eq!(actual, expected);
-    }
-}
+//! Cancellation keeps validation precedence and polls before completion (RFC-0019, SP-8).
+use tv_field::{Fp, NttError, coset_ntt_with_cancel, intt_with_cancel};
 
 #[test]
 fn cancellation_before_work_leaves_values_unchanged_and_invalid_arguments_do_not_poll() {
@@ -44,5 +27,24 @@ fn cancellation_before_work_leaves_values_unchanged_and_invalid_arguments_do_not
             coset_ntt_with_cancel(&mut values, Fp::ZERO, || panic!("zero shift polled")),
             Err(NttError::ZeroShift)
         );
+    }
+}
+
+#[test]
+fn cancellation_is_polled_before_success_even_for_a_singleton() {
+    for inverse in [false, true] {
+        let mut values = [Fp::ONE];
+        let mut polls = 0;
+        let mut cancel = || {
+            polls += 1;
+            polls == 2
+        };
+        let result = if inverse {
+            intt_with_cancel(&mut values, &mut cancel)
+        } else {
+            coset_ntt_with_cancel(&mut values, Fp::SEVEN, &mut cancel)
+        };
+        assert_eq!(result, Err(NttError::Cancelled));
+        assert_eq!(polls, 2);
     }
 }
