@@ -23,7 +23,7 @@ The leaf stage proves every LogUp fraction tree and every product forest in one 
 
 This RFC proves such a stage in **token groups** instead. When the stage's lookup trees and product forests do not fit, the prover splits them into `G = 2^g` groups whose trees do: interleaved subsets of the batch's tokens, at least 256 tokens each so that their GEMMs stay compute-bound, and interleaved subsets of the layers. Each group's trees are proven in memory, with challenges of its own, one group after another. The table trees, whose leaves come from the tables' rows and the stored multiplicities, are proven in a batch of their own and stream without regenerating anything. A **merge** sumcheck then reduces the groups' leaf claims, their tensors' values and their forests' leaves, to one point per polynomial. The reduction stages, the claim pool and the openings are unchanged.
 
-The stage then costs two regenerations at any size: the group pass, which is RFC-0018's P2, and the merge's pass. At 405B that is one more regeneration than a stage that fits, and about 0.2 to 1.6 on `μ` for the merge's arithmetic. The price is in the transcript: `G` sets of level messages, about 120 KB each at 405B, and a union bound about 10 bits lower at the most groups a verifier accepts: 101.75 bits at 405B. With `g = 0` the leaf stage is RFC-0010's.
+The stage then costs two regenerations at any size: the group pass, which is RFC-0018's P2, and the merge's pass. At 405B that is one more regeneration than a stage that fits, and about 0.2 to 1.6 on `μ` for the merge's arithmetic. The price is in the transcript: `G` sets of level messages, about 120 KB each at 405B, and a union bound about 10 bits lower at the most groups a verifier accepts: 101.72 bits at 405B. With `g = 0` the leaf stage is RFC-0010's.
 
 ## Motivation
 
@@ -238,7 +238,7 @@ Each check is RFC-0010's or RFC-0008's, applied per group, so RFC-0014's rows ke
   - **A proof's budget.** The verifier holds each proof to the bound at its own `G = 2^{g_T + g_L}`, and rejects one whose bound misses a target. A cheating prover can choose its `g`, but it succeeds at most with the error of the `g` it chose, and that error passed. An ungrouped proof's bound is the ungrouped statement's.
   - **A statement's report.** `tessera params check` and `tessera-verify params` report at the largest `G` the verifier accepts for the statement: `2^{min(14, t + n_ℓ)}`, or 1 in `tessera-protocol/2`, which accepts no grouping. The bound grows with `G`, so a statement that passes there passes at every grouping. This is the bound a parameter set is certified at.
   - **The sizes.** Both take `P` as the merged polynomials' count, which bounds every group's claims, and `n_max` as their most variables. Neither depends on `g`.
-  - **At RFC-0014's default 405B statement**, `G = 2^{14}`, `P = 53,490` and `n_max = 42`. The union row falls from 111.84 to 101.75 bits, and the rounds row's largest error becomes the merge's batching, at 111.90 bits. Both stay above the 100-bit target.
+  - **At RFC-0014's default 405B statement**, `G = 2^{14}`, `P = 53,491` and `n_max = 42`. The union row falls from 111.83 to 101.72 bits, and the rounds row's largest error becomes the merge's batching, at 111.90 bits. Both stay above the 100-bit target.
   - **Not assumed: smaller trees per group.** Token subset 0 holds every block without a token axis whole, and layer subset 0 the prologue and the epilogue, so their trees need not shrink as `g` grows. A bound that counts `H − g` levels per group, about 103 bits at `2^{14}` groups, would rest on a layout this RFC does not guarantee.
 - **The product-forest roots** keep `s/|Fp2|`, with each group's `s − g`.
 - **The LogUp identity** keeps `v·max(N + T)/|Fp2|`: the groups' roots and the table root sum to one rational identity in `α` of the same degree. Each group's roots follow `α`, and each precedes its group's own challenges.
@@ -309,7 +309,7 @@ At 405B, `minimal`, a 16K-token batch, the corrected `μ(1K)` and `μ(16K)` beco
 
 - **One more regeneration** than a leaf stage that fits, at every size. At 405B that is +1.0 on `μ`, which put `minimal`'s 1K projection at its ceiling and `servable`'s 6% above it before the column answers. With RFC-0055's windows, both are 14 to 15% above it.
 - **Proof size.** About 120 KB of messages per group at 405B: 32 levels of at most 32 rounds, 27 instances, and about 2,500 split values. That is about 30 MB at 1K, 120 MB at 16K and 1 GB at 128K, against 08 §5's 2 GiB target and 4 GiB gate.
-- **Soundness.** At the most groups a verifier accepts, the union row loses about 10 bits, from 111.84 to 101.75 at 405B, and stays above 100.
+- **Soundness.** At the most groups a verifier accepts, the union row loses about 10 bits, from 111.83 to 101.72 at 405B, and stays above 100.
 - **Verification.** It checks `G` sets of levels, about `10^5` field operations each. For the merge, it computes one `eq` product per class and group and one sum per polynomial. Milliseconds to a second.
 - **No zero knowledge yet** for grouped proofs (OQ-0054-1).
 - **The reduction stages exceed memory too.** [RFC-0055](RFC-0055-windowed-stages.md) windows them, one more regeneration each.

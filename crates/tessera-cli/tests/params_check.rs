@@ -125,8 +125,9 @@ fn lookups_and_table_rows_replace_the_logup_instances() {
     assert_eq!(report["meets_targets"], false);
     // RFC-0014: the leaf stage's levels follow the tallest tree, 50 for N = 2^50, with their
     // Σ_{ℓ<50} ℓ = 1,225 rounds and the merge's 50 (RFC-0054 'Soundness'). The union is the
-    // ungrouped 72,739, the layer point's λ = 7 included (#537), + 8·54, plus
-    // 2^14·(1,225·3 + 50·54) + 2·50 + 53,490 + 2^14.
+    // ungrouped 73,168, the layer point's λ = 7, the composed stages' 123 + 98, the 14
+    // zero-checks and the 55-instance levels included (#537, #566), + 8·56, plus
+    // 2^14·(1,225·3 + 50·56) + 2·50 + 53,491 + 2^14.
     let statement = &report["statement"];
     assert_eq!(
         statement["tree_levels"].as_array().expect("levels").len(),
@@ -139,7 +140,7 @@ fn lookups_and_table_rows_replace_the_logup_instances() {
     assert_eq!(statement["groups"]["merge_rounds"], 50);
     let union = &rows(&report)[1];
     assert_eq!(union["row"], "union");
-    assert_eq!(union["numerator"], "104591145");
+    assert_eq!(union["numerator"], "106229991");
     assert_eq!(union["pass"], true);
     let table_out = tessera(&[
         "params",
@@ -295,6 +296,12 @@ fn malformed_arguments_exit_64() {
     for text in [
         "405B",
         "16K",
+        "123 and 98",
+        "55 instances",
+        "14 of at most 42 variables",
+        "27 table entries",
+        "2^22",
+        "53,491",
         "2^42",
         "--lookups",
         "--table-rows",
@@ -302,4 +309,5 @@ fn malformed_arguments_exit_64() {
     ] {
         assert!(stdout(&help).contains(text), "{text}");
     }
+    assert!(!stdout(&help).contains("64 instances"));
 }

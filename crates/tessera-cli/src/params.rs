@@ -34,18 +34,20 @@ const SCHEMA: &str = "tessera.soundness/1";
 const DEFAULTS: &str = "\
 The sizes are the 405B 16K-token, 16K-context statement under tessera-protocol/1 (RFC-0014 \
 'Soundness calculator'): Llama-3.1-405B, servable, one batch of 16,384 tokens at 16,384 \
-positions of context. Each size comes from RFC-0014, the compiler's 405B commitment report or \
-the architecture; where none gives a count, a bound:
+positions of context with a generation request. Each size comes from RFC-0014, the compiler's \
+405B commitment report or the architecture; where none gives a count, a bound:
   rounds         10,000 of degree 7, RFC-0014's \"about 10^4 rounds\" of \"degree d <= 7\"
-  stages         2 reduction stages batching at most 64 instances each
-  tree levels    42, the Exp lookup tree's height, each batching at most 31 instances
-  zero-checks    8 of at most 42 variables
+  stages         2 reduction stages batching 123 and 98 instances (RFC-0050, RFC-0053, RFC-0056)
+  tree levels    42, the Exp lookup tree's height, each batching at most 55 instances
+  zero-checks    14 of at most 42 variables
+  layer vars     7, stage 1's layer point over 126 layers (RFC-0037)
   forests        the SoftmaxRow forest of 2^28 trees
-  LogUp          the report's 15 instances at 16K tokens, Exp's over the padded score tensor:
-                 2^42 lookups into 2^22 rows (RFC-0030)
+  LogUp          27 table entries: the report's 26 plus RFC-0053's Range(29), Exp's over the
+                 padded score tensor: 2^42 lookups into 2^22 rows (RFC-0030)
   claim groups   16 of at most 64 claims
-  advice rows    2^21, a 21-bit row index
+  advice rows    2^22, a 22-bit row index
   matrices       the ten weight matrices of RFC-0040 at k_W = 2^20
+  groups         G = 2^14 token groups, 861 level rounds, merge n_max = 42 and P = 53,491
 
 --lookups N and --table-rows T replace the LogUp instances with one of N lookups and T rows; \
 a flag left out takes the Exp instance's. The bits shown are lower bounds, rounded down; the \

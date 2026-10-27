@@ -12,11 +12,13 @@ This script is the independent oracle. It is written from RFC-0014 ('Soundness b
 'Grinding', 'Parameter sets', 'Soundness calculator'), RFC-0049 'The calculator' (a weight
 matrix's count in tessera-protocol/1), RFC-0026 'Schema' (the layouts), RFC-0040 'The matrices'
 (the 405B weight matrices), RFC-0030 'Cost' (the Exp instance), RFC-0054 'Soundness' (the leaf
-stage in token groups), RFC-0010 'Tree levels' (a level's rounds) and 06 §4 (SP-1) alone. It shares
+stage in token groups), RFC-0010 'Tree levels' (a level's rounds), RFC-0013 ('Degree', 'Virtual
+tensors'), RFC-0032 ('The LogUp identity sumcheck'), RFC-0068 ('The layer sumcheck'), RFC-0070
+('The claims', "The masks' block `M`") and 06 §4 (SP-1) alone. It shares
 no code with crates/, verifier/ or python/, which check its output. It states the 405B lookups of
 docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json, the compiler's report, which RFC-0014
-'Soundness calculator' names as their source, and the lowering's 53,489 split values, which
-crates/tessera-bench/tests/commitment_report.rs counts.
+'Soundness calculator' names as their source, and the lowering's 53,489 split values and composed
+schedule counts, which crates/tessera-bench/tests/commitment_report.rs checks.
 
 Every bit count is computed twice, and every decision once more:
 - by LOG2 of RFC-0014 'Soundness calculator', with Python's integers: the FixedBits both
@@ -255,7 +257,14 @@ def lookups_405b():
 
 
 def statement_405b():
-    lookups = lookups_405b()
+    model_lookups = lookups_405b()
+    # RFC-0053 'The greedy certificate': LmHead's [-128, 127] × [-127, 127] over d_model = 16,384
+    # lies in [-266_338_304, +266_338_304], span 532_676_608 < 2^29, appending Range(29) with at
+    # most 2^14 × 2^17 = 2^31 lookups across the padded outputs and vocabulary.
+    logit_span = 2 * D_MODEL * 128 * 127
+    greedy_rows = pow2_at_least(logit_span + 1)
+    require(greedy_rows == 1 << 29, "405B greedy Range(29)")
+    lookups = model_lookups + [{"lookups": TOKENS * pow2_at_least(VOCAB), "rows": greedy_rows}]
     forests = [log2_exact(pow2_at_least(LAYERS) * HEADS * TOKENS)]  # SoftmaxRow: s = 28
     tallest = max(max(i["lookups"], i["rows"]) for i in lookups)
     levels = (tallest - 1).bit_length()  # the tallest tree's height: 42
@@ -268,16 +277,21 @@ def statement_405b():
     row_height = t
     require(forests == [levels - row_height], "the forest joins the tallest tree's levels")
     level_rounds = sum(range(levels))  # 861
-    # The merged polynomials: one per split value and one per forest (RFC-0054 'The merge'); the
-    # most variables, the forest leaf table's s + t, above any split tensor's.
+    # The merged polynomials: one per model split value, the generation request's greedy key
+    # column (RFC-0053) and one per forest (RFC-0054 'The merge'); the most variables, the forest
+    # leaf table's s + t, above any split tensor's.
     merge_rounds = max(s + row_height for s in forests)
     return {
         "protocol": 1,
         "rounds": [{"count": 10_000, "degree": 7}],
-        "stages": [64, 64],
+        # RFC-0014 'Soundness calculator' (#566): servable's two reduction stages on the composed
+        # schedule with a generation request (90 root products in stage 1, 90 SumSquares in stage 2).
+        "stages": [123, 98],
         # Each level batches every instance's two trees and every forest at most.
         "tree_levels": [2 * len(lookups) + len(forests)] * levels,
-        "zero_checks": [42] * 8,
+        # 14 ZeroCheck instances on the composed generation schedule (13 for the model alone),
+        # bounded by the score tensor's 42 variables.
+        "zero_checks": [42] * 14,
         # Stage 1's layer point: λ = ⌈log2 126⌉ (RFC-0037 'The layer point').
         "layer_vars": 7,
         "forests": forests,
@@ -292,9 +306,100 @@ def statement_405b():
             "count": groups,
             "level_rounds": [{"count": level_rounds, "degree": LEVEL_DEGREE}],
             "merge_rounds": merge_rounds,
-            "merge_claims": SPLIT_VALUES + len(forests),
+            "merge_claims": SPLIT_VALUES + 1 + len(forests),
         },
     }
+
+
+def model_zero_checks_405b():
+    """The 13 ZeroCheck instances of the 405B servable model schedule at 16K positions (RFC-0035,
+    RFC-0037, RFC-0050, RFC-0030): OneHot's four checks on [t, v], c_0's equality on [t, d], the
+    two layered norms' RootPad and ResidualPad on [λ, t] and [λ, t, d], the final norm's on [t]
+    and [t, d], and SoftmaxRow's MaxPad and ReciprocalPad on [λ, h, t]."""
+    t = ceil_log2(TOKENS)
+    v = ceil_log2(VOCAB)
+    d = ceil_log2(D_MODEL)
+    h = ceil_log2(HEADS)
+    lam = ceil_log2(LAYERS)
+    checks = (
+        [t + v] * 4
+        + [t + d]
+        + [lam + t, lam + t + d] * 2
+        + [t, t + d]
+        + [lam + h + t] * 2
+    )
+    require(len(checks) == 13 and sum(checks) == 362, "13 model zero-checks, Σ n_i = 362")
+    return checks
+
+
+def statement_405b_protocol_2(base, compiled=False):
+    """RFC-0014 'Soundness calculator' ('Under tessera-protocol/2', #565, #566): RFC-0053 holds
+    for tessera-protocol/1 only (RFC-0013 'Degree'), so tessera-protocol/2's 405B statement carries
+    the model's 26-table schedule (`[122, 96]`, `[16, 96]` folds, 13 zero-checks), with the
+    10^4-round and 42-variable zero-check bounds (`compiled=False`) or the compiled schedule's
+    exact rounds and zero-checks (`compiled=True`)."""
+    log2_k = LIVE_64["advice"]["log2_k"]
+    levels = len(base["tree_levels"])
+    row_height = ceil_log2(TOKENS)
+    model_lookups = lookups_405b()
+    # RFC-0068 'Column masks': one key column per active table, plus a value column for Exp, Silu
+    # and Requant (25 + 11 = 36).
+    active = [kind for kind, _, _ in REPORT_TABLES if kind != "Rope"]
+    layer_claims = len(active) + sum(1 for kind in active if kind in ("Exp", "Silu", "Requant"))
+    require(layer_claims == 36, "36 column claims in the layer sumcheck")
+    # RFC-0070 'The claims', "The masks' block `M`": 46 masked sumchecks (8,132 coefficients in an
+    # 8,192-slot block), 2,621 tree-level mask blocks and 1 SoftmaxRow leaf mask block -> R_M = 780
+    # Fp2 rows, m = 22 + 10 = 32 rounds of degree 2, N = 2,668 mask claims.
+    sumchecks = ([(2, 4)] + [(lvl, 7) for lvl in range(1, levels + 1)]
+                 + [(log2_k, 4), (42, 10), (35, 7)])
+    coeff_slots = sum(1 + n * (d + 1) for n, d in sumchecks)
+    require(len(sumchecks) == 46 and coeff_slots == 8_132, "RFC-0070's 46 sumchecks, 8,132 slots")
+    blocks = [pow2_at_least(coeff_slots)]
+    for inst in model_lookups:
+        if inst["lookups"] == 0:
+            continue
+        for leaves in (inst["lookups"], inst["rows"]):
+            h = max(2, ceil_log2(leaves))
+            for t in range(h):
+                c = min(h - t, log2_k)
+                blocks += [1 << c, 1 << c]
+    blocks += [1 << log2_k] * ((row_height - 1) + 1)
+    r_m = -(-sum(blocks) // (1 << log2_k))
+    mask_vars = log2_k + ceil_log2(r_m)
+    mask_claims = len(sumchecks) + (len(blocks) - 1)
+    require((r_m, mask_vars, mask_claims) == (780, 32, 2_668), "RFC-0070's R_M, m and N at 405B")
+    exact_zeros = model_zero_checks_405b()
+    if compiled:
+        rounds = [
+            {"count": 42, "degree": 10},
+            {"count": 35, "degree": 7},
+            {"count": sum(range(1, levels + 1)), "degree": 7},
+            {"count": log2_k, "degree": 4},
+            {"count": 2, "degree": 4},
+            {"count": mask_vars, "degree": 2},
+        ]
+        zero_checks = exact_zeros
+    else:
+        rounds = [
+            {"count": 10_000 - 42, "degree": 7},
+            {"count": 42, "degree": 10},
+            {"count": 2, "degree": 4},
+            {"count": log2_k, "degree": 4},
+            {"count": mask_vars, "degree": 2},
+        ]
+        zero_checks = [42] * len(exact_zeros)
+    return with_changes(
+        base,
+        protocol=2,
+        rounds=rounds,
+        stages=[122, 96, len(model_lookups), layer_claims, mask_claims],
+        tree_levels=[2 * len(model_lookups) + len(base["forests"])] * levels,
+        zero_checks=zero_checks,
+        lookups=model_lookups,
+        claim_groups=base["claim_groups"] + [layer_claims, 16, 96, 1],
+        layer_vars=0,
+        groups=dict(NO_GROUPS),
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -698,10 +803,9 @@ def edges(base):
         ("edge/logup-2^50-live", LIVE_64, with_changes(base, lookups=base["lookups"] + [
             {"lookups": 2**50 - 2**22, "rows": 2**22}]),
          "N + T = 2^50 at live-64: 78 − ε one-shot bits pass its 64-bit target"),
-        ("edge/protocol-2", NI_100, with_changes(base, protocol=2, groups=NO_GROUPS, layer_vars=0,
-                                                 rounds=base["rounds"] + [{"count": 2, "degree": 4}],
-                                                 stages=base["stages"] + [len(base["lookups"])]),
-         "tessera-protocol/2: 2(N + T)/q, a mask per batched sumcheck, the identity sumcheck"),
+        ("edge/protocol-2", NI_100, statement_405b_protocol_2(base, compiled=True),
+         "the compiled 405B schedule under tessera-protocol/2: stage 1 at degree 10, the layer, "
+         "identity and mask-batching sumchecks, and the fold, column-mask and batching groups"),
         ("edge/empty", NI_100, {"protocol": 1, "rounds": [], "stages": [], "tree_levels": [],
                                 "zero_checks": [], "layer_vars": 0, "forests": [], "lookups": [],
                                 "claim_groups": [], "advice_rows": 1, "matrices": [],
@@ -864,15 +968,17 @@ def compact(value):
 
 def main():
     base = statement_405b()
+    base_v2 = statement_405b_protocol_2(base)
     cases = []
     for params in PARAM_SETS:
         cases.append(report(params, base, f"405b/{params['id']}",
                             "the 405B 16K-token, 16K-context statement"))
     for params in PARAM_SETS:
-        cases.append(report(params, with_changes(base, protocol=2, layer_vars=0, groups=NO_GROUPS),
+        cases.append(report(params, base_v2,
                             f"405b-protocol-2/{params['id']}",
-                            "the 405B statement under tessera-protocol/2: the weights count "
-                            "their P_W mask coefficients and B_W blinding rows"))
+                            "the 405B statement under tessera-protocol/2: masked stage 1 at "
+                            "degree 10, the identity, layer and mask-batching sumchecks, and the "
+                            "weights' P_W mask coefficients and B_T blinding rows"))
     for row, params, statement, why in adversarial(base):
         cases.append(report(params, statement, f"adversarial/{params['id']}/{row}", why))
     for name, params, statement, why in edges(base):
@@ -961,6 +1067,10 @@ def main():
             + groups["count"] * levels + 2 * groups["merge_rounds"] + groups["merge_claims"]
             + groups["count"], "the grouped union adds G copies and the merge")
     require(plain["rounds"]["numerator"] == str(max(base["stages"])), "ungrouped, a stage's m")
+    for name in ("405b-protocol-2/live-64/1", "405b-protocol-2/ni-100/1", "edge/protocol-2"):
+        require(by_name[name]["rows"][0]["numerator"] == "2668",
+                f"{name}: the rounds row is RFC-0070's 2,668 mask claims")
+    require(len(cases) == 93, f"expected 93 cases, got {len(cases)}")
     miss = by_name["edge/groups-union-miss"]
     require([row["row"] for row in miss["rows"] if row["pass"] is False] == ["union"],
             "a grouped union bound alone misses its target")
