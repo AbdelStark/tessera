@@ -33,9 +33,9 @@ use tessera_bench::{
 };
 use tessera_codec::{Ascii, Rational, envelope, schema};
 use tessera_compiler::{
-    CompileError, Gadget, Lowering, ModelAdviceLayout, PublicModel, Range, Ranges, Selection,
-    analyze, claim_list, lower, report,
-    schedule::{NativeKind, Relation, Request, derive_composed_schedule, model_natives},
+    CompileError, Gadget, Lowering, ModelAdviceLayout, PublicModel, Range, Ranges, RuntimePlan,
+    Selection, analyze, claim_list, lower, report,
+    schedule::{NativeKind, Relation, Request, Source, derive_composed_schedule, model_natives},
     select,
 };
 use tessera_ir::{
@@ -612,9 +612,10 @@ fn report_counts(r: &tessera_compiler::CommitmentReport) -> Counts {
 }
 
 /// RFC-0014's default statement counts the 405B leaf stage's merge in token groups (RFC-0054
-/// 'Soundness'): `P = 53,490` merged polynomials, the lowering's split values and the
-/// `SoftmaxRow` forest, and `n_max = 42`, the forest leaf table's variables at 16K tokens. Both
-/// workspaces' layouts count the polynomials.
+/// 'Soundness'): `P = 53,491` merged polynomials (`53,490` for the model alone), the lowering's
+/// split values, the generation request's greedy key column (RFC-0053) and the `SoftmaxRow`
+/// forest, and `n_max = 42`, the forest leaf table's variables at 16K tokens. Both workspaces'
+/// layouts count the polynomials.
 #[test]
 fn the_default_statements_merge_sizes_are_the_405b_lowerings() {
     let (arch, quant, silu) = llama_405b(Profile::Servable, 2);
@@ -686,8 +687,339 @@ fn the_default_statements_merge_sizes_are_the_405b_lowerings() {
         .filter(|p| matches!(p.source, tv_core::leaf::groups::Source::Forest { .. }))
         .count();
     assert_eq!((verified.polynomials().len(), forests), (53_490, 1));
-    // The default statement: P, and n_max the forest's 2^28 trees of 2^14 leaves.
+    // With a generation request (RFC-0053): GreedyKey adds one 31-variable split polynomial and
+    // an implicit Range(29) table (27 tables in all, 2^{31} entries), giving P = 53,491.
+    let runtime = RuntimePlan::derive(&full, &selection, &claims, 1, 0).unwrap();
+    assert_eq!(runtime.selection().tables.len(), 27);
+    let cert = runtime.certificate().expect("generation certificate");
+    assert_eq!((cert.range_bits, cert.entries()), (29, 1 << 31));
+    let runtime_leaf = tessera_prover::LeafLayout::runtime(&full, &layers, &runtime, &claims)
+        .expect("runtime leaf");
+    let runtime_grouped =
+        tessera_prover::leaf::GroupedLayout::new(&runtime_leaf, &layers, one_layer_bit).unwrap();
+    assert_eq!(runtime_grouped.polynomials().len(), 53_490);
+    let tv_public = tv_core::validation::check_public(&independent).unwrap();
+    let tv_graph = tv_core::lowering::lower(&tv_public, 1 << 14).unwrap();
+    let tv_runtime = tv_core::gadgets::runtime::Plan::derive(
+        &tv_graph,
+        independent.gadget_policy,
+        1,
+        0,
+        validated.tables(),
+    )
+    .unwrap();
+    assert_eq!(tv_runtime.catalog().len(), 27);
+    let tv_cert = tv_runtime.certificate().expect("generation certificate");
+    assert_eq!(tv_cert.entries(), 1 << 31);
+    let tv_runtime_grouped =
+        tv_core::leaf::groups::Grouped::derive_runtime(&tv_graph, &tv_runtime, tv_one_layer_bit)
+            .unwrap();
+    let tv_runtime_forests = tv_runtime_grouped
+        .polynomials()
+        .iter()
+        .filter(|p| matches!(p.source, tv_core::leaf::groups::Source::Forest { .. }))
+        .count();
+    assert_eq!(
+        (tv_runtime_grouped.polynomials().len(), tv_runtime_forests),
+        (53_491, 1)
+    );
+    // The default statement: P = 53,491, and n_max the forest's 2^28 trees of 2^14 leaves.
     let groups = tessera_protocol::StatementSizes::llama_405b_16k().groups;
-    assert_eq!(groups.merge_claims, 53_490);
+    assert_eq!(groups.merge_claims, 53_491);
     assert_eq!(groups.merge_rounds, 28 + 14);
+}
+
+/// RFC-0014's default statement counts the composed schedule's instances per reduction stage
+/// (`derive_composed_schedule` with `model_natives`, #566): `[123, 98]` with a generation request
+/// (90 of stage 1's RFC-0050's root products, 90 of stage 2's the norms' `SumSquares`), `[122, 97]`
+/// for prefill, and `[122, 96]` for the model alone, which both workspaces' schedules derive. In
+/// `tessera-protocol/2` the layer sumcheck batches 36 column claims (RFC-0068) and the masks'
+/// batching 2,668 mask claims (RFC-0070).
+#[test]
+fn the_default_statements_stage_sizes_are_the_405b_schedules() {
+    let (arch, quant, silu) = llama_405b(Profile::Servable, 2);
+    let model = PublicModel {
+        arch: &arch,
+        profile: Profile::Servable,
+        quant: &quant,
+        silu_in_exponents: &silu,
+    };
+    let lowering = lower(model, POSITIONS).expect("405B's shape lowers");
+    let ranges = analyze(&lowering.graph, &lowering.tables).expect("ranges");
+    let policy = GadgetPolicy {
+        max_log2_rows: 32,
+        ..GadgetPolicy::default()
+    };
+    let selection = select(&lowering.graph, &ranges, &lowering.tables, &policy).expect("fits");
+    let layout = CommitmentLayout {
+        advice: AdviceLayoutParams {
+            log2_k: 22,
+            log2_inv_rate: 1,
+            mask_coeffs: 200,
+            row_block: 32,
+            segments: 8,
+        },
+        weights: WeightLayoutParams {
+            log2_k: 20,
+            log2_inv_rate: 2,
+            mask_coeffs: 65_536,
+            blinding_rows: 4096,
+        },
+    };
+    let claims = claim_list(
+        model,
+        &selection,
+        &policy,
+        layout,
+        ParamSetId(Ascii::new("ni-100/1").unwrap()),
+    )
+    .unwrap();
+    let full = lower(model, 1 << 14).unwrap();
+    for (request, expected, expected_folds, expected_zeros) in [
+        (
+            Request::None,
+            [122usize, 96],
+            [16usize, 96],
+            (13usize, 362u32, 35u32),
+        ),
+        (Request::Prefill, [122, 97], [15, 97], (14, 393, 35)),
+        (Request::Generate, [123, 98], [15, 98], (14, 393, 35)),
+    ] {
+        let natives = model_natives(&full, request).unwrap();
+        let schedule = derive_composed_schedule(&full, &natives.deferred, &natives.native).unwrap();
+        let counts: Vec<usize> = schedule.stages[1..]
+            .iter()
+            .map(|s| s.instances.len())
+            .collect();
+        assert_eq!(counts, expected, "405B servable {request:?}");
+        let zeros: Vec<u32> = schedule.stages[1..]
+            .iter()
+            .flat_map(|s| &s.instances)
+            .filter(|i| {
+                matches!(i.source, Source::ZeroCheck)
+                    || matches!(i.relation, Relation::Native { zero: true, .. })
+            })
+            .map(|i| i.vars)
+            .collect();
+        assert_eq!(
+            (
+                zeros.len(),
+                zeros.iter().sum::<u32>(),
+                zeros.into_iter().max().unwrap()
+            ),
+            expected_zeros,
+            "405B servable zero-checks {request:?}"
+        );
+        let products = schedule.stages[1]
+            .instances
+            .iter()
+            .filter(|i| {
+                matches!(
+                    i.relation,
+                    Relation::Native { tag, .. }
+                        if natives.kinds[tag as usize - 1] == NativeKind::Product
+                )
+            })
+            .count();
+        let sum_squares = schedule.stages[2]
+            .instances
+            .iter()
+            .filter(|i| i.relation == Relation::SumSquares)
+            .count();
+        assert_eq!((products, sum_squares), (90, 90), "{request:?}");
+        let degrees =
+            tessera_compiler::schedule::protocol2_stages(&full.graph, &schedule, 22).unwrap();
+        let ds: Vec<(u32, usize)> = degrees.iter().map(|s| (s.rounds, s.d)).collect();
+        assert_eq!(ds, [(42, 10), (35, 7)], "{request:?}");
+        let folds: Vec<usize> = degrees.iter().map(|s| s.folds).collect();
+        assert_eq!(folds, expected_folds, "405B servable folds {request:?}");
+    }
+    // 405B minimal at 16K positions: three reduction stages.
+    let (m_arch, m_quant, m_silu) = llama_405b(Profile::Minimal, 2);
+    let m_full = lower(
+        PublicModel {
+            arch: &m_arch,
+            profile: Profile::Minimal,
+            quant: &m_quant,
+            silu_in_exponents: &m_silu,
+        },
+        1 << 14,
+    )
+    .unwrap();
+    for (request, expected) in [
+        (Request::None, [119usize, 97, 2]),
+        (Request::Prefill, [119, 98, 2]),
+        (Request::Generate, [120, 99, 2]),
+    ] {
+        let natives = model_natives(&m_full, request).unwrap();
+        let schedule =
+            derive_composed_schedule(&m_full, &natives.deferred, &natives.native).unwrap();
+        let counts: Vec<usize> = schedule.stages[1..]
+            .iter()
+            .map(|s| s.instances.len())
+            .collect();
+        assert_eq!(counts, expected, "405B minimal {request:?}");
+    }
+    // The verifier's independent schedule for the 405B claim list at 16K positions.
+    let bytes = envelope::seal(&schema::CLAIM_LIST, &claims);
+    let (independent, validated) =
+        tv_core::validation::load(&bytes, &tv_codec::DecodeLimits::MESSAGE).unwrap();
+    let tv_public = tv_core::validation::check_public(&independent).unwrap();
+    let tv_graph = tv_core::lowering::lower(&tv_public, 1 << 14).unwrap();
+    let tv_gadgets = tv_core::gadgets::Plan::derive(&tv_graph, independent.gadget_policy).unwrap();
+    let tv_plan = tv_core::gadgets::model::Plan::derive(&tv_gadgets).unwrap();
+    let tv_counts: Vec<usize> = tv_plan
+        .schedule()
+        .stages()
+        .iter()
+        .map(|s| s.instances.len())
+        .collect();
+    assert_eq!(tv_counts, [122, 96]);
+    let tv_runtime = tv_core::gadgets::runtime::Plan::derive(
+        &tv_graph,
+        independent.gadget_policy,
+        1,
+        0,
+        validated.tables(),
+    )
+    .unwrap();
+    let tv_runtime_plan = tv_core::gadgets::model::Plan::derive_runtime(&tv_runtime).unwrap();
+    let tv_runtime_counts: Vec<usize> = tv_runtime_plan
+        .schedule()
+        .stages()
+        .iter()
+        .map(|s| s.instances.len())
+        .collect();
+    assert_eq!(tv_runtime_counts, [123, 98]);
+    // tessera-protocol/2's additional batched sumchecks on the 405B model layout (RFC-0068,
+    // RFC-0070): 25 active lookup instances (26 tables with RoPE's unused entry), 36 column
+    // claims in the layer sumcheck, and 2,668 mask claims in the masks' batching.
+    let layers = tessera_compiler::schedule::LayerMap::new(&full).unwrap();
+    let leaf = tessera_prover::LeafLayout::model(&full, &layers, &selection, &claims).unwrap();
+    assert_eq!((selection.tables.len(), leaf.instances().len()), (26, 25));
+    let value_columns = leaf
+        .instances()
+        .iter()
+        .filter(|inst| {
+            inst.blocks.first().is_some_and(|b| {
+                leaf.sites()[b.site].layers[b.layer].lookups[b.lookup]
+                    .lookup
+                    .value
+                    .is_some()
+            })
+        })
+        .count();
+    let layer_claims = leaf.instances().len() + value_columns;
+    assert_eq!(layer_claims, 36);
+    let fraction_masks: u32 = leaf
+        .instances()
+        .iter()
+        .map(|inst| {
+            let log2_rows = u32::from(
+                selection
+                    .tables
+                    .iter()
+                    .find(|t| t.id == inst.table)
+                    .unwrap()
+                    .log2_rows,
+            );
+            2 * inst.height.max(2) + 2 * log2_rows.max(2)
+        })
+        .sum();
+    let softmax_level_masks = 14 - 1;
+    let masked_sumchecks = 1 + 42 + 1 + 2;
+    // LeafLayout::model lays out the 126 real layers (table 4 at height 30); StatementSizes'
+    // first 26 lookups add SoftmaxRow's two padded layers (table 4 at height 31), giving
+    // RFC-0070's 2,621 tree-level mask claims and 2,668 mask claims in all, while its 27th
+    // entry is tessera-protocol/1's runtime greedy Range(29) (RFC-0053).
+    assert_eq!(fraction_masks + softmax_level_masks, 2_619);
+    let statement_lookups = tessera_protocol::StatementSizes::llama_405b_16k().lookups;
+    assert_eq!(statement_lookups.len(), 27);
+    assert_eq!(
+        statement_lookups[26],
+        tessera_protocol::LookupSizes {
+            lookups: 1 << 31,
+            rows: 1 << 29,
+        }
+    );
+    let padded_fraction_masks: u32 = statement_lookups[..26]
+        .iter()
+        .filter(|l| l.lookups > 0)
+        .map(|l| {
+            let h_l = (u64::BITS - (l.lookups - 1).leading_zeros()).max(2);
+            let h_t = (u64::BITS - (l.rows - 1).leading_zeros()).max(2);
+            2 * h_l + 2 * h_t
+        })
+        .sum();
+    assert_eq!(padded_fraction_masks + softmax_level_masks, 2_621);
+    assert_eq!(masked_sumchecks + 2_621 + 1, 2_668);
+    // The four conformance claim lists at max_context.
+    let claim_lists_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../spec/vectors/claims/claim-lists.json");
+    let claim_lists: Value =
+        serde_json::from_str(&fs::read_to_string(claim_lists_path).unwrap()).unwrap();
+    for (name, expected) in [
+        (
+            "tiny-2-servable",
+            [vec![122usize, 96], vec![122, 97], vec![123, 98]],
+        ),
+        (
+            "tiny-4-servable",
+            [vec![122, 96], vec![122, 97], vec![123, 98]],
+        ),
+        (
+            "tiny-2-minimal",
+            [vec![119, 97, 2], vec![119, 98, 2], vec![120, 99, 2]],
+        ),
+        (
+            "tiny-2-affine",
+            [vec![122, 98, 2], vec![122, 99, 2], vec![123, 100, 2]],
+        ),
+    ] {
+        let hex = claim_lists["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == name)
+            .unwrap()["hex"]
+            .as_str()
+            .unwrap();
+        let raw: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect();
+        let list: tessera_ir::ClaimList = envelope::open(
+            &raw,
+            &schema::CLAIM_LIST,
+            tessera_codec::DecodeLimits::MESSAGE,
+        )
+        .unwrap();
+        let c_full = lower(PublicModel::of_claims(&list), list.arch.max_context).unwrap();
+        for (request, want) in [Request::None, Request::Prefill, Request::Generate]
+            .into_iter()
+            .zip(expected)
+        {
+            let natives = model_natives(&c_full, request).unwrap();
+            let schedule =
+                derive_composed_schedule(&c_full, &natives.deferred, &natives.native).unwrap();
+            let got: Vec<usize> = schedule.stages[1..]
+                .iter()
+                .map(|s| s.instances.len())
+                .collect();
+            assert_eq!(got, want, "{name} {request:?}");
+        }
+    }
+    // Both calculators' default 405B statements hold the composed schedule's generation counts.
+    let prover_default = tessera_protocol::StatementSizes::llama_405b_16k();
+    assert_eq!(prover_default.stages, vec![123, 98]);
+    assert_eq!(prover_default.zero_checks, vec![42; 14]);
+    assert_eq!(prover_default.tree_levels, vec![55; 42]);
+    assert_eq!(prover_default.lookups.len(), 27);
+    assert_eq!(prover_default.groups.merge_claims, 53_491);
+    let tv_default = tv_core::soundness::StatementSizes::default_405b();
+    assert_eq!(tv_default.stages, vec![123, 98]);
+    assert_eq!(tv_default.zero_checks, vec![42; 14]);
+    assert_eq!(tv_default.tree_levels, vec![55; 42]);
+    assert_eq!(tv_default.lookups.len(), 27);
+    assert_eq!(tv_default.groups.merge_claims, 53_491);
 }

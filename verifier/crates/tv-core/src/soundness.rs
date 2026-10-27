@@ -111,9 +111,9 @@ pub const LEVEL_DEGREE: u64 = 3;
 /// The merge's round degree, 2: `W_i·P̃_i` (RFC-0054 'The merge', 'Rounds').
 pub const MERGE_DEGREE: u64 = 2;
 
-/// The split values of the 405B lowering's ungrouped leaf stage, as RFC-0014's default
+/// The model split values of the 405B lowering's ungrouped leaf stage, as RFC-0014's default
 /// statement states them (RFC-0045 'What is sent'; RFC-0014 'The 405B 16K-token, 16K-context
-/// statement', `groups`).
+/// statement', `groups`, before the generation request's greedy key column and the forest).
 pub const DEFAULT_SPLIT_VALUES: u64 = 53_489;
 
 /// `e_CP`, the claims of `ChannelParams` at 405B: one per weight type with channel parameters,
@@ -408,13 +408,18 @@ impl MatrixSize {
 pub struct StatementSizes {
     /// Protocol version `n` of `tessera-protocol/n`: `1` or `2`.
     pub protocol: u8,
-    /// Sumcheck and tree rounds by count and degree.
+    /// Sumcheck and tree rounds by count and degree; in `tessera-protocol/2`, also those of the
+    /// LogUp identity sumcheck (RFC-0032), the leaf stage's layer sumcheck (RFC-0068), and the
+    /// masks' batching of degree 2 (RFC-0070).
     pub rounds: Vec<RoundGroup>,
-    /// Instances `m` batched in each reduction stage.
+    /// Instances `m` batched in each reduction stage; in `tessera-protocol/2`, also the LogUp
+    /// identity sumcheck (RFC-0032), the leaf stage's layer sumcheck (RFC-0068), and the masks'
+    /// batching of `N` mask claims (RFC-0070).
     pub stages: Vec<u64>,
     /// Instances `m` batched in each tree level.
     pub tree_levels: Vec<u64>,
-    /// Variables `n_i` of each `ZeroCheck`.
+    /// Variables `n_i` of each `ZeroCheck`, including a recomposition's input and bit-axis
+    /// variables (RFC-0035, RFC-0072).
     pub zero_checks: Vec<u64>,
     /// `λ`, the coordinates of stage 1's layer point (RFC-0014 'Statement sizes' `layer_vars`,
     /// RFC-0037 'The layer point', #537), 0 when the schedule has none. `tessera-protocol/2` has
@@ -425,9 +430,12 @@ pub struct StatementSizes {
     pub forests: Vec<u64>,
     /// Lookup and table row counts `(N, T)` of each LogUp instance.
     pub lookups: Vec<LookupSize>,
-    /// Claims `T_g` in each advice opening group.
+    /// Claims `T_g` in each advice opening group; in `tessera-protocol/2`, also the column
+    /// masks' group (RFC-0068), each reduction stage's virtual-tensor fold group (RFC-0013
+    /// 'Virtual tensors'), and the masks' batching's group of one (RFC-0070).
     pub claim_groups: Vec<u64>,
-    /// Padded row-index domain size `2^{ν - log2 k}` of the advice commitment.
+    /// Padded row-index domain size `2^{ν - log2 k}` of the advice commitment, including the
+    /// masks' pad `S` in `tessera-protocol/2` (RFC-0070).
     pub advice_rows: u64,
     /// Opened weight matrices in strictly increasing [`Matrix`] order.
     pub matrices: Vec<MatrixSize>,
@@ -511,11 +519,24 @@ impl StatementSizes {
     /// The default 405B 16K-token, 16K-context statement under `tessera-protocol/1`
     /// (RFC-0014 'The 405B 16K-token, 16K-context statement', RFC-0040 'The matrices').
     ///
+    /// Models `servable`'s composed schedule at 16,384 positions with a generation request
+    /// (RFC-0010 'Stages', RFC-0050, RFC-0053, RFC-0056; #566):
+    /// - `stages`: `[123, 98]` (90 of stage 1's instances are the three norms' root products and
+    ///   90 of stage 2's their `SumSquares`);
+    /// - `lookups`: 27 table entries — the commitment report's 26 model entries plus RFC-0053's
+    ///   greedy `Range(29)` (`2^29` rows and `2^14 · 2^17 = 2^31` lookups), giving 42
+    ///   `tree_levels` of `2 · 27 + 1 = 55` instances with the `SoftmaxRow` forest;
+    /// - `zero_checks`: 14 instances of 42 variables (13 model checks plus the request's logit
+    ///   check);
+    /// - `groups`: `G = 2^14`, 861 level rounds of degree 3, `n_max = 42`, and `P = 53,491`
+    ///   merged polynomials ([`DEFAULT_SPLIT_VALUES`] model split values, the greedy key column,
+    ///   and the forest).
+    ///
     /// Each matrix has one claim and `ChannelParams` [`DEFAULT_CHANNEL_PARAMS_CLAIMS`], so that
-    /// under `tessera-protocol/2` its `B_CP` is 12,280 at `B_W = 4096` and its `ϑ` 14
-    /// (RFC-0065 '`ChannelParams`' blinding rows'). Stage 1's layer point has
-    /// `λ = ⌈log2 126⌉ = 7` coordinates ([`StatementSizes::layer_vars`]), which a statement
-    /// under `tessera-protocol/2` sets to 0.
+    /// under `tessera-protocol/2` its `B_CP` is 12,280 at `B_W = 4096` and its `ϑ` 14 (RFC-0065
+    /// '`ChannelParams`' blinding rows'). Stage 1's layer point has `λ = ⌈log2 126⌉ = 7`
+    /// coordinates ([`StatementSizes::layer_vars`]), which a statement under `tessera-protocol/2`
+    /// sets to 0.
     pub fn default_405b() -> Self {
         const TOKENS: u64 = 16_384;
         const CONTEXT: u64 = 16_384;
@@ -530,12 +551,17 @@ impl StatementSizes {
         const D_FF: u64 = 53_248;
         const VOCAB: u64 = 128_256;
         const LOG2_KW: u32 = 20;
+        // RFC-0053's runtime greedy certificate appends `Range(29)` (`2^29` rows, analyzed logit
+        // span `< 2^29`) and contributes one greedy key column to `groups.merge_claims` (RFC-0014
+        // `lookups`, `groups`; #566).
+        const GREEDY_ROWS: u64 = 1u64 << 29;
+        const GREEDY_SPLIT_VALUES: u64 = 1;
 
         let l_pad = LAYERS.next_power_of_two();
         let h_pad = HEADS.next_power_of_two();
         let padded_extra_layers = l_pad.saturating_sub(LAYERS);
 
-        let mut lookups = Vec::with_capacity(REPORT_405B_TABLES.len());
+        let mut lookups = Vec::with_capacity(REPORT_405B_TABLES.len().saturating_add(1));
         let mut tallest = 1u64;
         for (family, per_token, rows) in REPORT_405B_TABLES {
             let count = match family {
@@ -564,6 +590,12 @@ impl StatementSizes {
                 rows,
             });
         }
+        let greedy_lookups = TOKENS.saturating_mul(VOCAB.next_power_of_two());
+        tallest = tallest.max(greedy_lookups).max(GREEDY_ROWS);
+        lookups.push(LookupSize {
+            lookups: greedy_lookups,
+            rows: GREEDY_ROWS,
+        });
 
         let softmax_forest = u64::from(ceil_log2_u64(
             l_pad.saturating_mul(HEADS).saturating_mul(TOKENS),
@@ -594,9 +626,10 @@ impl StatementSizes {
             count: 1u64.checked_shl(group_bits).unwrap_or(0),
             level_rounds: vec![rounds_below(levels)],
             merge_rounds: n_max,
-            // One merged polynomial per ungrouped split value and one per forest leaf table
-            // (RFC-0054 'The merge').
+            // One merged polynomial per ungrouped model split value, the generation request's
+            // greedy key column (RFC-0053), and one per forest leaf table (RFC-0054 'The merge').
             merge_claims: DEFAULT_SPLIT_VALUES
+                .saturating_add(GREEDY_SPLIT_VALUES)
                 .saturating_add(u64::try_from(forests.len()).unwrap_or(u64::MAX)),
         };
 
@@ -606,9 +639,14 @@ impl StatementSizes {
                 count: 10_000,
                 degree: 7,
             }],
-            stages: vec![64, 64],
+            // `servable`'s two reduction stages on the composed schedule at 16K positions with a
+            // generation request (RFC-0010 'Stages', RFC-0050, RFC-0053, RFC-0056; #566).
+            stages: vec![123, 98],
             tree_levels: vec![instances_per_level; level_count],
-            zero_checks: vec![42; 8],
+            // 13 model zero-checks (`OneHot`'s four, first checkpoint equality, three norms' six
+            // `RootPad`/`ResidualPad`, `SoftmaxRow`'s two) plus the generation request's logit
+            // check, each bounded by the score tensor's 42 variables (RFC-0014 `zero_checks`; #566).
+            zero_checks: vec![42; 14],
             // Stage 1's layer point under tessera-protocol/1: λ = ⌈log2 126⌉ = 7 coordinates
             // (RFC-0037 'Layers and kinds', 'The layer point'; #537).
             layer_vars: u64::from(ceil_log2_u64(LAYERS)),
@@ -627,7 +665,7 @@ impl StatementSizes {
     /// instances replaced by `instance`, one of `N` lookups and `T` rows.
     ///
     /// The leaf stage's levels then follow the tallest tree. When `L = ⌈log2 max(N, T)⌉`
-    /// exceeds the default's 42 levels, `tree_levels` holds `L` levels of the default's 53
+    /// exceeds the default's 42 levels, `tree_levels` holds `L` levels of the default's 55
     /// instances, `groups.level_rounds` `Σ_{ℓ<L} ℓ` rounds of degree 3, and `groups.merge_rounds`
     /// `L`, which bounds every merged polynomial's variables. Every other size is the default's.
     pub fn default_405b_with_instance(instance: LookupSize) -> Self {
@@ -2348,6 +2386,19 @@ mod tests {
 
     #[test]
     fn default_405b_matches_oracle_and_meets_targets() {
+        let base = StatementSizes::default_405b();
+        assert_eq!(base.stages, [123, 98]);
+        assert_eq!(base.lookups.len(), 27);
+        assert_eq!(
+            base.lookups[26],
+            LookupSize {
+                lookups: 2_147_483_648,
+                rows: 536_870_912,
+            }
+        );
+        assert_eq!(base.tree_levels, vec![55; 42]);
+        assert_eq!(base.zero_checks, vec![42; 14]);
+        assert_eq!(base.groups.merge_claims, 53_491);
         let vectors = tv_testkit::read_vectors("soundness/soundness.json");
         let cases = vectors.get("cases").unwrap().as_array().unwrap();
         for (params, case_name) in [
@@ -3039,8 +3090,8 @@ mod tests {
     }
 
     /// RFC-0014 'The 405B 16K-token, 16K-context statement', `groups`: G = 2^{min(14, 14 + 7)},
-    /// 861 level rounds of degree 3, n_max = 28 + 14 and P = 53,489 + 1; and the figures of 'At
-    /// the default statement' with and without them.
+    /// 861 level rounds of degree 3, n_max = 28 + 14 and P = 53,489 + 1 + 1 = 53,491; and the
+    /// figures of 'At the default statement' with and without them.
     #[test]
     fn the_default_statement_is_grouped_at_the_largest_accepted_g() {
         let base = StatementSizes::default_405b();
@@ -3053,10 +3104,12 @@ mod tests {
                     degree: 3
                 }],
                 merge_rounds: 42,
-                merge_claims: 53_490,
+                merge_claims: 53_491,
             }
         );
-        assert_eq!(base.tree_levels, vec![53; 42]);
+        assert_eq!(base.stages, [123, 98]);
+        assert_eq!(base.tree_levels, vec![55; 42]);
+        assert_eq!(base.zero_checks, vec![42; 14]);
         let rows = |groups: GroupSizes| {
             let mut s = base.clone();
             s.groups = groups;
@@ -3070,18 +3123,152 @@ mod tests {
         };
         let (rounds, union) = rows(base.groups.clone());
         let (plain_rounds, plain_union) = rows(GroupSizes::NONE);
-        // The rounds row's largest error is the merge's batching, P + G = 69,874.
-        assert_eq!(rounds, (69_874, String::from("111.90")));
-        assert_eq!(plain_rounds, (64, String::from("121.99")));
-        // The ungrouped union counts stage 1's layer point, λ = 7 (#537): 72,732 + 7.
+        // The rounds row's largest error is the merge's batching, P + G = 69,875; without groups
+        // it is stage 1's m = 123 (#566).
+        assert_eq!(rounds, (69_875, String::from("111.90")));
+        assert_eq!(plain_rounds, (123, String::from("121.05")));
+        // The ungrouped union counts [123, 98] in stages, 42 levels of 55 + 1, 14 zero-checks of
+        // 42 variables (#566), and stage 1's layer point, λ = 7 (#537): 73,161 + 7 = 73,168.
         assert_eq!(base.layer_vars, 7);
-        assert_eq!(plain_union, (72_739, String::from("111.84")));
-        // G more copies of the 42 levels, 861·3 + 42·(53 + 1), and the merge, 2·42 + P + G.
+        assert_eq!(plain_union, (73_168, String::from("111.83")));
+        // G more copies of the 42 levels, 861·3 + 42·(55 + 1), and the merge, 2·42 + P + G.
         assert_eq!(
             union.0,
-            72_739 + 16_384 * (861 * 3 + 42 * 54) + 2 * 42 + 53_490 + 16_384
+            73_168 + 16_384 * (861 * 3 + 42 * 56) + 2 * 42 + 53_491 + 16_384
         );
-        assert_eq!(union, (79_621_481, String::from("101.75")));
+        assert_eq!(union, (80_998_167, String::from("101.72")));
+    }
+
+    /// RFC-0014 'Under `tessera-protocol/2`': RFC-0053's runtime greedy certificate does not
+    /// apply, so `405b-protocol-2` carries the 405B model sizes under `tessera-protocol/2` with
+    /// stages `[122, 96, 26, 36, 2_668]` (model reduction stages, LogUp identity, leaf layer
+    /// sumcheck, and `N = 2,668` mask claims), 26 model lookups, 42 `tree_levels` of 53 instances,
+    /// 13 model `zero_checks` of 42 variables, 20 opening claim groups (`[64; 16]` plus
+    /// `[36, 16, 96, 1]`), and `D = 2,668` (`116.61` bits); `edge/protocol-2` uses the compiled
+    /// 405B model schedule's exact round counts (`Σ count·d = 7,146`) and zero-checks
+    /// (`Σ n_i = 362`) (#565, #566).
+    #[test]
+    fn protocol_2_405b_and_compiled_schedule_vectors_match_rfc_0014() {
+        let vectors = tv_testkit::read_vectors("soundness/soundness.json");
+        let cases = vectors.get("cases").unwrap().as_array().unwrap();
+        let find_report = |name: &str| {
+            cases
+                .iter()
+                .find(|c| c.get("name").unwrap().as_str() == Some(name))
+                .unwrap_or_else(|| panic!("missing oracle case {name}"))
+                .get("report")
+                .unwrap()
+        };
+
+        let mut s_405b_v2 = StatementSizes::default_405b();
+        s_405b_v2.protocol = 2;
+        s_405b_v2.rounds = vec![
+            RoundGroup {
+                count: 9_958,
+                degree: 7,
+            },
+            RoundGroup {
+                count: 42,
+                degree: 10,
+            },
+            RoundGroup {
+                count: 2,
+                degree: 4,
+            },
+            RoundGroup {
+                count: 22,
+                degree: 4,
+            },
+            RoundGroup {
+                count: 32,
+                degree: 2,
+            },
+        ];
+        s_405b_v2.stages = vec![122, 96, 26, 36, 2_668];
+        s_405b_v2.lookups.truncate(26);
+        s_405b_v2.tree_levels = vec![53; 42];
+        s_405b_v2.zero_checks = vec![42; 13];
+        s_405b_v2.layer_vars = 0;
+        s_405b_v2.claim_groups.extend_from_slice(&[36, 16, 96, 1]);
+        s_405b_v2.groups = GroupSizes::NONE;
+        assert_eq!(s_405b_v2.lookups.len(), 26);
+        assert_eq!(s_405b_v2.claim_groups.len(), 20);
+
+        for (params, case_name, expected_meets) in [
+            (
+                SoundnessParams::live_64(),
+                "405b-protocol-2/live-64/1",
+                Some(true),
+            ),
+            (
+                SoundnessParams::ni_100(),
+                "405b-protocol-2/ni-100/1",
+                Some(true),
+            ),
+            (
+                SoundnessParams::test_small(),
+                "405b-protocol-2/test-small/1",
+                None,
+            ),
+        ] {
+            let oracle_report = find_report(case_name);
+            let oracle_statement = parse_statement(oracle_report.get("statement").unwrap());
+            assert_eq!(oracle_statement, s_405b_v2, "{case_name}");
+
+            let report = SoundnessReport::evaluate(params, s_405b_v2.clone()).unwrap();
+            assert_eq!(report.meets_targets, expected_meets, "{case_name}");
+            assert_eq!(report.rows[0].row, RowKind::Rounds);
+            assert_eq!(report.rows[0].numerator, Some(2_668));
+            assert_eq!(format_fixed_bits(report.rows[0].bits.unwrap()), "116.61");
+            assert_eq!(report.rows[1].row, RowKind::Union);
+            assert_eq!(report.rows[1].numerator, Some(76_095));
+            assert_eq!(format_fixed_bits(report.rows[1].bits.unwrap()), "111.78");
+            assert_eq!(report.rows[4].row, RowKind::Openings);
+            assert_eq!(report.rows[4].numerator, Some(96));
+            assert_eq!(format_fixed_bits(report.rows[4].bits.unwrap()), "121.41");
+
+            let as_json = Json::parse(&report.to_json()).unwrap();
+            assert_eq!(
+                canonical_json(&as_json),
+                canonical_json(oracle_report),
+                "{case_name}"
+            );
+        }
+
+        let edge_report = find_report("edge/protocol-2");
+        let edge_params = parse_params(edge_report.get("params").unwrap());
+        let edge_statement = parse_statement(edge_report.get("statement").unwrap());
+        assert_eq!(edge_statement.protocol, 2);
+        assert_eq!(edge_statement.stages, [122, 96, 26, 36, 2_668]);
+        assert_eq!(edge_statement.lookups, s_405b_v2.lookups);
+        assert_eq!(edge_statement.tree_levels, vec![53; 42]);
+        assert_eq!(edge_statement.zero_checks.len(), 13);
+        assert_eq!(edge_statement.zero_checks.iter().sum::<u64>(), 362);
+        assert_eq!(edge_statement.claim_groups.len(), 20);
+        assert_eq!(&edge_statement.claim_groups[..16], &[64; 16]);
+        assert_eq!(&edge_statement.claim_groups[16..], &[36, 16, 96, 1]);
+        assert_eq!(edge_statement.layer_vars, 0);
+        assert_eq!(edge_statement.groups, GroupSizes::NONE);
+        assert_eq!(
+            edge_statement
+                .rounds
+                .iter()
+                .map(|r| r.count * r.degree)
+                .sum::<u64>(),
+            7_146
+        );
+
+        let report = SoundnessReport::evaluate(edge_params, edge_statement).unwrap();
+        assert_eq!(report.meets_targets, Some(true));
+        assert_eq!(report.rows[0].row, RowKind::Rounds);
+        assert_eq!(report.rows[0].numerator, Some(2_668));
+        assert_eq!(format_fixed_bits(report.rows[0].bits.unwrap()), "116.61");
+        assert_eq!(report.rows[1].row, RowKind::Union);
+        assert_eq!(report.rows[1].numerator, Some(12_771));
+        assert_eq!(format_fixed_bits(report.rows[1].bits.unwrap()), "114.35");
+        assert_eq!(report.rows[4].row, RowKind::Openings);
+        assert_eq!(report.rows[4].numerator, Some(96));
+        assert_eq!(format_fixed_bits(report.rows[4].bits.unwrap()), "121.41");
     }
 
     fn only_groups(tree_levels: Vec<u64>, groups: GroupSizes) -> [u128; 2] {
@@ -3179,7 +3366,7 @@ mod tests {
             let s = StatementSizes::default_405b_with_instance(instance);
             let n = usize::try_from(levels).unwrap();
             assert_eq!(s.lookups, vec![instance]);
-            assert_eq!(s.tree_levels, vec![53; n]);
+            assert_eq!(s.tree_levels, vec![55; n]);
             assert_eq!(
                 s.groups,
                 GroupSizes {

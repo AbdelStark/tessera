@@ -108,10 +108,12 @@ pub struct StatementSizes {
     /// The `n` of `tessera-protocol/n`, whose bounds apply: 1, or 2 with the zero-knowledge items.
     pub protocol: u16,
     /// Every round of every stage and tree level, by degree; in `tessera-protocol/2`, the LogUp
-    /// identity sumcheck's too.
+    /// identity sumcheck's, the leaf stage's layer sumcheck's and the masks' batching's too
+    /// (RFC-0032, RFC-0068, RFC-0070).
     pub rounds: Vec<Rounds>,
     /// The instances each reduction stage batches, one entry per stage; in
-    /// `tessera-protocol/2`, the LogUp identity sumcheck is one more.
+    /// `tessera-protocol/2`, the LogUp identity sumcheck, the leaf stage's layer sumcheck and the
+    /// masks' batching are three more (RFC-0032, RFC-0068, RFC-0070).
     pub stages: Vec<u64>,
     /// The instances each tree level batches: the fraction trees and product forests at it.
     pub tree_levels: Vec<u64>,

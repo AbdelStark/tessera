@@ -162,7 +162,7 @@ fn lookups_and_table_rows_override_logup_instances() {
 }
 
 /// RFC-0014: with `--lookups` or `--table-rows`, the leaf stage's levels follow the tallest
-/// tree. Past the default's 42 levels, `L = ⌈log2 max(N, T)⌉` levels of 53 instances,
+/// tree. Past the default's 42 levels, `L = ⌈log2 max(N, T)⌉` levels of 55 instances,
 /// `Σ_{ℓ<L} ℓ` level rounds of degree 3 and `L` merge rounds, at the default's `G` and `P`.
 #[test]
 fn the_leaf_levels_follow_the_tallest_instance() {
@@ -201,7 +201,7 @@ fn the_leaf_levels_follow_the_tallest_instance() {
             canonical_json(default.get("groups").unwrap()),
             "{args:?}"
         );
-        assert_eq!(levels(&report), vec![53; 42], "{args:?}");
+        assert_eq!(levels(&report), vec![55; 42], "{args:?}");
     }
     for (args, l) in [
         (&["--lookups", "4398046511105"][..], 43u64),
@@ -213,10 +213,10 @@ fn the_leaf_levels_follow_the_tallest_instance() {
         // N or T = 2^50 also fails the LogUp row.
         let code = if l == 50 { 10 } else { 0 };
         let report = checked_with_code(&all, code);
-        assert_eq!(levels(&report), vec![53; l as usize], "{args:?}");
+        assert_eq!(levels(&report), vec![55; l as usize], "{args:?}");
         let g = groups(&report);
         assert_eq!(g.get("count").unwrap().as_u64(), Some(16_384));
-        assert_eq!(g.get("merge_claims").unwrap().as_u64(), Some(53_490));
+        assert_eq!(g.get("merge_claims").unwrap().as_u64(), Some(53_491));
         assert_eq!(g.get("merge_rounds").unwrap().as_u64(), Some(l));
         let rounds = g.get("level_rounds").unwrap().as_array().unwrap();
         assert_eq!(rounds.len(), 1);

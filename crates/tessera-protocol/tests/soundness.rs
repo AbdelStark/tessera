@@ -306,8 +306,8 @@ fn the_405b_lookups_are_the_compilers_reports() {
     assert_eq!(report["model"]["profile"], "servable");
     let tables = list(&report["tables"]);
     let statement = StatementSizes::llama_405b_16k();
-    assert_eq!(statement.lookups.len(), tables.len());
-    for (instance, table) in statement.lookups.iter().zip(tables) {
+    assert_eq!(statement.lookups.len(), tables.len() + 1);
+    for (instance, table) in statement.lookups[..tables.len()].iter().zip(tables) {
         let per_token: u64 = int(&table["lookups_per_token"]);
         let expected = match text(&table["kind"]) {
             "Exp" => {
@@ -335,6 +335,14 @@ fn the_405b_lookups_are_the_compilers_reports() {
         assert_eq!(instance.lookups, expected, "{table}");
         assert_eq!(instance.rows, int::<u64>(&table["rows"]), "{table}");
     }
+    // RFC-0053's runtime greedy Range(29): at most 2^14 · 2^17 = 2^31 lookups into 2^29 rows.
+    assert_eq!(
+        statement.lookups[tables.len()],
+        LookupSizes {
+            lookups: 1 << 31,
+            rows: 1 << 29,
+        }
+    );
 }
 
 #[test]
@@ -541,12 +549,7 @@ fn rfc_0014s_figures_are_lower_bounds_but_80_1_which_is_rounded() {
             .find(|c| text(&c["name"]) == name)
             .expect("the case");
         let set = params(&case["report"]["params"]);
-        let statement = StatementSizes {
-            protocol: int(&case["report"]["statement"]["protocol"]),
-            groups: sizes(&case["report"]["statement"]).groups,
-            layer_vars: sizes(&case["report"]["statement"]).layer_vars,
-            ..StatementSizes::llama_405b_16k()
-        };
+        let statement = sizes(&case["report"]["statement"]);
         let r = report(&set, &statement);
         let at = r
             .rows
@@ -598,6 +601,71 @@ fn a_round_of_protocol_2s_reduction_stage_degree_gives_124_68_bits() {
     assert_eq!(rounds.bits, Some(FixedBits(31_917)));
     let hundredths = rounds.bits.map(|b| (b.0 * 100 + 128) / 256);
     assert_eq!(hundredths, Some(12_468));
+}
+
+/// RFC-0014 'Soundness calculator' ('Under `tessera-protocol/2`', #566): the `405b-protocol-2`
+/// and `edge/protocol-2` reports carry the 405B model schedule's reduction stages, 13 zero-checks,
+/// the LogUp identity, layer and mask-batching sumchecks, and the 20 advice opening groups, with
+/// the rounds row governed by RFC-0070's 2,668 mask claims (`116.61` bits).
+#[test]
+fn protocol_2_vectors_carry_the_composed_stages_and_mask_batching() {
+    let vectors = load();
+    for (name, stages, zero_sum, union_num, openings_num) in [
+        (
+            "405b-protocol-2/live-64/1",
+            [122u64, 96, 26, 36, 2_668],
+            13 * 42u32,
+            76_095u128,
+            96u128,
+        ),
+        (
+            "405b-protocol-2/ni-100/1",
+            [122, 96, 26, 36, 2_668],
+            13 * 42,
+            76_095,
+            96,
+        ),
+        ("edge/protocol-2", [122, 96, 26, 36, 2_668], 362, 12_771, 96),
+    ] {
+        let case = list(&vectors["cases"])
+            .iter()
+            .find(|c| text(&c["name"]) == name)
+            .expect("the protocol/2 case");
+        let set = params(&case["report"]["params"]);
+        let statement = sizes(&case["report"]["statement"]);
+        assert_eq!(statement.stages, stages, "{name}");
+        assert_eq!(statement.lookups.len(), 26, "{name}");
+        assert_eq!(statement.zero_checks.len(), 13, "{name}");
+        assert_eq!(
+            statement.zero_checks.iter().sum::<u32>(),
+            zero_sum,
+            "{name}"
+        );
+        assert_eq!(statement.claim_groups.len(), 20, "{name}");
+        let r = report(&set, &statement);
+        assert_eq!(r.meets_targets(), Some(true), "{name}");
+        let rounds = row(&r, RowKind::Rounds);
+        assert_eq!(
+            rounds.bound,
+            ErrorBound::Field { numerator: 2_668 },
+            "{name}"
+        );
+        assert_eq!(rounds.bits, Some(FixedBits(29_854)), "{name}");
+        assert_eq!(
+            row(&r, RowKind::Union).bound,
+            ErrorBound::Field {
+                numerator: union_num
+            },
+            "{name}"
+        );
+        assert_eq!(
+            row(&r, RowKind::Openings).bound,
+            ErrorBound::Field {
+                numerator: openings_num
+            },
+            "{name}"
+        );
+    }
 }
 
 /// For every row of RFC-0014's table, a size or parameter that makes exactly that row miss its

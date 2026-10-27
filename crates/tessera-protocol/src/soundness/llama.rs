@@ -87,20 +87,24 @@ impl StatementSizes {
     /// the architecture by the rule its RFC states; where none gives a count, an upper bound:
     ///
     /// - **Rounds:** 10,000, all of degree 7, RFC-0014's "about 10^4 rounds" of "degree `d ≤ 7`".
-    /// - **Stages:** `servable`'s two reduction stages (RFC-0010 'Stages'), each batching at
-    ///   most 64 instances; the compiler's schedule batches 18 and 4 before the gadgets' own
-    ///   relations join it (#118).
+    /// - **Stages:** `servable`'s two reduction stages on the composed schedule with a generation
+    ///   request (RFC-0010 'Stages', RFC-0050, RFC-0053, RFC-0056), batching 123 and 98 instances
+    ///   (90 of stage 1's are root products and 90 of stage 2's are `SumSquares`; prefill batches
+    ///   122 and 97, and the model alone 122 and 96, #566).
     /// - **Tree levels:** 42, the height of the tallest tree, the `Exp` instance's lookup tree of
-    ///   `2^42` leaves. Each batches at most 53 instances, the 26 table entries' two trees and the
+    ///   `2^42` leaves. Each batches at most 55 instances, the 27 table entries' two trees and the
     ///   `SoftmaxRow` forest.
-    /// - **Zero-checks:** 8 of at most 42 variables, the score tensor's: RFC-0035's four padding
-    ///   zero-checks, `OneHot`'s booleanity and vocabulary checks, and the first checkpoint's
-    ///   equality: seven instances, with one spare.
+    /// - **Zero-checks:** 14 of at most 42 variables, the score tensor's: `OneHot`'s four checks
+    ///   (RFC-0035), the first checkpoint's equality (RFC-0037), the three norms' six `RootPad`
+    ///   and `ResidualPad` checks (RFC-0050), `SoftmaxRow`'s two padding checks (RFC-0030) and the
+    ///   request's logit check (RFC-0053; 13 without a request).
     /// - **Forests:** the `SoftmaxRow` forest, `2^7 · 2^7 · 2^14 = 2^28` trees: `s = 28`.
-    /// - **LogUp:** the report's complete 26 table entries (RoPE is a conservative zero-lookup entry), `N` its lookups per token times 16,384 and `T`
-    ///   its rows, except `Exp`'s `N`, the `2^42` positions of the padded score tensor (RFC-0030
-    ///   'Cost'). Softmax's reciprocal and slack families add the padded layers'
-    ///   reads to their real-row counts; root reads sharing a family stay unchanged.
+    /// - **LogUp:** 27 table entries: the report's complete 26 table entries (RoPE is a
+    ///   conservative zero-lookup entry) plus RFC-0053's runtime greedy `Range(29)` (`2^29` rows,
+    ///   at most `2^14 · 2^17 = 2^31` lookups). `N` is lookups per token times 16,384 and `T` its
+    ///   rows, except `Exp`'s `N`, the `2^42` positions of the padded score tensor (RFC-0030
+    ///   'Cost'). Softmax's reciprocal and slack families add the padded layers' reads to their
+    ///   real-row counts; root reads sharing a family stay unchanged.
     /// - **Claim groups:** 16, RFC-0011's target for `G`, of at most 64 claims each; the
     ///   compiler's pool holds 38 claims before the gadgets' join.
     /// - **Advice rows:** the 2^22 row-index domain, from 2,328,576 allocated rows.
@@ -111,10 +115,11 @@ impl StatementSizes {
     /// - **Groups:** `G = 2^14`, the most RFC-0054 admits, since `t + n_ℓ = 14 + 7`. Level `ℓ` of
     ///   the `Exp` tree has `ℓ` rounds of degree 3 (RFC-0010 'Tree levels'), and the `SoftmaxRow`
     ///   forest, whose trees of height 14 join at level 28, as many: 861 in all. The merge has
-    ///   `n_max = 42` rounds, the forest leaf table's `28 + 14` variables, and `P = 53,490`
-    ///   claims, the 53,489 split values and the forest.
+    ///   `n_max = 42` rounds, the forest leaf table's `28 + 14` variables, and `P = 53,491`
+    ///   claims, the 53,489 model split values, the generation request's greedy key column
+    ///   (RFC-0053) and the forest (`53,490` without outputs).
     pub fn llama_405b_16k() -> Self {
-        let lookups = TABLES
+        let mut lookups: Vec<LookupSizes> = TABLES
             .iter()
             .enumerate()
             .map(|(i, &(per_token, rows, softmax))| LookupSizes {
@@ -128,15 +133,21 @@ impl StatementSizes {
                 rows,
             })
             .collect();
+        // RFC-0053: generation appends Range(29), 2^29 rows and at most 2^14 · 2^17 = 2^31 lookups.
+        lookups.push(LookupSizes {
+            lookups: TOKENS * (1 << 17),
+            rows: 1 << 29,
+        });
+        let tree_instances = 2 * lookups.len() as u64 + 1;
         Self {
             protocol: 1,
             rounds: vec![Rounds {
                 count: 10_000,
                 degree: 7,
             }],
-            stages: vec![64, 64],
-            tree_levels: vec![2 * TABLES.len() as u64 + 1; 42],
-            zero_checks: vec![42; 8],
+            stages: vec![123, 98],
+            tree_levels: vec![tree_instances; 42],
+            zero_checks: vec![42; 14],
             // λ = ⌈log2 126⌉ (RFC-0037 'The layer point').
             layer_vars: 7,
             forests: vec![28],
@@ -165,7 +176,7 @@ impl StatementSizes {
                     degree: 3,
                 }],
                 merge_rounds: 42,
-                merge_claims: SPLIT_VALUES + 1,
+                merge_claims: SPLIT_VALUES + 1 + 1,
             },
         }
     }
