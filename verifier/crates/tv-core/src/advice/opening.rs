@@ -268,7 +268,7 @@ impl Opening<'_> {
     fn coefficients(&self, index: usize, out: &mut Vec<Fp2>) -> Result<(), OpeningError> {
         out.clear();
         let proximity = if index == self.groups.len() {
-            Some(EqTables::new(self.xi, Fp2::ONE).ok_or(OpeningError::Internal)?)
+            Some(EqTables::new(self.xi, Fp2::ONE)?)
         } else {
             None
         };

@@ -48,6 +48,10 @@ harness = false
 required-features = ["test-params"]
 
 [[test]]
+name = "field_allocation"
+harness = false
+
+[[test]]
 name = "gadgets_allocation"
 harness = false
 

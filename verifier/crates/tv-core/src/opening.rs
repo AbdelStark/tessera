@@ -71,7 +71,7 @@
 use core::fmt;
 use core::num::NonZeroU32;
 
-use tv_field::{Fp, Fp2, TWO_ADICITY, coset_ntt, intt};
+use tv_field::{Fp, Fp2, NttError, TWO_ADICITY, coset_ntt, intt};
 use tv_hash::column::column_digest;
 use tv_hash::merkle::{MultiproofError, verify_multiproof};
 use tv_hash::{Digest, Domain, DomainHasher};
@@ -766,29 +766,36 @@ pub(crate) struct EqTables {
 }
 
 impl EqTables {
-    /// The tables of `point`, at most [`MAX_ROW_VARS`] coordinates, or `None` for a longer one.
-    pub(crate) fn new(point: &[Fp2], weight: Fp2) -> Option<Self> {
-        let vars = u32::try_from(point.len())
-            .ok()
-            .filter(|&vars| vars <= MAX_ROW_VARS)?;
-        let tables = point
-            .chunks(TABLE_BITS)
-            .map(|chunk| {
-                // Each coordinate doubles the table: the new bit is the highest, 0 in the low
-                // half and 1 in the high half.
-                let mut table = vec![Fp2::ONE];
-                for &r in chunk {
-                    let high: Vec<Fp2> = table.iter().map(|&entry| entry * r).collect();
-                    let one_minus_r = Fp2::ONE - r;
-                    for entry in &mut table {
-                        *entry *= one_minus_r;
-                    }
-                    table.extend(high);
+    /// The tables of `point`: invalid own arity is `Internal`, failed reservation `Memory`.
+    pub(crate) fn new(point: &[Fp2], weight: Fp2) -> Result<Self, OpeningError> {
+        let vars = u32::try_from(point.len()).map_err(|_| OpeningError::Internal)?;
+        if vars > MAX_ROW_VARS {
+            return Err(OpeningError::Internal);
+        }
+        let mut tables = Vec::new();
+        tables
+            .try_reserve_exact(point.len().div_ceil(TABLE_BITS))
+            .map_err(|_| OpeningError::Memory)?;
+        for chunk in point.chunks(TABLE_BITS) {
+            let bits = u32::try_from(chunk.len()).map_err(|_| OpeningError::Internal)?;
+            let size = 1usize.checked_shl(bits).ok_or(OpeningError::Internal)?;
+            let mut table = Vec::new();
+            table
+                .try_reserve_exact(size)
+                .map_err(|_| OpeningError::Memory)?;
+            table.push(Fp2::ONE);
+            for &r in chunk {
+                let one_minus_r = Fp2::ONE - r;
+                // Append the high half from the old low half; its final capacity is reserved.
+                for index in 0..table.len() {
+                    let entry = *table.get(index).ok_or(OpeningError::Internal)?;
+                    *table.get_mut(index).ok_or(OpeningError::Internal)? = entry * one_minus_r;
+                    table.push(entry * r);
                 }
-                table
-            })
-            .collect();
-        Some(Self {
+            }
+            tables.push(table);
+        }
+        Ok(Self {
             weight,
             vars,
             tables,
@@ -821,7 +828,7 @@ fn row_coefficients(
     out.clear();
     out.resize(rows, Fp2::ZERO);
     let mut add = |point: &[Fp2], weight: Fp2| -> Result<(), OpeningError> {
-        let tables = EqTables::new(point, weight).ok_or(OpeningError::Internal)?;
+        let tables = EqTables::new(point, weight)?;
         let layout_rows = opening.layout.segments.iter().flatten();
         for (slot, &row) in out.iter_mut().zip(layout_rows) {
             *slot += tables.at(row).ok_or(OpeningError::Internal)?;
@@ -870,12 +877,21 @@ pub(crate) fn encode(
     if row.mask.len() > low.len() || row.mask.len() > high.len() {
         return Err(OpeningError::Internal);
     }
-    intt(low).map_err(|_| OpeningError::Internal)?;
+    intt(low).map_err(ntt_error)?;
     for ((low, high), &m) in low.iter_mut().zip(high.iter_mut()).zip(&row.mask) {
         *low -= m;
         *high += m;
     }
-    coset_ntt(codeword, COSET_SHIFT).map_err(|_| OpeningError::Internal)
+    coset_ntt(codeword, COSET_SHIFT).map_err(ntt_error)
+}
+
+fn ntt_error(error: NttError) -> OpeningError {
+    match error {
+        NttError::Memory => OpeningError::Memory,
+        NttError::NotPowerOfTwo { .. } | NttError::TooLong { .. } | NttError::ZeroShift => {
+            OpeningError::Internal
+        }
+    }
 }
 
 /// `leaf_j = H("column-merge", d_j^(1) ‖ … ‖ d_j^(S))`, each segment's digest chaining its share
@@ -1062,7 +1078,10 @@ mod tests {
                 assert_eq!(tables.at(u64::MAX), None);
             }
         }
-        assert!(EqTables::new(&[Fp2::ONE; 65], Fp2::ONE).is_none());
+        assert_eq!(
+            EqTables::new(&[Fp2::ONE; 65], Fp2::ONE).err(),
+            Some(OpeningError::Internal)
+        );
     }
 
     /// `spec/vectors/encoding/encoding.json`, from an independent oracle: rows of `k = 1` to 64
