@@ -318,6 +318,11 @@ mod tests {
         };
         assert_eq!(input.read(&path).unwrap(), b"regular input");
         assert_eq!(input.remaining, 0);
+        let link = dir.join("link");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        input.remaining = 13;
+        assert_eq!(input.read(&link).unwrap(), b"regular input");
+        assert_eq!(input.remaining, 0);
         // Replace the path between the preflight check and its shared open operation.
         fs::rename(&path, dir.join("original")).unwrap();
         assert!(
