@@ -231,6 +231,7 @@ fn opening_error(e: opening::OpeningError) -> Failure {
         E::MerklePath { column } => reject(RejectReason::MerklePath { commitment, column }),
         E::Proximity { column } => reject(RejectReason::Proximity { commitment, column }),
         E::Memory => memory(),
+        E::Time => fail(ErrorCode::Time),
         _ => internal(),
     }
 }
@@ -244,6 +245,7 @@ fn weight_error(e: weights::Error) -> Failure {
         E::MerklePath { column, .. } => reject(RejectReason::MerklePath { commitment, column }),
         E::Proximity { column, .. } => reject(RejectReason::Proximity { commitment, column }),
         E::Memory => memory(),
+        E::Time => fail(ErrorCode::Time),
         E::Internal => internal(),
     }
 }
@@ -548,7 +550,7 @@ pub use live::LiveVerifier;
 #[cfg(all(test, feature = "test-params"))]
 mod corpus;
 #[cfg(all(test, feature = "test-params"))]
-mod tests;
+pub(crate) mod tests;
 
 #[derive(Clone, Copy)]
 enum Session<'a> {
@@ -1216,11 +1218,13 @@ fn verify_unit_tracked(
     {
         return Err(malformed(artifact));
     }
+    let mut cancel = || started.elapsed() >= cfg.limits.max_wall_time;
     advice_evaluated
-        .check_columns(
+        .check_columns_with_cancel(
             &advice_queries,
             &proof.round3.advice_columns,
             &proof.round3.advice_proof.siblings,
+            &mut cancel,
         )
         .map_err(opening_error)?;
     for (i, result) in evaluated {
@@ -1231,14 +1235,17 @@ fn verify_unit_tracked(
             .find(|p| usize::from(p.matrix) == i)
         {
             result
-                .check_columns(
+                .check_columns_with_cancel(
                     queries.get(i).ok_or_else(internal)?,
                     &packet.columns,
                     &packet.proof.siblings,
+                    &mut cancel,
                 )
                 .map_err(weight_error)?;
         } else {
-            result.check_columns(&[], &[], &[]).map_err(weight_error)?;
+            result
+                .check_columns_with_cancel(&[], &[], &[], &mut cancel)
+                .map_err(weight_error)?;
         }
     }
     deadline(started, cfg.limits)?;

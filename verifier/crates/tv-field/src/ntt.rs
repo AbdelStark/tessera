@@ -43,8 +43,8 @@ pub trait NttValue:
 impl NttValue for Fp {}
 impl NttValue for Fp2 {}
 
-/// Why a transform cannot run. Every transform checks its arguments before touching the
-/// values, so on error they are unchanged.
+/// Why a transform cannot run. Argument and memory errors leave values unchanged.
+/// Only the explicitly cancellable transforms can return `Cancelled`, with partial values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NttError {
     /// The length is not a power of two.
@@ -61,6 +61,8 @@ pub enum NttError {
     ZeroShift,
     /// Scratch for the twiddle factors could not be reserved. Values are unchanged.
     Memory,
+    /// A cancellable transform stopped; its values may be partially transformed.
+    Cancelled,
 }
 
 impl fmt::Display for NttError {
@@ -72,6 +74,7 @@ impl fmt::Display for NttError {
             }
             Self::ZeroShift => write!(f, "coset shift is zero"),
             Self::Memory => f.write_str("cannot reserve NTT twiddle factors"),
+            Self::Cancelled => f.write_str("NTT cancelled"),
         }
     }
 }
@@ -89,16 +92,49 @@ fn log_len(len: usize) -> Result<u32, NttError> {
     }
 }
 
-/// The radix-2 decimation-in-time DFT at `root`, an element of order `values.len()`: the
-/// values in bit-reversed order, then `log2 n` layers of butterflies
-/// `(u, v) ↦ (u + w·v, u − w·v)`.
-fn transform<T: NttValue>(values: &mut [T], twiddles: &[Fp]) {
+/// A fixed public work interval; the callback never reads field values.
+struct Control<C> {
+    cancel: C,
+    remaining: usize,
+}
+impl<C: FnMut() -> bool> Control<C> {
+    fn new(cancel: C) -> Self {
+        Self {
+            cancel,
+            remaining: 0,
+        }
+    }
+    fn poll(&mut self) -> Result<(), NttError> {
+        if (self.cancel)() {
+            Err(NttError::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
+    #[inline]
+    fn step(&mut self) -> Result<(), NttError> {
+        if self.remaining == 0 {
+            self.poll()?;
+            self.remaining = 4096;
+        }
+        self.remaining -= 1;
+        Ok(())
+    }
+}
+
+/// Radix-2 DIT: bit reversal, then butterflies at successively doubled widths.
+fn transform<T: NttValue>(
+    values: &mut [T],
+    twiddles: &[Fp],
+    control: &mut Control<impl FnMut() -> bool>,
+) -> Result<(), NttError> {
     let n = values.len();
     if n < 2 {
-        return;
+        return Ok(());
     }
     let log_n = n.trailing_zeros();
     for i in 0..n {
+        control.step()?;
         let j = i.reverse_bits() >> (usize::BITS - log_n);
         if i < j {
             values.swap(i, j);
@@ -110,75 +146,128 @@ fn transform<T: NttValue>(values: &mut [T], twiddles: &[Fp]) {
         for block in values.chunks_exact_mut(2 * half) {
             let (lo, hi) = block.split_at_mut(half);
             for ((u, v), w) in lo.iter_mut().zip(hi).zip(twiddles.iter().step_by(stride)) {
+                control.step()?;
                 let t = *v * *w;
                 (*u, *v) = (*u + t, *u - t);
             }
         }
         half *= 2;
     }
+    Ok(())
 }
 
-/// Reserve before any permutation or coset scaling: a memory error leaves values unchanged.
-fn twiddles(n: usize, root: Fp) -> Result<Vec<Fp>, NttError> {
+/// Reserve before modifying values: a memory error leaves them unchanged.
+fn twiddles(
+    n: usize,
+    root: Fp,
+    control: &mut Control<impl FnMut() -> bool>,
+) -> Result<Vec<Fp>, NttError> {
+    control.step()?;
     let mut powers = Vec::new();
     powers
         .try_reserve_exact(n / 2)
         .map_err(|_| NttError::Memory)?;
-    // Every n/(2·half)-th root power is the twiddle of a layer of width 2·half.
     let mut w = Fp::ONE;
     for _ in 0..n / 2 {
+        control.step()?;
         powers.push(w);
         w *= root;
     }
     Ok(powers)
 }
 
-/// The inverse DFT on a subgroup of order `n = 2^log_n`, then `values[i] *= ratio^i`. The
-/// inverse DFT is the DFT at `ω^{-1} = ω^{n−1}` scaled by `n^{-1}`; and `n^{-1} = −(P − 1)/n`
-/// because `n·(P − 1)/n = P − 1 = −1`.
-fn inverse_transform<T: NttValue>(values: &mut [T], log_n: u32, ratio: Fp) -> Result<(), NttError> {
-    let powers = twiddles(values.len(), primitive_root(log_n).pow((1 << log_n) - 1))?;
-    transform(values, &powers);
-    let mut factor = -Fp::reduce((Fp::MODULUS - 1) >> log_n);
-    for value in values.iter_mut() {
-        *value = *value * factor;
-        factor *= ratio;
+/// Scale each value by `first · ratio^i`, for cosets and inverse normalization.
+fn scale<T: NttValue>(
+    values: &mut [T],
+    mut first: Fp,
+    ratio: Fp,
+    control: &mut Control<impl FnMut() -> bool>,
+) -> Result<(), NttError> {
+    for value in values {
+        control.step()?;
+        *value = *value * first;
+        first *= ratio;
     }
     Ok(())
+}
+
+/// Inverse DFT, then scaling by `n^-1 · ratio^i`; `n^-1 = -(P - 1)/n`.
+fn inverse_transform<T: NttValue>(
+    values: &mut [T],
+    log_n: u32,
+    ratio: Fp,
+    control: &mut Control<impl FnMut() -> bool>,
+) -> Result<(), NttError> {
+    let powers = twiddles(
+        values.len(),
+        primitive_root(log_n).pow((1 << log_n) - 1),
+        control,
+    )?;
+    transform(values, &powers, control)?;
+    scale(
+        values,
+        -Fp::reduce((Fp::MODULUS - 1) >> log_n),
+        ratio,
+        control,
+    )?;
+    control.poll()
 }
 
 /// Evaluates `f(X) = Σ_j values[j]·X^j` at `ω^0, …, ω^{n−1}` in place, where `n` is
 /// `values.len()` and `ω` is [`root_of_unity`]`(log2 n)`.
 pub fn ntt<T: NttValue>(values: &mut [T]) -> Result<(), NttError> {
     let log_n = log_len(values.len())?;
-    let powers = twiddles(values.len(), primitive_root(log_n))?;
-    transform(values, &powers);
-    Ok(())
+    let mut control = Control::new(|| false);
+    let powers = twiddles(values.len(), primitive_root(log_n), &mut control)?;
+    transform(values, &powers, &mut control)
 }
 
 /// The inverse of [`ntt`]: the coefficients of the polynomial of degree below `n` that takes
 /// the given values at `ω^0, …, ω^{n−1}`.
 pub fn intt<T: NttValue>(values: &mut [T]) -> Result<(), NttError> {
+    intt_with_cancel(values, || false)
+}
+
+/// [`intt`] with cancellation before work, at most every 4096 scalar work steps, and at exit.
+/// A work step is one twiddle, permutation index, butterfly or scaled value.
+///
+/// # Errors
+/// The same validation and memory errors as [`intt`], with unchanged inputs. If `cancel`
+/// returns true, `Cancelled` is returned and values may be partially transformed. The callback
+/// must return promptly; it is never called for invalid arguments.
+pub fn intt_with_cancel<T: NttValue>(
+    values: &mut [T],
+    cancel: impl FnMut() -> bool,
+) -> Result<(), NttError> {
     let log_n = log_len(values.len())?;
-    inverse_transform(values, log_n, Fp::ONE)
+    inverse_transform(values, log_n, Fp::ONE, &mut Control::new(cancel))
 }
 
 /// Evaluates `f(X) = Σ_j values[j]·X^j` on the coset `shift·L` in place: at
 /// `shift·ω^0, …, shift·ω^{n−1}`, with `L` the subgroup of order `n = values.len()`.
 pub fn coset_ntt<T: NttValue>(values: &mut [T], shift: Fp) -> Result<(), NttError> {
+    coset_ntt_with_cancel(values, shift, || false)
+}
+
+/// [`coset_ntt`] with the cancellation contract of [`intt_with_cancel`].
+///
+/// # Errors
+/// Argument and memory errors leave inputs unchanged. Cancellation may leave a partial
+/// transform; an invalid length or zero shift takes precedence without calling `cancel`.
+pub fn coset_ntt_with_cancel<T: NttValue>(
+    values: &mut [T],
+    shift: Fp,
+    cancel: impl FnMut() -> bool,
+) -> Result<(), NttError> {
     let log_n = log_len(values.len())?;
     if shift == Fp::ZERO {
         return Err(NttError::ZeroShift);
     }
-    let powers = twiddles(values.len(), primitive_root(log_n))?;
-    // f(shift·X) has coefficients values[j]·shift^j.
-    let mut power = Fp::ONE;
-    for value in values.iter_mut() {
-        *value = *value * power;
-        power *= shift;
-    }
-    transform(values, &powers);
-    Ok(())
+    let mut control = Control::new(cancel);
+    let powers = twiddles(values.len(), primitive_root(log_n), &mut control)?;
+    scale(values, Fp::ONE, shift, &mut control)?;
+    transform(values, &powers, &mut control)?;
+    control.poll()
 }
 
 /// The inverse of [`coset_ntt`]: the coefficients of the polynomial of degree below `n` that
@@ -186,12 +275,66 @@ pub fn coset_ntt<T: NttValue>(values: &mut [T], shift: Fp) -> Result<(), NttErro
 pub fn coset_intt<T: NttValue>(values: &mut [T], shift: Fp) -> Result<(), NttError> {
     let log_n = log_len(values.len())?;
     let shift_inverse = shift.inverse().ok_or(NttError::ZeroShift)?;
-    inverse_transform(values, log_n, shift_inverse)
+    inverse_transform(values, log_n, shift_inverse, &mut Control::new(|| false))
 }
 
 #[cfg(all(test, target_pointer_width = "64"))]
 mod tests {
     use super::*;
+
+    fn cancel_at(limit: usize) -> impl FnMut() -> bool {
+        let mut polls = 0;
+        move || {
+            polls += 1;
+            polls == limit
+        }
+    }
+
+    #[test]
+    fn cancellation_interrupts_twiddle_generation() {
+        assert_eq!(
+            twiddles(16384, primitive_root(14), &mut Control::new(cancel_at(2))),
+            Err(NttError::Cancelled)
+        );
+    }
+
+    #[test]
+    fn cancellation_interrupts_permutation_before_butterflies() {
+        let mut values: Vec<_> = (0..8192).map(Fp::reduce).collect();
+        let powers = twiddles(8192, primitive_root(13), &mut Control::new(|| false)).unwrap();
+        assert_eq!(
+            transform(&mut values, &powers, &mut Control::new(cancel_at(2))),
+            Err(NttError::Cancelled)
+        );
+        // This pair has both indices above 4096, so the interrupted permutation has not visited it.
+        assert_eq!(values[4099], Fp::reduce(4099));
+    }
+
+    #[test]
+    fn cancellation_interrupts_butterfly_layers() {
+        let mut values = vec![Fp::ONE; 8192];
+        let powers = twiddles(8192, primitive_root(13), &mut Control::new(|| false)).unwrap();
+        assert_eq!(
+            transform(&mut values, &powers, &mut Control::new(cancel_at(4))),
+            Err(NttError::Cancelled)
+        );
+    }
+
+    #[test]
+    fn cancellation_interrupts_scaling() {
+        let mut values = vec![Fp::ONE; 8192];
+        assert_eq!(
+            scale(
+                &mut values,
+                Fp::reduce(2),
+                Fp::ONE,
+                &mut Control::new(cancel_at(2))
+            ),
+            Err(NttError::Cancelled)
+        );
+        assert_eq!(values[0], Fp::reduce(2));
+        assert_eq!(values[7000], Fp::ONE);
+    }
 
     /// A zero-sized value, so that a slice longer than `2^TWO_ADICITY` costs no memory.
     #[derive(Clone, Copy, Debug, PartialEq)]

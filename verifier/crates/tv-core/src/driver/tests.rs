@@ -3,7 +3,7 @@
 //! Recorded public messages exercise replay without making a Live session reusable.
 use super::*;
 
-pub(super) fn fixture() -> (ClaimList, NiProof, VerifierConfig) {
+pub(crate) fn fixture() -> (ClaimList, NiProof, VerifierConfig) {
     let limits = DecodeLimits::MESSAGE;
     let claims = ClaimList::open(
         include_bytes!("../../tests/fixtures/driver/claims.tcl"),
@@ -85,6 +85,21 @@ fn recorded_live_and_ni_reports_are_identical_on_100_complete_replays() {
         std::fs::write(example, &json).unwrap();
     }
     assert_eq!(std::fs::read_to_string(example).unwrap(), json);
+}
+
+#[test]
+fn pcs_cancellation_is_inconclusive_time_at_the_driver_boundary() {
+    for failure in [
+        opening_error(opening::OpeningError::Time),
+        weight_error(weights::Error::Time),
+    ] {
+        assert!(matches!(
+            Verdict::from(failure),
+            Verdict::Inconclusive(VerifierError {
+                code: ErrorCode::Time
+            })
+        ));
+    }
 }
 
 #[test]

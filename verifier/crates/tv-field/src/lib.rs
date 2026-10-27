@@ -17,4 +17,7 @@ mod ntt;
 
 pub use fp::Fp;
 pub use fp2::Fp2;
-pub use ntt::{NttError, NttValue, TWO_ADICITY, coset_intt, coset_ntt, intt, ntt, root_of_unity};
+pub use ntt::{
+    NttError, NttValue, TWO_ADICITY, coset_intt, coset_ntt, coset_ntt_with_cancel, intt,
+    intt_with_cancel, ntt, root_of_unity,
+};

@@ -4,7 +4,10 @@
 use cap::Cap;
 use std::alloc::System;
 use std::fmt::Debug;
-use tv_field::{Fp, Fp2, NttError, NttValue, coset_intt, coset_ntt, intt, ntt};
+use tv_field::{
+    Fp, Fp2, NttError, NttValue, coset_intt, coset_ntt, coset_ntt_with_cancel, intt,
+    intt_with_cancel, ntt,
+};
 
 #[global_allocator]
 static ALLOCATOR: Cap<System> = Cap::new(System, usize::MAX);
@@ -42,6 +45,27 @@ fn check<T: NttValue + Debug + PartialEq>(values: &[T]) {
     assert_eq!(zero_results, [Err(NttError::ZeroShift); 2]);
     assert_eq!(invalid, values[..3]);
     assert_eq!(zero_shift, values);
+
+    for inverse in [false, true] {
+        let mut working = values.to_vec();
+        let mut polled = false;
+        let before = ALLOCATOR.total_allocated();
+        ALLOCATOR.set_limit(ALLOCATOR.allocated()).unwrap();
+        let mut cancel = || {
+            polled = true;
+            true
+        };
+        let result = if inverse {
+            intt_with_cancel(&mut working, &mut cancel)
+        } else {
+            coset_ntt_with_cancel(&mut working, Fp::SEVEN, &mut cancel)
+        };
+        ALLOCATOR.set_limit(usize::MAX).unwrap();
+        assert_eq!(ALLOCATOR.total_allocated() - before, 0);
+        assert_eq!(result, Err(NttError::Cancelled));
+        assert!(polled);
+        assert_eq!(working, values);
+    }
 
     let scratch = values.len() / 2 * std::mem::size_of::<Fp>();
     for (index, transform) in transforms.into_iter().enumerate() {
