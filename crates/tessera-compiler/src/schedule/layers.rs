@@ -2,6 +2,7 @@
 
 //! The layers of a lowered graph and their template (RFC-0037 'Layers and kinds').
 
+use tessera_field::{Goldilocks, PrimeField};
 use tessera_ir::{CommitmentClass, Graph, NodeId, NodeKind, Op, TensorId, TensorSpec};
 use tessera_tables::TableSpec;
 
@@ -48,8 +49,8 @@ pub struct LayerMap {
     checkpoints: Vec<TensorId>,
     /// The output of the last position that is the layer's checkpoint.
     last_output: u32,
-    /// Whether each position's `ConstMul`, if it is one, multiplies by the same constant in every
-    /// layer.
+    /// Whether each position's `ConstMul`, if it is one, multiplies by the same `Fp` constant in
+    /// every layer.
     uniform: Vec<bool>,
 }
 
@@ -344,11 +345,18 @@ impl LayerMap {
         }
         self.inputs.push(kinds);
         let constant = |layer: u32| match graph.nodes[self.node(position, layer).0 as usize].op {
-            Op::ConstMul { c } => graph.constants.get(c.0 as usize),
+            Op::ConstMul { c } => graph.constants.get(c.0 as usize).map(|values| {
+                values
+                    .iter()
+                    .copied()
+                    .map(Goldilocks::from_i64)
+                    .collect::<Vec<_>>()
+            }),
             _ => None,
         };
+        let first = constant(0);
         self.uniform
-            .push((1..self.count).all(|layer| constant(layer) == constant(0)));
+            .push((1..self.count).all(|layer| constant(layer) == first));
         Ok(())
     }
 

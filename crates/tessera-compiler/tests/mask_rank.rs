@@ -253,6 +253,223 @@ fn an_unscaled_twin_of_a_per_layer_scaled_read_is_refused() {
     );
 }
 
+/// RFC-0013 'Committed tensors' (#556): a stacked advice piece's mask coefficient in
+/// `tessera-protocol/2` is `a_t` when `c_t(0) = … = c_t(L − 1) = a_t` (`0` when `a_t = 0`), and
+/// `1` when `c_t(ℓ)` differs between real layers (`P'_t(r ‖ ρ) = Σ_ℓ eq(ρ, ℓ)·c_t(ℓ)·X̃_{κ,ℓ}(r)
+/// + Z(r ‖ ρ)·R̃_{X_κ}(r_col)`). Classification and R10 merging therefore depend on the evaluated
+/// per-layer polynomial `(c_t(0), …, c_t(L − 1))`, not on raw AST provenance:
+/// 1. canceling paths (`c_ℓ − c_ℓ = 0`) contribute `0` to both data and mask rows;
+/// 2. non-uniform paths summing to a uniform scalar (`[8, 8, 16, 2] + [2, 2, -6, 8] = [10; 4]`)
+///    are uniform (`10·X'_in`), merging with an unscaled read at `(r ‖ ρ)` and refusing a
+///    non-uniform twin there;
+/// 3. another template position with the exact same per-layer constants `[8, 8, 16, 2]` (even
+///    written through `Pow2(2)·LT([½, ½], 3)` in place of `ConstMul(3)`) merges at `(r ‖ ρ)`,
+///    while `−c_ℓ` or `2·c_ℓ` at `(r ‖ ρ)` is refused because `(D + Z·R̃)` and `(−D + Z·R̃)` or
+///    `(2D + Z·R̃)` unmask `D`.
+#[test]
+fn per_layer_scaled_advice_pieces_classify_and_merge_by_layer_polynomial() {
+    let (base, index) = scaled_layer_input();
+    let p1 = base.schedule.pool[index]
+        .atoms
+        .iter()
+        .flat_map(|a| a.coefficient.iter().flatten())
+        .find_map(|f| match f {
+            Factor::Constant(NodeRef::Position(p)) if !base.schedule.layers.uniform(*p) => Some(*p),
+            _ => None,
+        })
+        .expect("position 34");
+    let p2 = (0..base.schedule.layers.width)
+        .find(|&p| {
+            p != p1
+                && matches!(
+                    base.lowering.graph.nodes[base.schedule.layers.node(p, 0).0 as usize].op,
+                    tessera_ir::Op::ConstMul { .. }
+                )
+        })
+        .expect("a second ConstMul position in the layer template");
+    let p1_values: Vec<i64> = (0..base.schedule.layers.count)
+        .map(|l| {
+            let id = base.schedule.layers.node(p1, l);
+            let tessera_ir::Op::ConstMul { c } = base.lowering.graph.nodes[id.0 as usize].op else {
+                panic!("ConstMul");
+            };
+            base.lowering.graph.constants[c.0 as usize][0]
+        })
+        .collect();
+    assert_eq!(p1_values, vec![8, 8, 16, 2]);
+
+    let advice =
+        ModelAdviceLayout::new(&base.lowering, &base.selection, &base.claims).expect("layout");
+    let weights = weight_layout(&base.claims, &base.lowering).expect("weights");
+    let system_of = |lowering: &Lowering, schedule: &StageSchedule| {
+        extract(
+            lowering,
+            schedule,
+            &advice,
+            &weights,
+            ColumnRule::BelowRow,
+            CommittedColumns::RULE,
+        )
+        .expect("the functionals")
+    };
+    let with_p2 = |values: [i64; 4]| {
+        let mut lowering = base.lowering.clone();
+        for (l, v) in values.into_iter().enumerate() {
+            let id = base.schedule.layers.node(p2, l as u32);
+            let c_ref = tessera_ir::ConstRef(lowering.graph.constants.len() as u32);
+            lowering.graph.constants.push(vec![v]);
+            lowering.graph.nodes[id.0 as usize].op = tessera_ir::Op::ConstMul { c: c_ref };
+        }
+        lowering
+    };
+
+    // 1. Canceling paths `c_ℓ − c_ℓ = 0` at a fresh layer point reveal no functional of R_X.
+    {
+        let mut schedule = base.schedule.clone();
+        let mut zero_twin = schedule.pool[index].clone();
+        let atom = zero_twin
+            .atoms
+            .iter_mut()
+            .find(|a| a.kind == Kind::LayerInput)
+            .expect("the atom");
+        let Layers::Eq(rho) = &atom.layers else {
+            panic!("a stacked read");
+        };
+        atom.layers = Layers::Eq((0..rho.len() as u32).map(fresh).collect());
+        atom.coefficient = vec![
+            vec![Factor::Constant(NodeRef::Position(p1))],
+            vec![Factor::Minus, Factor::Constant(NodeRef::Position(p1))],
+        ];
+        schedule.pool.push(zero_twin);
+        assert_eq!(
+            check(&system_of(&base.lowering, &schedule), SEED),
+            Vec::new(),
+            "a zero-coefficient piece contributes 0 to both data and mask rows"
+        );
+    }
+
+    // 2. Non-uniform paths summing to `[10, 10, 10, 10]` are uniform (`scale = None`).
+    {
+        let lowering = with_p2([2, 2, -6, 8]);
+        let mut schedule = base.schedule.clone();
+        schedule.pool[index]
+            .atoms
+            .iter_mut()
+            .find(|a| a.kind == Kind::LayerInput)
+            .expect("the atom")
+            .coefficient = vec![
+            vec![Factor::Constant(NodeRef::Position(p1))],
+            vec![Factor::Constant(NodeRef::Position(p2))],
+        ];
+        let mut unscaled_twin = schedule.pool[index].clone();
+        unscaled_twin
+            .atoms
+            .iter_mut()
+            .find(|a| a.kind == Kind::LayerInput)
+            .expect("the atom")
+            .coefficient = vec![Vec::new()];
+        schedule.pool.push(unscaled_twin);
+        assert_eq!(
+            check(&system_of(&lowering, &schedule), SEED),
+            Vec::new(),
+            "paths summing to [10, 10, 10, 10] are uniform and merge with an unscaled read"
+        );
+
+        // And a genuinely non-uniform `[8, 8, 16, 2]` twin at the same point is refused.
+        let mut schedule_nonuniform = base.schedule.clone();
+        schedule_nonuniform.pool[index]
+            .atoms
+            .iter_mut()
+            .find(|a| a.kind == Kind::LayerInput)
+            .expect("the atom")
+            .coefficient = vec![
+            vec![Factor::Constant(NodeRef::Position(p1))],
+            vec![Factor::Constant(NodeRef::Position(p2))],
+        ];
+        let mut scaled_twin = base.schedule.pool[index].clone();
+        scaled_twin
+            .atoms
+            .iter_mut()
+            .find(|a| a.kind == Kind::LayerInput)
+            .expect("the atom")
+            .coefficient = vec![vec![Factor::Constant(NodeRef::Position(p1))]];
+        schedule_nonuniform.pool.push(scaled_twin);
+        assert_eq!(
+            dependent_rows(&check(&system_of(&lowering, &schedule_nonuniform), SEED)),
+            vec![MaskRow::Stacked(Kind::LayerInput)]
+        );
+    }
+
+    // 3. Another position with identical `[8, 8, 16, 2]` merges (including `4 · LT([½, ½], 3)` = 3
+    //    vs `ConstMul(3)`), whereas `−c_ℓ` and `2·c_ℓ` are refused.
+    {
+        let mut lowering = with_p2([8, 8, 16, 2]);
+        let three_ref = tessera_ir::ConstRef(lowering.graph.constants.len() as u32);
+        lowering.graph.constants.push(vec![3]);
+        let three_node = tessera_ir::NodeId(lowering.graph.nodes.len() as u32);
+        lowering.graph.nodes.push(tessera_ir::Node {
+            id: three_node,
+            op: tessera_ir::Op::ConstMul { c: three_ref },
+            inputs: vec![lowering.tokens],
+            outputs: vec![lowering.tokens],
+        });
+
+        let mut schedule = base.schedule.clone();
+        schedule.pool[index]
+            .atoms
+            .iter_mut()
+            .find(|a| a.kind == Kind::LayerInput)
+            .expect("the atom")
+            .coefficient = vec![vec![
+            Factor::Constant(NodeRef::Node(three_node)),
+            Factor::Constant(NodeRef::Position(p1)),
+        ]];
+        let mut same_twin = base.schedule.pool[index].clone();
+        same_twin
+            .atoms
+            .iter_mut()
+            .find(|a| a.kind == Kind::LayerInput)
+            .expect("the atom")
+            .coefficient = vec![vec![
+            Factor::Pow2(2),
+            Factor::Lt {
+                coords: vec![Coord::Half, Coord::Half],
+                len: 3,
+            },
+            Factor::Constant(NodeRef::Position(p2)),
+        ]];
+        schedule.pool.push(same_twin);
+        assert_eq!(
+            check(&system_of(&lowering, &schedule), SEED),
+            Vec::new(),
+            "two per-layer-scaled reads with identical c_ℓ ∈ Fp^L merge"
+        );
+
+        for bad in [
+            vec![vec![Factor::Minus, Factor::Constant(NodeRef::Position(p1))]],
+            vec![vec![
+                Factor::Pow2(1),
+                Factor::Constant(NodeRef::Position(p1)),
+            ]],
+        ] {
+            let mut bad_schedule = base.schedule.clone();
+            let mut bad_twin = base.schedule.pool[index].clone();
+            bad_twin
+                .atoms
+                .iter_mut()
+                .find(|a| a.kind == Kind::LayerInput)
+                .expect("the atom")
+                .coefficient = bad.clone();
+            bad_schedule.pool.push(bad_twin);
+            assert_eq!(
+                dependent_rows(&check(&system_of(&lowering, &bad_schedule), SEED)),
+                vec![MaskRow::Stacked(Kind::LayerInput)],
+                "scalar multiple {bad:?} with unit mask coefficient unmasks D and must be refused"
+            );
+        }
+    }
+}
+
 /// The second review's N1: a twin of a stacked weight claim whose coefficient carries
 /// tiny-4-servable's per-layer constants (position 34: 8, 8, 16, 2) weighs the matrix's layers by
 /// `eq(ρ, ℓ)·c_ℓ`, another value than `W'(r ‖ ρ)` read through the same functional of `R_W`, and

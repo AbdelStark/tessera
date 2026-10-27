@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-25
 - Target milestone: v0.4
-- Amended by: [RFC-0069](RFC-0069-one-layer-claims.md) ('The layer sumcheck' step 1 and 'Zero knowledge': an outside value at one layer; 'Non-Goals': the epilogue's claim), [RFC-0070](RFC-0070-mask-batching.md) ('The layer sumcheck' step 6: `G(ρ')` is sent last under `stage/0/layer/evals` and opened by RFC-0070's batching; the proof-size figures), [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) ('The layer sumcheck' step 4, 'Zero knowledge' and 'Testing Strategy': a committed tensor's mask takes its data claim's column sub-point and no layer variable, so the degree-4 case is a virtual or type tensor's, [#554](https://github.com/AbdelStark/tessera/issues/554))
+- Amended by: [RFC-0069](RFC-0069-one-layer-claims.md) ('The layer sumcheck' step 1 and 'Zero knowledge': an outside value at one layer; 'Non-Goals': the epilogue's claim), [RFC-0070](RFC-0070-mask-batching.md) ('The layer sumcheck' step 6: `G(ρ')` is sent last under `stage/0/layer/evals` and opened by RFC-0070's batching; the proof-size figures), [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) ('The layer sumcheck' step 4, step 7, 'Zero knowledge' and 'Testing Strategy': a committed tensor's mask takes its data claim's column sub-point and no layer variable, so the degree-4 case is a virtual or type tensor's, [#554](https://github.com/AbdelStark/tessera/issues/554); a linear node's `X'_t` is the sum of its atoms' masked extensions, [#556](https://github.com/AbdelStark/tessera/issues/556))
 - Amends, in `tessera-protocol/2`:
   - [RFC-0032](RFC-0032-zero-knowledge-tree-levels.md#leaf-checks) 'Leaf checks': each LogUp instance's key and value columns take a mask row of their own;
   - [RFC-0045](RFC-0045-leaf-layout.md#the-leaf-point) 'The leaf point' and 'The split': `P` without the tree index's coordinate, and the values of sites in the layers sent once per site and tensor, at a random layer point, after a layer sumcheck;
@@ -114,7 +114,7 @@ In `tessera-protocol/2` the leaf stage ends as follows, after `logup/values`.
      ```text
      Σ_{y ∈ {0,1}^λ} Σ_{(s,t) layered} W̃_{s,t}(y)·X'_t(π_t(r_s) ‖ y)
      ```
-     `X'_t` is the tensor's masked extension, equal to `X̃_t` on Boolean `y`.
+     `X'_t` is the tensor's masked extension, equal to `X̃_t` on Boolean `y`. When `t` is the output of a linear node ([RFC-0037](RFC-0037-stage-schedule.md#claims-and-atoms) 'Claims and atoms', whether or not [RFC-0037](RFC-0037-stage-schedule.md#splits) 'Splits' splits the resulting claim), `X'_t(π_t(r_s) ‖ y)` is the sum of its substituted atoms' masked extensions at each atom's substituted non-layer point `r_a` (`a_a·V'_a(r_a ‖ y)` when `c_a(0) = … = c_a(L − 1) = a_a`, and `P'_a(r_a ‖ y)` of [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) 'Committed tensors' for a per-layer-scaled committed advice atom, [#556](https://github.com/AbdelStark/tessera/issues/556); a layered claim carries no public terms under [RFC-0072](RFC-0072-anchor-relations.md#public-tensors) and [RFC-0037](RFC-0037-stage-schedule.md#claims-and-atoms)), which equals `X̃_t(π_t(r_s) ‖ y)` on all `y ∈ {0, 1}^λ` and keeps degree at most 3 in `y` on committed advice atoms.
    - **One fold per column mask,** over the mask's `c_i` variables, with `p_i = P[0..h_{I(i)}]`:
      ```text
      Σ_{w ∈ {0,1}^{c_i}} γ^i·Z(p_i)·eq(p_i[0..c_i], w)·R_{·,I(i)}[w]
@@ -145,8 +145,8 @@ In `tessera-protocol/2` the leaf stage ends as follows, after `logup/values`.
    - A final mismatch is `Reject(Sumcheck { stage: 0, round: n })`. RFC-0010's format derives `p_j(1)` from the claim, so no earlier round can mismatch.
    - The outside claims' atom splits of step 1 are checked before the sumcheck, a mismatch being `Reject(Sumcheck { stage: 0, round: 0 })`.
 7. **The result.**
-   - **Each `v_{s,t}`** is the stacked claim `X'_t(π_t(r_s) ‖ ρ'_y)` of RFC-0037 'The layer point', and stage 1's layer point is `ρ_1 = ρ'_y`. `tessera-protocol/2` draws no `stage/1/layer/{c}`.
-   - **A stacked claim that RFC-0037 splits into atoms** is split at that point. Its atom values follow under `stage/0/layer/split`: by site and tensor in RFC-0045's order, then in the claim's atom order. A mismatch is `Reject(Sumcheck { stage: 0, round: n })`, as RFC-0037 gives a stage's splits its last round.
+   - **Each `v_{s,t}`** is the stacked claim `X'_t(π_t(r_s) ‖ ρ'_y)` of RFC-0037 'The layer point', and stage 1's layer point is `ρ_1 = ρ'_y` (for an unsplit linear node, `v_{s,t}` enters stage 1 or the pool directly as that sum of its atoms' masked extensions at `ρ'_y`, [#556](https://github.com/AbdelStark/tessera/issues/556)). `tessera-protocol/2` draws no `stage/1/layer/{c}`.
+   - **A stacked claim that RFC-0037 splits into atoms** is split at that point, `v_{s,t}` checked against its parts' values at `ρ'_y` as [RFC-0037](RFC-0037-stage-schedule.md#splits) 'Splits' weights them ([#556](https://github.com/AbdelStark/tessera/issues/556)). Its atom values follow under `stage/0/layer/split`: by site and tensor in RFC-0045's order, then in the claim's atom order. A mismatch is `Reject(Sumcheck { stage: 0, round: n })`, as RFC-0037 gives a stage's splits its last round.
    - **Each `u_i`** is a claim on its mask row at `ρ'_{w_i}`, which joins the advice pool. Its column functional is `eq(ρ'_{w_i}, ·)`. The `u_i` of one `c_i` share a column sub-point, and form one more opening group of RFC-0011 per distinct `c_i`. At 405B every column has `h_I ≥ 22`, table 3's the shortest at 22, so every `c_I = 22` and they form one group, at `ρ'`.
    - **Stage 1** is otherwise unchanged.
 

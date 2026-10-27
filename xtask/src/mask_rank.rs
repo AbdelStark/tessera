@@ -535,7 +535,7 @@ mod tests {
     use serde_json::Value;
     use std::fs;
     use tessera_compiler::schedule::masks::{MaskRow, Origin, Src, check_at};
-    use tessera_compiler::schedule::{Coord, Kind, Layers};
+    use tessera_compiler::schedule::{Coord, Factor, Kind, Layers, NodeRef};
     use tessera_ir::CommitmentClass;
 
     /// A fixture tree whose claim-list file holds the repository's case `name` alone.
@@ -918,6 +918,55 @@ mod tests {
         }
         let control = rejected_reading(case, plant);
         assert_eq!(control.violations, Vec::<String>::new());
+    }
+
+    /// RFC-0013 'Committed tensors' (#556): `tiny-4-servable`'s residual key reads `LayerInput`
+    /// with per-layer constants `[8, 8, 16, 2]`. The compiled schedule passes; planting an
+    /// unscaled twin at the same point and layer coordinates fails through the gate, naming the
+    /// file, case, row and rule.
+    #[test]
+    fn an_unscaled_twin_of_a_per_layer_scaled_read_fails_naming_it() {
+        let fixture = one_case("tiny-4-servable");
+        let cases = vector_cases(fixture.path()).expect("the fixture's claim list");
+        let case = cases
+            .iter()
+            .find(|c| c.n == 4 && c.request == Request::Generate)
+            .expect("n = 4");
+        assert_eq!(planted(case, |_| {}).violations, Vec::<String>::new());
+        let refused = planted(case, |schedule| {
+            let layers = &schedule.layers;
+            let index = schedule
+                .pool
+                .iter()
+                .position(|p| {
+                    p.atoms.iter().any(|a| {
+                        a.kind == Kind::LayerInput
+                            && a.coefficient.iter().flatten().any(|f| {
+                                matches!(f, Factor::Constant(NodeRef::Position(pos)) if !layers.uniform(*pos))
+                            })
+                    })
+                })
+                .expect("the scaled read of the layer input");
+            let mut twin = schedule.pool[index].clone();
+            twin.atoms
+                .iter_mut()
+                .find(|a| a.kind == Kind::LayerInput)
+                .expect("the atom")
+                .coefficient = vec![Vec::new()];
+            schedule.pool.push(twin);
+        });
+        let [violation] = refused.violations.as_slice() else {
+            panic!("one violation: {:?}", refused.violations);
+        };
+        for part in [
+            "spec/vectors/claims/claim-lists.json:",
+            "`tiny-4-servable` at n = 4, checked at 4 (Generate)",
+            "stacked advice kind LayerInput",
+            "2 revealed functionals are linearly dependent (R10",
+            "RFC-0013",
+        ] {
+            assert!(violation.contains(part), "{part}: {violation}");
+        }
     }
 
     /// A claim-list file the gate cannot read is an error naming the file and the case.

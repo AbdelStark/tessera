@@ -912,7 +912,7 @@ fn leaf_claim<'s>(
                 match part {
                     Part::Virtual { atom, instance } => {
                         let atom = claim.claim.atoms.get(*atom).ok_or(StageError::Internal)?;
-                        sum += coefficient(sources, &atom.coefficient, layer)? * sent;
+                        sum += uniform_coefficient(sources, &atom.coefficient)? * sent;
                         set(incoming, *instance, sent)?;
                     }
                     Part::Group { .. } => {
@@ -985,6 +985,9 @@ fn pool_claim(
     let mut terms = Vec::new();
     for &m in members {
         let atom: &Atom = claim.atoms.get(m).ok_or(StageError::Internal)?;
+        if atom.class != crate::schedule::Class::Committed(commitment) {
+            return Err(StageError::Internal);
+        }
         let layer_point = match &atom.layers {
             Layers::None => None,
             Layers::Point(p) => Some(sources.resolve(p)?),
@@ -1001,27 +1004,35 @@ fn pool_claim(
                 Some(point)
             }
         };
+        let layer_weights = |eq_layers: &[Fp2]| -> Result<Vec<Fp2>, StageError> {
+            let mut weights = vec_of(Fp2::ZERO, layers)?;
+            for (l, w) in weights.iter_mut().enumerate() {
+                let eq = *eq_layers.get(l).ok_or(StageError::Internal)?;
+                let c = match commitment {
+                    Commitment::Advice => coefficient(sources, &atom.coefficient, l, layers)?,
+                    Commitment::Weight(_) | Commitment::ChannelParams => {
+                        uniform_coefficient(sources, &atom.coefficient)?
+                    }
+                };
+                *w = eq * c;
+            }
+            Ok(weights)
+        };
         let weights: Option<Vec<Fp2>> = match (&atom.layers, stacking) {
             (Layers::None, _) => None,
             // A leaf claim's per-layer coefficients, stacked at ρ_1.
-            (Layers::Point(_), Some(eq_layers)) => {
-                let mut weights = vec_of(Fp2::ZERO, layers)?;
-                for (l, w) in weights.iter_mut().enumerate() {
-                    let eq = *eq_layers.get(l).ok_or(StageError::Internal)?;
-                    *w = eq * coefficient(sources, &atom.coefficient, l)?;
-                }
-                Some(weights)
-            }
+            (Layers::Point(_), Some(eq_layers)) => Some(layer_weights(eq_layers)?),
+            // RFC-0037 'The claim pool' (#556): a reduction stage's stacked claim scales each
+            // real layer's `eq(ρ, ℓ)` by its own constant `c_ℓ` on committed advice.
             (Layers::Point(p), None) => {
                 let rho = sources.resolve(p)?;
                 let eq_layers = layer_eq(&rho, layers)?;
-                let c = coefficient(sources, &atom.coefficient, 0)?;
-                Some(eq_layers.iter().map(|&e| e * c).collect())
+                Some(layer_weights(&eq_layers)?)
             }
             (Layers::One(l), _) => {
                 let mut weights = vec_of(Fp2::ZERO, layers)?;
                 *weights.get_mut(index(*l)?).ok_or(StageError::Internal)? =
-                    coefficient(sources, &atom.coefficient, 0)?;
+                    uniform_coefficient(sources, &atom.coefficient)?;
                 Some(weights)
             }
         };
@@ -1030,7 +1041,7 @@ fn pool_claim(
                 &mut terms,
                 PoolTerm {
                     tensor: PoolTensor::Single(t),
-                    weights: vec![coefficient(sources, &atom.coefficient, 0)?],
+                    weights: vec_of(uniform_coefficient(sources, &atom.coefficient)?, 1)?,
                     layer_point: None,
                 },
             )?,
@@ -1113,7 +1124,7 @@ fn follow<'s>(
                 match part {
                     Part::Virtual { atom, instance } => {
                         let atom = claim.atoms.get(*atom).ok_or(StageError::Internal)?;
-                        sum += coefficient(sources, &atom.coefficient, 0)? * sent;
+                        sum += uniform_coefficient(sources, &atom.coefficient)? * sent;
                         *next.get_mut(*instance).ok_or(StageError::Internal)? =
                             Incoming::Value(sent);
                     }
@@ -1233,19 +1244,22 @@ fn final_value(
     }
 }
 
-/// A coefficient's value at layer `layer`: each term's constant there, or its one constant, times
-/// its `LT` factors.
+/// A coefficient's value at layer `layer` of `layers`: each term's per-layer constant there, or
+/// its one constant, times its `LT` factors.
 fn coefficient(
     sources: &Sources,
     coefficient: &Coefficient,
     layer: usize,
+    layers: usize,
 ) -> Result<Fp2, StageError> {
     let mut sum = Fp2::ZERO;
     for term in coefficient.terms() {
         let constant = if term.constant.len() == 1 {
             term.constant.first()
-        } else {
+        } else if term.constant.len() == layers {
             term.constant.get(layer)
+        } else {
+            None
         }
         .ok_or(StageError::Internal)?;
         let mut product = Fp2::from(*constant);
@@ -1256,6 +1270,16 @@ fn coefficient(
         sum += product;
     }
     Ok(sum)
+}
+
+/// A uniform coefficient's value: each term has a single constant across all layers.
+fn uniform_coefficient(sources: &Sources, coeff: &Coefficient) -> Result<Fp2, StageError> {
+    for term in coeff.terms() {
+        if term.constant.len() != 1 {
+            return Err(StageError::Internal);
+        }
+    }
+    coefficient(sources, coeff, 0, 1)
 }
 
 /// `Σ_ℓ eq(ρ_1, ℓ)·v_ℓ` over the real layers; a padded layer's value is 0.
@@ -1514,6 +1538,223 @@ mod tests {
                 Err(StageError::Split { stage: 2, round: 9 })
             );
         }
+    }
+
+    /// RFC-0037 'The claim pool' (#556): a reduction stage (`k >= 1`) claim on committed advice
+    /// whose coefficient carries per-layer constants `[c_0, …, c_{L-1}]` multiplies each real
+    /// layer's weight `eq(ρ, ℓ)` by its own `c_ℓ`, not `c_0`.
+    #[test]
+    fn a_reduction_stage_pool_claim_scales_each_layer_by_its_own_constant() {
+        let file = tv_testkit::read_vectors("claims/claim-lists.json");
+        let case = file
+            .get("cases")
+            .and_then(tv_testkit::Json::as_array)
+            .unwrap()
+            .iter()
+            .find(|c| c.get("name").and_then(tv_testkit::Json::as_str) == Some("tiny-4-servable"))
+            .unwrap();
+        let bytes = tv_testkit::hex(case.get("hex").unwrap().as_str().unwrap());
+        let claims =
+            crate::claims::ClaimList::open(&bytes, &tv_codec::DecodeLimits::MESSAGE).unwrap();
+        let public = crate::validation::check_public(&claims).unwrap();
+        let mut graph = crate::lowering::lower(&public, 4).unwrap();
+        let producer =
+            |g: &crate::lowering::Graph, c: TensorId| g.tensor(c).unwrap().producer.unwrap().0;
+        let checkpoints = graph.checkpoints().to_vec();
+        let len = producer(&graph, checkpoints[1]) - producer(&graph, checkpoints[0]);
+        let start0 = producer(&graph, checkpoints[0]) + 1;
+        let c_pos = (0..len)
+            .find(|&p| {
+                matches!(
+                    graph
+                        .node(crate::lowering::NodeId(start0 + p))
+                        .unwrap()
+                        .op(),
+                    crate::lowering::Op::ConstMul { .. }
+                )
+            })
+            .unwrap();
+        let constants = [2i64, 3, 5, 7];
+        for (layer, &k) in constants.iter().enumerate() {
+            let start = producer(&graph, checkpoints[layer]) + 1;
+            let node = crate::lowering::NodeId(start + c_pos);
+            let crate::lowering::Op::ConstMul { c: index } = *graph.node(node).unwrap().op() else {
+                panic!()
+            };
+            graph.set_constant(index, k);
+        }
+        let schedule = crate::schedule::derive(&graph).unwrap();
+        let req_pos = (c_pos..len)
+            .find(|&p| {
+                matches!(
+                    graph
+                        .node(crate::lowering::NodeId(start0 + p))
+                        .unwrap()
+                        .op(),
+                    crate::lowering::Op::Requant { .. }
+                )
+            })
+            .unwrap();
+        let req_site = crate::lowering::NodeId(start0 + req_pos);
+        let claim = &schedule
+            .leaf()
+            .iter()
+            .find(|l| l.site == req_site && l.input == Some(0))
+            .unwrap()
+            .claim;
+
+        let rho = vec![Fp2::from(Fp::reduce(5)), Fp2::from(Fp::reduce(11))];
+        let eq = layer_eq(&rho, constants.len()).unwrap();
+        let (leaf_zeros, _, _) = zeros(&schedule);
+        let sources = Sources {
+            leaf: leaf_zeros.into_iter().map(|l| l.point).collect(),
+            layer: rho.clone(),
+            ..Sources::default()
+        };
+        let mut next = vec![Incoming::Missing; schedule.stages()[0].instances.len()];
+        let mut pool = Vec::new();
+        let sent = Fp2::from(Fp::reduce(19));
+        let splits = if matches!(claim.route, Route::Split(_)) {
+            vec![Fp2::ZERO, sent]
+        } else {
+            Vec::new()
+        };
+        follow(
+            &schedule,
+            &sources,
+            claim,
+            sent,
+            &mut splits.iter(),
+            &mut next,
+            &mut pool,
+            1,
+            schedule.stages()[0].rounds as u32,
+        )
+        .unwrap();
+        assert_eq!(pool.len(), 1);
+        let pool_claim = &pool[0];
+        assert_eq!(pool_claim.stage, 1);
+        assert_eq!(pool_claim.commitment, Commitment::Advice);
+        assert_eq!(pool_claim.value, sent);
+        let expected_scaled: Vec<Fp2> = eq
+            .iter()
+            .zip(constants)
+            .map(|(&e, k)| e * Fp2::from(Fp::reduce(k as u64)))
+            .collect();
+        assert_eq!(
+            pool_claim.terms[0].tensor,
+            PoolTensor::Single(schedule.first_checkpoint())
+        );
+        assert_eq!(pool_claim.terms[0].weights, vec![expected_scaled[0]]);
+        assert_eq!(
+            pool_claim.terms[1].tensor,
+            PoolTensor::Stacked(schedule.last_output())
+        );
+        assert_eq!(
+            pool_claim.terms[1].weights,
+            vec![
+                expected_scaled[1],
+                expected_scaled[2],
+                expected_scaled[3],
+                Fp2::ZERO,
+            ]
+        );
+        if let Some(update_term) = pool_claim.terms.get(2) {
+            assert_eq!(update_term.weights, expected_scaled);
+            assert_eq!(update_term.layer_point.as_ref(), Some(&rho));
+        }
+
+        // Also check a genuine stage-1 `Route::Pool` evaluation claim (`Source::Rounds(1)` layer
+        // point) on `tiny-2-servable`, where `FfnNorm`'s `SumSquares` reads `AttnResidual`'s
+        // `ConstMul([2, 3])` over `Add(res, update)`.
+        let case2 = file
+            .get("cases")
+            .and_then(tv_testkit::Json::as_array)
+            .unwrap()
+            .iter()
+            .find(|c| c.get("name").and_then(tv_testkit::Json::as_str) == Some("tiny-2-servable"))
+            .unwrap();
+        let bytes2 = tv_testkit::hex(case2.get("hex").unwrap().as_str().unwrap());
+        let claims2 =
+            crate::claims::ClaimList::open(&bytes2, &tv_codec::DecodeLimits::MESSAGE).unwrap();
+        let public2 = crate::validation::check_public(&claims2).unwrap();
+        let mut graph2 = crate::lowering::lower(&public2, 4).unwrap();
+        let cp2 = graph2.checkpoints().to_vec();
+        let len2 = producer(&graph2, cp2[1]) - producer(&graph2, cp2[0]);
+        let s0 = producer(&graph2, cp2[0]) + 1;
+        let c2_pos = (0..len2)
+            .find(|&p| {
+                matches!(
+                    graph2.node(crate::lowering::NodeId(s0 + p)).unwrap().op(),
+                    crate::lowering::Op::ConstMul { .. }
+                )
+            })
+            .unwrap();
+        let sq2_pos = (c2_pos..len2)
+            .find(|&p| {
+                matches!(
+                    graph2.node(crate::lowering::NodeId(s0 + p)).unwrap().op(),
+                    crate::lowering::Op::SumSquares { .. }
+                )
+            })
+            .unwrap();
+        for (layer, &k) in [2i64, 3].iter().enumerate() {
+            let start = producer(&graph2, cp2[layer]) + 1;
+            let cm_node = crate::lowering::NodeId(start + c2_pos);
+            let crate::lowering::Op::ConstMul { c: index } = *graph2.node(cm_node).unwrap().op()
+            else {
+                panic!()
+            };
+            graph2.set_constant(index, k);
+            let doubled = graph2.node(cm_node).unwrap().outputs()[0];
+            graph2.set_input(crate::lowering::NodeId(start + sq2_pos), 0, doubled);
+        }
+        let schedule2 = crate::schedule::derive(&graph2).unwrap();
+        let sq_node0 = crate::lowering::NodeId(s0 + sq2_pos);
+        let stage1 = &schedule2.stages()[0];
+        let sq_inst = stage1
+            .instances
+            .iter()
+            .find(|inst| inst.node == sq_node0)
+            .unwrap();
+        let stage1_claim = &sq_inst.evals[0];
+        assert_eq!(stage1_claim.route, Route::Pool);
+        let rho_round = Fp2::from(Fp::reduce(13));
+        let mut r1 = vec![Fp2::from(Fp::reduce(7)); stage1.rounds];
+        *r1.last_mut().unwrap() = rho_round;
+        let eq2 = layer_eq(&[rho_round], 2).unwrap();
+        let (leaf_zeros2, _, _) = zeros(&schedule2);
+        let sources2 = Sources {
+            leaf: leaf_zeros2.into_iter().map(|l| l.point).collect(),
+            rounds: vec![r1],
+            ..Sources::default()
+        };
+        let mut next2 =
+            vec![Incoming::Missing; schedule2.stages().get(1).map_or(0, |s| s.instances.len())];
+        let mut pool2 = Vec::new();
+        follow(
+            &schedule2,
+            &sources2,
+            stage1_claim,
+            sent,
+            &mut [].iter(),
+            &mut next2,
+            &mut pool2,
+            1,
+            stage1.rounds as u32,
+        )
+        .unwrap();
+        assert_eq!(pool2.len(), 1);
+        let pc2 = &pool2[0];
+        let expected2 = vec![
+            eq2[0] * Fp2::from(Fp::reduce(2)),
+            eq2[1] * Fp2::from(Fp::reduce(3)),
+        ];
+        assert_eq!(pc2.terms.len(), 3);
+        assert_eq!(pc2.terms[0].weights, vec![expected2[0]]);
+        assert_eq!(pc2.terms[1].weights, vec![expected2[1], Fp2::ZERO]);
+        assert_eq!(pc2.terms[2].weights, expected2);
+        assert_eq!(pc2.terms[2].layer_point, Some(vec![rho_round]));
     }
 
     #[test]

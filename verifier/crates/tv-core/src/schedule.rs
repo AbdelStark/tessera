@@ -61,9 +61,9 @@
 //! - `Expand { axis, len }`: the inserted axis's coordinates `r_a` are dropped, with the
 //!   coefficient `LT(r_a, len)`, which is 1 when `len` is a power of two.
 //! - `ConstMul { c }`: the coefficient times the constant. At a template position each layer has
-//!   its own: the leaf stage's per-layer claims take each layer's, and a stacked claim takes
-//!   them only when every layer's is equal (else [`ScheduleError::Unsupported`]: the lowering
-//!   never emits one, RFC-0044).
+//!   its own: a stacked committed advice atom takes each layer's, and any other atom takes them
+//!   only when every layer's is equal (else [`ScheduleError::Unsupported`], RFC-0037 'Claims and
+//!   atoms', RFC-0068).
 //! - `Add`: both inputs, the first first.
 //!
 //! The walk is depth first, inputs in their node's order; it stops at a tensor that is not the
@@ -347,7 +347,7 @@ pub struct Coefficient {
 /// One term of a coefficient.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Term {
-    /// The constant: one value, or one per layer for a template site's leaf claim.
+    /// The constant: one value, or one per real layer for a stacked committed advice atom.
     pub constant: Vec<Fp>,
     /// `LT(point, bound)` factors, from `Expand`s of a length that is not a power of two.
     pub lts: Vec<(Point, u64)>,
@@ -748,9 +748,9 @@ pub enum ScheduleError {
         node: NodeId,
     },
     /// A claim reaches what the schedule does not prove: a `Reshape` that is no identity, a
-    /// per-layer constant in a stacked claim, a public atom, or a relation of another shape, at
-    /// `node`; or `node` is the first of an operation the module documentation's 'Operations'
-    /// names.
+    /// per-layer constant on a virtual, weight or `ChannelParams` atom, a public atom, or a
+    /// relation of another shape, at `node`; or `node` is the first of an operation the module
+    /// documentation's 'Operations' names.
     Unsupported {
         /// The node.
         node: NodeId,
@@ -1253,6 +1253,8 @@ struct Item {
     point: Point,
     layers: Layers,
     term: Term,
+    /// Outermost layer-0 template `ConstMul` on this path whose constant differs across layers.
+    non_uniform_const: Option<NodeId>,
 }
 
 /// An instance's relation and size, before its evaluations' claims are derived.
@@ -1350,7 +1352,7 @@ impl Deriving<'_, '_> {
                 };
                 let vars = self.vars(tensor)?;
                 let point = Point::of(Source::Leaf(c), 0, vars)?;
-                let claim = self.claim(tensor, point, layers, template, pending)?;
+                let claim = self.claim(tensor, point, layers, pending)?;
                 push(
                     &mut leaf,
                     LeafClaim {
@@ -1381,7 +1383,7 @@ impl Deriving<'_, '_> {
             let c = u32::try_from(leaf.len()).map_err(|_| ScheduleError::Internal)?;
             let tensor = TensorRef::Single(output);
             let point = Point::of(Source::Leaf(c), 0, self.vars(tensor)?)?;
-            let claim = self.claim(tensor, point, Layers::None, false, pending)?;
+            let claim = self.claim(tensor, point, Layers::None, pending)?;
             push(
                 &mut leaf,
                 LeafClaim {
@@ -1682,7 +1684,7 @@ impl Deriving<'_, '_> {
                 if point.len() != self.vars(tensor)? {
                     return Err(ScheduleError::Internal);
                 }
-                let claim = self.claim(tensor, point, input_layers, false, &mut next)?;
+                let claim = self.claim(tensor, point, input_layers, &mut next)?;
                 splits = splits
                     .checked_add(claim.parts())
                     .ok_or(ScheduleError::Internal)?;
@@ -1928,18 +1930,16 @@ impl Deriving<'_, '_> {
     }
 
     /// A claim on `tensor` at `point` with `layers`: its atoms and its route, the virtual atoms it
-    /// leaves appended to `pending`. `per_layer` lets a template position's constants differ
-    /// between layers, for the leaf stage's per-layer claims.
+    /// leaves appended to `pending`.
     fn claim(
         &self,
         tensor: TensorRef,
         point: Point,
         layers: Layers,
-        per_layer: bool,
         pending: &mut Vec<Pending>,
     ) -> Result<Claim, ScheduleError> {
         let vars = point.len();
-        let atoms = self.atoms(tensor, point, layers, per_layer)?;
+        let atoms = self.atoms(tensor, point, layers)?;
         let route = self.route(&atoms, pending)?;
         Ok(Claim {
             tensor,
@@ -1955,7 +1955,6 @@ impl Deriving<'_, '_> {
         tensor: TensorRef,
         point: Point,
         layers: Layers,
-        per_layer: bool,
     ) -> Result<Vec<Atom>, ScheduleError> {
         let mut atoms: Vec<Atom> = Vec::new();
         let mut stack = vector([Item {
@@ -1966,6 +1965,7 @@ impl Deriving<'_, '_> {
                 constant: vector([Fp::ONE])?,
                 lts: Vec::new(),
             },
+            non_uniform_const: None,
         }])?;
         // Each step either expands a node, whose inputs come after it, or emits an atom: the
         // walk visits each node of the claim's linear chains once per path.
@@ -1982,7 +1982,7 @@ impl Deriving<'_, '_> {
             {
                 return Err(ScheduleError::Internal);
             }
-            if let Some(expanded) = self.expand(&item, per_layer)? {
+            if let Some(expanded) = self.expand(&item)? {
                 // Inputs in their node's order: the first is popped first.
                 for next in expanded.into_iter().rev() {
                     push(&mut stack, next)?;
@@ -1990,6 +1990,18 @@ impl Deriving<'_, '_> {
                 continue;
             }
             let class = self.class(item.tensor)?;
+            if let Some(node) = item.non_uniform_const {
+                // RFC-0037 'Claims and atoms', RFC-0068 step 7, RFC-0013 'Committed tensors' and
+                // 'Weights' (#556): a per-layer `ConstMul` factor is permitted only on a stacked
+                // committed advice atom; any path reaching a virtual, weight or `ChannelParams`
+                // atom is refused at the outer non-uniform `ConstMul`.
+                let supported_advice = matches!(class, Class::Committed(Commitment::Advice))
+                    && matches!(item.layers, Layers::Point(_))
+                    && matches!(item.tensor, TensorRef::LayerInput | TensorRef::Stacked(_));
+                if !supported_advice {
+                    return Err(ScheduleError::Unsupported { node });
+                }
+            }
             let merged = atoms.iter_mut().find(|a| {
                 a.tensor == item.tensor && a.point == item.point && a.layers == item.layers
             });
@@ -2017,7 +2029,7 @@ impl Deriving<'_, '_> {
 
     /// The terms on a linear node's inputs, when `item`'s tensor is the virtual output of one;
     /// `None` for an atom.
-    fn expand(&self, item: &Item, per_layer: bool) -> Result<Option<Vec<Item>>, ScheduleError> {
+    fn expand(&self, item: &Item) -> Result<Option<Vec<Item>>, ScheduleError> {
         let (id, template) = match item.tensor {
             TensorRef::LayerInput => return Ok(None),
             TensorRef::Stacked(t) => (t, true),
@@ -2054,6 +2066,7 @@ impl Deriving<'_, '_> {
                     point: item.point.try_clone()?,
                     layers,
                     term: item.term.try_clone()?,
+                    non_uniform_const: item.non_uniform_const,
                 }])?
             }
             (Op::Transpose { perm }, &[x]) => {
@@ -2079,6 +2092,7 @@ impl Deriving<'_, '_> {
                     point: item.point.blocks(&axes)?,
                     layers,
                     term: item.term.try_clone()?,
+                    non_uniform_const: item.non_uniform_const,
                 }])?
             }
             (Op::Expand { axis, len }, &[x]) => {
@@ -2106,10 +2120,11 @@ impl Deriving<'_, '_> {
                     point: item.point.blocks(&kept)?,
                     layers,
                     term,
+                    non_uniform_const: item.non_uniform_const,
                 }])?
             }
             (Op::ConstMul { c }, &[x]) => {
-                let constant = if template {
+                let (constant, non_uniform_const) = if template {
                     let (_, position) = self.layout.position(producer).ok_or(unsupported)?;
                     let mut values = Vec::new();
                     reserve(&mut values, index(self.layout.layers)?)?;
@@ -2122,14 +2137,12 @@ impl Deriving<'_, '_> {
                     }
                     let first = *values.first().ok_or(ScheduleError::Internal)?;
                     if values.iter().all(|&v| v == first) {
-                        vector([first])?
-                    } else if per_layer {
-                        values
+                        (vector([first])?, item.non_uniform_const)
                     } else {
-                        return Err(unsupported);
+                        (values, item.non_uniform_const.or(Some(producer)))
                     }
                 } else {
-                    vector([self.constant(*c)?])?
+                    (vector([self.constant(*c)?])?, item.non_uniform_const)
                 };
                 let mut term = item.term.try_clone()?;
                 term.constant = times(&term.constant, &constant)?;
@@ -2139,6 +2152,7 @@ impl Deriving<'_, '_> {
                     point: item.point.try_clone()?,
                     layers,
                     term,
+                    non_uniform_const,
                 }])?
             }
             (Op::Add, &[a, b]) => {
@@ -2150,12 +2164,14 @@ impl Deriving<'_, '_> {
                         point: item.point.try_clone()?,
                         layers: la,
                         term: item.term.try_clone()?,
+                        non_uniform_const: item.non_uniform_const,
                     },
                     Item {
                         tensor: tb,
                         point: item.point.try_clone()?,
                         layers: lb,
                         term: item.term.try_clone()?,
+                        non_uniform_const: item.non_uniform_const,
                     },
                 ])?
             }
@@ -2766,19 +2782,30 @@ mod tests {
         }
     }
 
-    /// A stacked claim through a constant that differs between layers: the leaf stage's per-layer
-    /// claims take each layer's, a stage's stacked claim cannot.
+    /// RFC-0037 'Claims and atoms' and RFC-0013 (#556): a reduction stage's stacked claim through
+    /// a `ConstMul` whose constant differs between layers is refused when the path reaches a
+    /// virtual atom (even if a second `ConstMul` cancels the per-layer difference), while a
+    /// uniform constant across layers succeeds.
     #[test]
     fn a_per_layer_constant_in_a_stacked_claim_is_unsupported() {
         let base = graph("tiny-2-servable", 4);
-        // The attention residual's ConstMul(2), whose output the MLP norm's SumSquares reads in
-        // place of the residual: the leaf claim reaches it through the SumSquares instance.
+        let o_mm = position(
+            &base,
+            0,
+            |op| matches!(op, Op::MatMulWeight { weight } if weight.ty == WeightType::O),
+        );
         let c = position(&base, 0, |op| matches!(op, Op::ConstMul { .. }));
+        let req = position(&base, c, |op| matches!(op, Op::Requant { .. }));
         let s = position(&base, c, |op| matches!(op, Op::SumSquares { .. }));
         let rewired = |constants: [i64; 2]| -> Graph {
             let mut g = base.clone();
             for (layer, &constant) in constants.iter().enumerate() {
+                let acc = g.node(at(&g, layer, o_mm)).unwrap().outputs()[0];
+                let sum = g.node(at(&g, layer, c)).unwrap().inputs()[0];
                 let doubled = g.node(at(&g, layer, c)).unwrap().outputs()[0];
+                // Bypass `c` at stage 0 so only stage 1's `SumSquares` reaches `c` -> `acc`.
+                g.set_input(at(&g, layer, req), 0, sum);
+                g.set_input(at(&g, layer, c), 0, acc);
                 g.set_input(at(&g, layer, s), 0, doubled);
                 let Op::ConstMul { c: index } = *g.node(at(&g, layer, c)).unwrap().op() else {
                     panic!()
@@ -2787,12 +2814,481 @@ mod tests {
             }
             g
         };
-        // One constant in every layer: a coefficient, and the claim's atoms go to the pool.
+        // One constant in every layer: a uniform scalar factor on the virtual atom.
         derive(&rewired([2, 2])).unwrap();
         let constant = at(&base, 0, c);
         assert_eq!(
             derive(&rewired([2, 3])),
             Err(ScheduleError::Unsupported { node: constant })
+        );
+
+        // Two non-uniform `ConstMul`s whose product `[2, 3] * [3, 2] = [6, 6]` cancels in `Fp`
+        // still cross a non-uniform template `ConstMul` on the path to a virtual atom and are
+        // refused at the outer `ConstMul` (whereas `[2, 2] * [3, 3] = [6, 6]` succeeds).
+        let c2 = position(&base, c + 1, |op| matches!(op, Op::ConstMul { .. }));
+        let mlp_add = position(&base, req + 1, |op| matches!(op, Op::Add));
+        let chained = |pairs: [(i64, i64); 2]| {
+            let mut g = base.clone();
+            for (layer, (inner_k, outer_k)) in pairs.into_iter().enumerate() {
+                let acc = g.node(at(&g, layer, o_mm)).unwrap().outputs()[0];
+                let inner_out = g.node(at(&g, layer, c)).unwrap().outputs()[0];
+                let outer_out = g.node(at(&g, layer, req)).unwrap().outputs()[0];
+                let checkpoint = g.checkpoints()[layer];
+                let Op::ConstMul { c: inner_idx } = *g.node(at(&g, layer, c)).unwrap().op() else {
+                    panic!()
+                };
+                let Op::ConstMul { c: outer_idx } = *g.node(at(&g, layer, c2)).unwrap().op() else {
+                    panic!()
+                };
+                g.set_input(at(&g, layer, c), 0, acc);
+                g.set_constant(inner_idx, inner_k);
+                g.set_op(at(&g, layer, req), Op::ConstMul { c: outer_idx });
+                g.set_kind(outer_out, Kind::Virtual);
+                g.set_input(at(&g, layer, req), 0, inner_out);
+                g.set_constant(outer_idx, outer_k);
+                g.set_input(at(&g, layer, mlp_add), 0, checkpoint);
+            }
+            g
+        };
+        derive(&chained([(2, 3), (2, 3)])).unwrap();
+        let outer = at(&base, 0, req);
+        assert_eq!(
+            derive(&chained([(2, 3), (3, 2)])),
+            Err(ScheduleError::Unsupported { node: outer })
+        );
+    }
+
+    /// RFC-0068 step 7 and RFC-0037 'Claims and atoms' (#556): a stage-0 (leaf-stage) claim whose
+    /// linear substitution path crosses a non-uniform per-layer `ConstMul` and reaches a virtual
+    /// atom is refused (`ScheduleError::Unsupported`), while a uniform per-layer `ConstMul`
+    /// succeeds.
+    #[test]
+    fn a_per_layer_constant_on_a_leaf_virtual_atom_is_unsupported() {
+        let base = graph("tiny-2-servable", 4);
+        let o_mm = position(
+            &base,
+            0,
+            |op| matches!(op, Op::MatMulWeight { weight } if weight.ty == WeightType::O),
+        );
+        let add_pos = position(&base, o_mm, |op| matches!(op, Op::Add));
+        let c = position(&base, 0, |op| matches!(op, Op::ConstMul { .. }));
+        let constant = at(&base, 0, c);
+
+        // Case 1: direct leaf site -> `ConstMul` -> virtual `MatMulWeight(O)`.
+        let direct = |constants: [i64; 2]| -> Graph {
+            let mut g = base.clone();
+            for (layer, &k) in constants.iter().enumerate() {
+                let acc = g.node(at(&g, layer, o_mm)).unwrap().outputs()[0];
+                g.set_input(at(&g, layer, c), 0, acc);
+                let Op::ConstMul { c: index } = *g.node(at(&g, layer, c)).unwrap().op() else {
+                    panic!()
+                };
+                g.set_constant(index, k);
+            }
+            g
+        };
+        let ok_schedule = derive(&direct([2, 2])).unwrap();
+        let req_site = at(
+            &base,
+            0,
+            position(&base, c, |op| matches!(op, Op::Requant { .. })),
+        );
+        let leaf_claim = ok_schedule
+            .leaf()
+            .iter()
+            .find(|l| l.site == req_site && l.input == Some(0))
+            .unwrap();
+        assert_eq!(leaf_claim.claim.atoms.len(), 1);
+        assert!(matches!(
+            leaf_claim.claim.atoms[0].class,
+            Class::Virtual { .. }
+        ));
+        assert_eq!(
+            leaf_claim.claim.atoms[0].coefficient.terms()[0].constant,
+            vec![Fp::reduce(2)]
+        );
+        assert_eq!(
+            derive(&direct([2, 3])),
+            Err(ScheduleError::Unsupported { node: constant })
+        );
+
+        // Case 2: split leaf site -> `ConstMul` -> `Add(X_in, MatMulWeight(O))` where the first
+        // branch is committed advice (permitted) and the second is virtual (forbidden).
+        let split = |constants: [i64; 2]| -> Graph {
+            let mut g = base.clone();
+            for (layer, &k) in constants.iter().enumerate() {
+                let acc = g.node(at(&g, layer, o_mm)).unwrap().outputs()[0];
+                g.set_input(at(&g, layer, add_pos), 1, acc);
+                let Op::ConstMul { c: index } = *g.node(at(&g, layer, c)).unwrap().op() else {
+                    panic!()
+                };
+                g.set_constant(index, k);
+            }
+            g
+        };
+        derive(&split([2, 2])).unwrap();
+        assert_eq!(
+            derive(&split([2, 3])),
+            Err(ScheduleError::Unsupported { node: constant })
+        );
+
+        // Case 3: `Add(MatMulWeight(O), update)` (LHS branch virtual, RHS branch committed advice).
+        let split_lhs = |constants: [i64; 2]| -> Graph {
+            let mut g = base.clone();
+            for (layer, &k) in constants.iter().enumerate() {
+                let acc = g.node(at(&g, layer, o_mm)).unwrap().outputs()[0];
+                g.set_input(at(&g, layer, add_pos), 0, acc);
+                let Op::ConstMul { c: index } = *g.node(at(&g, layer, c)).unwrap().op() else {
+                    panic!()
+                };
+                g.set_constant(index, k);
+            }
+            g
+        };
+        derive(&split_lhs([2, 2])).unwrap();
+        assert_eq!(
+            derive(&split_lhs([2, 3])),
+            Err(ScheduleError::Unsupported { node: constant })
+        );
+
+        // Case 4: `ConstMul -> Reshape -> Transpose -> Elementwise (Virtual)` (`AttnOut` reshape).
+        let attn_reshape = position(&base, o_mm - 3, |op| matches!(op, Op::Reshape));
+        let via_reshape_transpose = |constants: [i64; 2]| -> Graph {
+            let mut g = base.clone();
+            for (layer, &k) in constants.iter().enumerate() {
+                let o = g.node(at(&g, layer, attn_reshape)).unwrap().outputs()[0];
+                g.set_input(at(&g, layer, c), 0, o);
+                let Op::ConstMul { c: index } = *g.node(at(&g, layer, c)).unwrap().op() else {
+                    panic!()
+                };
+                g.set_constant(index, k);
+            }
+            g
+        };
+        derive(&via_reshape_transpose([2, 2])).unwrap();
+        assert_eq!(
+            derive(&via_reshape_transpose([2, 3])),
+            Err(ScheduleError::Unsupported { node: constant })
+        );
+
+        // Case 5: `ConstMul -> Expand -> Transpose -> Reshape -> MatMulWeight(K)` (`KV` heads).
+        let k_mm = position(
+            &base,
+            0,
+            |op| matches!(op, Op::MatMulWeight { weight } if weight.ty == WeightType::K),
+        );
+        let exp_pos = position(&base, k_mm, |op| matches!(op, Op::Expand { .. }));
+        let k_split = position(&base, exp_pos - 2, |op| matches!(op, Op::Reshape));
+        let req_pos = position(&base, c, |op| matches!(op, Op::Requant { .. }));
+        let s_pos = position(&base, req_pos, |op| matches!(op, Op::SumSquares { .. }));
+        let el_pos = position(&base, s_pos, |op| matches!(op, Op::Mul { .. }));
+        let mlp_add = position(&base, req_pos + 1, |op| matches!(op, Op::Add));
+        let via_expand = |constants: [i64; 2]| -> Graph {
+            let mut g = base.clone();
+            for (layer, &k) in constants.iter().enumerate() {
+                let k_virt = g.node(at(&g, layer, k_mm)).unwrap().outputs()[0];
+                let expanded = g.node(at(&g, layer, exp_pos)).unwrap().outputs()[0];
+                let exp_dims = g.tensor(expanded).unwrap().shape.dims().to_vec();
+                let c_out = g.node(at(&g, layer, c)).unwrap().outputs()[0];
+                let req_out = g.node(at(&g, layer, req_pos)).unwrap().outputs()[0];
+                let checkpoint = g.checkpoints()[layer];
+                g.set_input(at(&g, layer, k_split), 0, k_virt);
+                g.set_input(at(&g, layer, c), 0, expanded);
+                g.set_shape(c_out, &exp_dims);
+                g.set_shape(req_out, &exp_dims);
+                g.set_input(at(&g, layer, s_pos), 0, checkpoint);
+                g.set_input(at(&g, layer, el_pos), 0, checkpoint);
+                g.set_input(at(&g, layer, mlp_add), 0, checkpoint);
+                let Op::ConstMul { c: index } = *g.node(at(&g, layer, c)).unwrap().op() else {
+                    panic!()
+                };
+                g.set_constant(index, k);
+            }
+            g
+        };
+        derive(&via_expand([2, 2])).unwrap();
+        assert_eq!(
+            derive(&via_expand([2, 3])),
+            Err(ScheduleError::Unsupported { node: constant })
+        );
+    }
+
+    /// RFC-0037 'The claim pool' and RFC-0013 'Weights' (#556): a stacked `Weight` or
+    /// `ChannelParams` (`Classes` or `Multipliers`) atom reached through a non-uniform per-layer
+    /// `ConstMul` is refused at both stage 0 and stage 1, while a uniform per-layer `ConstMul`
+    /// succeeds.
+    #[test]
+    fn a_per_layer_constant_on_a_weight_or_channel_params_atom_is_unsupported() {
+        // 1. Stacked `Commitment::Weight(WeightType::O)` at stage 0 and stage 1.
+        let base = graph("tiny-2-servable", 4);
+        let o_mm = position(
+            &base,
+            0,
+            |op| matches!(op, Op::MatMulWeight { weight } if weight.ty == WeightType::O),
+        );
+        let c = position(&base, 0, |op| matches!(op, Op::ConstMul { .. }));
+        let req = position(&base, c, |op| matches!(op, Op::Requant { .. }));
+        let s = position(&base, c, |op| matches!(op, Op::SumSquares { .. }));
+        let constant = at(&base, 0, c);
+        let weight_case = |constants: [i64; 2], stage_one: bool| -> Graph {
+            let mut g = base.clone();
+            for (layer, &k) in constants.iter().enumerate() {
+                let w = g.node(at(&g, layer, o_mm)).unwrap().inputs()[1];
+                let w_dims = g.tensor(w).unwrap().shape.dims().to_vec();
+                let sum = g.node(at(&g, layer, c)).unwrap().inputs()[0];
+                let doubled = g.node(at(&g, layer, c)).unwrap().outputs()[0];
+                g.set_shape(doubled, &w_dims);
+                g.set_input(at(&g, layer, c), 0, w);
+                let Op::ConstMul { c: index } = *g.node(at(&g, layer, c)).unwrap().op() else {
+                    panic!()
+                };
+                g.set_constant(index, k);
+                if stage_one {
+                    g.set_input(at(&g, layer, req), 0, sum);
+                    g.set_input(at(&g, layer, s), 0, doubled);
+                }
+            }
+            g
+        };
+        for stage_one in [false, true] {
+            derive(&weight_case([2, 2], stage_one)).unwrap();
+            assert_eq!(
+                derive(&weight_case([2, 3], stage_one)),
+                Err(ScheduleError::Unsupported { node: constant }),
+                "Weight(O), stage_one = {stage_one}"
+            );
+        }
+
+        // 2. Stacked `Commitment::ChannelParams` (`Role::Classes`) at stage 0 and stage 1.
+        let (_, layer_len) = layer_start(&base, 0);
+        let (cls_pos, cls_idx) = (0..layer_len)
+            .find_map(|p| {
+                base.node(at(&base, 0, p))
+                    .unwrap()
+                    .inputs()
+                    .iter()
+                    .enumerate()
+                    .find(|&(_, &t)| {
+                        base.inputs()
+                            .iter()
+                            .any(|i| i.tensor == t && matches!(i.role, Role::Classes(_)))
+                    })
+                    .map(|(idx, _)| (p, idx))
+            })
+            .unwrap();
+        let classes_case = |constants: [i64; 2], stage_one: bool| -> Graph {
+            let mut g = base.clone();
+            for (layer, &k) in constants.iter().enumerate() {
+                let cls = g.node(at(&g, layer, cls_pos)).unwrap().inputs()[cls_idx];
+                let cls_dims = g.tensor(cls).unwrap().shape.dims().to_vec();
+                let sum = g.node(at(&g, layer, c)).unwrap().inputs()[0];
+                let doubled = g.node(at(&g, layer, c)).unwrap().outputs()[0];
+                g.set_shape(doubled, &cls_dims);
+                g.set_input(at(&g, layer, c), 0, cls);
+                let Op::ConstMul { c: index } = *g.node(at(&g, layer, c)).unwrap().op() else {
+                    panic!()
+                };
+                g.set_constant(index, k);
+                if stage_one {
+                    g.set_input(at(&g, layer, req), 0, sum);
+                    g.set_op(at(&g, layer, s), Op::SumSquares { axis: 0 });
+                    g.set_input(at(&g, layer, s), 0, doubled);
+                }
+            }
+            g
+        };
+        for stage_one in [false, true] {
+            derive(&classes_case([2, 2], stage_one)).unwrap();
+            assert_eq!(
+                derive(&classes_case([2, 3], stage_one)),
+                Err(ScheduleError::Unsupported { node: constant }),
+                "ChannelParams(Classes), stage_one = {stage_one}"
+            );
+        }
+
+        // 3. Stacked `Commitment::ChannelParams` (`Role::Multipliers`) at stage 0 and stage 1.
+        let aff = graph("tiny-2-affine", 4);
+        let mul_pos = position(&aff, 0, |op| {
+            matches!(
+                op,
+                Op::Mul {
+                    broadcast: Broadcast::Leading
+                }
+            )
+        });
+        let aff_c = position(&aff, 0, |op| matches!(op, Op::ConstMul { .. }));
+        let aff_add = position(&aff, aff_c, |op| matches!(op, Op::Add));
+        let aff_req = position(&aff, aff_c, |op| matches!(op, Op::Requant { .. }));
+        let aff_s = position(&aff, aff_c, |op| matches!(op, Op::SumSquares { .. }));
+        let aff_constant = at(&aff, 0, aff_c);
+        let multipliers_case = |constants: [i64; 2], stage_one: bool| -> Graph {
+            let mut g = aff.clone();
+            for (layer, &k) in constants.iter().enumerate() {
+                let m = g.node(at(&g, layer, mul_pos)).unwrap().inputs()[1];
+                let m_dims = g.tensor(m).unwrap().shape.dims().to_vec();
+                let checkpoint = g.checkpoints()[layer];
+                let scaled = g.node(at(&g, layer, aff_c)).unwrap().outputs()[0];
+                g.set_shape(scaled, &m_dims);
+                g.set_input(at(&g, layer, aff_c), 0, m);
+                // Keep `aff_add` well-shaped (`[n, d]`) by reading `checkpoint` directly.
+                g.set_input(at(&g, layer, aff_add), 1, checkpoint);
+                let Op::ConstMul { c: index } = *g.node(at(&g, layer, aff_c)).unwrap().op() else {
+                    panic!()
+                };
+                g.set_constant(index, k);
+                if stage_one {
+                    g.set_op(at(&g, layer, aff_s), Op::SumSquares { axis: 0 });
+                    g.set_input(at(&g, layer, aff_s), 0, scaled);
+                } else {
+                    g.set_input(at(&g, layer, aff_req), 0, scaled);
+                }
+            }
+            g
+        };
+        for stage_one in [false, true] {
+            derive(&multipliers_case([2, 2], stage_one)).unwrap();
+            assert_eq!(
+                derive(&multipliers_case([2, 3], stage_one)),
+                Err(ScheduleError::Unsupported { node: aff_constant }),
+                "ChannelParams(Multipliers), stage_one = {stage_one}"
+            );
+        }
+    }
+
+    /// RFC-0037 'Claims and atoms' and 'The claim pool' (#556): a stacked committed advice atom
+    /// reached through a non-uniform per-layer `ConstMul` is permitted at stage 0 and at reduction
+    /// stages `k >= 1`, and carries each layer's constant on its coefficient terms.
+    #[test]
+    fn a_per_layer_constant_on_committed_advice_is_supported_across_stages() {
+        // 1. `tiny-2-servable` (`TwoSteps`): both `LayerInput` (`res`) and `Stacked` advice
+        // (`update`) reached through `ConstMul([2, 3])` at stage 0 (`Requant`) and stage 1
+        // (`SumSquares`), each leaving `Route::Pool`.
+        let base = graph("tiny-2-servable", 4);
+        let c = position(&base, 0, |op| matches!(op, Op::ConstMul { .. }));
+        let req = position(&base, c, |op| matches!(op, Op::Requant { .. }));
+        let s = position(&base, c, |op| matches!(op, Op::SumSquares { .. }));
+        let constants = [2i64, 3];
+        let expected_fp: Vec<Fp> = constants.iter().map(|&v| signed(v)).collect();
+
+        let mut g = base.clone();
+        for (layer, &k) in constants.iter().enumerate() {
+            let doubled = g.node(at(&g, layer, c)).unwrap().outputs()[0];
+            g.set_input(at(&g, layer, s), 0, doubled);
+            let Op::ConstMul { c: index } = *g.node(at(&g, layer, c)).unwrap().op() else {
+                panic!()
+            };
+            g.set_constant(index, k);
+        }
+        let schedule = derive(&g).expect("committed advice supports per-layer constants");
+
+        // Stage 0: `AttnResidual`'s `Requant` leaf claim has `Route::Pool` and per-layer constants.
+        let req_site = at(&g, 0, req);
+        let leaf_claim = schedule
+            .leaf()
+            .iter()
+            .find(|l| l.site == req_site && l.input == Some(0))
+            .unwrap();
+        assert_eq!(leaf_claim.claim.route, Route::Pool);
+        assert_eq!(leaf_claim.claim.atoms.len(), 2);
+        assert_eq!(leaf_claim.claim.atoms[0].tensor, TensorRef::LayerInput);
+        assert!(matches!(
+            leaf_claim.claim.atoms[1].tensor,
+            TensorRef::Stacked(_)
+        ));
+        for atom in &leaf_claim.claim.atoms {
+            assert_eq!(atom.class, Class::Committed(Commitment::Advice));
+            assert_eq!(atom.coefficient.terms()[0].constant, expected_fp);
+        }
+
+        // Stage 1: `MlpNorm`'s `SumSquares` evaluation claim has `Route::Pool` and the same
+        // per-layer constants on both stacked advice atoms.
+        let s_node = at(&g, 0, s);
+        let sum_squares = schedule.stages()[0]
+            .instances
+            .iter()
+            .find(|inst| inst.node == s_node)
+            .unwrap();
+        let stage1_claim = &sum_squares.evals[0];
+        assert_eq!(stage1_claim.route, Route::Pool);
+        assert_eq!(stage1_claim.atoms.len(), 2);
+        assert_eq!(stage1_claim.atoms[0].tensor, TensorRef::LayerInput);
+        for atom in &stage1_claim.atoms {
+            assert_eq!(atom.class, Class::Committed(Commitment::Advice));
+            assert_eq!(atom.coefficient.terms()[0].constant, expected_fp);
+        }
+
+        // 2. 4-layer `tiny-4-servable` (`FusedKey`) & `tiny-2-affine`: stage-1 split claim
+        // `Add(z, ConstMul(k_l, res))` where `z` is virtual (uniform `[1]`) and `res` is `X_in`
+        // (advice, per-layer constants `[2, 3, 5, 7]` and `[-3, 5]`).
+        let four = graph("tiny-4-servable", 4);
+        let four_c = position(&four, 0, |op| matches!(op, Op::ConstMul { .. }));
+        let four_add = position(&four, four_c, |op| matches!(op, Op::Add));
+        let four_s = position(&four, four_c, |op| matches!(op, Op::SumSquares { .. }));
+        let four_constants = [2i64, 3, 5, 7];
+        let mut four_g = four.clone();
+        for (layer, &k) in four_constants.iter().enumerate() {
+            let sum = four_g.node(at(&four_g, layer, four_add)).unwrap().outputs()[0];
+            four_g.set_input(at(&four_g, layer, four_s), 0, sum);
+            let Op::ConstMul { c: index } = *four_g.node(at(&four_g, layer, four_c)).unwrap().op()
+            else {
+                panic!()
+            };
+            four_g.set_constant(index, k);
+        }
+        let four_schedule = derive(&four_g).expect("4-layer split advice succeeds");
+        let four_inst = four_schedule.stages()[0]
+            .instances
+            .iter()
+            .find(|inst| inst.node == at(&four_g, 0, four_s))
+            .unwrap();
+        let four_claim = &four_inst.evals[0];
+        assert!(matches!(four_claim.route, Route::Split(_)));
+        assert_eq!(
+            four_claim.atoms[1].coefficient.terms()[0].constant,
+            four_constants
+                .iter()
+                .map(|&v| signed(v))
+                .collect::<Vec<_>>()
+        );
+
+        let aff = graph("tiny-2-affine", 4);
+        let aff_c = position(&aff, 0, |op| matches!(op, Op::ConstMul { .. }));
+        let aff_add = position(&aff, aff_c, |op| matches!(op, Op::Add));
+        let aff_s = position(&aff, aff_c, |op| matches!(op, Op::SumSquares { .. }));
+        let mut split_g = aff.clone();
+        for (layer, k) in [-3i64, 5].into_iter().enumerate() {
+            let sum = split_g
+                .node(at(&split_g, layer, aff_add))
+                .unwrap()
+                .outputs()[0];
+            split_g.set_input(at(&split_g, layer, aff_s), 0, sum);
+            let Op::ConstMul { c: index } = *split_g.node(at(&split_g, layer, aff_c)).unwrap().op()
+            else {
+                panic!()
+            };
+            split_g.set_constant(index, k);
+        }
+        let split_schedule = derive(&split_g).expect("split virtual + per-layer advice succeeds");
+        let split_inst = split_schedule.stages()[0]
+            .instances
+            .iter()
+            .find(|inst| inst.node == at(&split_g, 0, aff_s))
+            .unwrap();
+        let split_claim = &split_inst.evals[0];
+        assert!(matches!(split_claim.route, Route::Split(_)));
+        assert!(matches!(split_claim.atoms[0].class, Class::Virtual { .. }));
+        assert_eq!(
+            split_claim.atoms[0].coefficient.terms()[0].constant,
+            vec![Fp::ONE]
+        );
+        assert_eq!(
+            split_claim.atoms[1].class,
+            Class::Committed(Commitment::Advice)
+        );
+        assert_eq!(split_claim.atoms[1].tensor, TensorRef::LayerInput);
+        assert_eq!(
+            split_claim.atoms[1].coefficient.terms()[0].constant,
+            vec![signed(-3), signed(5)]
         );
     }
 

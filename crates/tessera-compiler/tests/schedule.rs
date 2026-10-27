@@ -773,6 +773,138 @@ fn a_stacked_relation_output_scaled_per_layer_is_refused() {
         ),
         other => panic!("refused, not {other:?}"),
     }
+    // Two distinct i64 constants congruent modulo P (Goldilocks) are one constant in Fp.
+    let a = i64::MAX;
+    let b = i64::try_from(i128::from(a) - i128::from(F::MODULUS)).expect("fits in i64");
+    assert_eq!(F::from_i64(a), F::from_i64(b));
+    derive_schedule(&template([a, b])).expect("congruent modulo P is one constant in Fp");
+}
+
+/// A relation's output that the leaf stage itself reaches through a constant of each layer's own
+/// (`Layers::Each`, stacked at `ρ'_y` in `tessera-protocol/2`, RFC-0068 step 7; #556) is refused
+/// when the constant differs between layers, and accepted when every layer shares one constant.
+#[test]
+fn a_leaf_relation_output_scaled_per_layer_is_refused() {
+    let template = |constants: [i64; 2]| {
+        let mut b = GraphBuilder::new();
+        let x = b
+            .input(common::decl(&[4, 8], common::ADVICE, -100, 100))
+            .expect("an input");
+        let one = b.constant(vec![1]).expect("a constant");
+        let advice = |shape: &[u32]| common::out(shape, common::ADVICE);
+        let mut c = common::one(&mut b, Op::ConstMul { c: one }, &[x], advice(&[4, 8]));
+        let mut checkpoints = vec![c];
+        for constant in constants {
+            let mul = Op::Mul {
+                broadcast: tessera_ir::Broadcast::Trailing,
+            };
+            let square = common::one(&mut b, mul, &[c, c], common::virt(&[4, 8]));
+            let k = b.constant(vec![constant]).expect("a constant");
+            let scaled = common::one(
+                &mut b,
+                Op::ConstMul { c: k },
+                &[square],
+                common::virt(&[4, 8]),
+            );
+            let shift = b.shift_classes(vec![1]).expect("shift classes");
+            let requant = Op::Requant {
+                shift,
+                lo: -100,
+                hi: 100,
+            };
+            c = common::one(&mut b, requant, &[scaled], advice(&[4, 8]));
+            checkpoints.push(c);
+        }
+        Lowering {
+            graph: b.finish(),
+            tables: Vec::new(),
+            tokens: x,
+            positions: x,
+            one_hot: x,
+            logits: c,
+            checkpoints,
+            sites: Vec::new(),
+            classes: Vec::new(),
+            multipliers: Vec::new(),
+        }
+    };
+    let lowering = template([3, 3]);
+    let shared = derive_schedule(&lowering).expect("one constant in every layer");
+    check_parts(&shared, "leaf relation one constant");
+    check_rules(&lowering, &shared, "leaf relation one constant");
+    match derive_schedule(&template([3, 5])) {
+        Err(CompileError::Schedule { rule, .. }) => assert_eq!(
+            rule,
+            "a relation's output stacked over the layers is scaled by one constant in every layer"
+        ),
+        other => panic!("refused, not {other:?}"),
+    }
+}
+
+/// A weight or `ChannelParams` tensor stacked over the layers (`Layers::Each` at the leaf stage or
+/// `Layers::Eq` at a reduction stage) cannot carry a per-layer constant that differs between
+/// layers (RFC-0037 'Claims and atoms', RFC-0013 'Weights', #556).
+#[test]
+fn a_stacked_weight_scaled_per_layer_is_refused() {
+    let template = |constants: [i64; 2], reduction_stage: bool| {
+        let mut b = GraphBuilder::new();
+        let x = b
+            .input(common::decl(&[4, 8], common::ADVICE, -100, 100))
+            .expect("an input");
+        let one = b.constant(vec![1]).expect("a constant");
+        let advice = |shape: &[u32]| common::out(shape, common::ADVICE);
+        let mut c = common::one(&mut b, Op::ConstMul { c: one }, &[x], advice(&[4, 8]));
+        let mut checkpoints = vec![c];
+        for constant in constants {
+            let w = b
+                .input(common::decl(&[4, 8], common::WEIGHT, -100, 100))
+                .expect("a layer weight");
+            let k = b.constant(vec![constant]).expect("a constant");
+            let scaled = common::one(&mut b, Op::ConstMul { c: k }, &[w], common::virt(&[4, 8]));
+            let used = if reduction_stage {
+                let mul = Op::Mul {
+                    broadcast: tessera_ir::Broadcast::Trailing,
+                };
+                common::one(&mut b, mul, &[c, scaled], common::virt(&[4, 8]))
+            } else {
+                common::one(&mut b, Op::Add, &[c, scaled], common::virt(&[4, 8]))
+            };
+            let shift = b.shift_classes(vec![1]).expect("shift classes");
+            let requant = Op::Requant {
+                shift,
+                lo: -100,
+                hi: 100,
+            };
+            c = common::one(&mut b, requant, &[used], advice(&[4, 8]));
+            checkpoints.push(c);
+        }
+        Lowering {
+            graph: b.finish(),
+            tables: Vec::new(),
+            tokens: x,
+            positions: x,
+            one_hot: x,
+            logits: c,
+            checkpoints,
+            sites: Vec::new(),
+            classes: Vec::new(),
+            multipliers: Vec::new(),
+        }
+    };
+    for reduction_stage in [false, true] {
+        let lowering = template([3, 3], reduction_stage);
+        let shared = derive_schedule(&lowering).expect("one constant in every layer");
+        check_parts(&shared, "weight one constant");
+        check_rules(&lowering, &shared, "weight one constant");
+        match derive_schedule(&template([3, 5], reduction_stage)) {
+            Err(CompileError::Schedule { rule, .. }) => assert_eq!(
+                rule,
+                "a weight or ChannelParams tensor stacked over the layers is scaled by one \
+                 constant in every layer"
+            ),
+            other => panic!("stage={reduction_stage}: refused, not {other:?}"),
+        }
+    }
 }
 
 /// Random inputs of a lowered tiny Llama model: tokens, positions `0` to `n − 1`, INT8 weights,

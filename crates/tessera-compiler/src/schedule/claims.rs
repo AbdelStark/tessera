@@ -429,23 +429,31 @@ impl<'a> Derivation<'a> {
         Ok((true, parts))
     }
 
-    /// Checks that a virtual atom stacked at a layer point is weighed by `eq` alone: a constant of a
-    /// template position that differs between layers would weigh its layers otherwise. A combined
-    /// selection's members' coefficients count as its own.
+    /// Checks that a virtual atom or a weight or `ChannelParams` atom in the layers (`Layers::Each`
+    /// or `Layers::Eq`) is scaled by one `Fp` constant across every layer (RFC-0037 'Claims and
+    /// atoms', RFC-0068 step 7, RFC-0013 'Weights', #556). A combined selection's members'
+    /// coefficients count as its own.
     fn check_uniform(&self, atom: &Atom) -> Result<(), CompileError> {
-        if atom.class != AtomClass::Virtual || !matches!(atom.layers, Layers::Eq(_)) {
+        if !matches!(atom.layers, Layers::Each | Layers::Eq(_)) {
             return Ok(());
         }
+        let rule = match atom.class {
+            AtomClass::Virtual => {
+                "a relation's output stacked over the layers is scaled by one constant in \
+                 every layer"
+            }
+            AtomClass::Committed(CommitmentClass::Weight) => {
+                "a weight or ChannelParams tensor stacked over the layers is scaled by one \
+                 constant in every layer"
+            }
+            AtomClass::Committed(CommitmentClass::Advice) => return Ok(()),
+        };
         let members = atom.combined.iter().flat_map(|m| &m.coefficient);
         for factor in atom.coefficient.iter().chain(members).flatten() {
             if let Factor::Constant(NodeRef::Position(position)) = factor
                 && !self.layers.uniform(*position)
             {
-                return refuse(
-                    Some(self.layers.node(*position, 0)),
-                    "a relation's output stacked over the layers is scaled by one constant in \
-                     every layer",
-                );
+                return refuse(Some(self.layers.node(*position, 0)), rule);
             }
         }
         Ok(())
