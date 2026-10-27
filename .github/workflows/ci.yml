@@ -5,7 +5,7 @@ name: ci
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
   workflow_dispatch:
@@ -13,12 +13,10 @@ on:
 permissions:
   contents: read
 
-# GitHub keeps one pending run per group and cancels the others, and a cancelled run of a
-# required check leaves a pull request BLOCKED with every check green. `gh pr create --label`
-# fires one `labeled` event per label at once, so label events take a group of their own
-# (#507). A push or a new commit still cancels the branch's run in progress.
+# Label events run only pr-policy.yml (#532), so ci.yml sees commit lifecycle events alone and a
+# push or new commit cancels the branch's superseded run in progress.
 concurrency:
-  group: ${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('ci-{0}-{1}', github.ref, github.run_id) || format('ci-{0}', github.ref) }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}
 
 env:
@@ -107,12 +105,6 @@ jobs:
       - name: Field operations compile branch-free on x86_64 (INV-ARCH-2)
         if: needs.scope.outputs.code == 'true'
         run: cargo run --locked --quiet -p xtask -- check-branchless
-      - name: Changelog entry and DCO sign-off (09 §6)
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-        run: cargo run --locked --quiet -p xtask -- check-pr --base "$BASE_SHA" --labels "$LABELS"
 
   rust:
     name: rust (${{ matrix.workspace }})
