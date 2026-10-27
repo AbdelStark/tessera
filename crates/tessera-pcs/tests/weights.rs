@@ -955,4 +955,160 @@ fn the_production_shapes_take_the_widths_rfc_0012_states() {
         layout.committed_rows(ChannelParams).collect::<Vec<_>>(),
         [0]
     );
+    assert_eq!(layout.check_masked(), Ok(()));
+}
+
+/// RFC-0012 'Layout' ('Masked rate and minimum width in `tessera-protocol/2`', #564): a masked
+/// weight layout requires `P_W > 0`, `k_W + P_W < n_W`, and `k_T ≥ k_W` (`ρ'_T ≤ ρ'_W`) on every
+/// committed matrix (`m_T > 0`), while `ChannelParams` with `m_CP == 0` is exempt.
+#[test]
+fn check_masked_enforces_nominal_rate_and_minimum_committed_width() {
+    use WeightMatrix::*;
+
+    let wide = WeightShapes {
+        layers: 1,
+        shapes: [WeightShape {
+            out: 16,
+            inputs: 16,
+        }; 9],
+        channels: vec![(Q, 0)],
+    };
+    // Exact boundary at test-small/1 (`k_W = 2^8 = 256`, `n_W = 1024`, `P_W = 64`):
+    // every weight matrix has `16 · 16 = 256`, and `ChannelParams` has `16 · 1 · 16 = 256` with
+    // `m_CP = 1`.
+    let boundary = WeightLayout::new(params(8), wide.clone()).expect("a layout");
+    for matrix in WeightMatrix::ALL {
+        assert_eq!(boundary.matrix(matrix).log2_k(), 8, "{matrix:?}");
+        assert!(boundary.matrix(matrix).rows() > 0, "{matrix:?}");
+    }
+    assert_eq!(boundary.check_masked(), Ok(()));
+
+    // Wider than k_W (`inputs = 512 > 256`, so `log2 k_T = 9 > 8`) also passes.
+    let mut wider = wide.clone();
+    wider.shapes[Embed.index()].inputs = 512;
+    let wider_layout = WeightLayout::new(params(8), wider).expect("a layout");
+    assert_eq!(wider_layout.matrix(Embed).log2_k(), 9);
+    assert_eq!(wider_layout.check_masked(), Ok(()));
+
+    // P_W = 0 is refused (`NoMask`), and k_W + P_W ≥ n_W is refused (`MaskedWeightRate`), while
+    // k_W + P_W = n_W − 1 passes.
+    assert_eq!(
+        WeightLayout::new(
+            WeightLayoutParams {
+                mask_coeffs: 0,
+                ..params(8)
+            },
+            wide.clone()
+        )
+        .expect("a layout")
+        .check_masked(),
+        Err(PcsError::NoMask)
+    );
+    for (mask_coeffs, ok) in [(767, true), (768, false), (769, false)] {
+        let layout = WeightLayout::new(
+            WeightLayoutParams {
+                mask_coeffs,
+                ..params(8)
+            },
+            wide.clone(),
+        )
+        .expect("a layout");
+        let expected = if ok {
+            Ok(())
+        } else {
+            Err(PcsError::MaskedWeightRate {
+                log2_k: 8,
+                log2_inv_rate: 2,
+                mask_coeffs,
+            })
+        };
+        assert_eq!(layout.check_masked(), expected, "P_W = {mask_coeffs}");
+    }
+
+    // Nominal target code above 2^32 (`log2_k = 31`, `log2_inv_rate = 2`) is refused (`TooLong`)
+    // even when every matrix of D fits below 2^32.
+    let overlong_nominal = WeightLayout::new(
+        WeightLayoutParams {
+            log2_k: 31,
+            log2_inv_rate: 2,
+            mask_coeffs: 64,
+            blinding_rows: 32,
+        },
+        wide.clone(),
+    )
+    .expect("every matrix of D has log2_k = 8");
+    assert_eq!(
+        overlong_nominal.check_masked(),
+        Err(PcsError::TooLong { log_len: 33 })
+    );
+
+    // Every one of the nine weight matrices narrowed individually to 8 × 16 = 128 (`log2 k_T = 7`)
+    // is refused by name, and two narrow matrices report the first in WeightMatrix order.
+    for target in WeightMatrix::WEIGHTS {
+        let mut shapes = wide.clone();
+        // Keep C = 16 on ChannelParams even when Q is narrowed, by attaching ChannelParams to O
+        // whenever target == Q.
+        if target == Q {
+            shapes.channels = vec![(O, 0)];
+        }
+        shapes.shapes[target.index()] = WeightShape { out: 8, inputs: 16 };
+        let layout = WeightLayout::new(params(8), shapes).expect("a layout");
+        assert_eq!(
+            layout.check_masked(),
+            Err(PcsError::NarrowWeight {
+                matrix: target,
+                log2_k: 7,
+                min_log2_k: 8,
+            }),
+            "{target:?}"
+        );
+    }
+    let mut two_narrow = wide.clone();
+    two_narrow.shapes[Down.index()] = WeightShape { out: 8, inputs: 16 };
+    two_narrow.shapes[K.index()] = WeightShape { out: 4, inputs: 16 };
+    assert_eq!(
+        WeightLayout::new(params(8), two_narrow)
+            .expect("a layout")
+            .check_masked(),
+        Err(PcsError::NarrowWeight {
+            matrix: K,
+            log2_k: 6,
+            min_log2_k: 8,
+        })
+    );
+
+    // ChannelParams: with all nine weight matrices at 8 × 32 = 256 (`log2 k_T = 8`), `C = 8` gives
+    // `16 · 1 · 8 = 128 = 2^7 < 256`: refused when `m_CP > 0`, admitted when `m_CP == 0`.
+    let narrow_cp_shapes = [WeightShape { out: 8, inputs: 32 }; 9];
+    let committed_cp = WeightLayout::new(
+        params(8),
+        WeightShapes {
+            layers: 1,
+            shapes: narrow_cp_shapes,
+            channels: vec![(Q, 0)],
+        },
+    )
+    .expect("a layout");
+    assert_eq!(committed_cp.matrix(ChannelParams).rows(), 1);
+    assert_eq!(
+        committed_cp.check_masked(),
+        Err(PcsError::NarrowWeight {
+            matrix: ChannelParams,
+            log2_k: 7,
+            min_log2_k: 8,
+        })
+    );
+
+    let uncommitted_cp = WeightLayout::new(
+        params(8),
+        WeightShapes {
+            layers: 1,
+            shapes: narrow_cp_shapes,
+            channels: Vec::new(),
+        },
+    )
+    .expect("a layout");
+    assert_eq!(uncommitted_cp.matrix(ChannelParams).rows(), 0);
+    assert_eq!(uncommitted_cp.matrix(ChannelParams).log2_k(), 4);
+    assert_eq!(uncommitted_cp.check_masked(), Ok(()));
 }

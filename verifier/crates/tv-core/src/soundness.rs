@@ -3554,4 +3554,92 @@ mod tests {
             assert_eq!(statement.get("layer_vars").unwrap().as_u64(), Some(vars));
         }
     }
+
+    /// RFC-0012 'Masked rate and minimum width in `tessera-protocol/2`' and RFC-0014 (#564):
+    /// pins the exact weight-proximity query bits and `pass` verdicts across the narrow regimes
+    /// that step 6 refuses in `tessera-protocol/2` while `tessera-protocol/1` keeps `mask = 0`.
+    #[test]
+    fn narrow_weight_matrices_lose_proximity_margin_in_protocol_2_only() {
+        let matrix_statement = |protocol: u8, width: u64| StatementSizes {
+            protocol,
+            rounds: Vec::new(),
+            stages: Vec::new(),
+            tree_levels: Vec::new(),
+            zero_checks: Vec::new(),
+            layer_vars: 0,
+            forests: Vec::new(),
+            lookups: Vec::new(),
+            claim_groups: Vec::new(),
+            advice_rows: 1,
+            matrices: vec![MatrixSize {
+                matrix: Matrix::Q,
+                width,
+                rows: 1,
+                variables: 14,
+                claims: 1,
+            }],
+            groups: GroupSizes::NONE,
+        };
+        let query_row =
+            |params: SoundnessParams, protocol: u8, width: u64| -> (SoundnessRow, bool) {
+                let report =
+                    SoundnessReport::evaluate(params, matrix_statement(protocol, width)).unwrap();
+                let pass = report.meets_targets.unwrap();
+                let row = report
+                    .rows
+                    .into_iter()
+                    .find(|r| {
+                        r.row == RowKind::Queries
+                            && r.commitment == Some(CommitmentName::Weight(Matrix::Q))
+                    })
+                    .expect("Q proximity queries row");
+                (row, pass)
+            };
+
+        // At k_Q = P_W = 2^16 in protocol/2, n_Q = 2^18 and ρ'_Q = 1/2: live-64/1 drops to
+        // 40.25 bits (< 64) and ni-100/1 to 70.63 bits (< 100), both failing their target.
+        let (live_half, live_pass) = query_row(SoundnessParams::live_64(), 2, 1 << 16);
+        assert_eq!(live_half.codeword, Some(1 << 18));
+        assert_eq!(live_half.message, Some(1 << 16));
+        assert_eq!(live_half.mask, Some(1 << 16));
+        assert_eq!(live_half.per_query_bits, Some(106));
+        assert_eq!(live_half.bits, Some(10_306));
+        assert_eq!(format_fixed_bits(10_306), "40.25");
+        assert_eq!(live_half.pass, Some(false));
+        assert!(!live_pass);
+
+        let (ni_half, ni_pass) = query_row(SoundnessParams::ni_100(), 2, 1 << 16);
+        assert_eq!(ni_half.per_query_bits, Some(106));
+        assert_eq!(ni_half.bits, Some(18_082));
+        assert_eq!(format_fixed_bits(18_082), "70.63");
+        assert_eq!(ni_half.pass, Some(false));
+        assert!(!ni_pass);
+
+        // At d_model = 128 (k_Q = 2^14, n_Q = P_W = 2^16), k_Q + P_W > n_Q: the masked code is
+        // all of Fp^{n_Q}, giving 0 bits per query in protocol/2, whereas protocol/1 (mask = 0)
+        // keeps rate 1/4 and passes.
+        let (forged, forged_pass) = query_row(SoundnessParams::live_64(), 2, 1 << 14);
+        assert_eq!(forged.codeword, Some(1 << 16));
+        assert_eq!(forged.mask, Some(1 << 16));
+        assert_eq!(forged.per_query_bits, Some(0));
+        assert_eq!(forged.bits, Some(0));
+        assert_eq!(forged.pass, Some(false));
+        assert!(!forged_pass);
+
+        let (p1_narrow, p1_pass) = query_row(SoundnessParams::live_64(), 1, 1 << 14);
+        assert_eq!(p1_narrow.mask, Some(0));
+        assert_eq!(p1_narrow.pass, Some(true));
+        assert!(p1_pass);
+
+        // At k_Q = 2^19 (< k_W = 2^20) the target still fails; at k_Q = k_W = 2^20 it passes.
+        let (below_kw, below_pass) = query_row(SoundnessParams::live_64(), 2, 1 << 19);
+        assert_eq!(below_kw.pass, Some(false));
+        assert!(!below_pass);
+
+        for params in [SoundnessParams::live_64(), SoundnessParams::ni_100()] {
+            let (at_kw, at_kw_pass) = query_row(params, 2, 1 << 20);
+            assert_eq!(at_kw.pass, Some(true));
+            assert!(at_kw_pass);
+        }
+    }
 }

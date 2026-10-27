@@ -116,7 +116,7 @@ Security level is stated in bits: `λ` bits means an adversary spending `2^t` ha
 | Weight linking ([RFC-0064](RFC-0064-weight-linking-proof.md#soundness)) | `(ν_T + 1)/\|Fp2\|` per matrix; each commitment's proximity, at `τ_link` queries and `g_link` bits of work | ≥ 120 bits; proximity ≥ 100 bits | same |
 | Hash collisions | BLAKE3, 256-bit output | 128 bits | 128 bits |
 
-`b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients.
+`b(ρ') = −log2((1 + ρ')/2)` is the unique-decoding bound per query; `ρ' = (k + P)/n` includes the vanishing-mask coefficients. For a committed weight matrix `T` in `tessera-protocol/2`, `ρ'_T = (k_T + P_W)/n_T` (`k_T / n_T` in `tessera-protocol/1`), while `τ_W` is chosen at the parameter set's target rate `ρ'_W = (k_W + P_W)/n_W`; [RFC-0012](RFC-0012-weight-commitment.md#layout) and [RFC-0007](RFC-0007-claim-list.md#verifier-validation) step 6 require `ρ'_T ≤ ρ'_W < 1` (`k_T ≥ k_W`) on every committed weight matrix in `tessera-protocol/2` ([#564](https://github.com/AbdelStark/tessera/issues/564)).
 
 The field term is the tensor generator's. The proximity coefficients are `eq(ξ*, row)` for a random point `ξ*` with one coordinate per bit of the row index ([RFC-0011](RFC-0011-advice-commitment.md#opening-protocol) step 3), not independent uniform values. Folding those `ϑ` coordinates one at a time costs one line proximity gap each. The false-witness probability is therefore `ϑ·n/|Fp2|`, with `n` the codeword length (Diamond and Posen, 'Proximity Testing with Logarithmic Randomness' (2024); Diamond and Gruen, 'Proximity Gaps in Interleaved Codes' (2025), Theorems 2 and 3).
 - **`ϑ` for advice** is `ν − log2 k`, every bit of the allocated row index. The complete canonical 405B `servable`, two-class, Q=512 layout at 16K tokens allocates 2,328,576 rows, including gaps, of which 953,580 are committed (RFC-0047/0050). Thus `ϑ = 22`, and the term is `22 · 2^23/2^128 ≈ 2^{−100.5}`. Both layout implementations check these counts in `crates/tessera-bench/tests/commitment_report.rs`.
@@ -204,7 +204,7 @@ A calculator refuses, with `ERR-USAGE`: a `protocol` other than 1 or 2; `τ_A` o
 | Product-forest root claims | `max s/q` | — | `bits` |
 | LogUp identity | `v·max(N + T)/q`, `v = 1`, and 2 in `tessera-protocol/2` | `g_seed` | `one_shot` |
 | Opening evaluation checks | `max(max T_g, 1 when a matrix is opened)/q` | — | `bits` |
-| Proximity queries, per commitment | `((n + k + P)/(2n))^τ`, `((1 + ρ')/2)^τ`: the advice's `n_A`, `k_A = 2^{log2 k}`, `P_A`, `τ_A`; each matrix's `n_T`, `k_T`, `P_W`, `τ_W` | `g_query` | `one_shot` |
+| Proximity queries, per commitment | `((n + k + P)/(2n))^τ`, `((1 + ρ')/2)^τ`: the advice's `n_A`, `k_A = 2^{log2 k}`, `P_A`, `τ_A`; each matrix's `n_T`, `k_T`, `P = P_W` (`0` in protocol/1), `τ_W` | `g_query` | `one_shot` |
 | Proximity field term, per commitment | `ϑ·n/q`, `ϑ_A = ⌈log2 advice_rows⌉`, `ϑ_T = ⌈log2(m_T + B_T)⌉` with `B_T` the matrix's blinding rows ([RFC-0065](RFC-0065-masked-channel-params.md#channelparams-blinding-rows)), `⌈log2 m_T⌉` in protocol/1 | — | `bits` |
 | Weight linking | `max (ν_T + 1)/q` | — | `bits` |
 | Hash collisions | `2^{−128}` | — | `bits` |

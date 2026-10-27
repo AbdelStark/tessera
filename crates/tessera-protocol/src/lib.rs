@@ -182,10 +182,10 @@ pub use soundness::{
     Commitment, ErrorBound, LeafGroupSizes, LookupSizes, MatrixSizes, ProofOfWork, Rounds, RowKind,
     SoundnessReport, SoundnessRow, StatementSizes,
 };
+pub use tessera_ir::StageId;
 /// The protocol version `Round1` carries and both sessions check, the claim list's: 0 until
 /// `tessera-protocol/1` is assigned, when the first end-to-end proof verifies, then 1
 /// (09 §3, RFC-0036 '`Round1`'). A reader of another version answers `ERR-PROTO-VERSION`.
-pub use tessera_ir::PROTOCOL_VERSION;
-pub use tessera_ir::StageId;
+pub use tessera_ir::{PROTOCOL_VERSION, PROTOCOL_VERSION_2};
 pub use tessera_sumcheck::SumcheckProof;
 pub use verifier::{Ending, VerifierChecks, VerifierSession, VerifierState};

@@ -323,7 +323,7 @@ fn padded(value: u64) -> Result<u64, LayoutError> {
         .ok_or(LayoutError::Internal)
 }
 
-fn shape(claims: &ClaimList, matrix: Matrix) -> Result<(u64, u64, u64), LayoutError> {
+pub(crate) fn shape(claims: &ClaimList, matrix: Matrix) -> Result<(u64, u64, u64), LayoutError> {
     let a = claims.arch;
     let d = u64::from(a.d_model);
     let ff = u64::from(a.d_ff);

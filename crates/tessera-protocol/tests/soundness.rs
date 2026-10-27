@@ -1495,3 +1495,84 @@ fn prover_and_verifier_calculators_agree_on_1000_random_profiles() {
         );
     }
 }
+
+/// RFC-0014 'Soundness budget' and RFC-0012 'Layout' (#564): in `tessera-protocol/2`, a matrix's
+/// effective rate is `ρ'_T = (k_T + P_W) / n_T`, which drops `live-64/1` to `40.26` bits and
+/// `ni-100/1` to `70.63` bits at `k_T = P_W = 2^16`, collapses to 0 proximity bits per query once
+/// `k_T + P_W ≥ n_T` (`k_T = 2^14`, `n_T = 2^16 = P_W`), and passes at `k_T = k_W = 2^20` or in
+/// `tessera-protocol/1` (`P = 0`).
+#[test]
+fn narrow_masked_weight_matrices_lose_proximity_bits_exact_to_the_bound() {
+    let base = StatementSizes {
+        protocol: 2,
+        layer_vars: 0,
+        groups: LeafGroupSizes::NONE,
+        ..StatementSizes::llama_405b_16k()
+    };
+    let with_q_width = |protocol: u16, width: u64| {
+        let mut s = base.clone();
+        s.protocol = protocol;
+        let q = s
+            .matrices
+            .iter_mut()
+            .find(|m| m.matrix == WeightMatrix::Q)
+            .expect("Q");
+        q.width = width;
+        s
+    };
+    let q_kind = RowKind::Queries(Commitment::Weights(WeightMatrix::Q));
+
+    // k_Q = P_W = 2^16 (ρ'_Q = 1/2): live-64 gets 97 · (−log2(3/4)) = 40.2586… bits (10,306/256),
+    // and ni-100 gets 20 + 122 · (−log2(3/4)) = 70.6345… bits (18,082/256); both fail.
+    for (set, queries, expected_bits) in [
+        (&ParamSet::LIVE_64, 97u32, 10_306u64),
+        (&ParamSet::NI_100, 122, 18_082),
+    ] {
+        let statement = with_q_width(2, 1 << 16);
+        let r = report(set, &statement);
+        let q = row(&r, q_kind);
+        assert_eq!(
+            q.bound,
+            ErrorBound::Queries {
+                codeword: 1 << 18,
+                message: 1 << 16,
+                mask: 1 << 16,
+                queries,
+            }
+        );
+        assert_eq!(q.per_query, Some(FixedBits(106)), "{}", set.id);
+        assert_eq!(q.bits, Some(FixedBits(expected_bits)), "{}", set.id);
+        assert_eq!(q.pass, Some(false), "{}", set.id);
+        let v = tv_core::soundness::SoundnessReport::evaluate(
+            to_tv_params(set),
+            to_tv_statement(&statement),
+        )
+        .expect("verifier report");
+        assert_eq!(v.meets_targets, Some(false), "{}", set.id);
+    }
+
+    // k_Q = 2^14 (`d_model = 128`): n_Q = 2^16 = P_W, k_Q + P_W > n_Q, so per-query proximity is 0
+    // bits in protocol/2, whereas protocol/1 (`P = 0`, rate 1/4) passes at the same width.
+    for (set, grinding_bits) in [(&ParamSet::LIVE_64, 0u64), (&ParamSet::NI_100, 20 * 256)] {
+        let forged_regime = with_q_width(2, 1 << 14);
+        let r2 = report(set, &forged_regime);
+        let q2 = row(&r2, q_kind);
+        assert_eq!(q2.per_query, Some(FixedBits(0)), "{}", set.id);
+        assert_eq!(q2.bits, Some(FixedBits(grinding_bits)), "{}", set.id);
+        assert_eq!(q2.pass, Some(false), "{}", set.id);
+        let v2 = tv_core::soundness::SoundnessReport::evaluate(
+            to_tv_params(set),
+            to_tv_statement(&forged_regime),
+        )
+        .expect("verifier report");
+        assert_eq!(v2.meets_targets, Some(false), "{}", set.id);
+
+        let v1_statement = StatementSizes {
+            protocol: 1,
+            ..forged_regime
+        };
+        let r1 = report(set, &v1_statement);
+        let q1 = row(&r1, q_kind);
+        assert_eq!(q1.pass, Some(true), "{}", set.id);
+    }
+}

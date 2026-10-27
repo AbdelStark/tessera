@@ -269,6 +269,50 @@ impl WeightLayout {
         &self.matrices[matrix.index()]
     }
 
+    /// Checks that this layout is sound for `tessera-protocol/2`'s masked weight commitments
+    /// (RFC-0012 'Layout', RFC-0007 step 6, #564): `P_W > 0`, `k_W + P_W < n_W`, and every
+    /// committed matrix (`m_T > 0`) satisfies `k_T ≥ k_W` (`(k_T + P_W) / n_T ≤ (k_W + P_W) / n_W`).
+    ///
+    /// A `ChannelParams` matrix with `m_CP == 0` commits no row, has `B_CP = 0`, and is never
+    /// opened, so its nominal `k_CP` is exempt.
+    ///
+    /// # Errors
+    ///
+    /// - [`PcsError::NoMask`] if `params.mask_coeffs == 0`;
+    /// - [`PcsError::InverseRate`] or [`PcsError::TooLong`] if the nominal target code `(k_W, n_W)`
+    ///   is invalid;
+    /// - [`PcsError::MaskedWeightRate`] if `k_W + P_W ≥ n_W`;
+    /// - [`PcsError::NarrowWeight`] for the first committed matrix in [`WeightMatrix`] order whose
+    ///   message width `k_T` is below `k_W`.
+    pub fn check_masked(&self) -> Result<(), PcsError> {
+        if self.params.mask_coeffs == 0 {
+            return Err(PcsError::NoMask);
+        }
+        let min_log2_k = u32::from(self.params.log2_k);
+        check_code(&self.params, min_log2_k)?;
+        let k_w = 1u64 << min_log2_k;
+        let n_w = k_w << u32::from(self.params.log2_inv_rate);
+        let p_w = u64::from(self.params.mask_coeffs);
+        if k_w + p_w >= n_w {
+            return Err(PcsError::MaskedWeightRate {
+                log2_k: self.params.log2_k,
+                log2_inv_rate: self.params.log2_inv_rate,
+                mask_coeffs: self.params.mask_coeffs,
+            });
+        }
+        for matrix in WeightMatrix::ALL {
+            let shape = &self.matrices[matrix.index()];
+            if shape.rows > 0 && shape.log2_k < min_log2_k {
+                return Err(PcsError::NarrowWeight {
+                    matrix,
+                    log2_k: shape.log2_k,
+                    min_log2_k,
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// Maps a reading site's claim on weight type `matrix`'s channel parameters at `channel_point`
     /// (`log2 out_pad` coordinates) and `layer_point` (`log2 L_pad` coordinates for per-layer
     /// weights, empty for `Embed` and `LmHead`) to its full point on `ChannelParams` (RFC-0052

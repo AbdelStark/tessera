@@ -14,6 +14,10 @@ use crate::{ArchSpec, Profile, PublicQuantSpec};
 /// release verifier accepts it.
 pub const PROTOCOL_VERSION: u16 = 0;
 
+/// The protocol version of `tessera-protocol/2` (09 §3, RFC-0036 'Versions and envelopes'):
+/// zero-knowledge proofs over masked weight matrices (RFC-0012, RFC-0013).
+pub const PROTOCOL_VERSION_2: u16 = 2;
+
 /// The claim list, schema `0x0201` (RFC-0007 'Schema', RFC-0026): everything the verifier needs to
 /// build `D`'s constraints, from public data alone (INV-CL-1).
 ///
