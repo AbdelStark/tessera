@@ -37,7 +37,7 @@
 use core::{fmt, num::NonZeroU32, ops::Range};
 
 use crate::claims::{ClaimList, QuantPoint, WeightLayoutParams, WeightType};
-use crate::opening::{CombinedRow, OpeningError, encode, multilinear};
+use crate::opening::{CombinedRow, OpeningError, multilinear};
 use tv_codec::WeightCommitmentPublic;
 use tv_field::{Fp, Fp2};
 use tv_hash::column::column_digest;
@@ -545,6 +545,8 @@ pub enum Error {
     },
     /// A buffer could not be reserved: `ERR-RES-MEMORY`.
     Memory,
+    /// The verification deadline expired: `ERR-RES-TIME`.
+    Time,
     /// Invalid verifier-derived parameters/points/queries: `ERR-INTERNAL`.
     Internal,
 }
@@ -568,6 +570,7 @@ impl Error {
             Self::MerklePath { .. } => "REJ-PCS-MERKLE",
             Self::Proximity { .. } => "REJ-PCS-PROXIMITY",
             Self::Memory => "ERR-RES-MEMORY",
+            Self::Time => "ERR-RES-TIME",
             Self::Internal => "ERR-INTERNAL",
         }
     }
@@ -747,6 +750,16 @@ impl Evaluated<'_> {
         columns: &[Vec<Fp>],
         siblings: &[Digest],
     ) -> Result<(), Error> {
+        self.check_columns_with_cancel(queries, columns, siblings, &mut || false)
+    }
+
+    pub(crate) fn check_columns_with_cancel(
+        self,
+        queries: &[u64],
+        columns: &[Vec<Fp>],
+        siblings: &[Digest],
+        cancel: &mut impl FnMut() -> bool,
+    ) -> Result<(), Error> {
         let o = self.opening;
         let l = o.layout;
         let matrix = l.matrix;
@@ -810,10 +823,12 @@ impl Evaluated<'_> {
                 };
                 coefficients.push(c);
             }
-            encode(row, self.k, self.n, &mut codeword).map_err(|e| match e {
-                OpeningError::Memory => Error::Memory,
-                _ => Error::Internal,
-            })?;
+            crate::opening::encode_with_cancel(row, self.k, self.n, &mut codeword, cancel)
+                .map_err(|e| match e {
+                    OpeningError::Memory => Error::Memory,
+                    OpeningError::Time => Error::Time,
+                    _ => Error::Internal,
+                })?;
             for (position, (&j, col)) in distinct.iter().zip(columns).enumerate().take(agreed) {
                 let expected = coefficients
                     .iter()
@@ -836,5 +851,78 @@ impl Evaluated<'_> {
             }),
             None => Ok(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    #[test]
+    fn authenticated_weight_columns_propagate_transform_cancellation() {
+        let layout = Layout {
+            matrix: Matrix::Embed,
+            log2_k: 0,
+            row_vars: 0,
+            count: 1,
+            rows: Rows::Layers { live: 1, stride: 1 },
+            commitment_id: [42; 32],
+            row_block: NonZeroU32::new(1).unwrap(),
+        };
+        let columns = vec![vec![Fp::ZERO]; 4];
+        let leaves: Vec<_> = (0..4)
+            .map(|j| {
+                column_digest(
+                    &layout.commitment_id,
+                    j,
+                    layout.row_block,
+                    &columns[j as usize],
+                )
+            })
+            .collect();
+        let root = tv_hash::merkle::node(
+            &tv_hash::merkle::node(&leaves[0], &leaves[1]),
+            &tv_hash::merkle::node(&leaves[2], &leaves[3]),
+        );
+        let claims = [Claim {
+            column_point: &[],
+            row_point: &[],
+            gamma: Fp2::ONE,
+            value: Fp2::ZERO,
+        }];
+        let opening = Opening {
+            layout: &layout,
+            root,
+            claims: &claims,
+            xi_point: &[],
+        };
+        let combined = vec![
+            CombinedRow {
+                u: vec![Fp2::ZERO],
+                mask: vec![]
+            };
+            2
+        ];
+        let queries = [0, 1, 2, 3];
+        assert_eq!(
+            check_evaluations(opening, &combined)
+                .unwrap()
+                .check_columns(&queries, &columns, &[]),
+            Ok(())
+        );
+        for stop in [1, 3] {
+            let mut polls = 0;
+            assert_eq!(
+                check_evaluations(opening, &combined)
+                    .unwrap()
+                    .check_columns_with_cancel(&queries, &columns, &[], &mut || {
+                        polls += 1;
+                        polls == stop
+                    }),
+                Err(Error::Time)
+            );
+            assert_eq!(polls, stop);
+        }
+        assert_eq!(Error::Time.code(), "ERR-RES-TIME");
+        assert!(!Error::Time.is_rejection());
     }
 }

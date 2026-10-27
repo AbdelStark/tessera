@@ -184,6 +184,7 @@ fn opening_checks_allocate_only_what_the_parameters_and_the_draws_size() {
         .map(Case::from_json)
         .collect();
     assert_eq!(cases.len(), 10);
+    assert!(cases.iter().any(|case| case.row_vars == 0));
     for (index, case) in cases.iter().enumerate() {
         let k = 1usize << case.params.log2_k;
         let n = k << case.params.log2_inv_rate;
@@ -267,9 +268,9 @@ fn opening_checks_allocate_only_what_the_parameters_and_the_draws_size() {
             );
         }
 
-        // Too little memory for the sorted queries, or for the codeword: the verifier's own
-        // failure, ERR-RES-MEMORY, never a verdict. The codeword is reserved before any NTT runs.
-        for budget in [8 * tau - 1, buffers - 1] {
+        // Exactly the persistent buffers leave no space for eq tables or NTT twiddles.
+        // Both are the verifier's own memory failure, never a fault of the proof.
+        for budget in [8 * tau - 1, buffers - 1, buffers] {
             let (outcome, _) = case.columns_within(budget, &case.columns, &case.siblings);
             assert_eq!(
                 outcome,
@@ -277,6 +278,23 @@ fn opening_checks_allocate_only_what_the_parameters_and_the_draws_size() {
                 "opening {index}, {budget} bytes"
             );
             assert_eq!(OpeningError::Memory.code(), "ERR-RES-MEMORY");
+        }
+        if case.row_vars > 0 {
+            let outer = usize::try_from(case.row_vars.div_ceil(8)).unwrap()
+                * std::mem::size_of::<Vec<Fp2>>();
+            let first_table = (1usize << case.row_vars.min(8)) * std::mem::size_of::<Fp2>();
+            for budget in [
+                buffers + outer - 1,
+                buffers + outer,
+                buffers + outer + first_table - 1,
+            ] {
+                let (outcome, _) = case.columns_within(budget, &case.columns, &case.siblings);
+                assert_eq!(
+                    outcome,
+                    Err(OpeningError::Memory),
+                    "opening {index}, {budget} bytes"
+                );
+            }
         }
         let (outcome, _) = case.columns_within(honest, &case.columns, &case.siblings);
         assert_eq!(

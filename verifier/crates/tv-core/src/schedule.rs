@@ -182,10 +182,10 @@ pub struct Point {
 
 impl Point {
     /// The coordinates `start .. start + len` of `source`.
-    fn of(source: Source, start: usize, len: usize) -> Self {
+    fn of(source: Source, start: usize, len: usize) -> Result<Self, ScheduleError> {
         let mut point = Self::default();
-        point.push(Run { source, start, len });
-        point
+        point.push(Run { source, start, len })?;
+        Ok(point)
     }
 
     /// The runs, lowest coordinates first.
@@ -205,19 +205,28 @@ impl Point {
         self.runs.is_empty()
     }
 
+    fn try_clone(&self) -> Result<Self, ScheduleError> {
+        Ok(Self {
+            runs: copy(&self.runs)?,
+        })
+    }
+
     /// Appends a run above the others, merged with the last when contiguous.
-    fn push(&mut self, run: Run) {
+    fn push(&mut self, run: Run) -> Result<(), ScheduleError> {
         if run.len == 0 {
-            return;
+            return Ok(());
         }
         if let Some(last) = self.runs.last_mut()
             && last.source == run.source
             && last.start.checked_add(last.len) == Some(run.start)
         {
-            last.len = last.len.saturating_add(run.len);
-            return;
+            last.len = last
+                .len
+                .checked_add(run.len)
+                .ok_or(ScheduleError::Internal)?;
+            return Ok(());
         }
-        self.runs.push(run);
+        push(&mut self.runs, run)
     }
 
     /// Coordinates `from .. from + len`.
@@ -241,7 +250,7 @@ impl Point {
                         .checked_add(offset)
                         .ok_or(ScheduleError::Internal)?,
                     len: hi.checked_sub(lo).ok_or(ScheduleError::Internal)?,
-                });
+                })?;
             }
             at = run_end;
         }
@@ -249,14 +258,14 @@ impl Point {
     }
 
     /// The concatenation of `parts`, the first lowest.
-    fn concat(parts: &[&Point]) -> Self {
+    fn concat(parts: &[&Point]) -> Result<Self, ScheduleError> {
         let mut out = Self::default();
         for part in parts {
             for &run in &part.runs {
-                out.push(run);
+                out.push(run)?;
             }
         }
-        out
+        Ok(out)
     }
 
     /// The point with the coordinates of the axes `axes`, each a `(from, len)` block of this
@@ -265,7 +274,7 @@ impl Point {
         let mut out = Self::default();
         for &(from, len) in axes {
             for run in self.slice(from, len)?.runs {
-                out.push(run);
+                out.push(run)?;
             }
         }
         Ok(out)
@@ -281,6 +290,16 @@ pub enum Layers {
     Point(Point),
     /// The one layer `ℓ`: `c_L`, read by the epilogue, is layer `L − 1`'s last output.
     One(u32),
+}
+
+impl Layers {
+    fn try_clone(&self) -> Result<Self, ScheduleError> {
+        Ok(match self {
+            Self::None => Self::None,
+            Self::Point(point) => Self::Point(point.try_clone()?),
+            Self::One(layer) => Self::One(*layer),
+        })
+    }
 }
 
 /// A tensor of the schedule: a kind stacked over the layers, the layer input, or a tensor outside
@@ -332,6 +351,21 @@ pub struct Term {
     pub constant: Vec<Fp>,
     /// `LT(point, bound)` factors, from `Expand`s of a length that is not a power of two.
     pub lts: Vec<(Point, u64)>,
+}
+
+impl Term {
+    fn try_clone(&self) -> Result<Self, ScheduleError> {
+        let mut lts = Vec::new();
+        lts.try_reserve_exact(self.lts.len())
+            .map_err(|_| ScheduleError::Memory)?;
+        for (point, bound) in &self.lts {
+            lts.push((point.try_clone()?, *bound));
+        }
+        Ok(Self {
+            constant: copy(&self.constant)?,
+            lts,
+        })
+    }
 }
 
 impl Coefficient {
@@ -1293,7 +1327,7 @@ impl Deriving<'_, '_> {
     fn leaf(&self, pending: &mut Vec<Pending>) -> Result<Vec<LeafClaim>, ScheduleError> {
         let layout = self.layout;
         let mut leaf = Vec::new();
-        let stacking = Layers::Point(Point::of(Source::Layer, 0, layout.layer_vars));
+        let stacking = Layers::Point(Point::of(Source::Layer, 0, layout.layer_vars)?);
         for (i, node) in self.graph.nodes().iter().enumerate() {
             let id = NodeId(u32::try_from(i).map_err(|_| ScheduleError::Internal)?);
             if !is_gadget(node.op()) {
@@ -1310,12 +1344,12 @@ impl Deriving<'_, '_> {
                 }
                 let c = u32::try_from(leaf.len()).map_err(|_| ScheduleError::Internal)?;
                 let (tensor, layers) = if template {
-                    (self.in_template(input)?, stacking.clone())
+                    (self.in_template(input)?, stacking.try_clone()?)
                 } else {
                     self.outside(input)?
                 };
                 let vars = self.vars(tensor)?;
-                let point = Point::of(Source::Leaf(c), 0, vars);
+                let point = Point::of(Source::Leaf(c), 0, vars)?;
                 let claim = self.claim(tensor, point, layers, template, pending)?;
                 push(
                     &mut leaf,
@@ -1346,7 +1380,7 @@ impl Deriving<'_, '_> {
         if !self.deferred.contains(&(site, None)) {
             let c = u32::try_from(leaf.len()).map_err(|_| ScheduleError::Internal)?;
             let tensor = TensorRef::Single(output);
-            let point = Point::of(Source::Leaf(c), 0, self.vars(tensor)?);
+            let point = Point::of(Source::Leaf(c), 0, self.vars(tensor)?)?;
             let claim = self.claim(tensor, point, Layers::None, false, pending)?;
             push(
                 &mut leaf,
@@ -1521,7 +1555,7 @@ impl Deriving<'_, '_> {
         let (tensor, layers) = if stacked {
             (
                 self.in_template(tensor)?,
-                Layers::Point(Point::of(Source::Layer, 0, self.layout.layer_vars)),
+                Layers::Point(Point::of(Source::Layer, 0, self.layout.layer_vars)?),
             )
         } else {
             self.outside(tensor)?
@@ -1608,7 +1642,7 @@ impl Deriving<'_, '_> {
                 zero,
             } = shaped;
             let start = rounds.checked_sub(vars).ok_or(ScheduleError::Internal)?;
-            let at = Point::of(Source::Rounds(k), start, vars);
+            let at = Point::of(Source::Rounds(k), start, vars)?;
             let own_vars = if stacked {
                 vars.checked_sub(lambda).ok_or(ScheduleError::Internal)?
             } else {
@@ -1622,7 +1656,7 @@ impl Deriving<'_, '_> {
             };
             let zero_point = if zero {
                 let from = zero_vars.checked_sub(vars).ok_or(ScheduleError::Internal)?;
-                Point::of(Source::Zero(k), from, vars)
+                Point::of(Source::Zero(k), from, vars)?
             } else {
                 Point::default()
             };
@@ -1641,7 +1675,7 @@ impl Deriving<'_, '_> {
             reserve(&mut evals, targets.len())?;
             for (input, point) in targets {
                 let (tensor, input_layers) = if stacked {
-                    (self.in_template(input)?, layers.clone())
+                    (self.in_template(input)?, layers.try_clone()?)
                 } else {
                     self.outside(input)?
                 };
@@ -1823,10 +1857,10 @@ impl Deriving<'_, '_> {
                         .ok_or(ScheduleError::Internal)?,
                 )?;
                 let r_i = own.slice(0, *in_vars)?;
-                vec![
-                    (w, Point::concat(&[&r_i, &r_o])),
-                    (x, Point::concat(&[&r_i, &r_t])),
-                ]
+                vector([
+                    (w, Point::concat(&[&r_i, &r_o])?),
+                    (x, Point::concat(&[&r_i, &r_t])?),
+                ])?
             }
             (
                 Relation::MatMulAct {
@@ -1843,17 +1877,17 @@ impl Deriving<'_, '_> {
                 let r_j = own.slice(0, *k_vars)?;
                 let r_b = own.slice(*k_vars, *lead_vars)?;
                 let b_point = if *transpose_rhs {
-                    Point::concat(&[&r_j, &r_c, &r_b])
+                    Point::concat(&[&r_j, &r_c, &r_b])?
                 } else {
-                    Point::concat(&[&r_c, &r_j, &r_b])
+                    Point::concat(&[&r_c, &r_j, &r_b])?
                 };
-                vec![(a, Point::concat(&[&r_j, &r_a, &r_b])), (b, b_point)]
+                vector([(a, Point::concat(&[&r_j, &r_a, &r_b])?), (b, b_point)])?
             }
             (Relation::Elementwise { b_from, b_vars, .. }, &[a, b]) => {
-                vec![(a, own.clone()), (b, own.slice(*b_from, *b_vars)?)]
+                vector([(a, own.try_clone()?), (b, own.slice(*b_from, *b_vars)?)])?
             }
             (Relation::SumSquares { .. }, &[x]) | (Relation::Rotate { .. }, &[x, _]) => {
-                vec![(x, own.clone())]
+                vector([(x, own.try_clone()?)])?
             }
             (
                 Relation::Booleanity | Relation::Vocabulary { .. } | Relation::OneHotCount { .. },
@@ -1862,14 +1896,14 @@ impl Deriving<'_, '_> {
                 let TensorRef::Single(output) = atom.tensor else {
                     return Err(ScheduleError::Internal);
                 };
-                vec![(output, own.clone())]
+                vector([(output, own.try_clone()?)])?
             }
             (Relation::OneHotIndex { vocab_vars }, [token]) => {
                 let TensorRef::Single(output) = atom.tensor else {
                     return Err(ScheduleError::Internal);
                 };
-                vec![
-                    (output, own.clone()),
+                vector([
+                    (output, own.try_clone()?),
                     (
                         *token,
                         own.slice(
@@ -1879,14 +1913,14 @@ impl Deriving<'_, '_> {
                                 .ok_or(ScheduleError::Internal)?,
                         )?,
                     ),
-                ]
+                ])?
             }
             // The output Ỹ first, then f's input (RFC-0010 'Sumcheck messages', as amended).
             (Relation::Equality { .. }, &[x]) => {
                 let TensorRef::Single(output) = atom.tensor else {
                     return Err(ScheduleError::Internal);
                 };
-                vec![(output, own.clone()), (x, own.clone())]
+                vector([(output, own.try_clone()?), (x, own.try_clone()?)])?
             }
             _ => return Err(ScheduleError::Internal),
         };
@@ -1924,15 +1958,15 @@ impl Deriving<'_, '_> {
         per_layer: bool,
     ) -> Result<Vec<Atom>, ScheduleError> {
         let mut atoms: Vec<Atom> = Vec::new();
-        let mut stack = vec![Item {
+        let mut stack = vector([Item {
             tensor,
             point,
             layers,
             term: Term {
-                constant: vec![Fp::ONE],
+                constant: vector([Fp::ONE])?,
                 lts: Vec::new(),
             },
-        }];
+        }])?;
         // Each step either expands a node, whose inputs come after it, or emits an atom: the
         // walk visits each node of the claim's linear chains once per path.
         let mut steps = 0usize;
@@ -1968,7 +2002,7 @@ impl Deriving<'_, '_> {
                         point: item.point,
                         layers: item.layers,
                         coefficient: Coefficient {
-                            terms: vec![item.term],
+                            terms: vector([item.term])?,
                         },
                         class,
                     },
@@ -2003,7 +2037,7 @@ impl Deriving<'_, '_> {
         }
         let input_ref = |input: TensorId| -> Result<(TensorRef, Layers), ScheduleError> {
             if template {
-                Ok((self.in_template(input)?, item.layers.clone()))
+                Ok((self.in_template(input)?, item.layers.try_clone()?))
             } else {
                 self.outside(input)
             }
@@ -2011,16 +2045,16 @@ impl Deriving<'_, '_> {
         let out_dims = t.shape.dims();
         let items = match (node.op(), node.inputs()) {
             (Op::Reshape, &[x]) => {
-                if !reshape_is_identity(&dims(self.graph, x)?, out_dims) {
+                if !reshape_is_identity(&dims(self.graph, x)?, out_dims)? {
                     return Err(unsupported);
                 }
                 let (tensor, layers) = input_ref(x)?;
-                vec![Item {
+                vector([Item {
                     tensor,
-                    point: item.point.clone(),
+                    point: item.point.try_clone()?,
                     layers,
-                    term: item.term.clone(),
-                }]
+                    term: item.term.try_clone()?,
+                }])?
             }
             (Op::Transpose { perm }, &[x]) => {
                 let blocks = axis_blocks(out_dims)?;
@@ -2031,6 +2065,7 @@ impl Deriving<'_, '_> {
                 // Input axis a, from the last (lowest) to the first, takes output axis i's block,
                 // perm[i] = a.
                 let mut axes = Vec::new();
+                reserve(&mut axes, x_rank)?;
                 for a in (0..x_rank).rev() {
                     let i = perm
                         .iter()
@@ -2039,23 +2074,23 @@ impl Deriving<'_, '_> {
                     axes.push(*blocks.get(i).ok_or(unsupported)?);
                 }
                 let (tensor, layers) = input_ref(x)?;
-                vec![Item {
+                vector([Item {
                     tensor,
                     point: item.point.blocks(&axes)?,
                     layers,
-                    term: item.term.clone(),
-                }]
+                    term: item.term.try_clone()?,
+                }])?
             }
             (Op::Expand { axis, len }, &[x]) => {
                 let blocks = axis_blocks(out_dims)?;
                 let axis = usize::from(*axis);
                 let dropped = *blocks.get(axis).ok_or(unsupported)?;
-                let kept: Vec<(usize, usize)> = (0..blocks.len())
-                    .rev()
-                    .filter(|&a| a != axis)
-                    .filter_map(|a| blocks.get(a).copied())
-                    .collect();
-                let mut term = item.term.clone();
+                let mut kept = Vec::new();
+                reserve(&mut kept, blocks.len())?;
+                for a in (0..blocks.len()).rev().filter(|&a| a != axis) {
+                    kept.push(*blocks.get(a).ok_or(unsupported)?);
+                }
+                let mut term = item.term.try_clone()?;
                 let cube = 1u64
                     .checked_shl(u32::try_from(dropped.1).map_err(|_| ScheduleError::Internal)?)
                     .ok_or(ScheduleError::Internal)?;
@@ -2066,12 +2101,12 @@ impl Deriving<'_, '_> {
                     )?;
                 }
                 let (tensor, layers) = input_ref(x)?;
-                vec![Item {
+                vector([Item {
                     tensor,
                     point: item.point.blocks(&kept)?,
                     layers,
                     term,
-                }]
+                }])?
             }
             (Op::ConstMul { c }, &[x]) => {
                 let constant = if template {
@@ -2087,42 +2122,42 @@ impl Deriving<'_, '_> {
                     }
                     let first = *values.first().ok_or(ScheduleError::Internal)?;
                     if values.iter().all(|&v| v == first) {
-                        vec![first]
+                        vector([first])?
                     } else if per_layer {
                         values
                     } else {
                         return Err(unsupported);
                     }
                 } else {
-                    vec![self.constant(*c)?]
+                    vector([self.constant(*c)?])?
                 };
-                let mut term = item.term.clone();
+                let mut term = item.term.try_clone()?;
                 term.constant = times(&term.constant, &constant)?;
                 let (tensor, layers) = input_ref(x)?;
-                vec![Item {
+                vector([Item {
                     tensor,
-                    point: item.point.clone(),
+                    point: item.point.try_clone()?,
                     layers,
                     term,
-                }]
+                }])?
             }
             (Op::Add, &[a, b]) => {
                 let (ta, la) = input_ref(a)?;
                 let (tb, lb) = input_ref(b)?;
-                vec![
+                vector([
                     Item {
                         tensor: ta,
-                        point: item.point.clone(),
+                        point: item.point.try_clone()?,
                         layers: la,
-                        term: item.term.clone(),
+                        term: item.term.try_clone()?,
                     },
                     Item {
                         tensor: tb,
-                        point: item.point.clone(),
+                        point: item.point.try_clone()?,
                         layers: lb,
-                        term: item.term.clone(),
+                        term: item.term.try_clone()?,
                     },
-                ]
+                ])?
             }
             _ => return Err(unsupported),
         };
@@ -2143,8 +2178,8 @@ impl Deriving<'_, '_> {
                 pending,
                 Pending {
                     tensor: atom.tensor,
-                    point: atom.point.clone(),
-                    layers: atom.layers.clone(),
+                    point: atom.point.try_clone()?,
+                    layers: atom.layers.try_clone()?,
                     node,
                     native: None,
                 },
@@ -2183,7 +2218,12 @@ impl Deriving<'_, '_> {
                     });
                     match group {
                         Some(members) => push(members, i)?,
-                        None => push(&mut parts, Part::Group { atoms: vec![i] })?,
+                        None => push(
+                            &mut parts,
+                            Part::Group {
+                                atoms: vector([i])?,
+                            },
+                        )?,
                     }
                 }
             }
@@ -2321,42 +2361,38 @@ fn is_relation(op: &Op) -> bool {
 /// Whether a `Reshape` from `from` to `to` maps coordinates as the identity: in each group of
 /// axes that merge into one, every axis but the outermost has a length that is a power of two,
 /// axes of length 1 aside.
-fn reshape_is_identity(from: &[u32], to: &[u32]) -> bool {
-    let a: Vec<u64> = from
-        .iter()
-        .filter(|&&d| d != 1)
-        .map(|&d| u64::from(d))
-        .collect();
-    let b: Vec<u64> = to
-        .iter()
-        .filter(|&&d| d != 1)
-        .map(|&d| u64::from(d))
-        .collect();
+fn reshape_is_identity(from: &[u32], to: &[u32]) -> Result<bool, ScheduleError> {
+    let mut a = Vec::new();
+    reserve(&mut a, from.len())?;
+    a.extend(from.iter().filter(|&&d| d != 1).map(|&d| u64::from(d)));
+    let mut b = Vec::new();
+    reserve(&mut b, to.len())?;
+    b.extend(to.iter().filter(|&&d| d != 1).map(|&d| u64::from(d)));
     let (mut i, mut j) = (a.len(), b.len());
     while i > 0 && j > 0 {
         let (i_end, j_end) = (i, j);
         i = i.saturating_sub(1);
         j = j.saturating_sub(1);
         let (Some(&first_a), Some(&first_b)) = (a.get(i), b.get(j)) else {
-            return false;
+            return Ok(false);
         };
         let (mut pa, mut pb) = (first_a, first_b);
         while pa != pb {
             if pa < pb {
                 let Some(next) = i.checked_sub(1).and_then(|k| a.get(k)) else {
-                    return false;
+                    return Ok(false);
                 };
                 let Some(product) = pa.checked_mul(*next) else {
-                    return false;
+                    return Ok(false);
                 };
                 pa = product;
                 i = i.saturating_sub(1);
             } else {
                 let Some(next) = j.checked_sub(1).and_then(|k| b.get(k)) else {
-                    return false;
+                    return Ok(false);
                 };
                 let Some(product) = pb.checked_mul(*next) else {
-                    return false;
+                    return Ok(false);
                 };
                 pb = product;
                 j = j.saturating_sub(1);
@@ -2366,10 +2402,10 @@ fn reshape_is_identity(from: &[u32], to: &[u32]) -> bool {
         let inner_a = a.get(i.saturating_add(1)..i_end).unwrap_or(&[]);
         let inner_b = b.get(j.saturating_add(1)..j_end).unwrap_or(&[]);
         if !inner_a.iter().chain(inner_b).all(|d| d.is_power_of_two()) {
-            return false;
+            return Ok(false);
         }
     }
-    i == 0 && j == 0
+    Ok(i == 0 && j == 0)
 }
 
 /// The `(first coordinate, variables)` block of each axis of a tensor, outermost first; the last
@@ -2443,7 +2479,7 @@ fn tensor_of(graph: &Graph, id: TensorId) -> Result<&crate::lowering::Tensor, Sc
 }
 
 fn dims(graph: &Graph, id: TensorId) -> Result<Vec<u32>, ScheduleError> {
-    Ok(tensor_of(graph, id)?.shape.dims().to_vec())
+    copy(tensor_of(graph, id)?.shape.dims())
 }
 
 fn index(i: u32) -> Result<usize, ScheduleError> {
@@ -2462,32 +2498,48 @@ fn push<T>(values: &mut Vec<T>, value: T) -> Result<(), ScheduleError> {
     Ok(())
 }
 
+fn vector<T, const N: usize>(values: [T; N]) -> Result<Vec<T>, ScheduleError> {
+    let mut out = Vec::new();
+    out.try_reserve_exact(N)
+        .map_err(|_| ScheduleError::Memory)?;
+    out.extend(values);
+    Ok(out)
+}
+
+fn copy<T: Copy>(values: &[T]) -> Result<Vec<T>, ScheduleError> {
+    let mut out = Vec::new();
+    out.try_reserve_exact(values.len())
+        .map_err(|_| ScheduleError::Memory)?;
+    out.extend_from_slice(values);
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn a_reshape_is_an_identity_when_inner_axes_are_powers_of_two() {
-        assert!(reshape_is_identity(&[5, 4, 16], &[5, 64]));
-        assert!(reshape_is_identity(&[5, 64], &[5, 4, 16]));
-        assert!(reshape_is_identity(&[2, 2, 5, 16], &[4, 5, 16]));
-        assert!(reshape_is_identity(&[3, 4, 16], &[3, 64]));
+        assert!(reshape_is_identity(&[5, 4, 16], &[5, 64]).unwrap());
+        assert!(reshape_is_identity(&[5, 64], &[5, 4, 16]).unwrap());
+        assert!(reshape_is_identity(&[2, 2, 5, 16], &[4, 5, 16]).unwrap());
+        assert!(reshape_is_identity(&[3, 4, 16], &[3, 64]).unwrap());
         // The outermost axis of a merge group may be any length.
-        assert!(reshape_is_identity(&[5, 3, 16], &[5, 48]));
-        assert!(reshape_is_identity(&[1, 6, 1], &[6]));
+        assert!(reshape_is_identity(&[5, 3, 16], &[5, 48]).unwrap());
+        assert!(reshape_is_identity(&[1, 6, 1], &[6]).unwrap());
         // An inner axis that is not a power of two moves coordinates.
-        assert!(!reshape_is_identity(&[5, 4, 6], &[5, 24]));
-        assert!(!reshape_is_identity(&[6, 5], &[30]));
-        assert!(!reshape_is_identity(&[4, 6], &[6, 4]));
-        assert!(!reshape_is_identity(&[4, 6], &[25]));
+        assert!(!reshape_is_identity(&[5, 4, 6], &[5, 24]).unwrap());
+        assert!(!reshape_is_identity(&[6, 5], &[30]).unwrap());
+        assert!(!reshape_is_identity(&[4, 6], &[6, 4]).unwrap());
+        assert!(!reshape_is_identity(&[4, 6], &[25]).unwrap());
     }
 
     #[test]
     fn points_merge_contiguous_runs_and_slice_across_them() {
-        let a = Point::of(Source::Rounds(2), 3, 4);
-        let b = Point::of(Source::Rounds(2), 7, 2);
-        let c = Point::of(Source::Leaf(1), 0, 3);
-        let joined = Point::concat(&[&a, &b, &c]);
+        let a = Point::of(Source::Rounds(2), 3, 4).unwrap();
+        let b = Point::of(Source::Rounds(2), 7, 2).unwrap();
+        let c = Point::of(Source::Leaf(1), 0, 3).unwrap();
+        let joined = Point::concat(&[&a, &b, &c]).unwrap();
         assert_eq!(
             joined.runs(),
             [
@@ -2508,15 +2560,30 @@ mod tests {
         assert_eq!(
             middle,
             Point::concat(&[
-                &Point::of(Source::Rounds(2), 8, 1),
-                &Point::of(Source::Leaf(1), 0, 2)
+                &Point::of(Source::Rounds(2), 8, 1).unwrap(),
+                &Point::of(Source::Leaf(1), 0, 2).unwrap()
             ])
+            .unwrap()
         );
         assert_eq!(joined.slice(8, 2), Err(ScheduleError::Internal));
         assert_eq!(
             joined.blocks(&[(6, 3), (0, 6)]).unwrap(),
-            Point::concat(&[&c, &a, &b])
+            Point::concat(&[&c, &a, &b]).unwrap()
         );
+    }
+
+    #[test]
+    fn point_run_length_overflow_is_an_internal_error() {
+        let mut point = Point::of(Source::Rounds(1), 0, usize::MAX).unwrap();
+        assert_eq!(
+            point.push(Run {
+                source: Source::Rounds(1),
+                start: usize::MAX,
+                len: 1,
+            }),
+            Err(ScheduleError::Internal)
+        );
+        assert_eq!(point.len(), usize::MAX);
     }
 
     /// A golden model's graph, lowered at `n` tokens.

@@ -71,7 +71,7 @@
 use core::fmt;
 use core::num::NonZeroU32;
 
-use tv_field::{Fp, Fp2, TWO_ADICITY, coset_ntt, intt};
+use tv_field::{Fp, Fp2, NttError, TWO_ADICITY, coset_ntt_with_cancel, intt_with_cancel};
 use tv_hash::column::column_digest;
 use tv_hash::merkle::{MultiproofError, verify_multiproof};
 use tv_hash::{Digest, Domain, DomainHasher};
@@ -269,6 +269,8 @@ pub enum OpeningError {
     },
     /// Memory for a buffer the parameters size could not be reserved.
     Memory,
+    /// Verification was cancelled by its deadline: `ERR-RES-TIME`.
+    Time,
     /// A step that the checks before it make infallible failed: a bug of this crate.
     Internal,
 }
@@ -285,13 +287,14 @@ impl OpeningError {
 
     /// The error's identifier in 04 §2 and §3: `REJ-PCS-EVAL`, `REJ-PCS-MERKLE` and
     /// `REJ-PCS-PROXIMITY` for the proof's faults, `ERR-RES-MEMORY` for memory that could not be
-    /// reserved, `ERR-INTERNAL` for every other fault of the verifier.
+    /// reserved, `ERR-RES-TIME` for cancellation, `ERR-INTERNAL` for every other fault of the verifier.
     pub const fn code(&self) -> &'static str {
         match self {
             Self::Evaluation { .. } => "REJ-PCS-EVAL",
             Self::MerklePath { .. } => "REJ-PCS-MERKLE",
             Self::Proximity { .. } => "REJ-PCS-PROXIMITY",
             Self::Memory => "ERR-RES-MEMORY",
+            Self::Time => "ERR-RES-TIME",
             Self::CodeLength { .. }
             | Self::MaskCoefficients { .. }
             | Self::RowBlock
@@ -375,6 +378,7 @@ impl fmt::Display for OpeningError {
                 write!(f, "query {position} is outside the codeword")
             }
             Self::Memory => f.write_str("memory for the column check could not be reserved"),
+            Self::Time => f.write_str("column check deadline expired"),
             Self::Internal => {
                 f.write_str("an opening check failed a step its earlier checks make infallible")
             }
@@ -488,6 +492,7 @@ impl Evaluated<'_> {
             siblings,
             |j, column| leaf(&opening, sizes.block, j, column),
             |index, out| row_coefficients(&opening, index, out, sizes.rows),
+            &mut || false,
         )
     }
 }
@@ -507,6 +512,7 @@ impl ColumnCheck<'_> {
         siblings: &[Digest],
         make_leaf: impl Fn(u64, &[Fp]) -> Result<Digest, OpeningError>,
         fill_coefficients: impl Fn(usize, &mut Vec<Fp2>) -> Result<(), OpeningError>,
+        cancel: &mut impl FnMut() -> bool,
     ) -> Result<(), OpeningError> {
         let Self {
             root,
@@ -580,7 +586,7 @@ impl ColumnCheck<'_> {
             if coefficients.len() != sizes.rows {
                 return Err(OpeningError::Internal);
             }
-            encode(row, sizes.k, sizes.n, &mut codeword)?;
+            encode_with_cancel(row, sizes.k, sizes.n, &mut codeword, cancel)?;
             for (position, (&j, column)) in distinct.iter().zip(columns).enumerate().take(agreed) {
                 let at = usize::try_from(j).map_err(|_| OpeningError::Internal)?;
                 let expected = *codeword.get(at).ok_or(OpeningError::Internal)?;
@@ -766,29 +772,36 @@ pub(crate) struct EqTables {
 }
 
 impl EqTables {
-    /// The tables of `point`, at most [`MAX_ROW_VARS`] coordinates, or `None` for a longer one.
-    pub(crate) fn new(point: &[Fp2], weight: Fp2) -> Option<Self> {
-        let vars = u32::try_from(point.len())
-            .ok()
-            .filter(|&vars| vars <= MAX_ROW_VARS)?;
-        let tables = point
-            .chunks(TABLE_BITS)
-            .map(|chunk| {
-                // Each coordinate doubles the table: the new bit is the highest, 0 in the low
-                // half and 1 in the high half.
-                let mut table = vec![Fp2::ONE];
-                for &r in chunk {
-                    let high: Vec<Fp2> = table.iter().map(|&entry| entry * r).collect();
-                    let one_minus_r = Fp2::ONE - r;
-                    for entry in &mut table {
-                        *entry *= one_minus_r;
-                    }
-                    table.extend(high);
+    /// The tables of `point`: invalid own arity is `Internal`, failed reservation `Memory`.
+    pub(crate) fn new(point: &[Fp2], weight: Fp2) -> Result<Self, OpeningError> {
+        let vars = u32::try_from(point.len()).map_err(|_| OpeningError::Internal)?;
+        if vars > MAX_ROW_VARS {
+            return Err(OpeningError::Internal);
+        }
+        let mut tables = Vec::new();
+        tables
+            .try_reserve_exact(point.len().div_ceil(TABLE_BITS))
+            .map_err(|_| OpeningError::Memory)?;
+        for chunk in point.chunks(TABLE_BITS) {
+            let bits = u32::try_from(chunk.len()).map_err(|_| OpeningError::Internal)?;
+            let size = 1usize.checked_shl(bits).ok_or(OpeningError::Internal)?;
+            let mut table = Vec::new();
+            table
+                .try_reserve_exact(size)
+                .map_err(|_| OpeningError::Memory)?;
+            table.push(Fp2::ONE);
+            for &r in chunk {
+                let one_minus_r = Fp2::ONE - r;
+                // Append the high half from the old low half; its final capacity is reserved.
+                for index in 0..table.len() {
+                    let entry = *table.get(index).ok_or(OpeningError::Internal)?;
+                    *table.get_mut(index).ok_or(OpeningError::Internal)? = entry * one_minus_r;
+                    table.push(entry * r);
                 }
-                table
-            })
-            .collect();
-        Some(Self {
+            }
+            tables.push(table);
+        }
+        Ok(Self {
             weight,
             vars,
             tables,
@@ -821,7 +834,7 @@ fn row_coefficients(
     out.clear();
     out.resize(rows, Fp2::ZERO);
     let mut add = |point: &[Fp2], weight: Fp2| -> Result<(), OpeningError> {
-        let tables = EqTables::new(point, weight).ok_or(OpeningError::Internal)?;
+        let tables = EqTables::new(point, weight)?;
         let layout_rows = opening.layout.segments.iter().flatten();
         for (slot, &row) in out.iter_mut().zip(layout_rows) {
             *slot += tables.at(row).ok_or(OpeningError::Internal)?;
@@ -854,11 +867,22 @@ fn combine(coefficients: &[Fp2], column: &[Fp]) -> Fp2 {
 /// `x_j = 7·ω_n^j`, written into `codeword`: the inverse NTT on `H` gives `f = enc(u)`'s
 /// coefficients, `g = f + (X^k − 1)·M` subtracts `M` from the low coefficients and adds it from
 /// `X^k` up, and the coset NTT evaluates `g` on `7·L`.
-pub(crate) fn encode(
+#[cfg(test)]
+fn encode(
     row: &CombinedRow,
     k: usize,
     n: usize,
     codeword: &mut Vec<Fp2>,
+) -> Result<(), OpeningError> {
+    encode_with_cancel(row, k, n, codeword, &mut || false)
+}
+
+pub(crate) fn encode_with_cancel(
+    row: &CombinedRow,
+    k: usize,
+    n: usize,
+    codeword: &mut Vec<Fp2>,
+    cancel: &mut impl FnMut() -> bool,
 ) -> Result<(), OpeningError> {
     codeword.clear();
     codeword.extend_from_slice(&row.u);
@@ -870,12 +894,22 @@ pub(crate) fn encode(
     if row.mask.len() > low.len() || row.mask.len() > high.len() {
         return Err(OpeningError::Internal);
     }
-    intt(low).map_err(|_| OpeningError::Internal)?;
+    intt_with_cancel(low, &mut *cancel).map_err(ntt_error)?;
     for ((low, high), &m) in low.iter_mut().zip(high.iter_mut()).zip(&row.mask) {
         *low -= m;
         *high += m;
     }
-    coset_ntt(codeword, COSET_SHIFT).map_err(|_| OpeningError::Internal)
+    coset_ntt_with_cancel(codeword, COSET_SHIFT, cancel).map_err(ntt_error)
+}
+
+fn ntt_error(error: NttError) -> OpeningError {
+    match error {
+        NttError::Memory => OpeningError::Memory,
+        NttError::Cancelled => OpeningError::Time,
+        NttError::NotPowerOfTwo { .. } | NttError::TooLong { .. } | NttError::ZeroShift => {
+            OpeningError::Internal
+        }
+    }
 }
 
 /// `leaf_j = H("column-merge", d_j^(1) ‖ … ‖ d_j^(S))`, each segment's digest chaining its share
@@ -1062,7 +1096,30 @@ mod tests {
                 assert_eq!(tables.at(u64::MAX), None);
             }
         }
-        assert!(EqTables::new(&[Fp2::ONE; 65], Fp2::ONE).is_none());
+        assert_eq!(
+            EqTables::new(&[Fp2::ONE; 65], Fp2::ONE).err(),
+            Some(OpeningError::Internal)
+        );
+    }
+
+    #[test]
+    fn cancelled_transforms_are_operational_time_errors() {
+        let row = CombinedRow {
+            u: vec![Fp2::ONE; 8],
+            mask: vec![Fp2::ONE; 2],
+        };
+        for stop in [1, 3] {
+            let mut codeword = Vec::with_capacity(16);
+            let mut polls = 0;
+            let result = encode_with_cancel(&row, 8, 16, &mut codeword, &mut || {
+                polls += 1;
+                polls == stop
+            });
+            assert_eq!(result, Err(OpeningError::Time));
+            assert_eq!(polls, stop);
+            assert_eq!(OpeningError::Time.code(), "ERR-RES-TIME");
+            assert!(!OpeningError::Time.is_rejection());
+        }
     }
 
     /// `spec/vectors/encoding/encoding.json`, from an independent oracle: rows of `k = 1` to 64
@@ -1185,6 +1242,7 @@ mod tests {
                     out.pop();
                     Ok(())
                 },
+                &mut || false,
             );
             assert!(
                 reached.get(),

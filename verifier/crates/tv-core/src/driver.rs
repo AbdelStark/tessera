@@ -35,10 +35,10 @@ use tv_hash::transcript::{Ascii, Mode, SessionContext, Transcript, TranscriptErr
 pub struct ResourceLimits {
     /// Maximum outer artifact bytes, including its envelope.
     pub max_artifact_bytes: u64,
-    /// Budget for the conservative input/codeword/metadata work estimate.
+    /// Budget for the conservative input/metadata and opening-scratch work estimate.
     /// Full allocation accounting belongs to the v1 hardening work (#182).
     pub max_memory_bytes: u64,
-    /// Cooperative deadline checked between verification phases.
+    /// Cooperative deadline checked between phases, covering NI decoding or the whole Live session.
     pub max_wall_time: Duration,
 }
 impl Default for ResourceLimits {
@@ -112,6 +112,28 @@ fn outcome<T>(result: &Check<T>) -> CheckOutcome {
 fn conclude<T>(tracker: &mut Tracker<'_>, result: Check<T>) -> Check<T> {
     tracker.close(outcome(&result));
     result
+}
+/// Reporting can consume the remaining budget too; check before releasing a successful value.
+fn conclude_with_deadline<T>(
+    tracker: &mut Tracker<'_>,
+    result: Check<T>,
+    started: Option<Instant>,
+    limits: ResourceLimits,
+) -> Check<T> {
+    let value = conclude(tracker, result)?;
+    deadline(started.ok_or_else(internal)?, limits)?;
+    Ok(value)
+}
+/// Simultaneously live row coefficients, codeword and coset-NTT twiddles (SP-8).
+fn opening_scratch(rows: u64, log_k: u32, log_rate: u32) -> Check<u64> {
+    let log_n = log_k.checked_add(log_rate).ok_or_else(memory)?;
+    let n = 1u64.checked_shl(log_n).ok_or_else(memory)?;
+    let symbol = u64::try_from(size_of::<Fp2>()).map_err(|_| memory())?;
+    let twiddle = u64::try_from(size_of::<tv_field::Fp>()).map_err(|_| memory())?;
+    rows.checked_mul(symbol)
+        .and_then(|bytes| bytes.checked_add(n.checked_mul(symbol)?))
+        .and_then(|bytes| bytes.checked_add((n / 2).checked_mul(twiddle)?))
+        .ok_or_else(memory)
 }
 fn into_verdict(result: Check<AcceptReport>) -> Verdict {
     match result {
@@ -220,6 +242,7 @@ fn opening_error(e: opening::OpeningError) -> Failure {
         E::MerklePath { column } => reject(RejectReason::MerklePath { commitment, column }),
         E::Proximity { column } => reject(RejectReason::Proximity { commitment, column }),
         E::Memory => memory(),
+        E::Time => fail(ErrorCode::Time),
         _ => internal(),
     }
 }
@@ -233,6 +256,7 @@ fn weight_error(e: weights::Error) -> Failure {
         E::MerklePath { column, .. } => reject(RejectReason::MerklePath { commitment, column }),
         E::Proximity { column, .. } => reject(RejectReason::Proximity { commitment, column }),
         E::Memory => memory(),
+        E::Time => fail(ErrorCode::Time),
         E::Internal => internal(),
     }
 }
@@ -446,8 +470,14 @@ pub fn verify_non_interactive_bytes_observed(
 ) -> Verdict {
     let mut tracker = Tracker::new(observer);
     tracker.enter(CheckKind::Input);
-    let result = verify_ni_bytes(claims, statement, bytes, cfg, &mut tracker);
-    into_verdict(conclude(&mut tracker, result))
+    let started = Instant::now();
+    let result = verify_ni_bytes(claims, statement, bytes, cfg, &mut tracker, started);
+    into_verdict(conclude_with_deadline(
+        &mut tracker,
+        result,
+        Some(started),
+        cfg.limits,
+    ))
 }
 fn verify_ni_bytes(
     claims: &ClaimList,
@@ -455,8 +485,8 @@ fn verify_ni_bytes(
     bytes: &[u8],
     cfg: &VerifierConfig,
     tracker: &mut Tracker<'_>,
+    started: Instant,
 ) -> Check<AcceptReport> {
-    let started = Instant::now();
     let limits = DecodeLimits {
         max_total_bytes: cfg.limits.max_artifact_bytes,
         ..DecodeLimits::MESSAGE
@@ -491,12 +521,8 @@ fn verify_ni_bytes(
         }
         Err(e) => return Err(codec(e.code())),
     };
-    let Some(remaining) = cfg.limits.max_wall_time.checked_sub(started.elapsed()) else {
-        return Err(fail(ErrorCode::Time));
-    };
-    let mut cfg = cfg.clone();
-    cfg.limits.max_wall_time = remaining;
-    verify_ni(claims, statement, &proof, &cfg, tracker)
+    deadline(started, cfg.limits)?;
+    verify_ni(claims, statement, &proof, cfg, tracker, started)
 }
 /// Verify protocol/1 against application-owned claims, expected statement and weight artifact.
 /// A test-small acceptance certifies nothing. No anchor, ledger or zero-knowledge claim is made.
@@ -520,8 +546,14 @@ pub fn verify_non_interactive_observed(
 ) -> Verdict {
     let mut tracker = Tracker::new(observer);
     tracker.enter(CheckKind::Input);
-    let result = verify_ni(claims, statement, proof, cfg, &mut tracker);
-    into_verdict(conclude(&mut tracker, result))
+    let started = Instant::now();
+    let result = verify_ni(claims, statement, proof, cfg, &mut tracker, started);
+    into_verdict(conclude_with_deadline(
+        &mut tracker,
+        result,
+        Some(started),
+        cfg.limits,
+    ))
 }
 mod live;
 pub use live::LiveVerifier;
@@ -529,7 +561,7 @@ pub use live::LiveVerifier;
 #[cfg(all(test, feature = "test-params"))]
 mod corpus;
 #[cfg(all(test, feature = "test-params"))]
-mod tests;
+pub(crate) mod tests;
 
 #[derive(Clone, Copy)]
 enum Session<'a> {
@@ -620,6 +652,7 @@ fn verify_ni(
     proof: &NiProof,
     cfg: &VerifierConfig,
     tracker: &mut Tracker<'_>,
+    started: Instant,
 ) -> Check<AcceptReport> {
     match verify_unit_tracked(
         claims,
@@ -635,6 +668,7 @@ fn verify_ni(
             query_nonce: proof.query_nonce,
         },
         tracker,
+        started,
     )? {
         Outcome::Accepted(report) => Ok(report),
         _ => Err(internal()),
@@ -651,7 +685,15 @@ fn verify_unit(
 ) -> Check<Outcome> {
     let mut ignored = ();
     let mut tracker = Tracker::new(&mut ignored);
-    verify_unit_tracked(claims, expected, proof, cfg, session, &mut tracker)
+    verify_unit_tracked(
+        claims,
+        expected,
+        proof,
+        cfg,
+        session,
+        &mut tracker,
+        Instant::now(),
+    )
 }
 /// One proof unit's checks in RFC-0019's order, `tracker` entering each check where its work
 /// starts (the table of [`observe`](crate::observe)). It leaves the last check it entered running:
@@ -663,9 +705,9 @@ fn verify_unit_tracked(
     cfg: &VerifierConfig,
     session: Session<'_>,
     tracker: &mut Tracker<'_>,
+    started: Instant,
 ) -> Check<Outcome> {
     tracker.enter(CheckKind::Input);
-    let started = Instant::now();
     let artifact = session.artifact();
     let mode = session.mode();
     let first_bytes = protocol::encoded_len(proof.round1).map_err(codec)?;
@@ -715,15 +757,14 @@ fn verify_unit_tracked(
         }
     }
     // shortcut: conservative work planning; replace with complete allocation accounting in #182.
+    let codeword_allowance = 1u64
+        .checked_shl(u32::from(claims.layout.advice.log2_k) + 1)
+        .and_then(|n| n.checked_mul(64))
+        .ok_or_else(memory)?;
     let memory_estimate = total
         .checked_mul(8)
         .and_then(|n| n.checked_add(u64::from(claims.arch.n_layers).checked_mul(1 << 20)?))
-        .and_then(|n| {
-            n.checked_add(
-                1u64.checked_shl(u32::from(claims.layout.advice.log2_k) + 1)?
-                    .checked_mul(64)?,
-            )
-        })
+        .and_then(|n| n.checked_add(codeword_allowance))
         .ok_or_else(memory)?;
     if memory_estimate > cfg.limits.max_memory_bytes {
         return Err(memory());
@@ -843,6 +884,32 @@ fn verify_unit_tracked(
             internal()
         }
     })?;
+    // The coefficient vector grows with public row geometry, independently of codeword width.
+    // Checks run sequentially, so retain the largest opening scratch rather than their sum.
+    let advice_scratch = opening_scratch(
+        layout.committed_rows().map_err(claims_error)?,
+        u32::from(claims.layout.advice.log2_k),
+        u32::from(claims.layout.advice.log2_inv_rate),
+    )?;
+    let mut weight_scratch = 0;
+    for matrix in &wl {
+        if matrix.committed_rows() > 0 {
+            weight_scratch = weight_scratch.max(opening_scratch(
+                matrix.committed_rows(),
+                matrix.log2_k(),
+                u32::from(claims.layout.weights.log2_inv_rate),
+            )?);
+        }
+    }
+    let extra = advice_scratch
+        .max(weight_scratch)
+        .saturating_sub(codeword_allowance);
+    if memory_estimate
+        .checked_add(extra)
+        .is_none_or(|n| n > cfg.limits.max_memory_bytes)
+    {
+        return Err(memory());
+    }
     let leaf_plan = runtime.leaf_schedule().map_err(claims_error)?;
     let native = gadgets::model::Plan::derive_runtime(&runtime).map_err(gadget_error)?;
     let splits = leaf::split::Layout::new(&runtime.split_sites().map_err(claims_error)?)
@@ -1187,11 +1254,13 @@ fn verify_unit_tracked(
     {
         return Err(malformed(artifact));
     }
+    let mut cancel = || started.elapsed() >= cfg.limits.max_wall_time;
     advice_evaluated
-        .check_columns(
+        .check_columns_with_cancel(
             &advice_queries,
             &proof.round3.advice_columns,
             &proof.round3.advice_proof.siblings,
+            &mut cancel,
         )
         .map_err(opening_error)?;
     for (i, result) in evaluated {
@@ -1202,14 +1271,17 @@ fn verify_unit_tracked(
             .find(|p| usize::from(p.matrix) == i)
         {
             result
-                .check_columns(
+                .check_columns_with_cancel(
                     queries.get(i).ok_or_else(internal)?,
                     &packet.columns,
                     &packet.proof.siblings,
+                    &mut cancel,
                 )
                 .map_err(weight_error)?;
         } else {
-            result.check_columns(&[], &[], &[]).map_err(weight_error)?;
+            result
+                .check_columns_with_cancel(&[], &[], &[], &mut cancel)
+                .map_err(weight_error)?;
         }
     }
     deadline(started, cfg.limits)?;
@@ -1237,6 +1309,7 @@ fn verify_unit_tracked(
             .iter()
             .map(|r| (r.request_id, FixedBits(0))),
     );
+    deadline(started, cfg.limits)?;
     Ok(Outcome::Accepted(AcceptReport {
         params: cfg.params,
         statement_digest,

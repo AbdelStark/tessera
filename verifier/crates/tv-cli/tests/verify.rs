@@ -315,6 +315,124 @@ fn panic_boundary_returns_internal_without_payload() {
 }
 
 #[test]
+fn os_argument_collection_stops_at_the_same_limit_as_utf8_arguments() {
+    use std::ffi::OsString;
+    assert_eq!(
+        tv_cli::run_os(std::iter::repeat_n(OsString::from("--help"), 64)).exit_code,
+        0
+    );
+    let read = std::cell::Cell::new(0);
+    let args = (0..).map(|i| {
+        assert!(i < 65, "argument iterator read past the limit");
+        read.set(read.get() + 1);
+        OsString::from("--help")
+    });
+    let output = tv_cli::run_os(args);
+    assert_eq!(output.exit_code, 64);
+    assert!(output.stderr.contains("too many or oversized arguments"));
+    assert_eq!(read.get(), 65);
+}
+
+#[test]
+fn os_argument_panics_stay_inside_the_cli_boundary() {
+    let args =
+        std::iter::once_with(|| -> std::ffi::OsString { panic!("private-os-argument-canary") });
+    let output = tv_cli::run_os(args);
+    assert_eq!(output.exit_code, 70);
+    assert!(output.stderr.is_empty());
+    assert!(!output.stdout.contains("private-os-argument-canary"));
+    assert_eq!(error(&Json::parse(&output.stdout).unwrap()), "ERR-INTERNAL");
+}
+
+#[test]
+fn oversized_os_arguments_preserve_the_requested_error_format() {
+    let args = std::iter::repeat_n(std::ffi::OsString::from("--help"), 64)
+        .chain([std::ffi::OsString::from("--json")]);
+    let output = tv_cli::run_os(args);
+    assert_eq!(output.exit_code, 64);
+    assert!(output.stderr.is_empty());
+    assert_eq!(error(&Json::parse(&output.stdout).unwrap()), "ERR-USAGE");
+    for option in ["--log-format", "--log-level"] {
+        let args = [option.to_string(), "x".repeat(8193)];
+        let output = tv_cli::run_os(args.iter().map(std::ffi::OsString::from));
+        assert_eq!(output, tv_cli::run(&args));
+        assert!(
+            output
+                .stderr
+                .contains(&format!("invalid or missing `{option}` value"))
+        );
+    }
+    for (bytes, exit) in [(8192, 0), (8193, 64)] {
+        assert_eq!(
+            tv_cli::run_os(["--help".into(), std::ffi::OsString::from("x".repeat(bytes))])
+                .exit_code,
+            exit
+        );
+    }
+    for args in [
+        vec!["--log-format".into(), "json".into(), "x".repeat(8193)],
+        vec!["--json".into(), "x".repeat(8193)],
+    ] {
+        let expected = tv_cli::run(&args);
+        let actual = tv_cli::run_os(args.into_iter().map(std::ffi::OsString::from));
+        assert_eq!(actual.exit_code, expected.exit_code);
+        assert_eq!(actual.stdout, expected.stdout);
+        if expected.stderr.is_empty() {
+            assert!(actual.stderr.is_empty());
+        } else {
+            let log = Json::parse(&actual.stderr).unwrap();
+            let fields = log.get("fields").unwrap();
+            assert_eq!(fields.get("code").unwrap().as_str(), Some("ERR-USAGE"));
+            assert_eq!(
+                fields.get("detail").unwrap().as_str(),
+                Some("too many or oversized arguments")
+            );
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn oversized_non_utf8_os_arguments_take_the_size_limit_first() {
+    use std::os::unix::ffi::OsStringExt;
+    let output = tv_cli::run_os([
+        std::ffi::OsString::from("--json"),
+        std::ffi::OsString::from_vec(vec![0xff; 8193]),
+    ]);
+    assert_eq!(output.exit_code, 64);
+    assert!(output.stderr.is_empty());
+    let report = Json::parse(&output.stdout).unwrap();
+    assert_eq!(error(&report), "ERR-USAGE");
+    assert_eq!(
+        report
+            .get("error")
+            .unwrap()
+            .get("message")
+            .unwrap()
+            .as_str(),
+        Some("too many or oversized arguments")
+    );
+    let mut args = vec![
+        std::ffi::OsString::from("--json"),
+        std::ffi::OsString::from_vec(vec![0xff]),
+    ];
+    args.extend(std::iter::repeat_n(std::ffi::OsString::from("--help"), 63));
+    let output = tv_cli::run_os(args);
+    assert_eq!(output.exit_code, 64);
+    assert!(output.stderr.is_empty());
+    let report = Json::parse(&output.stdout).unwrap();
+    assert_eq!(
+        report
+            .get("error")
+            .unwrap()
+            .get("message")
+            .unwrap()
+            .as_str(),
+        Some("too many or oversized arguments")
+    );
+}
+
+#[test]
 fn argument_errors_escape_every_json_control_character() {
     for code in 0..32 {
         let command = format!("unknown-{}", char::from(code));

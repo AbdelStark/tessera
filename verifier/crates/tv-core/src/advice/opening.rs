@@ -268,7 +268,7 @@ impl Opening<'_> {
     fn coefficients(&self, index: usize, out: &mut Vec<Fp2>) -> Result<(), OpeningError> {
         out.clear();
         let proximity = if index == self.groups.len() {
-            Some(EqTables::new(self.xi, Fp2::ONE).ok_or(OpeningError::Internal)?)
+            Some(EqTables::new(self.xi, Fp2::ONE)?)
         } else {
             None
         };
@@ -328,6 +328,16 @@ impl Evaluated<'_> {
         columns: &[Vec<Fp>],
         siblings: &[Digest],
     ) -> Result<(), OpeningError> {
+        self.check_columns_with_cancel(queries, columns, siblings, &mut || false)
+    }
+
+    pub(crate) fn check_columns_with_cancel(
+        self,
+        queries: &[u64],
+        columns: &[Vec<Fp>],
+        siblings: &[Digest],
+        cancel: &mut impl FnMut() -> bool,
+    ) -> Result<(), OpeningError> {
         let context = self.opening.commitment;
         ColumnCheck {
             root: &context.root,
@@ -354,6 +364,7 @@ impl Evaluated<'_> {
                 )
             },
             |index, out| self.opening.coefficients(index, out),
+            cancel,
         )
     }
 }
@@ -362,5 +373,86 @@ fn point_error(error: PointError) -> OpeningError {
     match error {
         PointError::Memory => OpeningError::Memory,
         _ => OpeningError::Internal,
+    }
+}
+
+#[cfg(all(test, feature = "test-params"))]
+mod cancellation_tests {
+    use super::*;
+    #[test]
+    fn authenticated_advice_columns_propagate_transform_cancellation() {
+        let (claims, _, _) = crate::driver::tests::fixture();
+        let validated = crate::validation::validate(&claims).unwrap();
+        let layout = validated.advice_layout(1).unwrap();
+        let params = Params {
+            log2_k: u32::from(claims.layout.advice.log2_k),
+            log2_inv_rate: 1,
+            mask_coeffs: claims.layout.advice.mask_coeffs,
+            row_block: claims.layout.advice.row_block,
+            commitment_id: [42; 32],
+        };
+        let mut sizes = Sizes::parameters(params).unwrap();
+        sizes.rows = usize::try_from(layout.committed_rows().unwrap()).unwrap();
+        // A zero-data commitment isolates cancellation after authentication on real geometry.
+        let columns = vec![vec![Fp::ZERO; sizes.rows]; sizes.n];
+        let mut leaves: Vec<_> = columns
+            .iter()
+            .enumerate()
+            .map(|(j, col)| {
+                merged_leaf(
+                    &params.commitment_id,
+                    sizes.block,
+                    j as u64,
+                    col,
+                    (0..layout.config.segments).map(|segment| {
+                        Ok(
+                            usize::try_from(layout.committed_rows_in_segment(segment).unwrap())
+                                .unwrap(),
+                        )
+                    }),
+                )
+                .unwrap()
+            })
+            .collect();
+        while leaves.len() > 1 {
+            leaves = leaves
+                .chunks_exact(2)
+                .map(|pair| tv_hash::merkle::node(&pair[0], &pair[1]))
+                .collect();
+        }
+        let commitment = Commitment {
+            layout: &layout,
+            params,
+            sizes,
+            root: leaves[0],
+        };
+        let xi = vec![Fp2::ZERO; usize::try_from(layout.nu() - params.log2_k).unwrap()];
+        let opening = commitment.prepare(&[], Fp2::ONE, &xi).unwrap();
+        let combined = [CombinedRow {
+            u: vec![Fp2::ZERO; sizes.k],
+            mask: vec![Fp2::ZERO; params.mask_coeffs as usize],
+        }];
+        let queries: Vec<_> = (0..sizes.n as u64).collect();
+        assert_eq!(
+            opening
+                .check_evaluations(&combined)
+                .unwrap()
+                .check_columns(&queries, &columns, &[]),
+            Ok(())
+        );
+        for stop in [1, 4] {
+            let mut polls = 0;
+            assert_eq!(
+                opening
+                    .check_evaluations(&combined)
+                    .unwrap()
+                    .check_columns_with_cancel(&queries, &columns, &[], &mut || {
+                        polls += 1;
+                        polls == stop
+                    }),
+                Err(OpeningError::Time)
+            );
+            assert_eq!(polls, stop);
+        }
     }
 }

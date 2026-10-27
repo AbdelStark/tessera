@@ -265,6 +265,21 @@ fn set_layout_digest(c: &ClaimList, s: &PublicStatement, p: &mut NiProof) {
 
 #[cfg(unix)]
 #[test]
+fn live_start_reserves_its_share_budget_before_entropy_or_allocation() {
+    for bytes in [0, 1, 31] {
+        let (c, s, _p, mut cfg) = live_fixture();
+        cfg.limits.max_memory_bytes = bytes;
+        let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+        inconclusive(live.start().unwrap_err(), ErrorCode::Memory);
+        inconclusive(live.start().unwrap_err(), ErrorCode::ProtocolOrder);
+    }
+    let (c, s, _p, mut cfg) = live_fixture();
+    cfg.limits.max_memory_bytes = 32;
+    assert!(tv_core::LiveVerifier::new(c, s, cfg).start().is_ok());
+}
+
+#[cfg(unix)]
+#[test]
 fn live_reveals_only_bound_round1_and_never_queries_invalid_round2() {
     let (c, s, mut p, cfg) = live_fixture();
     let mut live = tv_core::LiveVerifier::new(c, s, cfg);
@@ -353,6 +368,79 @@ fn live_invalid_round1_is_terminal_and_timeout_reveals_nothing() {
         timed.on_round1(&p.round1, &share).unwrap_err(),
         ErrorCode::ProtocolTimeout,
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn live_round1_keeps_the_session_clock_and_checks_before_revealing() {
+    use std::time::Duration;
+    use tv_core::observe::{CheckEvent, CheckKind, Observer};
+    struct Delay {
+        kind: CheckKind,
+        duration: Duration,
+        seen: bool,
+        last: Option<CheckKind>,
+    }
+    impl Observer for Delay {
+        fn check_completed(&mut self, event: CheckEvent) {
+            self.last = Some(event.kind);
+            if event.kind == self.kind && !self.seen {
+                self.seen = true;
+                std::thread::sleep(self.duration);
+            }
+        }
+    }
+    for (kind, wait, delay) in [
+        (CheckKind::Claims, 300, 300),
+        (CheckKind::WeightReservation, 0, 550),
+        (CheckKind::Transcript, 0, 550),
+    ] {
+        let (c, s, mut p, mut cfg) = live_fixture();
+        cfg.limits.max_wall_time = Duration::from_millis(500);
+        let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+        let commit = live.start().unwrap();
+        p.round1.session_id = commit.session_id;
+        let share = ProverSeedShare {
+            session_id: commit.session_id,
+            share: [17; 32],
+        };
+        std::thread::sleep(Duration::from_millis(wait));
+        let mut observer = Delay {
+            kind,
+            duration: Duration::from_millis(delay),
+            seen: false,
+            last: None,
+        };
+        inconclusive(
+            live.on_round1_observed(&p.round1, &share, &mut observer)
+                .unwrap_err(),
+            ErrorCode::Time,
+        );
+        assert!(observer.seen);
+        if kind == CheckKind::Claims {
+            // Expiry is caught in the work phase, before transcript/seed handling.
+            assert_eq!(observer.last, Some(CheckKind::Statement));
+        }
+        inconclusive(
+            live.on_round1(&p.round1, &share).unwrap_err(),
+            ErrorCode::ProtocolOrder,
+        );
+    }
+    let (c, s, _, mut cfg) = live_fixture();
+    cfg.limits.max_wall_time = Duration::from_millis(500);
+    let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+    let mut observer = Delay {
+        kind: CheckKind::Params,
+        duration: Duration::from_millis(550),
+        seen: false,
+        last: None,
+    };
+    inconclusive(
+        live.start_observed(&mut observer).unwrap_err(),
+        ErrorCode::Time,
+    );
+    assert!(observer.seen);
+    inconclusive(live.start().unwrap_err(), ErrorCode::ProtocolOrder);
 }
 
 #[test]
