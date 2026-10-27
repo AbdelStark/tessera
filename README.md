@@ -52,18 +52,19 @@ No crate needs a GPU or the CUDA toolkit to build or test. The CUDA backend is t
 
 ## Continuous integration
 
-During the fast-build phase, [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is the only workflow that runs automatically. It runs on pull requests and `main`; these four checks block merging:
+During the fast-build phase, [`.github/workflows/ci.yml`](.github/workflows/ci.yml) and [`.github/workflows/pr-policy.yml`](.github/workflows/pr-policy.yml) are the workflows that run automatically on pull requests (`ci.yml` also runs on `main`). `ci.yml` runs on commit lifecycle events (`opened`, `synchronize`, `reopened`), while `pr-policy.yml` also runs on `labeled` and `unlabeled` so label edits rerun only the policy gate; these five checks block merging:
 
 | Job | What it runs |
 |---|---|
-| `checks` | rustfmt, clippy `-D warnings`, repository lint, verifier isolation, test-only feature and branchless-field gates; PR changelog and DCO policy |
+| `checks` | rustfmt, clippy `-D warnings`, repository lint, research KB, verifier isolation, test-only feature, mask-rank and branchless-field gates |
+| `pr-policy` | PR changelog entry (waived by `no-changelog`) and DCO sign-off; the only check rerun on label events |
 | `test` | Parallel Nextest runs on separate prover/verifier runners; runtime library units, primitive conformance/adversarial tests, prover components, tiny-model integration and the complete independent verifier, plus test-parameter unit and claim validation coverage |
 | `python` | `uv sync --locked --extra cpu`, Ruff, strict Pyright and pytest on Python 3.13 ([python/README.md](python/README.md)) |
 | `constraint-digest` | Independent constraint-system digest conformance and the tiny servable-model case |
 
 Documentation-only changes (root Markdown, `docs/`, `research/`) run routing tests and repository/PR policies without rebuilding unchanged code. Unknown paths and manual dispatch run the complete bootstrap pipeline. CI omits debug symbols while retaining overflow checks and debug assertions.
 
-Fuzz, soundness calibration, microbenchmarks and the standalone PR-policy rerun remain available with manual dispatch from the Actions page. [The manual quality workflow](.github/workflows/quality.yml) retains dependency audits, MSRV, macOS builds, GPU host checks, rustdoc and both complete workspace suites. Exhaustive vector-oracle regeneration, infrastructure self-tests, standalone compiler/witness stress tests, benchmark/report tests and doctests run there; the constraint-digest example runs once in its dedicated automatic job. They do not run automatically during fast backlog development. The normal checks still protect verifier independence, secret handling, protocol tests, Python packaging and the existing tiny-model conformance path. To reproduce a failure, run the job's commands locally.
+Fuzz, soundness calibration, microbenchmarks and PR-policy also remain available with manual dispatch from the Actions page. [The manual quality workflow](.github/workflows/quality.yml) retains dependency audits, MSRV, macOS builds, GPU host checks, rustdoc and both complete workspace suites. Exhaustive vector-oracle regeneration, infrastructure self-tests, standalone compiler/witness stress tests, benchmark/report tests and doctests run there; the constraint-digest example runs once in its dedicated automatic job. They do not run automatically during fast backlog development. The normal checks still protect verifier independence, secret handling, protocol tests, Python packaging and the existing tiny-model conformance path. To reproduce a failure, run the job's commands locally.
 
 ## Contributing
 

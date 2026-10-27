@@ -33,7 +33,7 @@ A pull request that changes a release train adds an entry under `## [Unreleased]
 | `verifier/` | [verifier/CHANGELOG.md](verifier/CHANGELOG.md) |
 | `spec/` | either |
 
-A change that needs no entry carries the `no-changelog` label. Security fixes cite their advisory identifier.
+A change that needs no entry carries the `no-changelog` label, which reruns [`.github/workflows/pr-policy.yml`](.github/workflows/pr-policy.yml) alone without restarting or skipping `ci.yml`'s code checks. Security fixes cite their advisory identifier.
 
 ## Local gates
 
