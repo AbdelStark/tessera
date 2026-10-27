@@ -16,12 +16,8 @@ impl Inputs {
         if !fs::metadata(path).map_err(|_| ErrorCode::Io)?.is_file() {
             return Err(ErrorCode::Io);
         }
-        let mut file = File::open(path).map_err(|_| ErrorCode::Io)?;
-        let meta = file.metadata().map_err(|_| ErrorCode::Io)?;
-        if !meta.is_file() {
-            return Err(ErrorCode::Io);
-        }
-        self.read_from(&mut file, meta.len())
+        let (mut file, len) = open_input(path)?;
+        self.read_from(&mut file, len)
     }
 
     fn read_from(
@@ -42,6 +38,43 @@ impl Inputs {
             .ok_or(ErrorCode::Memory)?;
         Ok(out)
     }
+}
+
+// O_NONBLOCK: Linux asm-generic/fcntl.h (also arm/arm64), Apple sys/fcntl.h.
+#[cfg(unix)]
+const INPUT_NONBLOCK: i32 = if cfg!(target_vendor = "apple") {
+    0x0004
+} else if cfg!(all(
+    target_os = "linux",
+    any(
+        target_arch = "x86_64",
+        target_arch = "x86",
+        target_arch = "riscv64",
+        target_arch = "aarch64",
+        target_arch = "arm"
+    )
+)) {
+    0o4_000
+} else {
+    // shortcut: unnamed Unix flags keep preflight alone; qualify the host before relying on it.
+    0
+};
+
+// The path can change after preflight; validate the handle actually opened.
+fn open_input(path: &Path) -> Result<(File, u64), ErrorCode> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(INPUT_NONBLOCK);
+    }
+    let file = options.open(path).map_err(|_| ErrorCode::Io)?;
+    let meta = file.metadata().map_err(|_| ErrorCode::Io)?;
+    if !meta.is_file() {
+        return Err(ErrorCode::Io);
+    }
+    Ok((file, meta.len()))
 }
 
 fn read_bounded(
@@ -252,6 +285,84 @@ fn atomic(path: &Path, bytes: &[u8], replace: bool, next: &AtomicU64) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(any(
+        target_vendor = "apple",
+        all(
+            target_os = "linux",
+            any(
+                target_arch = "x86_64",
+                target_arch = "x86",
+                target_arch = "riscv64",
+                target_arch = "aarch64",
+                target_arch = "arm"
+            )
+        )
+    ))]
+    #[test]
+    fn input_open_refuses_a_fifo_swapped_after_preflight() {
+        use std::process::{Command, Stdio};
+        const CHILD_PATH: &str = "TESSERA_TEST_INPUT_FIFO";
+        if let Some(path) = std::env::var_os(CHILD_PATH) {
+            assert_eq!(open_input(Path::new(&path)).err(), Some(ErrorCode::Io));
+            fs::write(Path::new(&path).with_extension("done"), b"Io").unwrap();
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tessera-input-swap-{}", std::process::id()));
+        fs::create_dir(&dir).unwrap();
+        let path = dir.join("input");
+        fs::write(&path, b"regular input").unwrap();
+        assert!(fs::metadata(&path).unwrap().is_file());
+        let mut input = Inputs {
+            remaining: 13,
+            max_artifact: 13,
+        };
+        assert_eq!(input.read(&path).unwrap(), b"regular input");
+        assert_eq!(input.remaining, 0);
+        // Replace the path between the preflight check and its shared open operation.
+        fs::rename(&path, dir.join("original")).unwrap();
+        assert!(
+            Command::new("mkfifo")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "files::tests::input_open_refuses_a_fifo_swapped_after_preflight",
+            ])
+            .env(CHILD_PATH, &path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break Some(status);
+            }
+            if std::time::Instant::now() >= deadline {
+                let _ = child.kill();
+                child.wait().unwrap();
+                break None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        };
+        assert_eq!(fs::read(dir.join("original")).unwrap(), b"regular input");
+        let marker = fs::read(path.with_extension("done")).ok();
+        fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(
+            marker.as_deref(),
+            Some(b"Io".as_slice()),
+            "child did not reach its assertion"
+        );
+        assert!(
+            status.is_some_and(|s| s.success()),
+            "input open blocked on a swapped FIFO"
+        );
+    }
+
     /// Whether names that differ only in case are one file in the temporary directory.
     fn folds_case(dir: &Path) -> bool {
         fs::write(dir.join("case-probe"), b"").unwrap();
