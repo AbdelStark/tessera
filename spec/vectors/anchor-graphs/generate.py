@@ -319,18 +319,7 @@ def sha256_graph(n_blocks, m, offsets):
         t = g.gather(masks, [row], f"SHR^{r} mask: row {row} of masks")
         mask[r] = g.reshape(t, [32], f"SHR^{r} mask")
 
-    # 2. The message's bits.
-    if k:
-        b = g.bit_decompose(committed, 8, 0, "message: the committed bytes' bits")[0]
-        t = g.transpose(b, [0, 2, 1], "message: bits to [K, 8, M]")
-        t = g.reshape(t, [8 * k, m], "message: bits to [8K, M]")
-        t = g.gather(t, assembly(n_blocks, offsets), "message: the committed bits at their rows")
-        t = g.mul_trailing(t, place, "message: times place")
-        bits = g.bitfn("Xor", [message, t], "message: Xor of the public and committed bits")
-    else:
-        bits = message
-
-    # 3. The eight initial words.
+    # 2. The eight initial words.
     state = [g.slice(start, 0, 32 * j, 32, f"initial word {'abcdefgh'[j]}") for j in range(8)]
 
     def function(x, rots, shr, at):
@@ -361,10 +350,31 @@ def sha256_graph(n_blocks, m, offsets):
         out = g.bit_decompose(value, 32, carry, f"{at}: bits and carry")[0]
         return g.transpose(out, [1, 0], f"{at}: word")
 
+    # 3. Per block: its sixteen words (assembled from its own committed bytes when K_n > 0, or
+    #    sliced from `message` when K_n = 0; RFC-0066 'The message', RFC-0072 OQ-0072-2), then
+    #    compression.
     chain = []
     for blk in range(n_blocks):
         g.block = blk
-        w = [g.slice(bits, 0, 512 * blk + 32 * t, 32, f"block {blk} W{t}") for t in range(16)]
+        start_k = sum(1 for o in offsets if o < 64 * blk)
+        blk_offsets = [o - 64 * blk for o in offsets if 64 * blk <= o < 64 * (blk + 1)]
+        k_b = len(blk_offsets)
+        if k_b == 0:
+            w = [g.slice(message, 0, 512 * blk + 32 * t, 32, f"block {blk} W{t}") for t in range(16)]
+        else:
+            bytes_b = committed if k_b == k else g.slice(
+                committed, 0, start_k, k_b, f"block {blk} message: committed bytes")
+            b = g.bit_decompose(bytes_b, 8, 0, f"block {blk} message: the committed bytes' bits")[0]
+            t = g.transpose(b, [0, 2, 1], f"block {blk} message: bits to [K_b, 8, M]")
+            t = g.reshape(t, [8 * k_b, m], f"block {blk} message: bits to [8K_b, M]")
+            t = g.gather(t, assembly(1, blk_offsets), f"block {blk} message: the committed bits at their rows")
+            place_b = place if n_blocks == 1 else g.slice(
+                place, 0, 512 * blk, 512, f"block {blk} message: place")
+            t = g.mul_trailing(t, place_b, f"block {blk} message: times place")
+            msg_b = message if n_blocks == 1 else g.slice(
+                message, 0, 512 * blk, 512, f"block {blk} message: public bits")
+            bits_b = g.bitfn("Xor", [msg_b, t], f"block {blk} message: Xor of the public and committed bits")
+            w = [g.slice(bits_b, 0, 32 * t, 32, f"block {blk} W{t}") for t in range(16)]
         for t in range(16, 64):
             s1 = function(w[t - 2], *SMALL_SIGMA[1], f"block {blk} W{t} sigma1")
             s0 = function(w[t - 15], *SMALL_SIGMA[0], f"block {blk} W{t} sigma0")
@@ -387,7 +397,7 @@ def sha256_graph(n_blocks, m, offsets):
         chain.append(state)
     g.block = None
 
-    # 5. The digest, declared after the circuit's nodes, then per word its Slice and the
+    # 4. The digest, declared after the circuit's nodes, then per word its Slice and the
     #    AssertEqual of the computed word and the digest's rows.
     digest = g.input("digest", [256, m], "P", "u1", 0, 1)
     for j in range(8):
@@ -464,7 +474,7 @@ def counts(g):
 
 # RFC-0072 'The circuits' sizes': (zero-checks, selections, BitFn, Mul).
 LATER_BLOCK_PUBLIC = (680, 2441, 335, 79)
-LATER_BLOCK_COMMITTED = (680, 2528, 352, 96)
+LATER_BLOCK_COMMITTED = (682, 2530, 353, 97)
 FIRST_BLOCK_PUBLIC = (680, 2415, 331, 79)
 KEY_COMMITMENT = (690, 2523, 349, 97)
 
@@ -683,12 +693,23 @@ def main():
         require(figures(tally["blocks"][0]) == FIRST_BLOCK_PUBLIC, f"{name}: a first block's public figures")
         require(tally["total"]["zero_checks"] == 680 + 8, f"{name}: 680 zero-checks and 8 bindings")
     crossing = by_name["two blocks, committed bytes crossing into the second"][2]
-    require(figures(crossing["blocks"][1]) == LATER_BLOCK_COMMITTED, "a later block of committed bytes")
-    require(all(row["nodes"] == 6032 for _, _, _, _, _, _, t, _ in graphs for row in t["blocks"]),
-            "6,032 nodes per block (RFC-0066 'Drawbacks')")
-    # A later block of public bytes, from a graph the file does not hold.
+    require(figures(crossing["blocks"][1]) == (LATER_BLOCK_COMMITTED[0] + 1,) + LATER_BLOCK_COMMITTED[1:]
+            and crossing["blocks"][1]["input_padding"] == 1,
+            "a later block of committed bytes with padded committed [26, 2] input")
+    require(figures(counts(sha256_graph(2, 1, list(range(48, 80)))[0])[0]["blocks"][1]) == LATER_BLOCK_COMMITTED,
+            "a later block of committed bytes with power-of-two committed [32, 1] input")
+    for _, n_blocks, _, offsets, _, _, t, _ in graphs:
+        for blk, row in enumerate(t["blocks"]):
+            k_b = sum(1 for o in offsets if 64 * blk <= o < 64 * (blk + 1))
+            expected_nodes = 6032 if k_b == 0 else (6038 if n_blocks == 1 else (6040 if k_b == len(offsets) else 6041))
+            require(row["nodes"] == expected_nodes,
+                    f"expected {expected_nodes} nodes in block {blk} (RFC-0066 'Drawbacks')")
+    # A later block of public bytes, both in a public message and in a trailing padding block.
     require(figures(counts(sha256_graph(2, 1, [])[0])[0]["blocks"][1]) == LATER_BLOCK_PUBLIC,
             "a later block of public bytes")
+    padding_blk = counts(sha256_graph(2, 1, list(range(8, 24)))[0])[0]["blocks"][1]
+    require(figures(padding_blk) == LATER_BLOCK_PUBLIC and padding_blk["nodes"] == 6032,
+            "a trailing padding block of a committed message takes the public row")
 
     inputs = []
     runs = 0

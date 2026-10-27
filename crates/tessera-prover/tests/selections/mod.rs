@@ -103,12 +103,8 @@ impl Verifier<'_> {
                     let Kind::Tensor(t) = member.kind else {
                         panic!("a selection outside the layers")
                     };
-                    let producer = self
-                        .graph
-                        .nodes
-                        .iter()
-                        .find(|n| n.outputs.contains(&t))
-                        .expect("a selection's output");
+                    let producer_id = self.producers[t.0 as usize].expect("a selection's output");
+                    let producer = &self.graph.nodes[producer_id.0 as usize];
                     // The members select one axis of one tensor, whatever the schedule says.
                     assert_eq!(
                         (rows_of(self.graph, producer).0, producer.inputs[0]),
@@ -122,6 +118,22 @@ impl Verifier<'_> {
         let last = members.len() - 1;
         let mut kernel = F::ZERO;
         for (t, (a, member)) in members.into_iter().enumerate() {
+            if self.publics.kernel == Kernel::Closed {
+                let key = (member.id, r_a.to_vec(), r.to_vec());
+                if let Some(&cached) = self.kernel_cache.borrow().get(&key) {
+                    kernel += a * cached;
+                    continue;
+                }
+                let (_, index) = rows_of(self.graph, member);
+                assert!(
+                    index.iter().all(|&i| i < n_a),
+                    "a selection's rows are rows of its input's axis"
+                );
+                let val = kernel_at(&index, r_a, r);
+                self.kernel_cache.borrow_mut().insert(key, val);
+                kernel += a * val;
+                continue;
+            }
             let (_, mut index) = rows_of(self.graph, member);
             // No padded row of `x` is selected: the closed form reads `idx_j` as given.
             assert!(

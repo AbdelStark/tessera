@@ -4,7 +4,7 @@
 - Authors: @AbdelStark
 - Created: 2026-10-26
 - Target milestone: v0.4
-- Amended by: [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) (the degrees of 'Summary' and 'The selection relation', 2, of 'Linear operations that are not coordinate maps', a per-channel `ConstMul`'s 3, of 'Combined selections', 2, and of 'The bit zero-checks' 'Degree' and 'Messages, rejections and stages' are `tessera-protocol/1`'s; `tessera-protocol/2`'s are RFC-0013 'Masked extensions' 'Degree''s, [#565](https://github.com/AbdelStark/tessera/issues/565))
+- Amended by: [RFC-0013](RFC-0013-zero-knowledge.md#masked-extensions) (the degrees of 'Summary' and 'The selection relation', 2, of 'Linear operations that are not coordinate maps', a per-channel `ConstMul`'s 3, of 'Combined selections', 2, and of 'The bit zero-checks' 'Degree' and 'Messages, rejections and stages' are `tessera-protocol/1`'s; `tessera-protocol/2`'s are RFC-0013 'Masked extensions' 'Degree''s, [#565](https://github.com/AbdelStark/tessera/issues/565)); [#563](https://github.com/AbdelStark/tessera/issues/563) (OQ-0072-2, closed: per-block `[512, M]` message bit assembly in 'Summary', 'Messages, rejections and stages' and 'Drawbacks')
 - Amends:
   - [RFC-0066](RFC-0066-bits-and-sha256.md) '`BitDecompose`' (recomposition's relation and its claim on `x`), '`BitFn`' (`¬a` at padded positions), '`AssertEqual`' (a public input pads with zeros, and the selector's example), 'Completeness there is the graph's' (a `ConstAdd`'s padded positions), 'Where the zero-checks run' (their messages), 'Drawbacks' (stacking), and its open questions OQ-0066-1 and OQ-0066-2, which this RFC closes;
   - [RFC-0010](RFC-0010-proof-schedule.md#relations) 'Relations' (recomposition's row, which sums its bit axis, the selection relation, `ConstMul` by a constant per channel, the refusal of a sum over a padded axis), 'Stages' (termination at public tensors) and 'Batching within a stage' (a recomposition's zero-check point);
@@ -35,7 +35,7 @@ This RFC fills each gap with RFC-0010's existing machinery and adds no new kind 
 - **Padded positions** hold what their operation computes from their inputs' padded positions, except that a `ConstAdd` adds its constant at real positions only. They are 0 except downstream of a lookup non-zero at padding, such as AES's S-box, and a sum over a padded axis that such values reach is refused.
 - **The bit zero-checks** run in stage 1 and send their evaluations under `stage/1/evals` (OQ-0066-1). Recomposition is one zero-check summed over the bit axis, which needs no value before `γ`. `BitDecompose` and `AssertEqual` take gadget ids. A false bit fails stage 1's final check, `Reject(Sumcheck)`.
 
-A SHA-256 block of a message with committed bytes holds 680 zero-checks, 2,528 selections, 352 `BitFn` products and 96 masked `Mul`s: about 3,400 instances once selections combine, against about 71,700 if they did not. A frame's SHA-256 takes 14 stages, the leaf stage included, whatever its block count. AES-128-CTR takes 3.
+A SHA-256 block that holds committed bytes (`0 < K_n < K`, with `K·M` a power of two) holds 682 zero-checks, 2,530 selections, 353 `BitFn` products and 97 masked `Mul`s: 3,439 instances once selections combine, against about 71,700 if they did not, and any block whose own bytes are all public costs the 2,945-instance public row. A frame's SHA-256 takes 14 stages, the leaf stage included, whatever its block count. AES-128-CTR takes 3.
 
 ## Motivation
 
@@ -229,15 +229,15 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
 
 | Circuit | Zero-checks | Selections | `BitFn` | `Mul` | `ConstMul` per channel | Lookups | Instances | Evaluations | Split values | Stages |
 |---|---|---|---|---|---|---|---|---|---|---|
-| SHA-256, per block of public bytes | 680 | 2,441 | 335 | 79 | 0 | 0 | 2,945 | 4,237 | 627 | 10 |
-| SHA-256, per block of a message with committed bytes | 680 | 2,528 | 352 | 96 | 0 | 0 | 3,436 | 4,764 | 697 | 14 |
+| SHA-256, per block of public bytes (`K_n = 0`) | 680 | 2,441 | 335 | 79 | 0 | 0 | 2,945 | 4,237 | 627 | 10 |
+| SHA-256, per block with committed bytes (`0 < K_n < K`) | 682 | 2,530 | 353 | 97 | 0 | 0 | 3,439 | 4,768 | 697 | 14 |
 | SHA-256, the key commitment (one block, 32 committed bytes, bound) | 690 | 2,523 | 349 | 97 | 0 | 0 | 3,431 | 4,739 | 681 | 14 |
 | AES-128-CTR, per circuit | 0 | 97 | 0 | 0 | 30 | 127 | 154 | 154 | 332 | 3 |
 
 - **The columns.** Evaluations are the reduction stages' final evaluations (`stage/{k}/evals`). Split values are every `stage/{k}/split`, the leaf stage's tensor values included: AES's 332 are its lookups' 205 non-public inputs and 127 outputs (RFC-0045 'The split').
-- **Per block.** The 680 zero-checks are 368 booleanity checks, 128 bit-padding checks for the round carries and 184 recompositions. The per-block rows count a block after the first, at `M = 1`. A first block reads the initial value, part of which is public: 2,415, 331 and 79 for public bytes. A frame's last block can hold padding alone, and still costs the committed row, since its words are `Slice`s of the assembled bits.
+- **Per block.** The 680 compression zero-checks are 368 booleanity checks, 128 bit-padding checks for the round carries and 184 recompositions. The per-block rows count a block after the first, at `M = 1`, with `K·M` a power of two. A block with committed bytes (`0 < K_n < K`) adds its own `BitDecompose { 8, 0 }`'s booleanity and recomposition (682 zero-checks; 683, 3,440 instances and 4,769 evaluations when `committed [K, M]` has padded positions), its `Slice` of `committed`, its 512-row gather, its `Mul` and its `Xor` (OQ-0072-2). A first block reads the initial value, part of which is public: 2,415, 331 and 79 for public bytes. A block whose own bytes are all public (`K_n = 0`), such as a trailing padding block of a message with committed bytes elsewhere, slices `message` directly and pays the public-bytes row (in a 14-stage circuit when another block has committed bytes).
 - **Without combined selections** a block would hold about 55,000 instances of public bytes and 71,700 with committed bytes, 85,000 and 103,000 evaluations, 31,000 and 34,000 split values.
-- **Per graph.** The binding adds 8 `AssertEqual`s. Each `BitDecompose { 8, 0 }` of committed bytes adds its booleanity, its recomposition and, when it reads a committed graph input with padded positions, that input's padding check.
+- **Per graph.** The binding adds 8 `AssertEqual`s. Each block's `BitDecompose { 8, 0 }` of committed bytes adds its booleanity, its recomposition and, when it reads a committed graph input with padded positions (directly or through `Slice`), that input's padding check.
 - **Chain length.**
   - A public message's chain is a word's `SHR` (a selection, then a `Mul`), its `σ`'s `Xor3`, and the sum's five levels of selections. That is 8 relations below the zero-check, 9 with it, so 10 stages.
   - Committed bytes add a message word's `Slice`, `Xor`, `Mul` and selection: 12 relations below the zero-check, so 14 stages.
@@ -278,14 +278,11 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
 - **Many small instances.** A block adds about 3,000 to 3,400 instances to its stages. Each is front-padded to its stage's rounds (RFC-0010).
 - **The calculator's union.** A block adds those instances and about 2,400 zero-check variables at `M = 1`, so 500 blocks add about `2^{−106.5}` to the soundness error (OQ-0072-1).
 - **Public tensors.** The verifier evaluates every public tensor once per distinct point, `O(size)` each. Its largest is the message's public bits, `512·N·M` entries.
-- **A message of many blocks costs the prover `O(N²)`.** RFC-0066 assembles a message's bits as one `[512·N, M]` tensor. So each block's words, when the message has committed bytes, reach it through four instances that each run over all `512·N` rows: a `Slice`, the `Xor`, the placing `Mul` and the assembly's selection.
-  - **The size.** Their tables sum to about `2·10^5·N²·M` entries, against about `70,000·N·M` for the rest, stage 1's zero-checks included. That is about 6 times the rest at a frame's two blocks, and about 180 times at 64 blocks, a frame of about 1,000 tokens.
-  - **The verifier** stays linear, each distinct kernel and public operand evaluated once per stage.
-  - **Per-block tensors.** OQ-0072-2 asks for them.
+- **Per-block message assembly.** RFC-0066 assembles each committed block's bits as its own `[512, M]` tensor from `bytes_n` (OQ-0072-2, [#563](https://github.com/AbdelStark/tessera/issues/563)). Every block's 48 word-selection chains (`Slice`, `Xor`, `Mul` and the 512-row gather) therefore run over 512 rows rather than `512·N`, so their sumcheck tables grow linearly in `N` (`≈ 7.2·10^5·N·M` entries). Only the single `Slice` of `committed [K, M]` per committed block with `0 < K_n < K` (`2·2^{⌈log2 K⌉}` selection table entries per committed block, `< 256·N²` across the `B_c ≤ N` committed blocks and `≤ 128·N²` when `N` is a power of two, plus folding `committed` along `r_lo`), together with each committed block's `InputPadding` zero-check when `committed` is a committed graph input with padded positions (`3·2^{⌈log2 K⌉ + ⌈log2 M⌉}` entries per committed block, absent when `committed` is virtual as in RFC-0074), spans the message's committed bytes: at `N = 64, M = 3` total stage table entries are `1.34·10^8` against `5.85·10^9` (`43.6×` smaller), and both prover and verifier scale linearly across typical frame sizes.
 - **Opening groups.** Every anchor tensor is smaller than an advice row, so a claim on it has column sub-point `r ‖ 0^{log2 k − n_X}` (RFC-0011 rule 3). Each distinct claim point is therefore an RFC-0011 group of its own.
-  - **The count.** About 8 to 14 per SHA-256 circuit shape, and 7 to 12 for AES with its multiplicities' table-tree points. A graph with the key commitment, two frames' hashes and AES holds about 20 to 45, depending on the frames' block and message counts, counted from the schedules under these rules. The high-coordinate extension of recomposition's outputs saves two to six of them, two per distinct message count.
+  - **The count.** About 8 to 20 per SHA-256 circuit shape (12 or 13 at one block, 17 to 20 across two to 64 blocks with committed bytes, bounded because `⌈log2 K_n⌉ ∈ {0..6}`), and 7 to 12 for AES with its multiplicities' table-tree points. A graph with the key commitment, two frames' hashes and AES holds about 25 to 50, depending on the frames' block and message counts, counted from the schedules under these rules. The high-coordinate extension of recomposition's outputs saves two to six of them, two per distinct message count.
   - **The cost at `k = 2^{22}`.** Each group is a combined row of about 64 MiB, so 40 groups are about 2.7 GB of proof, against 1.14 GB for 405B's own (RFC-0011's `G ≤ 16` counts Llama's). The verifier runs about 40 more coset NTTs of `2^{23}`, and `tessera-protocol/2` adds about 80 blinding rows.
-  - **Rows.** RFC-0011 rule 2 also gives every committed tensor a row of its own: 368 a SHA-256 block, a word's bits and its carry. At 500 blocks that is 184,000 rows, 19% of 405B's, and about 228 MB of opened columns at `τ_A = 155`.
+  - **Rows.** RFC-0011 rule 2 also gives every committed tensor a row of its own: 368 a public SHA-256 block and 369 a block with committed bytes (its words' bits, their carries and its committed bytes' bits). At 500 committed blocks that is 184,500 rows, 19% of 405B's, and about 229 MB of opened columns at `τ_A = 155`.
   - **Not small.** RFC-0015's estimate counts committed elements, not groups or rows. OQ-0072-3 asks how to bring the anchor's claims to fewer points and pack its tensors.
 - **Deeper schedules.** A batch that carries a frame's SHA-256 has 14 stages, against the Llama templates' 3 or 4, both counting the leaf stage. Every stage has its own rounds and messages.
 
@@ -331,7 +328,40 @@ They run in stage 1, after its other zero-checks, in node order, each node's che
 ## Open Questions
 
 - **OQ-0072-1. The zero-checks' bound.** RFC-0014's union row sums the variables of every `ZeroCheck` sharing stage 1's point. The largest is a bound, since one false relation's check vanishes at `z` with probability at most its own variables over `|Fp2|`, whatever the others do. Should the calculator count it so? It would remove the zero-checks' share of the union, about 2,400 variables per block at `M = 1` as counted (1,480 of them `eq` variables). The stages' instances add about 3,400 per block.
-- **OQ-0072-2. Per-block message tensors.** Should RFC-0066's builder assemble each block's bits from that block's own committed bytes? That means a `Slice` of the committed bytes per block, its `BitDecompose { 8, 0 }`, and the block's selection, `Mul` and `Xor` over `[512, M]`, with the block's words `Slice`s of it. Each chain would then run over 512 rows, and the prover's work would grow as `N`. [#563](https://github.com/AbdelStark/tessera/issues/563) measures both before choosing.
+- **OQ-0072-2 (resolved): per-block message tensors.** Adopted in [#563](https://github.com/AbdelStark/tessera/issues/563): `tessera_compiler::anchor::sha256` (RFC-0066 'The message', 'The graph') assembles each committed block's bits as its own `[512, M]` tensor from `bytes_n` (`Slice` of `committed` when `K_n < K`, else `committed`), while blocks with `K_n = 0` slice `message` directly (`sha256_with_assembly` retains `WholeMessage` for differential comparison). Measured on Apple M4 Max (16 cores, 48 GiB RAM, `cargo test --release -p tessera-prover --test stages`, bound digest, key commitment at `N = 1` and 41-byte public header + `64N − 50` committed bytes for `N ≥ 2`):
+
+  | `M` | `N` | `K` | Design | Stages | Instances | Evaluations | Splits | Table entries | Committed rows | Opening groups | Prove (ms) | Verify (ms) |
+  |---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+  | 1 | 1 | 32 | whole | 14 | 3,431 | 4,739 | 681 | 668,072 | 370 | 12 | 19.4 | 4.7 |
+  | 1 | 1 | 32 | per-block | 14 | 3,431 | 4,739 | 681 | 668,072 | 370 | 12 | 18.6 | 4.7 |
+  | 1 | 2 | 78 | whole | 14 | 6,868 | 9,504 | 1,378 | 2,455,568 | 738 | 13 | 59.1 | 9.6 |
+  | 1 | 2 | 78 | per-block | 14 | 6,873 | 9,510 | 1,378 | 1,390,224 | 739 | 18 | 37.5 | 9.4 |
+  | 1 | 4 | 206 | whole | 14 | 13,740 | 19,032 | 2,772 | 8,966,496 | 1,474 | 13 | 182.8 | 19.4 |
+  | 1 | 4 | 206 | per-block | 14 | 13,753 | 19,048 | 2,772 | 2,835,808 | 1,477 | 17 | 78.4 | 18.7 |
+  | 1 | 8 | 462 | whole | 14 | 27,484 | 38,088 | 5,560 | 34,153,472 | 2,946 | 13 | 657.9 | 37.4 |
+  | 1 | 8 | 462 | per-block | 14 | 27,513 | 38,124 | 5,560 | 5,734,656 | 2,953 | 17 | 161.7 | 38.0 |
+  | 1 | 16 | 974 | whole | 14 | 54,972 | 76,200 | 11,136 | 133,187,904 | 5,890 | 13 | 2,489.9 | 78.4 |
+  | 1 | 16 | 974 | per-block | 14 | 55,033 | 76,276 | 11,136 | 11,563,072 | 5,905 | 18 | 329.5 | 73.2 |
+  | 1 | 32 | 1,998 | whole | 14 | 109,948 | 152,424 | 22,288 | 525,898,688 | 11,778 | 13 | — | — |
+  | 1 | 32 | 1,998 | per-block | 14 | 110,073 | 152,580 | 22,288 | 23,342,784 | 11,809 | 18 | 654.4 | 150.5 |
+  | 1 | 64 | 4,046 | whole | 14 | 219,900 | 304,872 | 44,592 | 2,089,887,936 | 23,554 | 13 | — | — |
+  | 1 | 64 | 4,046 | per-block | 14 | 220,153 | 305,188 | 44,592 | 47,393,728 | 23,617 | 18 | 1,333.1 | 309.8 |
+  | 3 | 1 | 32 | whole | 14 | 3,432 | 4,740 | 681 | 1,983,904 | 370 | 13 | 44.0 | 4.5 |
+  | 3 | 1 | 32 | per-block | 14 | 3,432 | 4,740 | 681 | 1,983,904 | 370 | 13 | 43.1 | 4.6 |
+  | 3 | 2 | 78 | whole | 14 | 6,868 | 9,504 | 1,378 | 6,922,368 | 738 | 14 | 137.2 | 9.2 |
+  | 3 | 2 | 78 | per-block | 14 | 6,873 | 9,510 | 1,378 | 4,028,032 | 739 | 20 | 95.0 | 9.1 |
+  | 3 | 4 | 206 | whole | 14 | 13,740 | 19,032 | 2,772 | 25,198,400 | 1,474 | 14 | 468.2 | 19.7 |
+  | 3 | 4 | 206 | per-block | 14 | 13,753 | 19,048 | 2,772 | 8,120,640 | 1,477 | 19 | 180.2 | 17.8 |
+  | 3 | 8 | 462 | whole | 14 | 27,484 | 38,088 | 5,560 | 95,812,800 | 2,946 | 14 | 1,684.3 | 39.2 |
+  | 3 | 8 | 462 | per-block | 14 | 27,513 | 38,124 | 5,560 | 16,327,360 | 2,953 | 19 | 381.0 | 36.6 |
+  | 3 | 16 | 974 | whole | 14 | 54,972 | 76,200 | 11,136 | 373,290,944 | 5,890 | 14 | 6,430.0 | 80.5 |
+  | 3 | 16 | 974 | per-block | 14 | 55,033 | 76,276 | 11,136 | 32,826,816 | 5,905 | 20 | 771.0 | 75.4 |
+  | 3 | 32 | 1,998 | whole | 14 | 109,948 | 152,424 | 22,288 | 1,473,244,608 | 11,778 | 14 | — | — |
+  | 3 | 32 | 1,998 | per-block | 14 | 110,073 | 152,580 | 22,288 | 66,169,792 | 11,809 | 20 | 1,543.5 | 155.9 |
+  | 3 | 64 | 4,046 | whole | 14 | 219,900 | 304,872 | 44,592 | 5,853,141,440 | 23,554 | 14 | — | — |
+  | 3 | 64 | 4,046 | per-block | 14 | 220,153 | 305,188 | 44,592 | 134,232,000 | 23,617 | 20 | 3,124.5 | 323.2 |
+
+  `N = 1` (key and sampler key commitments) pays zero extra rows, groups or instances; for `N ≥ 2` per-block assembly cuts sumcheck table entries by `1.7×` at `N = 2`, `11.4×` at `N = 16` (`8.3×` faster CPU prove) and `43.6×` at `N = 64` at the cost of `+1` committed row per additional committed block (`+0.27%`) and `+5` to `+6` bounded opening groups (addressed with all anchor groups under OQ-0072-3).
 - **OQ-0072-3. The anchor's opening groups and rows.** Should one reduction sumcheck, as RFC-0070 does for the masks, bring the anchor's claims on small committed tensors to one column sub-point? Should RFC-0011's layout pack such tensors into shared rows, rather than one row each? Either would remove most of 'Drawbacks' cost. #146, which builds the anchor's graph, measures the groups first.
 
 ## References

@@ -17,13 +17,16 @@
 //!   `32·k·2^{31}` and fail `BitDecompose`'s width.
 //!
 //! **The message.** Its bytes, padding included, are public except those the layout commits.
-//! A committed byte enters through `BitDecompose { 8, 0 }`, which is also its range check
-//! (RFC-0066 Lemma 1), and its bits are gathered into the word positions of its offset and
-//! masked to zero elsewhere. The public bits are zero at committed offsets, so the message's
-//! bits are the `Xor` of the two, whose supports are disjoint.
+//! Each block that holds committed bytes slices them from `committed`, decomposes them with
+//! `BitDecompose { 8, 0 }`, which is also their range check (RFC-0066 Lemma 1), gathers their
+//! bits into the block's 512 word positions, masks them to zero elsewhere, and `Xor`s them with
+//! the block's public bits, which are zero at committed offsets (RFC-0072 OQ-0072-2). A block
+//! with no committed byte slices `message` directly.
 //!
 //! **Cost.** 6,376 committed bits per block ([`SHA256_BITS_PER_BLOCK`]) and 8 per committed
-//! byte, in 6,032 nodes per block: the graph's size grows with the block count, not with `M`.
+//! byte, in 6,032 nodes per public block and 6,038 to 6,041 per block with committed bytes: the
+//! graph's size and the prover's sumcheck work over the 512-row word chains grow linearly with
+//! the block count, not with `M`.
 
 use tessera_ir::{
     BoolFn, Broadcast, CommitmentClass, GraphBuilder, IntRange, IntType, IrError, NodeKind, Op,
@@ -245,6 +248,18 @@ impl Sha256Layout {
     fn slot(&self, offset: usize) -> Option<usize> {
         self.committed.iter().position(|&p| p as usize == offset)
     }
+}
+
+/// How [`sha256_with_assembly`] assembles a message's committed and public bits (RFC-0072
+/// OQ-0072-2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sha256Assembly {
+    /// One `[512·N, M]` bit tensor across the whole message: RFC-0066's initial assembly, kept
+    /// for differential and cost comparisons against [`Self::PerBlock`].
+    WholeMessage,
+    /// One `[512, M]` bit tensor per block that holds committed bytes: [`sha256`]'s assembly
+    /// (RFC-0066 'The message', RFC-0072 OQ-0072-2).
+    PerBlock,
 }
 
 /// The tensors of a SHA-256 circuit.
@@ -505,6 +520,21 @@ pub fn sha256(
     layout: &Sha256Layout,
     inputs: &[TensorId],
 ) -> Result<Sha256, IrError> {
+    sha256_with_assembly(g, layout, inputs, Sha256Assembly::PerBlock)
+}
+
+/// SHA-256 of `M` padded messages of `N` blocks each, assembled by `assembly` (RFC-0072
+/// OQ-0072-2).
+///
+/// # Errors
+///
+/// As [`sha256`].
+pub fn sha256_with_assembly(
+    g: &mut GraphBuilder,
+    layout: &Sha256Layout,
+    inputs: &[TensorId],
+    assembly: Sha256Assembly,
+) -> Result<Sha256, IrError> {
     let bad = |rule| IrError::Declaration { rule };
     let limit = 64 * layout.blocks;
     if !layout.committed.windows(2).all(|p| p[0] < p[1])
@@ -533,56 +563,163 @@ pub fn sha256(
     };
     let (shr3, shr10) = (mask(0)?, mask(1)?);
     let mut c = Circuit { g, m, shr3, shr10 };
-    let message = if let [bytes, place] = *rest {
-        // Each committed byte's bits, row 8k + j its bit j, gathered into its word positions and
-        // masked to zero at public bytes.
-        let k = u32::try_from(layout.committed.len()).unwrap_or(u32::MAX);
-        let b = c.g.node(
-            Op::BitDecompose { low: 8, high: 0 },
-            &[bytes],
-            vec![bits(&[k, m, 8], ADVICE)],
-        )?[0];
-        let b = c.one(
-            Op::Transpose {
-                perm: vec![0, 2, 1],
-            },
-            &[b],
-            bits(&[k, 8, m], NodeKind::Virtual),
-        )?;
-        let b = c.one(Op::Reshape, &[b], bits(&[8 * k, m], NodeKind::Virtual))?;
-        let index = (0..512 * layout.blocks as usize)
-            .map(|row| {
-                let (byte, bit) = byte_of(row);
-                layout
-                    .slot(byte)
-                    .map_or(0, |s| i64::try_from(8 * s + bit).unwrap_or(0))
-            })
-            .collect();
-        let gathered = c.gather(b, index)?;
-        let placed = c.one(
-            Op::Mul {
-                broadcast: Broadcast::Trailing,
-            },
-            &[gathered, place],
-            virtual_tensor(&[512 * layout.blocks, m]),
-        )?;
-        c.one(
-            Op::BitFn { f: BoolFn::Xor },
-            &[message, placed],
-            bits(&[512 * layout.blocks, m], NodeKind::Virtual),
-        )?
-    } else {
-        message
-    };
+    if assembly == Sha256Assembly::WholeMessage {
+        let message = if let [bytes, place] = *rest {
+            // Each committed byte's bits, row 8k + j its bit j, gathered into its word positions
+            // and masked to zero at public bytes.
+            let k = u32::try_from(layout.committed.len()).unwrap_or(u32::MAX);
+            let b = c.g.node(
+                Op::BitDecompose { low: 8, high: 0 },
+                &[bytes],
+                vec![bits(&[k, m, 8], ADVICE)],
+            )?[0];
+            let b = c.one(
+                Op::Transpose {
+                    perm: vec![0, 2, 1],
+                },
+                &[b],
+                bits(&[k, 8, m], NodeKind::Virtual),
+            )?;
+            let b = c.one(Op::Reshape, &[b], bits(&[8 * k, m], NodeKind::Virtual))?;
+            let index = (0..512 * layout.blocks as usize)
+                .map(|row| {
+                    let (byte, bit) = byte_of(row);
+                    layout
+                        .slot(byte)
+                        .map_or(0, |s| i64::try_from(8 * s + bit).unwrap_or(0))
+                })
+                .collect();
+            let gathered = c.gather(b, index)?;
+            let placed = c.one(
+                Op::Mul {
+                    broadcast: Broadcast::Trailing,
+                },
+                &[gathered, place],
+                virtual_tensor(&[512 * layout.blocks, m]),
+            )?;
+            c.one(
+                Op::BitFn { f: BoolFn::Xor },
+                &[message, placed],
+                bits(&[512 * layout.blocks, m], NodeKind::Virtual),
+            )?
+        } else {
+            message
+        };
+        let mut h = [start; 8];
+        for (j, word) in h.iter_mut().enumerate() {
+            *word = c.word(start, u32::try_from(j).unwrap_or(0))?;
+        }
+        let mut chaining = Vec::with_capacity(layout.blocks as usize);
+        for n in 0..layout.blocks {
+            let mut block = [message; 16];
+            for (j, word) in block.iter_mut().enumerate() {
+                *word = c.word(message, 16 * n + u32::try_from(j).unwrap_or(0))?;
+            }
+            h = c.compress(h, block)?;
+            chaining.push(h);
+        }
+        return Ok(Sha256 { chaining });
+    }
+
     let mut h = [start; 8];
     for (j, word) in h.iter_mut().enumerate() {
         *word = c.word(start, u32::try_from(j).unwrap_or(0))?;
     }
+    let total_k = layout.committed.len();
     let mut chaining = Vec::with_capacity(layout.blocks as usize);
     for n in 0..layout.blocks {
+        let (from, to) = (64 * n, 64 * (n + 1));
+        let start_k = layout.committed.partition_point(|&p| p < from);
+        let end_k = layout.committed.partition_point(|&p| p < to);
+        let block_committed = &layout.committed[start_k..end_k];
         let mut block = [message; 16];
-        for (j, word) in block.iter_mut().enumerate() {
-            *word = c.word(message, 16 * n + u32::try_from(j).unwrap_or(0))?;
+        if block_committed.is_empty() {
+            for (j, word) in block.iter_mut().enumerate() {
+                *word = c.word(message, 16 * n + u32::try_from(j).unwrap_or(0))?;
+            }
+        } else {
+            let [bytes, place] = *rest else {
+                return Err(bad("the circuit takes its inputs in sha256_inputs's order"));
+            };
+            let k_n = u32::try_from(block_committed.len()).unwrap_or(u32::MAX);
+            let bytes_n = if block_committed.len() == total_k {
+                bytes
+            } else {
+                c.one(
+                    Op::Slice {
+                        axis: 0,
+                        start: u32::try_from(start_k).unwrap_or(u32::MAX),
+                        len: k_n,
+                    },
+                    &[bytes],
+                    virtual_tensor(&[k_n, m]),
+                )?
+            };
+            let b = c.g.node(
+                Op::BitDecompose { low: 8, high: 0 },
+                &[bytes_n],
+                vec![bits(&[k_n, m, 8], ADVICE)],
+            )?[0];
+            let b = c.one(
+                Op::Transpose {
+                    perm: vec![0, 2, 1],
+                },
+                &[b],
+                bits(&[k_n, 8, m], NodeKind::Virtual),
+            )?;
+            let b = c.one(Op::Reshape, &[b], bits(&[8 * k_n, m], NodeKind::Virtual))?;
+            let index = (0..512usize)
+                .map(|row| {
+                    let (byte, bit) = byte_of(row);
+                    let offset = 64 * n as usize + byte;
+                    block_committed
+                        .iter()
+                        .position(|&p| p as usize == offset)
+                        .map_or(0, |s| i64::try_from(8 * s + bit).unwrap_or(0))
+                })
+                .collect();
+            let gathered = c.gather(b, index)?;
+            let place_n = if layout.blocks == 1 {
+                place
+            } else {
+                c.one(
+                    Op::Slice {
+                        axis: 0,
+                        start: 512 * n,
+                        len: 512,
+                    },
+                    &[place],
+                    bits(&[512], NodeKind::Virtual),
+                )?
+            };
+            let placed = c.one(
+                Op::Mul {
+                    broadcast: Broadcast::Trailing,
+                },
+                &[gathered, place_n],
+                virtual_tensor(&[512, m]),
+            )?;
+            let message_n = if layout.blocks == 1 {
+                message
+            } else {
+                c.one(
+                    Op::Slice {
+                        axis: 0,
+                        start: 512 * n,
+                        len: 512,
+                    },
+                    &[message],
+                    bits(&[512, m], NodeKind::Virtual),
+                )?
+            };
+            let assembled = c.one(
+                Op::BitFn { f: BoolFn::Xor },
+                &[message_n, placed],
+                bits(&[512, m], NodeKind::Virtual),
+            )?;
+            for (j, word) in block.iter_mut().enumerate() {
+                *word = c.word(assembled, u32::try_from(j).unwrap_or(0))?;
+            }
         }
         h = c.compress(h, block)?;
         chaining.push(h);

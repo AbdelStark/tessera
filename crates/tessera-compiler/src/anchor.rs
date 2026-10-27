@@ -35,8 +35,9 @@
 mod sha256;
 
 pub use sha256::{
-    SHA256_BITS_PER_BLOCK, SHA256_IV, SHA256_K, SHA256_MASKS, Sha256, Sha256Layout, sha256,
-    sha256_bind, sha256_bits, sha256_blocks, sha256_digest_input, sha256_inputs, sha256_pad,
+    SHA256_BITS_PER_BLOCK, SHA256_IV, SHA256_K, SHA256_MASKS, Sha256, Sha256Assembly, Sha256Layout,
+    sha256, sha256_bind, sha256_bits, sha256_blocks, sha256_digest_input, sha256_inputs,
+    sha256_pad, sha256_with_assembly,
 };
 use tessera_ir::{
     CommitmentClass, GraphBuilder, IntRange, IntType, IrError, NodeKind, Op, TableId, TensorDecl,
