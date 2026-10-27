@@ -267,7 +267,7 @@ RFC-0072 'Real positions' refuses a `ConstAdd` or `AssertEqual` downstream of th
   4. the anchor's part of the graph, then the composed layout against the maximum layout (`StatementMismatch { field: Batch }`) and `layout_digest` against it.
 - **Its preconditions.** The anchor's part passes range analysis, RFC-0006 'Committed graph inputs' and every gadget precondition for any statement and logs that pass RFC-0015's checks 1 and 2: its ranges do not depend on them. A failure is the verifier's own, `Inconclusive(ERR-INTERNAL)` at step 4.
 - **Its resources.** The verifier provisions the anchor from `A_b` ('The size bound'), never from the prover's frames.
-  - **The cost of a block.** A block of `A_b` stands for at most 6,100 nodes, 370 committed tensors and 3,440 stage instances: a SHA-256 block's 6,032 nodes and 368 tensors with its share of its frame's other nodes, or a key commitment's 6,066 nodes and 370 tensors. A session adds at most 450 nodes and 130 tensors: AES's 285 nodes and 129 tensors, the key's two moves, the plaintext's `BitDecompose`, the binding and the flattened ciphertext.
+  - **The cost of a block.** A block of `A_b` stands for at most 6,100 nodes, 370 committed tensors and 3,440 stage instances: a SHA-256 block's 6,032 to 6,041 nodes and 368 or 369 tensors with its share of its frame's other nodes, or a key commitment's 6,066 nodes and 370 tensors. A session adds at most 450 nodes and 130 tensors: AES's 285 nodes and 129 tensors, the key's two moves, the plaintext's `BitDecompose`, the binding and the flattened ciphertext.
   - **The decision.** `ResourceLimits.max_anchor_blocks` (02 §3.2), 4,096 by default, bounds it. A batch whose `A_b` exceeds it is `Inconclusive(ERR-RES-MEMORY)` at step 4, right after the interim cap and before any entry is read.
   - **Consequences.** Two verifiers with the same limits decide alike. With the default, this block-count check refuses no batch within the cap. Existing memory, artifact-byte and time limits still apply; `max_anchor_blocks` is not a substitute for them.
   - **The proof's own fault.** A request past its size bound is `Reject(Anchor { kind: Frames })`.
@@ -310,7 +310,7 @@ In the proof, the verifier checks the leaf stage's lookups (RFC-0019 step 7) bef
 
 ### Sizes
 
-Exploratory figures recorded during the initial design from the compiler's schedule on `tiny-2-minimal` (2 layers, `d_model` 64, vocabulary 512) with a generation request, one session, the anchor built as above. They have not been rerun during this draft's takeover review; the implementation must reproduce them before treating them as conformance evidence. The schedule is `derive_composed_schedule` with `model_natives`. The opening points are counted on the anchor's part alone, proven by the CPU stage prover with its tokens public.
+Exploratory figures recorded during the initial design (prior to [#563](https://github.com/AbdelStark/tessera/issues/563)'s per-block SHA-256 message assembly, OQ-0072-2) from the compiler's schedule on `tiny-2-minimal` (2 layers, `d_model` 64, vocabulary 512) with a generation request, one session, the anchor built as above. They have not been rerun during this draft's takeover review; the implementation must reproduce them before treating them as conformance evidence. The schedule is `derive_composed_schedule` with `model_natives`. The opening points are counted on the anchor's part alone, proven by the CPU stage prover with its tokens public.
 
 | Batch | Frames | Stages | Instances | Evaluations | Split values | Pool claims | Zero-checks | Anchor tensors | Opening points |
 |---|---|---|---|---|---|---|---|---|---|
@@ -343,12 +343,12 @@ Exploratory figures recorded during the initial design from the compiler's sched
 ## Drawbacks
 
 - **Stages.** A batch takes 14 stages, against Llama's 3 or 4. Stages 4 to 13 hold the anchor alone; in stages 1 to 3 each instance is front-padded to its stage's widest, as any is.
-- **Streamed outputs.** A frame per token costs two SHA-256 blocks per token: 12,100 nodes (the compiler's 12,098 for its SHA-256, plus its `Slice` and `Reshape`) and 6,869 instances per one-token frame. A batch of 16K tokens streamed one per frame holds 32,768 blocks, about `2.0·10^8` nodes and `1.1·10^8` instances, and spends the soundness budget ('Soundness', OQ-0074-2).
-- **Proof size.** The binding cost is rows and bytes. Each SHA-256 block commits 368 tensors, one advice row each (RFC-0072), and a row opens `τ_A × 8` bytes, 1,240 at `τ_A = 155` (RFC-0072's 228 MB per 184,000 rows). The tiny examples' anchor opening points add about 24 groups ('Sizes'), 1.6 GB at `2^{22} × 16` bytes per group. This is a measurement of those shapes, not an upper bound over all framings or sessions. For a batch of 16K tokens, the following estimates count columns, evaluations and splits only, against 405B's own 953,580 rows and about 2.8 GB (RFC-0011, 08 §5):
+- **Streamed outputs.** A frame per token costs two SHA-256 blocks per token: 12,112 nodes (the compiler's 12,110 for its SHA-256, plus its `Slice` and `Reshape`) and 6,873 instances per one-token frame (SHA-256's 6,863, the eight digest `AssertEqual`s, and the two stage-3 selections on `Slice(flat(c_s))`). A batch of 16K tokens streamed one per frame holds 32,768 blocks, about `2.0·10^8` nodes and `1.1·10^8` instances, and spends the soundness budget ('Soundness', OQ-0074-2).
+- **Proof size.** The binding cost is rows and bytes. Each SHA-256 block commits 368 or 369 tensors, one advice row each (RFC-0072), and a row opens `τ_A × 8` bytes, 1,240 at `τ_A = 155` (RFC-0072's 229 MB per 184,500 rows). The tiny examples' anchor opening points add about 24 groups ('Sizes'), 1.6 GB at `2^{22} × 16` bytes per group. This is a measurement of those shapes, not an upper bound over all framings or sessions. For a batch of 16K tokens, the following estimates count columns, evaluations and splits only, against 405B's own 953,580 rows and about 2.8 GB (RFC-0011, 08 §5):
 
   | Framing | SHA-256 blocks | Advice rows | Opened columns, `τ_A` = 155 / 193 | Evaluations and splits |
   |---|---|---|---|---|
-  | One token per frame | 32,768 | 12.08 M | 15.0 / 18.6 GB | 2.85 GB |
+  | One token per frame | 32,768 | 12.09 M | 15.0 / 18.7 GB | 2.85 GB |
   | Frames of 64 tokens | 1,536 | 0.57 M | 0.70 / 0.87 GB | 0.13 GB |
   | Frames of 1,024 tokens | 1,056 | 0.39 M | 0.48 / 0.60 GB | 0.09 GB |
 
@@ -356,7 +356,7 @@ Exploratory figures recorded during the initial design from the compiler's sched
   - **Why the cap.** A verifier must provision for `A_b`, the bound, whatever the actual framing. The interim cap limits that expansion, at the price of batches of at most about 2,000 tokens and requests of at most 2,045. Meeting the cap does not establish either the total-proof gate or the decode limit.
 - **The 4 GiB gate.** 08 §5 continues to gate the complete proof, including the anchor. This RFC grants no exception. Compliant production rollout remains blocked until composed proofs meet it, with their groups counted over all admitted frame and session shapes (OQ-0072-3).
 - **A gather per session over the token axis.** The verifier evaluates its kernel in `O(T_s·(log T_s + log N))`.
-- **Graph size.** A SHA-256 block is 6,032 nodes (RFC-0066). A batch of 16K tokens holds about 1,000 blocks in long frames, 1,536 in frames of 64 tokens and 32,768 streamed one per frame: 6 million, 9 million and `2.0·10^8` nodes. Within the interim cap, an anchor holds at most about 25 million nodes, which the verifier provisions for ('Its resources', [RFC-0019](RFC-0019-verifier.md#robustness)).
+- **Graph size.** A SHA-256 block is 6,032 to 6,041 nodes (RFC-0066). A batch of 16K tokens holds about 1,000 blocks in long frames, 1,536 in frames of 64 tokens and 32,768 streamed one per frame: 6 million, 9 million and `2.0·10^8` nodes. Within the interim cap, an anchor holds at most about 25 million nodes, which the verifier provisions for ('Its resources', [RFC-0019](RFC-0019-verifier.md#robustness)).
 
 ## Migration / Rollout
 

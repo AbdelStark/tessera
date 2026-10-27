@@ -22,8 +22,8 @@ use super::bits::{self, without};
 use super::selections::run_with;
 use super::*;
 use tessera_compiler::anchor::{
-    SHA256_IV, SHA256_MASKS, Sha256, Sha256Layout, sha256, sha256_bind, sha256_bits,
-    sha256_digest_input, sha256_inputs, sha256_pad,
+    SHA256_IV, SHA256_MASKS, Sha256, Sha256Assembly, Sha256Layout, sha256, sha256_bind,
+    sha256_bits, sha256_digest_input, sha256_inputs, sha256_pad, sha256_with_assembly,
 };
 use tessera_compiler::{analyze, settle};
 
@@ -506,4 +506,298 @@ fn a_round_0_carry_off_is_rejected_at_stage_1() {
             "carry bit {bit}: the openings accept the cheat's tables"
         );
     }
+}
+
+fn circuit_with(layout: &Sha256Layout, bind: bool, assembly: Sha256Assembly) -> Circuit {
+    let mut g = GraphBuilder::new();
+    let inputs: Vec<TensorId> = sha256_inputs(layout)
+        .into_iter()
+        .map(|d| g.input(d).expect("an input"))
+        .collect();
+    let sha = sha256_with_assembly(&mut g, layout, &inputs, assembly).expect("the circuit");
+    let digest = bind.then(|| {
+        let digest = g
+            .input(sha256_digest_input(layout.messages))
+            .expect("the digest");
+        let last = sha.chaining.last().expect("a block");
+        sha256_bind(&mut g, last, digest, layout.messages).expect("the binding");
+        digest
+    });
+    let mut graph = g.finish();
+    let ranges = analyze(&graph, &[]).expect("the circuit's ranges");
+    settle(&mut graph, &ranges).expect("bounded ranges");
+    Circuit {
+        graph,
+        inputs,
+        sha,
+        digest,
+    }
+}
+
+fn stage_table_entries(graph: &Graph, schedule: &StageSchedule) -> (usize, usize) {
+    let mut total = 0usize;
+    let mut non_public = 0usize;
+    for stage in schedule.stages.iter().skip(1) {
+        for instance in &stage.instances {
+            let v = instance.vars as usize;
+            let len = 1usize << v;
+            let NodeRef::Node(id) = instance.node else {
+                panic!("layerless SHA-256 node");
+            };
+            let node = &graph.nodes[id.0 as usize];
+            let tables = match instance.relation {
+                Relation::Selection => 2,
+                Relation::Recomposition => {
+                    let Op::BitDecompose { high, .. } = node.op else {
+                        panic!("Recomposition on BitDecompose");
+                    };
+                    if high > 0 { 8 } else { 5 }
+                }
+                Relation::Booleanity => usize::from(v > 0) + 1,
+                Relation::BitPadding | Relation::InputPadding | Relation::Mul(_) => {
+                    usize::from(v > 0) + 2
+                }
+                Relation::AssertEqual => usize::from(v > 0) + 3,
+                Relation::BitFn(f) => usize::from(v > 0) + f.arity(),
+                other => panic!("unexpected SHA-256 relation {other:?}"),
+            };
+            total += tables * len;
+            non_public += instance.claims.len() * len;
+        }
+    }
+    (total, non_public)
+}
+
+/// RFC-0072 OQ-0072-2 (#563): per-block `[512, M]` message assembly produces the exact same
+/// chaining words and digest as whole-message `[512·N, M]` assembly across committed blocks and a
+/// trailing public padding block, rejects both a non-byte `committed` cheat (`+256` carried into
+/// `bytes_1`, caught at stage 1's recomposition and accepted only when that block's recomposition
+/// is removed) and a `Slice(committed)` mismatch (`+256` in `committed` alone, caught at stage 2's
+/// selection), and keeps stage table entries linear in `N`.
+#[test]
+fn per_block_assembly_matches_whole_message_and_scales_linearly() {
+    // Two 3-block messages (120 bytes -> 192 padded bytes = 3 blocks): 41-byte public header,
+    // 34 committed bytes (offsets 41..75: 23 in block 0, 11 in block 1, 0 in block 2), and
+    // public bytes + padding through block 2.
+    let mut state = 0x0563_CAFEu64;
+    let mut byte = || {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1);
+        u8::try_from(state >> 56).expect("a byte")
+    };
+    let padded: Vec<Vec<u8>> = (0..2)
+        .map(|_| {
+            let msg: Vec<u8> = (0..120).map(|_| byte()).collect();
+            let p = sha256_pad(&msg);
+            assert_eq!(p.len(), 192);
+            p
+        })
+        .collect();
+    let layout = Sha256Layout {
+        blocks: 3,
+        messages: 2,
+        committed: (41..75).collect(),
+    };
+
+    // 1. Differential witness equivalence against WholeMessage across all 3 blocks.
+    let whole = circuit_with(&layout, true, Sha256Assembly::WholeMessage);
+    let per_block = circuit(&layout, true);
+    let expected_digest = digest(&layout, &padded);
+
+    let mut whole_in = values(&layout, &whole, &padded);
+    whole_in.push((whole.digest.expect("bound"), expected_digest.clone()));
+    let whole_run = run_with(&whole.graph, whole_in, 0x0563_0001);
+    assert_eq!(
+        verify(
+            &whole,
+            &whole_run,
+            &whole_run.schedule,
+            &whole_run.proof,
+            &whole_run.public
+        ),
+        Ok(whole_run.pool.clone())
+    );
+
+    let mut per_in = values(&layout, &per_block, &padded);
+    per_in.push((per_block.digest.expect("bound"), expected_digest));
+    let run = run_with(&per_block.graph, per_in, 0x0563_0001);
+    assert_eq!(run.schedule.stage_count(), 14);
+    assert_eq!(
+        verify(&per_block, &run, &run.schedule, &run.proof, &run.public),
+        Ok(run.pool.clone())
+    );
+    for (blk, (w_words, p_words)) in whole
+        .sha
+        .chaining
+        .iter()
+        .zip(&per_block.sha.chaining)
+        .enumerate()
+    {
+        for (&wt, &pt) in w_words.iter().zip(p_words) {
+            assert_eq!(
+                whole_run.witness.values(wt),
+                run.witness.values(pt),
+                "block {blk} chaining bits match WholeMessage bit-for-bit"
+            );
+        }
+    }
+
+    // 2. Adversarial checks on block 1's sliced byte decomposition (`bytes_1 = Slice(committed)`).
+    let byte_decomps: Vec<&tessera_ir::Node> = per_block
+        .graph
+        .nodes
+        .iter()
+        .filter(|n| matches!(n.op, Op::BitDecompose { low: 8, high: 0 }))
+        .collect();
+    assert_eq!(
+        byte_decomps.len(),
+        2,
+        "blocks 0 and 1 decompose committed bytes; block 2 is public padding"
+    );
+    let (decomp0, decomp1) = (byte_decomps[0], byte_decomps[1]);
+    let committed_tid = per_block.inputs[3];
+    let bytes1_tid = decomp1.inputs[0];
+    assert_ne!(bytes1_tid, committed_tid, "block 1 slices committed");
+
+    let committed_shape = per_block.graph.tensors[committed_tid.0 as usize]
+        .shape
+        .clone();
+    let bytes1_shape = per_block.graph.tensors[bytes1_tid.0 as usize].shape.clone();
+    let mut bad_committed = bits::table_of(&run.witness, &per_block.graph, committed_tid);
+    bad_committed[bits::index(&committed_shape, &[23, 1])] += 256;
+
+    // 2a. `committed` altered alone (while `bytes_1` stays honest) passes stage 1 and is rejected
+    //     at stage 2's `Selection` on `Slice(committed)`.
+    let slice_cheat = bits::Cheat {
+        witness: &run.witness,
+        tables: vec![(committed_tid, bad_committed.clone())],
+    };
+    let bad_slice_proof = prove_graph(
+        &per_block.graph,
+        &[],
+        &run.schedule,
+        &slice_cheat,
+        &run.points,
+    )
+    .0;
+    assert_eq!(
+        verify(
+            &per_block,
+            &run,
+            &run.schedule,
+            &bad_slice_proof,
+            &run.public
+        ),
+        Err(run.end(2)),
+        "a Slice(committed) mismatch fails stage 2's selection"
+    );
+
+    // 2b. `committed` and `bytes_1` both shifted by +256 (keeping Slice honest and decomposed bits
+    //     intact) fail stage 1's recomposition of block 1, and pass iff block 1's recomposition is
+    //     removed.
+    let mut bad_bytes1 = bits::table_of(&run.witness, &per_block.graph, bytes1_tid);
+    bad_bytes1[bits::index(&bytes1_shape, &[0, 1])] += 256;
+    let recomp_cheat = bits::Cheat {
+        witness: &run.witness,
+        tables: vec![(committed_tid, bad_committed), (bytes1_tid, bad_bytes1)],
+    };
+    let bad_recomp_proof = prove_graph(
+        &per_block.graph,
+        &[],
+        &run.schedule,
+        &recomp_cheat,
+        &run.points,
+    )
+    .0;
+    assert_eq!(
+        verify(
+            &per_block,
+            &run,
+            &run.schedule,
+            &bad_recomp_proof,
+            &run.public
+        ),
+        Err(run.end(1)),
+        "a +256 byte overflow in block 1 fails stage 1's recomposition"
+    );
+
+    let [recomp0] = checks_of(&run, decomp0.id, Relation::Recomposition)[..] else {
+        panic!("block 0 recomposition");
+    };
+    let [recomp1] = checks_of(&run, decomp1.id, Relation::Recomposition)[..] else {
+        panic!("block 1 recomposition");
+    };
+    let without_0 = without(&run.schedule, recomp0);
+    let still_bad = prove_graph(
+        &per_block.graph,
+        &[],
+        &without_0,
+        &recomp_cheat,
+        &run.points,
+    )
+    .0;
+    assert_eq!(
+        verify(&per_block, &run, &without_0, &still_bad, &run.public),
+        Err(Reject {
+            stage: 1,
+            round: without_0.stages[1].rounds,
+        }),
+        "removing block 0's recomposition still rejects block 1's cheat"
+    );
+
+    let without_1 = without(&run.schedule, recomp1);
+    assert_eq!(
+        run.schedule.stages[2].instances.len() - without_1.stages[2].instances.len(),
+        1,
+        "removing block 1's recomposition drops its stage-2 Slice(committed) selection"
+    );
+    let accepted = prove_graph(
+        &per_block.graph,
+        &[],
+        &without_1,
+        &recomp_cheat,
+        &run.points,
+    )
+    .0;
+    let pool = verify(&per_block, &run, &without_1, &accepted, &run.public)
+        .expect("accepted when block 1's recomposition is removed");
+    let coords = coords_after(&without_1, &accepted, &run.points);
+    let opened = pool_of_tables(
+        &coords,
+        &per_block.graph,
+        &without_1,
+        &|t| match recomp_cheat.padded(t) {
+            Some(values) => values.iter().map(|&v| Goldilocks::from_i64(v)).collect(),
+            None => super::padded(&run.witness, &per_block.graph, t),
+        },
+    );
+    assert_eq!(pool, opened);
+
+    // 3. Linear-scaling regression check against WholeMessage (OQ-0072-2).
+    let entries_for = |n: u32, assembly: Sha256Assembly| {
+        let layout = Sha256Layout {
+            blocks: n,
+            messages: 1,
+            committed: if n == 1 {
+                (21..53).collect()
+            } else {
+                (41..(64 * n - 9)).collect()
+            },
+        };
+        let c = circuit_with(&layout, true, assembly);
+        let sched = derive_graph_schedule(&c.graph, &[], &[], None).expect("schedule");
+        stage_table_entries(&c.graph, &sched).0
+    };
+    assert_eq!(
+        entries_for(1, Sha256Assembly::PerBlock),
+        entries_for(1, Sha256Assembly::WholeMessage),
+        "N = 1 has zero overhead"
+    );
+    let whole_8 = entries_for(8, Sha256Assembly::WholeMessage);
+    let per_8 = entries_for(8, Sha256Assembly::PerBlock);
+    assert!(
+        per_8 * 5 < whole_8,
+        "at N = 8 per-block table entries ({per_8}) must be < 1/5 of whole-message ({whole_8})"
+    );
 }

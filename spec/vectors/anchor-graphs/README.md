@@ -29,11 +29,11 @@ Its author read neither implementation.
   - **What it checks.** Every graph gives FIPS 180-4's chaining words after every block. Every `BitDecompose` input lies inside its width, every `BitFn` reads bits, and every `AssertEqual` holds.
 - **The inputs.** The public bits and the placed committed bits make up each padded message.
 - **RFC-0072's sizes.** The graphs' counts are RFC-0072's sizes table ('Messages, rejections and stages'):
-  - 6,032 nodes per block;
-  - 680 zero-checks a block;
+  - 6,032 nodes per public block, 6,038 at `N = 1` with committed bytes, 6,040 at `N > 1` when one block holds all committed bytes, and 6,041 when `0 < K_n < K`;
+  - 680 compression zero-checks a block;
   - a first block of public bytes: 2,415 selections, 331 `BitFn` and 79 `Mul` not public;
-  - a later block of public bytes: 2,441, 335 and 79, from a two-block graph the file does not hold;
-  - a later block of committed bytes: 2,528, 352 and 96;
+  - a later block of public bytes (including a trailing padding block of a committed message): 2,441, 335 and 79;
+  - a later block with committed bytes (`0 < K_n < K`, `K·M` a power of two): 682, 2,530, 353 and 97 (`+1` input padding zero-check per committed block when `committed [K, M]` has padded positions);
   - the key commitment: 690, 2,523, 349 and 97;
   - three key commitments: the same, and one more zero-check, the committed bytes' input padding check, since `[32, 3]` has padded positions.
 
@@ -118,7 +118,7 @@ The oracle had to choose these twelve readings of RFC-0066, each a place where t
 
 1. **`start`'s rows.** `start` holds word `j` of `H^{(0)}` on rows `32j` to `32j + 31`, row `32j + i` the bit of weight `2^i`, and initial word `j` is its `Slice` from row `32j`. RFC-0066 stated this layout for the digest only. 'The output', **Initial values**: "That input, `start`, holds word `j` of `H^{(0)}` on rows `32j` to `32j + 31`, …".
 2. **`masks`' rows.** `SHR^3`'s mask is row 0 and `SHR^{10}`'s row 1, and step 1 builds `SHR^3`'s mask first. 'Layout', **`SHR^r`**: "Row 0 of that input is `SHR^3`'s mask and row 1 `SHR^{10}`'s, …".
-3. **No committed bytes.** With no committed byte the graph has no `committed` or `place` input and no step 2. The words are `Slice`s of the `message` input itself, word `t` of block `n` from row `512n + 32t`. 'The message', **Without committed bytes**: "… the message's bits are the `message` input itself; word `t` of block `n` is the `Slice { axis: 0, start: 512n + 32t, len: 32 }` of the message's bits."
+3. **Per-block message assembly (OQ-0072-2).** With no committed byte (`K = 0`) the graph has no `committed` or `place` input. For each block `n`, when `K_n = 0` its sixteen words are `Slice`s of `message` from row `512n + 32t`; when `K_n > 0` it slices `bytes_n` from `committed` (unless `K_n = K`), decomposes `bytes_n` to `[K_n, M, 8]`, transposes and reshapes to `[8K_n, M]`, gathers 512 rows, multiplies by `place_n` (`Slice` of `place` when `N > 1`, else `place`), `Xor`s `message_n` (`Slice` of `message` when `N > 1`, else `message`) with that product, and slices its sixteen words from row `32t` of that `[512, M]` `Xor`. 'The message', **Each block's bits**.
 4. **A function's nodes.** FIPS 180-4's definition order (4.4 to 4.7) orders a function's gathers:
    - `Σ0`: `ROTR^2`, `ROTR^{13}`, `ROTR^{22}`;
    - `Σ1`: `ROTR^6`, `ROTR^{11}`, `ROTR^{25}`;
@@ -137,17 +137,17 @@ The oracle had to choose these twelve readings of RFC-0066, each a place where t
 8. **The digest's binding.** For each word, the `Slice` of the digest, then `AssertEqual(computed word, digest rows)`. 'The output', **The digest**: "Digest word `j`'s nodes are the `Slice { axis: 0, start: 32j, len: 32 }` of `digest`, then the `AssertEqual` of the last block's chaining word `j` and that `Slice`, in this operand order."
 9. **Operand orders that the RFC fixes.** These were not left open; the oracle follows the sentences that fix them:
    - `Add(even, ConstMul(odd))` at each value level: 'Layout', **The integer value of rows**;
-   - `Xor(message, Mul(gather, place))`: 'The message', **The message's bits**;
+   - `Xor(message_n, Mul(gather(c_n), place_n))`: 'The message', **Each block's bits**;
    - `Ch(e, f, g)` and `Maj(a, b, c)`: the inputs of '`BitFn { f }`''s table, and the sums' table;
    - `Mul { Trailing }`, whose broadcast operand comes second: RFC-0006 'Operation set'.
 10. **Shapes and permutations.**
-    - The decomposed bytes are `[K, M, 8]`, moved by `Transpose { perm: [0, 2, 1] }` to `[K, 8, M]`.
+    - A block's decomposed bytes are `[K_n, M, 8]`, moved by `Transpose { perm: [0, 2, 1] }` to `[K_n, 8, M]`.
     - A sum's result bits `[M, 32]` are moved by `Transpose { perm: [1, 0] }`.
     - A value level's `ConstMul` constant is `[2^{2^ℓ}]`, a scalar.
     - A round's `ConstAdd` constant is `[K_t]`.
     - The `W_t` and chaining sums have no `ConstAdd`, their constant being 0 ('A sum is': "its `ConstAdd` when the constant is not 0").
 
-    'The graph', after 'A sum is': "The bytes' bits `[K, M, 8]` move to `[K, 8, M]` by `Transpose { perm: [0, 2, 1] }`, a sum's result bits `[M, 32]` to `[32, M]` by `Transpose { perm: [1, 0] }`, and every `ConstMul` and `ConstAdd` constant holds one value, a level's `2^{2^ℓ}` or a round's `K_t`."
+    'The graph', after 'A sum is': "A block's bytes' bits `[K_n, M, 8]` move to `[K_n, 8, M]` by `Transpose { perm: [0, 2, 1] }`, a sum's result bits `[M, 32]` to `[32, M]` by `Transpose { perm: [1, 0] }`, and every `ConstMul` and `ConstAdd` constant holds one value, a level's `2^{2^ℓ}` or a round's `K_t`."
 11. **The digest input's id.** It follows the last block's last node, the `Transpose` of chaining word `h`, and precedes the first digest `Slice`. The RFC fixed it already, 'The graph': "The digest, public bits `[256, M]`, is declared after the circuit's nodes, before its binding's."
 12. **Messages of one circuit.** They share `N`, `K` and the committed offsets, but may differ in length. Their padding is public bits, and the graph does not depend on the messages' bytes. The section's opening: "The `M` messages share `N` and the committed offsets, since `place` and the gather serve them all, and may differ in length, each padded in its own column of `message`, so that the graph depends on `N`, `M` and the offsets alone."
 

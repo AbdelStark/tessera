@@ -11,6 +11,7 @@
   - each sum's operand order, `e`'s `Add(shared, d)` among them, the table listing `d` last;
   - the digest's binding, the permutations and the constants;
   - messages of one circuit that differ in length.
+- Amended by: [RFC-0072](RFC-0072-anchor-relations.md#open-questions) OQ-0072-2 ([#563](https://github.com/AbdelStark/tessera/issues/563): per-block `[512, M]` message bit assembly in 'The message', 'The graph' and 'Drawbacks')
 - Amended by: draft [RFC-0074](RFC-0074-anchor-binding.md) ('The message': one frame per circuit, its committed bytes a `Slice` of the AES ciphertext; in effect when it is accepted)
 - Amends:
   - [RFC-0006](RFC-0006-compiler-ir.md#operation-set) 'Operation set': three operations join the closed set, `BitDecompose`, `BitFn` and `AssertEqual`, and `Bitwise` is AES's alone;
@@ -159,13 +160,16 @@ The two round sums share their first rows, `h + Σ1(e) + Ch(e, f, g) + W_t`. The
 - **Its bytes**, padding included, are public, except those the prover commits: the ciphertext's, a committed key's or salt's.
 - **A public byte** enters as public bits.
 - **A committed byte** enters through `BitDecompose { low: 8, high: 0 }` of that byte. The circuit takes its committed bytes as one `[K, M]` tensor, `K` per message, in offset order. Over several frames, the anchor gathers that tensor from the AES circuit's `[16, B]` ciphertext with `Transpose`, `Reshape` and `GatherPublic` (#146). draft [RFC-0074](RFC-0074-anchor-binding.md#the-composed-graph) takes one frame per circuit, its bytes a `Slice` of the flattened ciphertext.
-- **The message's bits** are `Xor(message, Mul(gather(c), place))`, a `[512·N, M]` tensor of words, 16 per block:
-  - `message` is the public bits of the padded messages, and **0 at every committed byte's bits**. The verifier builds it so, from the public bytes alone.
-  - `c` is the committed bits, row `8k + i` holding bit `i` of committed byte `k`. The gather puts each one at its word position, and row 0 at the others.
-  - `place` is a public `[512·N]` mask, 1 on the committed bytes' rows. `Mul { broadcast: Trailing }` zeroes the gathered rows elsewhere.
+- **Each block's bits** are assembled for block `n` (`0 ≤ n < N`) from its own `K_n` committed bytes, those at offsets in `[64n, 64(n + 1))` (`start_n` to `start_n + K_n − 1` of `committed`, [RFC-0072](RFC-0072-anchor-relations.md#open-questions) OQ-0072-2):
+  - **When `K_n = 0`** (no committed byte in block `n`, whether `K = 0` or block `n` holds public bytes and padding alone), word `t` of block `n` is `Slice { axis: 0, start: 512n + 32t, len: 32 }` of `message`.
+  - **When `K_n > 0`**, the block's bits are `Xor(message_n, Mul(gather(c_n), place_n))`, a `[512, M]` tensor of 16 words:
+    - `message_n` is `message` when `N = 1`, otherwise `Slice { axis: 0, start: 512n, len: 512 }` of `message`. `message` is the public bits of the padded messages, and **0 at every committed byte's bits**. The verifier builds it so, from the public bytes alone.
+    - `bytes_n` is `committed` when `K_n = K`, otherwise `Slice { axis: 0, start: start_n, len: K_n }` of `committed` (`[K_n, M]`), and `c_n` is its `BitDecompose { low: 8, high: 0 }` transposed to `[K_n, 8, M]` and reshaped to `[8K_n, M]`, row `8s + i` holding bit `i` of the block's `s`-th committed byte. The 512-row gather puts each committed byte `64n + b`'s bit `i` at its word position in the block, row `32⌊b/4⌋ + 8(3 − (b mod 4)) + i`, and row 0 at the others.
+    - `place_n` is `place` when `N = 1`, otherwise `Slice { axis: 0, start: 512n, len: 512 }` of `place`, where `place` is a public `[512·N]` mask, 1 on the committed bytes' rows. `Mul { broadcast: Trailing }` zeroes the gathered rows elsewhere.
+    - Word `t` of block `n` is `Slice { axis: 0, start: 32t, len: 32 }` of that `[512, M]` `Xor`.
 
-  The supports are disjoint, so XOR is the sum, and the range stays `[0, 1]`.
-- **Without committed bytes** the graph has no `committed` or `place` input and no step 2, and the message's bits are the `message` input itself; word `t` of block `n` is the `Slice { axis: 0, start: 512n + 32t, len: 32 }` of the message's bits.
+  The supports are disjoint, so XOR is the sum, and the range stays `[0, 1]`. Because the committed offsets are strictly ascending below `64·N`, the slices `bytes_n` partition `[0, K)`, so their `BitDecompose` nodes together range-check every committed byte of `committed` (RFC-0006 'Committed graph inputs').
+- **Without committed bytes** (`K = 0`) the graph has no `committed` or `place` input, and every block takes the `K_n = 0` path.
 - **Byte order.** FIPS 180-4's words are big-endian: bit `i` of word `j` is bit `i mod 8` of byte `4j + 3 − ⌊i/8⌋`.
 
 **The output.**
@@ -181,14 +185,14 @@ The two round sums share their first rows, `h + Σ1(e) + Ch(e, f, g) + W_t`. The
 
 Each bit input is declared `u1` in `[0, 1]`. Every `GatherPublic`, `ConstMul` and `ConstAdd` has a constant of its own, declared just before its node and never shared, so the constant table holds them in node order. The digest, public bits `[256, M]`, is declared after the circuit's nodes, before its binding's. The nodes are in this order, which fixes the zero-checks' order:
 1. each `SHR` mask: a `GatherPublic` of its row of `masks`, then a `Reshape` to `[32]`;
-2. when bytes are committed, the message's bits: the bytes' `BitDecompose { 8, 0 }`, a `Transpose` to `[K, 8, M]`, a `Reshape` to `[8K, M]`, the gather, the `Mul` and the `Xor`;
-3. the eight initial words, each a `Slice` of `start`;
-4. per block:
-   - its sixteen words, each a `Slice` of the message's bits;
+2. the eight initial words, each a `Slice` of `start`;
+3. per block `n`:
+   - when `K_n = 0`, its sixteen words, each `Slice { axis: 0, start: 512n + 32t, len: 32 }` of `message`;
+   - when `K_n > 0`: `bytes_n` (`Slice { axis: 0, start: start_n, len: K_n }` of `committed` when `K_n < K`, else `committed`), `BitDecompose { 8, 0 }`, `Transpose` to `[K_n, 8, M]`, `Reshape` to `[8K_n, M]`, the 512-row gather, `place_n` (`Slice { axis: 0, start: 512n, len: 512 }` of `place` when `N > 1`, else `place`), `Mul`, `message_n` (`Slice { axis: 0, start: 512n, len: 512 }` of `message` when `N > 1`, else `message`), `Xor`, then its sixteen words, each `Slice { axis: 0, start: 32t, len: 32 }` of that `Xor`;
    - for `t = 16, …, 63`: `σ1(W_{t−2})`, `σ0(W_{t−15})`, then the sum;
    - for each round: `Σ1(e)`, `Ch`, `Σ0(a)`, `Maj`, the shared rows, `e`'s sum, `a`'s sum;
    - the eight chaining sums, `a` to `h`;
-5. per digest word, its `Slice` and `AssertEqual` of the computed word, then the digest's rows.
+4. per digest word, its `Slice` and `AssertEqual` of the computed word, then the digest's rows.
 
 A function is its rotations' gathers, each `SHR` a gather and a `Mul`, in its definition's order, then its `BitFn`. A sum is:
 - its rows' `Add`s, left to right;
@@ -196,9 +200,9 @@ A function is its rotations' gathers, each `SHR` a gather and a `Mul`, in its de
 - its `ConstAdd` when the constant is not 0;
 - the `BitDecompose`, then the `Transpose` of its result bits.
 
-The bytes' bits `[K, M, 8]` move to `[K, 8, M]` by `Transpose { perm: [0, 2, 1] }`, a sum's result bits `[M, 32]` to `[32, M]` by `Transpose { perm: [1, 0] }`, and every `ConstMul` and `ConstAdd` constant holds one value, a level's `2^{2^ℓ}` or a round's `K_t`.
+A block's bytes' bits `[K_n, M, 8]` move to `[K_n, 8, M]` by `Transpose { perm: [0, 2, 1] }`, a sum's result bits `[M, 32]` to `[32, M]` by `Transpose { perm: [1, 0] }`, and every `ConstMul` and `ConstAdd` constant holds one value, a level's `2^{2^ℓ}` or a round's `K_t`.
 
-`tessera_compiler::anchor::sha256` builds exactly this graph.
+`tessera_compiler::anchor::sha256` builds exactly this graph (`sha256_with_assembly` also builds the whole-message `[512·N, M]` variant for comparison).
 
 **Committed bits per block.**
 
@@ -250,7 +254,7 @@ RFC-0006 'Range analysis' adds:
 
 - The IR's closed operation set grows by three, and the verifier's lowering must mirror them (#150, #159).
 - Stage 1 gains 680 zero-check instances per block: 368 booleanity checks, 128 bit-padding checks for the round carries and 184 recompositions. A batch of frames holds hundreds of blocks. RFC-0072 does not stack them, and its OQ-0072-1 asks whether the largest instance bounds their error.
-- A frame's SHA-256 is a long sequential graph: 6,032 nodes per block, 64 per round. The value trees hold 3,864 of them, 21 for each of the block's 184 sums. Its size grows with the block count, not with `M`.
+- A frame's SHA-256 is a long sequential graph: 6,032 nodes per public block and 6,038 to 6,041 per block with committed bytes, 64 per round. The value trees hold 3,864 of them, 21 for each of the block's 184 sums. Its size grows with the block count, not with `M`.
 
 ## Migration / Rollout
 

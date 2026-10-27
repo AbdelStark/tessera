@@ -2345,7 +2345,8 @@ fn sha256s_schedule_is_rfc_0072s_independent_count() {
         ),
         "public bytes, two blocks"
     );
-    // Bytes 8 to 23 committed, one block and two.
+    // Bytes 8 to 23 committed: one block, and two blocks whose second holds public padding alone
+    // (OQ-0072-2: K_1 = 0 slices `message` directly and costs the public-bytes later-block row).
     let (committed_1, cnodes_1) = figures(1, committed(), false);
     assert_eq!(
         committed_1,
@@ -2361,20 +2362,52 @@ fn sha256s_schedule_is_rfc_0072s_independent_count() {
         ),
         "committed bytes, one block"
     );
-    let (committed_2, cnodes_2) = figures(2, committed(), false);
+    let (committed_2_pad, cnodes_2_pad) = figures(2, committed(), false);
+    assert_eq!(
+        committed_2_pad,
+        model(
+            &[
+                0, 1362, 366, 366, 366, 366, 366, 985, 1716, 257, 99, 51, 51, 17
+            ],
+            &[
+                0, 2097, 366, 366, 366, 366, 366, 2850, 1716, 257, 99, 51, 51, 17
+            ],
+            &[0, 0, 0, 0, 0, 0, 1308, 0, 0, 0, 0, 0, 0, 0],
+            4927
+        ),
+        "committed bytes in block 0, public padding in block 1"
+    );
+    // Committed bytes across blocks (`0 < K_n < K`, K a power of two): two blocks (32..96) and
+    // three blocks (32..160).
+    let (committed_2, cnodes_2) = figures(2, (32..96).collect(), false);
     assert_eq!(
         committed_2,
         model(
             &[
-                0, 1362, 368, 368, 368, 368, 368, 1050, 1815, 356, 198, 102, 102, 34
+                0, 1364, 370, 368, 368, 368, 368, 1050, 1815, 356, 198, 102, 102, 34
             ],
             &[
-                0, 2099, 368, 368, 368, 368, 368, 2949, 1815, 356, 198, 102, 102, 34
+                0, 2102, 370, 368, 368, 368, 368, 2949, 1815, 356, 198, 102, 102, 34
             ],
             &[0, 0, 0, 0, 0, 0, 1378, 0, 0, 0, 0, 0, 0, 0],
-            5026
+            5029
         ),
-        "committed bytes, two blocks"
+        "committed bytes across two blocks"
+    );
+    let (committed_3, cnodes_3) = figures(3, (32..160).collect(), false);
+    assert_eq!(
+        committed_3,
+        model(
+            &[
+                0, 2046, 555, 552, 552, 552, 552, 1578, 2727, 534, 297, 153, 153, 51
+            ],
+            &[
+                0, 3153, 555, 552, 552, 552, 552, 4437, 2727, 534, 297, 153, 153, 51
+            ],
+            &[0, 0, 0, 0, 0, 0, 2075, 0, 0, 0, 0, 0, 0, 0],
+            7561
+        ),
+        "committed bytes across three blocks"
     );
     // The key commitment: `"tessera-anchor-key/v1" ‖ k_s ‖ salt_k`, bytes 21 to 52 committed.
     let (key, key_nodes) = figures(1, (21..53).collect(), true);
@@ -2413,13 +2446,22 @@ fn sha256s_schedule_is_rfc_0072s_independent_count() {
         [2945, 4237, 627]
     );
     assert_eq!(
-        later(cnodes_2, cnodes_1),
-        [680, 2528, 352, 96],
+        later(cnodes_2_pad, cnodes_1),
+        [680, 2441, 335, 79],
+        "a trailing padding block, committed message"
+    );
+    assert_eq!(
+        difference(committed_2_pad.totals(), committed_1.totals()),
+        [2945, 4237, 627]
+    );
+    assert_eq!(
+        later(cnodes_3, cnodes_2),
+        [682, 2530, 353, 97],
         "a later block, committed bytes"
     );
     assert_eq!(
-        difference(committed_2.totals(), committed_1.totals()),
-        [3436, 4764, 697]
+        difference(committed_3.totals(), committed_2.totals()),
+        [3439, 4768, 697]
     );
     assert_eq!(key_nodes, [690, 2523, 349, 97], "the key commitment");
     assert_eq!(key.totals(), [3431, 4739, 681]);

@@ -274,6 +274,20 @@ const NO_PUBLIC: Publics<'static> = Publics {
     kernel: Kernel::Closed,
 };
 
+/// The output tensor -> producer node map of `graph`.
+fn producers_of(graph: &Graph) -> Vec<Option<tessera_ir::NodeId>> {
+    let mut producers = vec![None; graph.tensors.len()];
+    for node in &graph.nodes {
+        for &out in &node.outputs {
+            producers[out.0 as usize] = Some(node.id);
+        }
+    }
+    producers
+}
+
+type PublicCacheKey = (PublicSource, Vec<F>);
+type KernelCacheKey = (tessera_ir::NodeId, Vec<F>, Vec<F>);
+
 /// The verifier's state: the graph and its tables, its public data, the challenges, each stage's
 /// claims' and parts' values, and the pool.
 struct Verifier<'a> {
@@ -283,6 +297,10 @@ struct Verifier<'a> {
     publics: Publics<'a>,
     /// The graph's public tensors (RFC-0072 'Public tensors').
     public: PublicTensors,
+    producers: Vec<Option<tessera_ir::NodeId>>,
+    /// RFC-0072 'Once per point': public terms and selection kernels evaluated once per point.
+    public_cache: std::cell::RefCell<HashMap<PublicCacheKey, F>>,
+    kernel_cache: std::cell::RefCell<HashMap<KernelCacheKey, F>>,
     coords: HashMap<Coord, F>,
     claims: Vec<Vec<Vec<F>>>,
     parts: Vec<Vec<Vec<Vec<F>>>>,
@@ -327,6 +345,9 @@ fn verify_public(
         schedule,
         publics,
         public: PublicTensors::of(graph),
+        producers: producers_of(graph),
+        public_cache: std::cell::RefCell::new(HashMap::new()),
+        kernel_cache: std::cell::RefCell::new(HashMap::new()),
         coords: HashMap::new(),
         claims: Vec::new(),
         parts: Vec::new(),
@@ -401,6 +422,9 @@ fn verify_from_leaf<T: SumcheckTranscript<F> + ?Sized>(
         schedule,
         publics,
         public: PublicTensors::of(graph),
+        producers: producers_of(graph),
+        public_cache: std::cell::RefCell::new(HashMap::new()),
+        kernel_cache: std::cell::RefCell::new(HashMap::new()),
         coords: HashMap::new(),
         claims: Vec::new(),
         parts: Vec::new(),
@@ -519,8 +543,17 @@ impl Verifier<'_> {
             (PublicSource::Shift(node), Shift::ChannelsTimesSelector) => {
                 channels_times_selector(self.graph, node, point)
             }
-            _ => public_value(self.graph, &self.public, source, self.publics.values, point)
-                .expect("the verifier's public values"),
+            _ => {
+                let key = (source, point.to_vec());
+                if let Some(&cached) = self.public_cache.borrow().get(&key) {
+                    return cached;
+                }
+                let val =
+                    public_value(self.graph, &self.public, source, self.publics.values, point)
+                        .expect("the verifier's public values");
+                self.public_cache.borrow_mut().insert(key, val);
+                val
+            }
         }
     }
 
@@ -1110,6 +1143,9 @@ fn pool_of_tables(
         schedule,
         publics: NO_PUBLIC,
         public: PublicTensors::of(graph),
+        producers: producers_of(graph),
+        public_cache: std::cell::RefCell::new(HashMap::new()),
+        kernel_cache: std::cell::RefCell::new(HashMap::new()),
         coords: verifier_coords.clone(),
         claims: Vec::new(),
         parts: Vec::new(),
