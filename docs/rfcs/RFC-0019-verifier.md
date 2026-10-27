@@ -88,7 +88,7 @@ Checks run in this order; the first failure determines the verdict.
 10. Column queries: live, the verifier draws them now from its CSPRNG; non-interactive, from the transcript after the query proof-of-work.
 11. Columns: leaf recomputation, multiproofs against each matrix's root in `weights.roots` for the weights, consistency of every combined row with every opened column (`Reject(MerklePath)`, `Reject(Proximity)`).
 12. Scoring: per-request `Û_r` and the batch total against `accept_bound` (`Reject(UBoundExceeded)`).
-13. Update the ledger (used blinding rows, opened weight columns, proven requests) and return `Accept(report)`.
+13. Update the ledger (used blinding rows, proven requests) and return `Accept(report)`.
 
 In live mode, steps 1–6 complete before `SeedReveal` is sent and steps 7–9 before `ColumnQueries`; step 10 draws the queries `ColumnQueries` carries, and steps 11–13 run after `Round3Response`.
 
@@ -129,6 +129,9 @@ pub struct VerifierLedger {                   // schema 0x0701, persisted, verif
 ```
 
 [RFC-0067](RFC-0067-verifier-ledger-encoding.md) gives its encoding: `BitSet` is canonical `Bytes`, and each record of `proven` keeps its accepted requests' `Û`. The ledger is updated only after `Accept` and is written atomically. `tessera-verify weights link` checks a `WeightLinkProof` against a claim list's entry, records the root's one successor and appends the new epoch ([RFC-0064](RFC-0064-weight-linking-proof.md#the-verifiers-checks)).
+
+- **No opened weight columns** ([#569](https://github.com/AbdelStark/tessera/issues/569)). Exceeding `P_W` distinct opened columns of a weight matrix in an epoch weakens only the prover's weight hiding ([RFC-0012](RFC-0012-weight-commitment.md#invariants) INV-WC-1, [RFC-0013](RFC-0013-zero-knowledge.md#hiding-openings) Lemma 3, [06 §5](../spec/06-security.md#5-threats-and-mitigations)), never soundness, and a non-interactive proof or a proof sent to another verifier has revealed its columns before this ledger sees it. Preventing column overuse is therefore the prover's alone (`WeightCommitmentState` and draft [RFC-0073](RFC-0073-weight-mask-expansion.md#fresh-and-rebuilt-states)), and the ledger keeps no column set.
+- **Size bound.** A sealed empty ledger is 92 bytes (the 52-byte envelope of [RFC-0003](RFC-0003-canonical-encoding.md#envelope) and five `u64` sequence lengths). Each model chain in `weight_roots` adds 40 bytes; epoch 0 adds at most `36 + Σ_T (45 + ⌈B_T / 8⌉)` bytes (`6,629` bytes at 405B across nine `4,096`-row matrices and `ChannelParams`' `12,280` rows, [RFC-0065](RFC-0065-masked-channel-params.md#channelparams-blinding-rows)), and each linked successor epoch adds 64 bytes in `successors` besides, at most `100 + Σ_T (45 + ⌈B_T / 8⌉)` bytes (`6,693` bytes at 405B). Each derived audit period adds 64 bytes in `derived` and, once a request is accepted, at most `48 + ⌈|selected| / 8⌉ + 8 · |selected|` bytes in `proven` ([RFC-0067](RFC-0067-verifier-ledger-encoding.md#updates) 'One limit').
 
 ### Robustness
 

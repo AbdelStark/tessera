@@ -317,7 +317,7 @@ Every command that writes runs it first, under the lock, and refuses on the firs
   - **A superseded root.** A verifier that accepted a later link refuses a proof against the earlier root at step 4.
   - **In live mode,** both checks run before the verifier reveals its seed share, so the prover sends it no combined row.
   - **What they miss.** A non-interactive proof is whole when it is sent, so a verifier that refuses it has already received the reused pairs. A verifier whose ledger never saw the earlier proofs accepts. Verifiers that pool their views see both.
-  - **Columns.** No verifier catches reused columns. `VerifierLedger` records no opened columns (RFC-0019 'Ledger'), though step 13 says it does ([#569](https://github.com/AbdelStark/tessera/issues/569)).
+  - **Columns.** No verifier catches reused columns: `VerifierLedger` records no opened columns ([RFC-0019](RFC-0019-verifier.md#ledger) 'Ledger', [#569](https://github.com/AbdelStark/tessera/issues/569)), since exceeding `P_W` is the prover's hiding bound alone.
 - **The operator's duty,** as RFC-0064 already makes it for a state:
   - never restore the record or a state;
   - never remove a file the entry check names as past the record or differing from it;

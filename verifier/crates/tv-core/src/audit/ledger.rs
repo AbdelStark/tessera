@@ -259,9 +259,38 @@ pub struct BlindingRows {
 ///
 /// `derived` names, for each manifest, the one sample this verifier derived itself for it, by
 /// revealing its own toss ([`AuditToss::reveal`](super::AuditToss::reveal)): only those are its
-/// samples, and a period has one (RFC-0067 'The verifier's own sample'). `proven` is the audit's accounting: one record per derived sample
-/// with an accepted request, by increasing sample identity. The first three fields are the
-/// weight epochs' (#158), kept as they decode.
+/// samples, and a period has one (RFC-0067 'The verifier's own sample'). `proven` is the audit's
+/// accounting: one record per derived sample with an accepted request, by increasing sample
+/// identity. The first three fields are the weight epochs' (#158), kept as they decode.
+///
+/// # Step 13 and opened weight columns
+///
+/// On acceptance (RFC-0019 'Check order' step 13), the ledger updates `used_blinding_rows` and
+/// `proven` requests only. Opened weight columns are not recorded (#569, RFC-0019 'No opened
+/// weight columns', RFC-0067 'Alternatives Considered' 3): exceeding `P_W` distinct opened
+/// columns of a weight matrix in an epoch weakens only the prover's weight hiding, never
+/// soundness, and a non-interactive proof or a proof sent to another verifier has already
+/// revealed its columns before this ledger sees it, so preventing column overuse is the prover's
+/// hiding bound alone.
+///
+/// # Size bound
+///
+/// Every reader and writer decodes under [`LEDGER_LIMITS`](super::LEDGER_LIMITS)
+/// ([`DecodeLimits::MESSAGE`]: 8 GiB, `8_589_934_592` bytes, and `2^34` elements per sequence;
+/// RFC-0003 'Limits', RFC-0019 'Size bound', RFC-0067 'One limit'):
+///
+/// - **Empty ledger.** `92` bytes sealed (`52`-byte RFC-0003 envelope plus five `u64` sequence
+///   lengths, `40` payload bytes).
+/// - **Weight epochs.** `40` bytes per model chain in `weight_roots` (`32`-byte `claim_list`
+///   digest plus `8`-byte `epochs` length); unlinked epoch 0 adds at most
+///   `36 + Σ_T (45 + ⌈B_T / 8⌉)` bytes (`36` bytes in `weight_roots` and at most
+///   `45 + ⌈B_T / 8⌉` bytes per matrix `T` with burned rows in `used_blinding_rows`), which at
+///   405B across nine `4,096`-row matrices and `ChannelParams`' `12,280` rows (RFC-0065) is
+///   `6,629` bytes (`6,669` bytes with its model chain, `6,761` bytes sealed); and each linked
+///   successor epoch adds `64` bytes in `successors` besides, at most
+///   `100 + Σ_T (45 + ⌈B_T / 8⌉)` bytes (`6,693` bytes at 405B).
+/// - **Audit periods.** `64` bytes in `derived` per derived audit sample plus, once a request is
+///   accepted, at most `48 + ⌈|selected| / 8⌉ + 8 · |selected|` bytes in `proven`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct VerifierLedger {
     weight_roots: Vec<WeightRoots>,
@@ -838,5 +867,168 @@ pub(crate) mod tests {
             ledger.check_accounting(&sample, live, &statement_of(&sample, &[2, 0])),
             Ok(vec![2, 0])
         );
+    }
+
+    #[test]
+    fn ledger_size_bounds_and_open_round_trips_match_rfc_0019() {
+        let limits = &super::super::LEDGER_LIMITS;
+
+        // 1. Empty ledger: 40-byte payload (five u64 sequence lengths) + 52-byte envelope = 92 B
+        //    (RFC-0019 'Ledger' 'Size bound', RFC-0067 'One limit', #569).
+        let empty = VerifierLedger::new();
+        let empty_payload = empty.encode_payload().unwrap();
+        assert_eq!(empty_payload, [0u8; 40]);
+        let empty_sealed = empty.seal().unwrap();
+        assert_eq!(empty_sealed.len(), 92);
+        assert_eq!(VerifierLedger::open(&empty_sealed, limits).unwrap(), empty);
+
+        // 2. Weight epochs at 405B (RFC-0065: B_W = 4,096 -> highest bit 4,095, 512 B;
+        //    B_CP = 4,096 + 12 * floor(4,092 / 6) = 12,280 -> highest bit 12,279, 1,535 B;
+        //    sum_T (45 + ceil(B_T / 8)) = 9 * 557 + 1,580 = 6,593 B):
+        //    - Unlinked epoch 0 (`epochs: [(0, r0)]`, `successors: []`):
+        //      40 B (chain) + (36 + 6,593) B = 40 + 6,629 = 6,669 B delta -> 6,761 B sealed.
+        //    - Linked successor epoch 1 (`epochs: [(0, r0), (1, r1)]`, `successors: [(r0, r1)]`):
+        //      (36 + 64 + 6,593) B = 6,693 B delta -> 13,454 B sealed (#569).
+        let r0: Digest = [0x22; 32];
+        let r1: Digest = [0x33; 32];
+        for dense in [false, true] {
+            let blinding_for = |root: Digest, epoch: u32| -> Vec<BlindingRows> {
+                (0u8..10)
+                    .map(|matrix| {
+                        let max_bit: u64 = if matrix == 9 { 12_279 } else { 4_095 };
+                        let expected_bytes = if matrix == 9 { 1_535 } else { 512 };
+                        let mut rows = BitSet::new();
+                        if dense {
+                            for bit in 0..=max_bit {
+                                rows.insert(bit).unwrap();
+                            }
+                        } else {
+                            rows.insert(max_bit).unwrap();
+                        }
+                        assert_eq!(rows.as_bytes().len(), expected_bytes);
+                        BlindingRows {
+                            root,
+                            epoch,
+                            matrix,
+                            rows,
+                        }
+                    })
+                    .collect()
+            };
+
+            let mut weight_ledger = VerifierLedger {
+                weight_roots: vec![WeightRoots {
+                    claim_list: [0x11; 32],
+                    epochs: vec![(0, r0)],
+                }],
+                successors: Vec::new(),
+                used_blinding_rows: blinding_for(r0, 0),
+                derived: Vec::new(),
+                proven: Vec::new(),
+            };
+            let epoch0_payload = weight_ledger.encode_payload().unwrap();
+            assert_eq!(epoch0_payload.len() - empty_payload.len(), 40 + 6_629);
+            assert_eq!(epoch0_payload.len(), 6_709);
+            let epoch0_sealed = weight_ledger.seal().unwrap();
+            assert_eq!(epoch0_sealed.len() - empty_sealed.len(), 6_669);
+            assert_eq!(epoch0_sealed.len(), 6_761);
+            assert_eq!(
+                VerifierLedger::open(&epoch0_sealed, limits).unwrap(),
+                weight_ledger
+            );
+
+            // Linking epoch 1 adds `(1, r1)` in `epochs`, `(r0, r1)` in `successors`, and epoch
+            // 1's 10 `used_blinding_rows` entries: +6,693 B -> 13,454 B sealed.
+            weight_ledger.weight_roots[0].epochs.push((1, r1));
+            weight_ledger.successors.push((r0, r1));
+            weight_ledger.used_blinding_rows.extend(blinding_for(r1, 1));
+            let epoch1_payload = weight_ledger.encode_payload().unwrap();
+            assert_eq!(epoch1_payload.len() - epoch0_payload.len(), 6_693);
+            assert_eq!(epoch1_payload.len(), 13_402);
+            let epoch1_sealed = weight_ledger.seal().unwrap();
+            assert_eq!(epoch1_sealed.len() - epoch0_sealed.len(), 6_693);
+            assert_eq!(epoch1_sealed.len(), 13_454);
+            assert_eq!(
+                VerifierLedger::open(&epoch1_sealed, limits).unwrap(),
+                weight_ledger
+            );
+        }
+
+        // 3. Derived audit sample of |selected| requests with all |selected| accepted:
+        //    64 B in `derived` + (48 + ceil(|selected| / 8) + 8 * |selected|) B in `proven`.
+        let sparse_blinding = |root: Digest, epoch: u32| -> Vec<BlindingRows> {
+            (0u8..10)
+                .map(|matrix| {
+                    let mut rows = BitSet::new();
+                    rows.insert(if matrix == 9 { 12_279 } else { 4_095 })
+                        .unwrap();
+                    BlindingRows {
+                        root,
+                        epoch,
+                        matrix,
+                        rows,
+                    }
+                })
+                .collect()
+        };
+        let mut linked_base_rows = sparse_blinding(r0, 0);
+        linked_base_rows.extend(sparse_blinding(r1, 1));
+        let weight_base = VerifierLedger {
+            weight_roots: vec![WeightRoots {
+                claim_list: [0x11; 32],
+                epochs: vec![(0, r0), (1, r1)],
+            }],
+            successors: vec![(r0, r1)],
+            used_blinding_rows: linked_base_rows,
+            derived: Vec::new(),
+            proven: Vec::new(),
+        };
+
+        for base in [VerifierLedger::new(), weight_base] {
+            let mut ledger = base;
+            for (period, selected_count) in [1usize, 7, 8, 9, 64, 257].into_iter().enumerate() {
+                let before_len = ledger.seal().unwrap().len();
+                let manifest = u8::try_from(period + 1).unwrap();
+                let keys: Vec<RequestKey> = (1..=selected_count)
+                    .map(|r| RequestKey {
+                        session_id: [manifest; 16],
+                        request_id: u64::try_from(r).unwrap(),
+                    })
+                    .collect();
+                let sample = sample_over(manifest, &keys, manifest);
+
+                ledger.add_derived(&sample).unwrap();
+                let derived_sealed = ledger.seal().unwrap();
+                assert_eq!(derived_sealed.len() - before_len, 64);
+                assert_eq!(
+                    VerifierLedger::open(&derived_sealed, limits).unwrap(),
+                    ledger
+                );
+
+                let indices: Vec<usize> = (0..selected_count).collect();
+                let uhats: Vec<FixedBits> = (0..selected_count)
+                    .map(|i| FixedBits(u64::try_from(i + 100).unwrap()))
+                    .collect();
+                ledger
+                    .record_accepted(
+                        &sample,
+                        sample.policy().params(),
+                        &statement_of(&sample, &indices),
+                        &uhats,
+                    )
+                    .unwrap();
+                let proven_sealed = ledger.seal().unwrap();
+                let expected_delta = 64 + 48 + selected_count.div_ceil(8) + 8 * selected_count;
+                assert_eq!(
+                    proven_sealed.len() - before_len,
+                    expected_delta,
+                    "selected_count = {selected_count}"
+                );
+                assert_eq!(
+                    VerifierLedger::open(&proven_sealed, limits).unwrap(),
+                    ledger
+                );
+            }
+        }
     }
 }

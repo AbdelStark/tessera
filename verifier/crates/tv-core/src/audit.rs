@@ -127,16 +127,24 @@
 //!
 //! `VerifierLedger`, schema `0x0701` version 1, `.tvl`, TCE in field order: `weight_roots:
 //! Vec<(Digest, Vec<(u32, Digest)>)>`, `successors: Vec<(Digest, Digest)>`, `used_blinding_rows:
-//! Vec<(Digest, u32, u8, BitSet)>`, `proven: Vec<(Digest, BitSet, Vec<FixedBits>)>`. A `BitSet`
+//! Vec<(Digest, u32, u8, BitSet)>`, `derived: Vec<(Digest, Digest)>`, `proven: Vec<(Digest,
+//! BitSet, Vec<FixedBits>)>`. A `BitSet`
 //! is `Bytes`, index `i` at bit `i mod 8` of byte `⌊i / 8⌋`, whose last byte is not zero, else
-//! `ERR-CODEC-NONCANONICAL` at that byte, as the set is read. `derived: Vec<(Digest, Digest)>`,
-//! before `proven`, names for each manifest the one sample the verifier derived for it, by
+//! `ERR-CODEC-NONCANONICAL` at that byte, as the set is read. `derived`
+//! names for each manifest the one sample the verifier derived for it, by
 //! strictly increasing manifest (else `ERR-CODEC-NONCANONICAL` at the first entry out of order).
 //! In `proven`, one record per derived sample with an accepted request, by strictly increasing
 //! sample identity (else `ERR-CODEC-NONCANONICAL` at the record's first byte, as for a sample not
 //! among `derived`'s samples), each
 //! with a non-empty set (else at its length) and one `Û` per index in increasing order (else at
-//! the list's length). The weight fields are #158's and decode without further rules.
+//! the list's length). The weight fields are #158's and decode without further rules. Step 13
+//! updates `used_blinding_rows` and `proven` only: opened weight columns are not recorded (#569,
+//! column overuse weakens only the prover's weight hiding). A sealed empty ledger is 92 bytes;
+//! each model chain adds 40 bytes, epoch 0 adds at most `36 + Σ_T (45 + ⌈B_T / 8⌉)` bytes (6,629
+//! bytes at 405B across nine 4,096-row matrices and `ChannelParams`' 12,280 rows, RFC-0065) and
+//! each linked successor epoch at most `100 + Σ_T (45 + ⌈B_T / 8⌉)` bytes (6,693 bytes at 405B),
+//! and each derived audit sample adds 64 bytes in `derived` and at most `48 + ⌈|selected| / 8⌉ +
+//! 8 · |selected|` bytes in `proven` (RFC-0019 'Size bound', RFC-0067 'One limit').
 //!
 //! The file ([`LedgerFile`], [`read_ledger`]) is a regular file, not a symbolic link and of one
 //! hard link, else `ERR-USAGE`, checked without opening it, so a FIFO never blocks; its
