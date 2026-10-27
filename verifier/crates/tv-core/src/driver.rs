@@ -35,7 +35,7 @@ use tv_hash::transcript::{Ascii, Mode, SessionContext, Transcript, TranscriptErr
 pub struct ResourceLimits {
     /// Maximum outer artifact bytes, including its envelope.
     pub max_artifact_bytes: u64,
-    /// Budget for the conservative input/codeword/metadata work estimate.
+    /// Budget for the conservative input/metadata and opening-scratch work estimate.
     /// Full allocation accounting belongs to the v1 hardening work (#182).
     pub max_memory_bytes: u64,
     /// Cooperative deadline checked between phases, covering NI decoding or the whole Live session.
@@ -123,6 +123,17 @@ fn conclude_with_deadline<T>(
     let value = conclude(tracker, result)?;
     deadline(started.ok_or_else(internal)?, limits)?;
     Ok(value)
+}
+/// Simultaneously live row coefficients, codeword and coset-NTT twiddles (SP-8).
+fn opening_scratch(rows: u64, log_k: u32, log_rate: u32) -> Check<u64> {
+    let log_n = log_k.checked_add(log_rate).ok_or_else(memory)?;
+    let n = 1u64.checked_shl(log_n).ok_or_else(memory)?;
+    let symbol = u64::try_from(size_of::<Fp2>()).map_err(|_| memory())?;
+    let twiddle = u64::try_from(size_of::<tv_field::Fp>()).map_err(|_| memory())?;
+    rows.checked_mul(symbol)
+        .and_then(|bytes| bytes.checked_add(n.checked_mul(symbol)?))
+        .and_then(|bytes| bytes.checked_add((n / 2).checked_mul(twiddle)?))
+        .ok_or_else(memory)
 }
 fn into_verdict(result: Check<AcceptReport>) -> Verdict {
     match result {
@@ -746,15 +757,14 @@ fn verify_unit_tracked(
         }
     }
     // shortcut: conservative work planning; replace with complete allocation accounting in #182.
+    let codeword_allowance = 1u64
+        .checked_shl(u32::from(claims.layout.advice.log2_k) + 1)
+        .and_then(|n| n.checked_mul(64))
+        .ok_or_else(memory)?;
     let memory_estimate = total
         .checked_mul(8)
         .and_then(|n| n.checked_add(u64::from(claims.arch.n_layers).checked_mul(1 << 20)?))
-        .and_then(|n| {
-            n.checked_add(
-                1u64.checked_shl(u32::from(claims.layout.advice.log2_k) + 1)?
-                    .checked_mul(64)?,
-            )
-        })
+        .and_then(|n| n.checked_add(codeword_allowance))
         .ok_or_else(memory)?;
     if memory_estimate > cfg.limits.max_memory_bytes {
         return Err(memory());
@@ -874,6 +884,32 @@ fn verify_unit_tracked(
             internal()
         }
     })?;
+    // The coefficient vector grows with public row geometry, independently of codeword width.
+    // Checks run sequentially, so retain the largest opening scratch rather than their sum.
+    let advice_scratch = opening_scratch(
+        layout.committed_rows().map_err(claims_error)?,
+        u32::from(claims.layout.advice.log2_k),
+        u32::from(claims.layout.advice.log2_inv_rate),
+    )?;
+    let mut weight_scratch = 0;
+    for matrix in &wl {
+        if matrix.committed_rows() > 0 {
+            weight_scratch = weight_scratch.max(opening_scratch(
+                matrix.committed_rows(),
+                matrix.log2_k(),
+                u32::from(claims.layout.weights.log2_inv_rate),
+            )?);
+        }
+    }
+    let extra = advice_scratch
+        .max(weight_scratch)
+        .saturating_sub(codeword_allowance);
+    if memory_estimate
+        .checked_add(extra)
+        .is_none_or(|n| n > cfg.limits.max_memory_bytes)
+    {
+        return Err(memory());
+    }
     let leaf_plan = runtime.leaf_schedule().map_err(claims_error)?;
     let native = gadgets::model::Plan::derive_runtime(&runtime).map_err(gadget_error)?;
     let splits = leaf::split::Layout::new(&runtime.split_sites().map_err(claims_error)?)
