@@ -95,13 +95,14 @@ fn op(o: &Op) -> Value {
             json!({"Requant":[shift.to_string(),lo.to_string(),hi.to_string()]})
         }
         Op::Rotate { rope } => json!({"Rotate":[rope.0]}),
-        Op::Transpose { perm } => json!({"Transpose":perm}),
+        Op::Transpose { perm } => json!({"Transpose":perm.as_slice()}),
         Op::Expand { axis, len } => json!({"Expand":[u64::from(*axis),u64::from(*len)]}),
         Op::MatMulAct { transpose_rhs } => json!({"MatMulAct":[transpose_rhs]}),
         Op::SoftmaxRow { exp_table, sigma } => {
             json!({"SoftmaxRow":[exp_table.0,u32::from(*sigma)]})
         }
         Op::TableMap { table } => json!({"TableMap":[table.0]}),
+        other => panic!("unsupported Llama operation {other:?}"),
     }
 }
 
@@ -109,7 +110,7 @@ fn op(o: &Op) -> Value {
 pub fn graph(g: &Graph) -> Value {
     let tensors:Vec<_>=g.tensors().iter().map(|t|json!({"shape":t.shape.dims(),"kind":kind(t.kind),"producer":t.producer.map(|p|p.0)})).collect();
     let inputs:Vec<_>=g.inputs().iter().map(|i|{
-        let role=match i.role {Role::Tokens=>json!(["tokens"]),Role::Positions=>json!(["positions"]),Role::Weight(w)=>json!(["weight",wref(w)]),Role::Classes(w)=>json!(["classes",wref(w)]),Role::Multipliers(w)=>json!(["multipliers",wref(w)])};
+        let role=match i.role {Role::Tokens=>json!(["tokens"]),Role::Positions=>json!(["positions"]),Role::Weight(w)=>json!(["weight",wref(w)]),Role::Classes(w)=>json!(["classes",wref(w)]),Role::Multipliers(w)=>json!(["multipliers",wref(w)]),Role::Input(k)=>json!(["input",k])};
         json!({"tensor":i.tensor.0,"role":role,"type":[i.ty.bits,u8::from(i.ty.signed)],"range":[i.lo.to_string(),i.hi.to_string()]})
     }).collect();
     let nodes:Vec<_>=g.nodes().iter().map(|n|json!({"op":op(n.op()),"inputs":n.inputs().iter().map(|t|t.0).collect::<Vec<_>>(),"outputs":n.outputs().iter().map(|t|t.0).collect::<Vec<_>>()})).collect();

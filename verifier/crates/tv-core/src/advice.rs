@@ -295,7 +295,10 @@ impl<'a> Layout<'a> {
     /// # Errors
     /// `Layout` for invalid controls/length, a row too short for one key or more than
     /// `2^32` allocated rows; `Memory` for a failed reservation; `Internal` for
-    /// inconsistent verifier-derived graph/selection metadata.
+    /// inconsistent verifier-derived graph/selection metadata, and, before anything else, for a
+    /// graph that holds an operation of the anchor circuits (RFC-0066, RFC-0072), a `ConstMul` by
+    /// a constant per channel or a `TableMap` into one of their tables: their advice layout is
+    /// #146's.
     pub fn derive(
         graph: &'a Graph,
         selection: &'a Selection,
@@ -312,6 +315,9 @@ impl<'a> Layout<'a> {
         n: u32,
         greedy: Option<(GadgetId, TableId)>,
     ) -> Result<Self, ClaimsError> {
+        if graph.first_non_llama().is_some() {
+            return Err(ClaimsError::Internal);
+        }
         if n == 0
             || n > graph.length()
             || config.log_k > 31 // RFC-0011: a 2k-symbol codeword needs 2k <= 2^32.

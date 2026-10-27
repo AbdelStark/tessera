@@ -32,6 +32,14 @@ use tv_tables::rope::Rope;
 use tv_testkit::SplitMix64;
 use tv_testkit::sumcheck::{self as reference, Fe, Form, Product};
 
+/// Constant `c` of `graph`, which holds one value: every constant of the lowering does.
+fn scalar(graph: &Graph, c: u32) -> i64 {
+    match graph.constant(c) {
+        Some(&[value]) => value,
+        other => panic!("constant {c} is not one value: {other:?}"),
+    }
+}
+
 // ----- Field conversions -------------------------------------------------------------------------
 
 pub fn to_fp2(value: Fe) -> Fp2 {
@@ -292,7 +300,7 @@ impl Witness {
                     vec![y]
                 }
                 Op::ConstMul { c } => {
-                    let c = signed(graph.constants()[c as usize]);
+                    let c = signed(scalar(graph, c));
                     vec![input(0).iter().map(|&v| c * v).collect()]
                 }
                 Op::Add => {
@@ -400,6 +408,18 @@ impl Witness {
                         }
                     }
                     vec![y]
+                }
+                // The anchor circuits' operations: no lowered graph holds one.
+                op @ (Op::Sub
+                | Op::ConstAdd { .. }
+                | Op::Sum { .. }
+                | Op::Slice { .. }
+                | Op::GatherPublic { .. }
+                | Op::Bitwise { .. }
+                | Op::BitDecompose { .. }
+                | Op::BitFn { .. }
+                | Op::AssertEqual) => {
+                    panic!("the reference evaluates the lowering's operations, not {op:?}")
                 }
             };
             for (&o, v) in node.outputs().iter().zip(outs) {
@@ -913,7 +933,7 @@ impl Prover<'_> {
                 let Op::ConstMul { c } = *node.op() else {
                     panic!("an equality zero-check of a ConstMul")
                 };
-                let constant = signed(graph.constants()[c as usize]);
+                let constant = signed(scalar(graph, c));
                 let y = table_of(node.outputs()[0]);
                 let x = table_of(node.inputs()[0]);
                 let eqs: Vec<Fe> = (0..y.len()).map(|v| eq_at(zero, v)).collect();

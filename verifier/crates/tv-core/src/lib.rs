@@ -45,6 +45,7 @@
 //! | [`model_openings::Claims`] | every complete-model opening obligation, preserving original source points, layer coefficients and external certificate debts |
 //! | [`validation::check_public`] | steps 2.1 to 2.3, which give the public part the lowering reads |
 //! | [`lowering::lower`] | the Llama lowering of a claim list's public part, node by node (RFC-0044) |
+//! | [`lowering::GraphBuilder`] | a graph without a lowering, such as the anchor circuits' (RFC-0066, RFC-0072), each node checked against RFC-0006's shape and arity rules; every check after the lowering refuses their operations until its slice of #150 |
 //! | [`schedule::derive()`] | the stage schedule of a lowered graph: the leaf stage's claims, each reduction stage's instances with their relations, variables and degrees, and where every claim goes (RFC-0010, RFC-0037) |
 //! | [`leaf::ModelSchedule`] / [`leaf::Schedule::verify`] | independently derived model lookup counts and Softmax forest roots; the shared tree/LogUp loop, with all leaf claims retained |
 //! | [`leaf::split::Layout`] | canonical model lookup forms, aligned blocks and first-read source order; the combined split absorption and column identities, retaining all reduction/opening debts |

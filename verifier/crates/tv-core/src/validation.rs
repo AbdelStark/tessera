@@ -791,7 +791,29 @@ fn profile_holds(graph: &Graph, profile: Profile) -> Result<bool, ClaimsError> {
                     return Ok(false);
                 }
             }
-            _ => {}
+            Op::OneHot { .. }
+            | Op::ConstMul { .. }
+            | Op::Add
+            | Op::Reshape
+            | Op::SumSquares { .. }
+            | Op::RsqrtRow { .. }
+            | Op::Mul { .. }
+            | Op::Requant { .. }
+            | Op::Rotate { .. }
+            | Op::Transpose { .. }
+            | Op::Expand { .. }
+            | Op::MatMulAct { .. }
+            | Op::SoftmaxRow { .. } => {}
+            // The lowering of `D` never creates the anchor circuits' operations (S3).
+            Op::Sub
+            | Op::ConstAdd { .. }
+            | Op::Sum { .. }
+            | Op::Slice { .. }
+            | Op::GatherPublic { .. }
+            | Op::Bitwise { .. }
+            | Op::BitDecompose { .. }
+            | Op::BitFn { .. }
+            | Op::AssertEqual => return Err(ClaimsError::Internal),
         }
     }
     Ok(true)
