@@ -47,7 +47,7 @@ pub mod schedule;
 mod select;
 
 pub use advice::{AdviceClaimImage, AdviceSource, AuxColumn, CompareColumn, ModelAdviceLayout};
-pub use claim::claim_list;
+pub use claim::{claim_list, claim_list_for_protocol};
 pub use error::CompileError;
 pub use lower::{Lowering, PublicModel, check_profile, lower, settle, validate};
 pub use plan::{ExecutionPlan, QueryBlock, SequenceTile, Share, Tile, check_plan, plan, tiles};
@@ -72,8 +72,8 @@ pub struct CompileOutput {
     pub report: CommitmentReport,
 }
 
-/// Compiles `model` under `policy`, for the parameter set `params` with its `layout` (RFC-0006
-/// 'Outputs').
+/// Compiles `model` under `policy`, for the parameter set `params` with its `layout` in
+/// `tessera-protocol/1` ([`tessera_ir::PROTOCOL_VERSION`]; RFC-0006 'Outputs').
 ///
 /// Validates `model`, lowers it, analyzes ranges, selects gadgets and tables, emits the claim
 /// list, builds the execution plan, and counts the commitment report.
@@ -83,6 +83,25 @@ pub struct CompileOutput {
 /// Returns [`CompileError`] if `model` fails validation, range analysis, profile checks, gadget
 /// selection, advice layout bounds, or plan construction.
 pub fn compile(
+    model: &tessera_ir::IntegerModel,
+    policy: &tessera_ir::GadgetPolicy,
+    layout: tessera_ir::CommitmentLayout,
+    params: tessera_ir::ParamSetId,
+) -> Result<CompileOutput, CompileError> {
+    compile_for_protocol(tessera_ir::PROTOCOL_VERSION, model, policy, layout, params)
+}
+
+/// Compiles `model` at `protocol_version` ([`tessera_ir::PROTOCOL_VERSION`] or
+/// [`tessera_ir::PROTOCOL_VERSION_2`]) under `policy`, for the parameter set `params` with its
+/// `layout` (RFC-0006 'Outputs', RFC-0012 'Layout', #564).
+///
+/// # Errors
+///
+/// Returns [`CompileError`] if `protocol_version` or `layout.weights` is invalid (`Usage`), or if
+/// `model` fails validation, range analysis, profile checks, gadget selection, advice or masked
+/// weight layout bounds (`ERR-QUANT-ARCH`), or plan construction.
+pub fn compile_for_protocol(
+    protocol_version: u16,
     model: &tessera_ir::IntegerModel,
     policy: &tessera_ir::GadgetPolicy,
     layout: tessera_ir::CommitmentLayout,
@@ -101,7 +120,8 @@ pub fn compile(
     let lowering = lower(public, positions)?;
     let ranges = analyze(&lowering.graph, &lowering.tables)?;
     let selection = select(&lowering.graph, &ranges, &lowering.tables, policy)?;
-    let claims = claim_list(public, &selection, policy, layout, params)?;
+    let claims =
+        claim_list_for_protocol(protocol_version, public, &selection, policy, layout, params)?;
     let execution_plan = plan(public, &claims)?;
     let commitment_report = report(public, &lowering, &selection, policy)?;
     tessera_codec::event!(

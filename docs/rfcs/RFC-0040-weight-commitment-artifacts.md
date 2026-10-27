@@ -63,7 +63,7 @@ Each `WeightMatrix` ([RFC-0031](RFC-0031-commitment-id.md#the-descriptor)) `T` i
 - **Liveness.** A position is live when the weight `(t, ℓ)` has a `ChannelParams` and `c` is below its output width. Its entry is then the channel's class index, or its multiplier at an affine site. Every other entry is 0.
 - **Width `C`.** `C` is the largest padded output width among the weights that have a `ChannelParams`. When no weight has one, `C` is 1, so that the tensor is defined and holds only zeros.
 - **Message width.** `k_CP = min(k_W, 16 · L_pad · C)`. Entry `f` lies at row `⌊f / k_CP⌋` and column `f mod k_CP`.
-- **Committed rows.** A row is committed when it holds a live position. Which weights have a `ChannelParams` is public, from the claim list (03 §2), so the committed rows are too. A model with no `ChannelParams` commits no row of this matrix.
+- **Committed rows.** A row is committed when it holds a live position. Which weights have a `ChannelParams` is public, from the claim list (03 §2), so the committed rows are too. A model with no `ChannelParams` commits no row of this matrix. In `tessera-protocol/2`, every matrix with `m_T > 0` committed rows must have `k_T ≥ k_W` so its masked rate `(k_T + P_W)/n_T` does not exceed `(k_W + P_W)/n_W` ([RFC-0012](RFC-0012-weight-commitment.md#layout), [RFC-0007](RFC-0007-claim-list.md#verifier-validation) step 6); an uncommitted `ChannelParams` (`m_CP = 0`) is exempt.
 
 ### Encoding, leaves and roots
 

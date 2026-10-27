@@ -122,12 +122,11 @@ Then:
 - **The input is injective.** Its parts have fixed widths, and each domain has one input format, so two rows, two purposes or two commitments never share a stream.
 - **Why `cid_T`.** It binds the layout, the matrix, its width, the row block, the rows and the epoch (RFC-0031). Two commitments made under one epoch number, such as one under another row block, therefore draw independent masks. The budget, the record and the rebuilt-state rule below are per commitment, `R_W`: only the commitment the record lists is the epoch's.
 - **A matrix with no committed row**, `ChannelParams` when no weight has one, has `B_CP = 0` and draws nothing.
-- **Narrow matrices: until #564, `k_T ≥ k_W`.** A `tessera-protocol/2` commitment is made only when every committed matrix has `k_T ≥ k_W = 2^{layout.log2_k}`. Otherwise `commit-weights` refuses it with `ERR-USAGE`, before drawing anything.
+- **Narrow matrices: `k_T ≥ k_W` ([RFC-0012](RFC-0012-weight-commitment.md#layout), [#564](https://github.com/AbdelStark/tessera/issues/564)).** In `tessera-protocol/2`, every committed matrix (`m_T > 0`) must have `k_T ≥ k_W = 2^{layout.log2_k}` (`P_W > 0` and `k_W + P_W < n_W`). Claim-list validation ([RFC-0007](RFC-0007-claim-list.md#verifier-validation) step 6) rejects a narrower shape as `Reject(StatementMismatch { field: Layout })`, the compiler refuses to emit one, and `commit-weights` refuses it with `ERR-USAGE` before drawing anything.
   - **Why `k_W`.** The parameter set's `τ_W` is computed for `k_W`'s rate, `(k_W + P_W)/n_W` (RFC-0012 'Layout', RFC-0014), and a narrower matrix's rate is higher. At `live-64`, `k_T = P_W` gives 40.3 bits of proximity instead of 64.
   - **A full-rate code.** Once `k_T + P_W ≥ n_T`, the masked code is all of `Fp^{n_T}`. A row that differs from the true combination passes each queried column with probability `(n_T − 1)/n_T` or more, and nothing is left of the proximity bound.
   - **An exact forgery.** Once `k_T + P_W > n_T`, the row `u + (X^{n_T} − 7^{n_T})·h`, with `deg h < k_T + P_W − n_T`, passes every column check. Its values on `H` range over `k_T + P_W − n_T` dimensions, enough to meet any one evaluation claim, and any values at all once `P_W ≥ n_T`. `d_model = 128` at `live-64` is such a case: `k_Q = 2^{14}` and `P_W = n_Q = 2^{16}`.
   - **Not RFC-0011's bound.** RFC-0011's `P ≤ k` is the advice's decoding bound at rate 1/2. It does not bound the weights' soundness.
-  - **The rest is #564's.** A prover's refusal does not bind a malicious prover. The verifier's refusal of such a claim list, and whether narrow matrices are refused or padded to `k_W`, are [#564](https://github.com/AbdelStark/tessera/issues/564)'s. If #564 pads them, this rule follows its padding.
 
 ### What it fixes
 

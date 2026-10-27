@@ -9,7 +9,7 @@
 //! | Step | Check | Failure |
 //! |---|---|---|
 //! | RFC-0019 step 2 | `params` names a set of [`ParamSet::accept`]: `live-64/1`, `ni-100/1`, and `test-small/1` with the `test-params` feature only | `Params { name }`, the claim list's name |
-//! | 1 | `protocol_version` is [`PROTOCOL_VERSION`] | `ProtocolVersion` |
+//! | 1 | `protocol_version` is [`PROTOCOL_VERSION`] under [`Protocol::One`], or [`PROTOCOL_VERSION_2`] under [`Protocol::Two`] | `ProtocolVersion` |
 //! | 2.1 | the architecture, below | `Architecture` |
 //! | 2.2 | the public quantization data, below | `Quantization` |
 //! | 2.3 | every layer's sites rescaled alike (RFC-0038) | `Rescaling { site }`, the first site in 03 §2's declaration order that breaks it |
@@ -18,7 +18,7 @@
 //! | 5.1 | `1 ≤ max_log2_rows ≤ 32` | `GadgetPolicy` |
 //! | 5.2 | independently derived integer ranges, gadget domains, field bounds and feasible tables | `Gadget { gadget }`, first in node order |
 //! | 5.3 | the complete derived table sequence equals the claim list, id for id | `Table { table }`, first differing id |
-//! | 6 | the commitment parameters equal [`ParamSet::layout`]; `query_block` is a power of two; at `max_context`, one key fits a row and the complete advice allocation fits `2^32` rows (RFC-0046/0047) | `Layout` |
+//! | 6 | the commitment parameters equal [`ParamSet::layout`]; `query_block` is a power of two; at `max_context`, one key fits a row and the complete advice allocation fits `2^32` rows (RFC-0046/0047); `layout.weights` has `log2_inv_rate ≥ 1`, `n_W ≤ 2^32`, and every weight matrix's codeword fits `n_T ≤ 2^32` (RFC-0007, RFC-0040); under [`Protocol::Two`], the weight target code is a proper masked subcode and every committed weight matrix (`m_T > 0`) has effective rate at most the target rate (RFC-0012, #564) | `Layout` |
 //! | 7 | the scoring and anchor templates name supported variants | `Template`, once they join the claim list (RFC-0026): today there is none to check |
 //!
 //! Every failure but the parameter set's is `Reject(StatementMismatch { field })`, and the
@@ -101,6 +101,41 @@
 //! and down projections, so S1 and S3 hold for every claim list that passes step 2: only S2 can
 //! fail, in `servable`, when `127 · 128 · max(d_model, d_ff)` passes `2^31 − 1`.
 //!
+//! ## Step 6: the commitment layout and weight codewords
+//!
+//! `claims.layout` equals [`ParamSet::layout`], `gadget_policy.query_block` is a power of two, and
+//! [`advice::Layout::derive`](crate::advice::Layout::derive) at `max_context` checks that one key
+//! fits a row (`g · min(query_block, N_max) ≤ k`, RFC-0046) and that the complete advice
+//! allocation is at most `2^32` rows (RFC-0047).
+//!
+//! Over Goldilocks (`P − 1 = 2^{32} · (2^{32} − 1)`), every weight matrix `T` (`Embed` through
+//! `ChannelParams`) evaluates on a 2-adic coset `7 · L_T` of size
+//! `n_T = k_T · 2^{layout.weights.log2_inv_rate}` (RFC-0007 step 6, RFC-0039 step 6, RFC-0012
+//! 'Layout', RFC-0040 'Encoding, leaves and roots'). In every protocol version, step 6 checks in
+//! exact 128-bit integer arithmetic that `layout.weights.log2_inv_rate ≥ 1`,
+//! `layout.weights.log2_k + layout.weights.log2_inv_rate ≤ 32` (`n_W ≤ 2^{32}`), and `n_T ≤ 2^{32}`
+//! on all ten weight matrices (`SP-8`), including wide-input matrices where `in_pad > k_W` pushes
+//! `k_T = max(in_pad, min(k_W, out_pad · in_pad))` past `k_W`.
+//!
+//! Under [`Protocol::Two`] (`tessera-protocol/2`, RFC-0012 'Masked rate and minimum width in
+//! `tessera-protocol/2`', #564), every committed weight row of matrix `T` (`m_T > 0`, RFC-0040
+//! 'The matrices') carries `P_W = layout.weights.mask_coeffs` vanishing-mask coefficients at
+//! codeword length `n_T`, giving effective rate `ρ'_T = (k_T + P_W) / n_T`. Step 6 additionally
+//! checks that:
+//!
+//! - the target weight code is a proper masked subcode: `P_W > 0` and `k_W + P_W < n_W`
+//!   (`ρ'_W < 1`), with `k_W = 2^{layout.weights.log2_k}` and
+//!   `n_W = k_W · 2^{layout.weights.log2_inv_rate}`;
+//! - every committed weight matrix (`m_T > 0`) satisfies `ρ'_T ≤ ρ'_W`, checked by
+//!   `(k_T + P_W) · n_W ≤ (k_W + P_W) · n_T` (`k_T ≥ k_W`): all nine architecture matrices, and
+//!   `ChannelParams` (`k_CP = min(k_W, 16 · L_pad · C)`) whenever at least one weight has
+//!   multi-class `pot` shifts or an affine site (`m_CP > 0`). When no weight has `ChannelParams`
+//!   (`m_CP = 0`, `C = 1`), the matrix commits no row and is exempt from the masked-rate bound.
+//!
+//! [`validate`] and [`load`] retain [`Protocol::One`] (`protocol_version == 0`), where weight rows
+//! carry no vanishing mask (RFC-0049) while still enforcing the `2^{32}` codeword ceiling;
+//! [`validate_in`] and [`load_in`] select the protocol explicitly.
+//!
 //! # Cost
 //!
 //! Steps 1 and 2 are linear in the claim list, step 2's `Exp` rule testing at most seventeen
@@ -117,14 +152,21 @@ use tv_field::Fp;
 use tv_tables::{Table, TableError, TableId, TableKind, exp_maps_to_zero};
 
 use crate::claims::{
-    ArchSpec, ClaimList, ParamSetId, Profile, PublicQuantSpec, QuantPoint, Site, WeightType,
+    ArchSpec, ClaimList, ParamSetId, Profile, PublicQuantSpec, QuantPoint, Site,
+    WeightLayoutParams, WeightType,
 };
 use crate::lowering::{Graph, LowerError, Node, Op, lower, spread_bits};
 use crate::params::ParamSet;
+pub use crate::sumcheck::Protocol;
 
-/// The protocol version this verifier implements: 0, the number every artifact carries until
-/// `tessera-protocol/1` is assigned, when the first end-to-end proof verifies (09 §3, RFC-0036).
+/// The protocol version this verifier implements for `tessera-protocol/1`: 0, the number every
+/// artifact carries until `tessera-protocol/1` is assigned, when the first end-to-end proof
+/// verifies (09 §3, RFC-0036).
 pub const PROTOCOL_VERSION: u16 = 0;
+
+/// The `protocol_version` tag of `tessera-protocol/2` (RFC-0036 'Schema version 2', RFC-0007
+/// step 1).
+pub const PROTOCOL_VERSION_2: u16 = 2;
 
 /// A gadget's index: gadget-backed nodes numbered in node order (RFC-0006 'Gadget selection').
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -159,7 +201,8 @@ pub enum StatementField {
         /// The first gadget in node order that fails.
         gadget: GadgetId,
     },
-    /// Step 6: the commitment parameters or the advice layout.
+    /// Step 6: the commitment parameters, the advice layout, a weight matrix's codeword bound, or
+    /// in protocol/2 its masked rate.
     Layout,
     /// Step 7: the scoring and anchor templates.
     Template,
@@ -283,11 +326,13 @@ impl fmt::Display for ClaimsError {
 
 impl std::error::Error for ClaimsError {}
 
-/// A validated claim list's derived data: the parameter set it names, its tables regenerated in
-/// `TableId` order, the graph its lowering derives for `max_context` tokens, and the integer
-/// ranges and gadget choices used to derive the canonical table sequence and advice layout.
+/// A validated claim list's derived data: the protocol it was validated under, the parameter set
+/// it names, its tables regenerated in `TableId` order, the graph its lowering derives for
+/// `max_context` tokens, and the integer ranges and gadget choices used to derive the canonical
+/// table sequence and advice layout.
 #[derive(Debug)]
 pub struct Validated {
+    protocol: Protocol,
     params: ParamSet,
     tables: Vec<Table>,
     graph: Graph,
@@ -296,6 +341,11 @@ pub struct Validated {
 }
 
 impl Validated {
+    /// The protocol under which the claim list was validated.
+    pub fn protocol(&self) -> Protocol {
+        self.protocol
+    }
+
     /// The parameter set the claim list names.
     pub fn params(&self) -> ParamSet {
         self.params
@@ -326,24 +376,46 @@ impl Validated {
     }
 }
 
-/// Opens a sealed claim list and validates it: [`ClaimList::open`]'s failure is
-/// [`ClaimsError::Decode`], then [`validate`]'s checks.
+/// Opens a sealed claim list and validates it under [`Protocol::One`]: [`ClaimList::open`]'s
+/// failure is [`ClaimsError::Decode`], then [`validate`]'s checks.
 pub fn load(input: &[u8], limits: &DecodeLimits) -> Result<(ClaimList, Validated), ClaimsError> {
+    load_in(input, limits, Protocol::One)
+}
+
+/// [`load`] with `protocol` selected explicitly: [`Protocol::One`] expects
+/// [`PROTOCOL_VERSION`] (`0`), and [`Protocol::Two`] expects [`PROTOCOL_VERSION_2`] (`2`) and
+/// checks each committed weight matrix's masked rate at step 6 (RFC-0012, #564).
+pub fn load_in(
+    input: &[u8],
+    limits: &DecodeLimits,
+    protocol: Protocol,
+) -> Result<(ClaimList, Validated), ClaimsError> {
     let claims = ClaimList::open(input, limits).map_err(ClaimsError::Decode)?;
-    let validated = validate(&claims)?;
+    let validated = validate_in(&claims, protocol)?;
     Ok((claims, validated))
 }
 
-/// Validates `claims` in the order of the module documentation; the first check that fails is
-/// the error.
+/// Validates `claims` under [`Protocol::One`] in the order of the module documentation; the first
+/// check that fails is the error.
 pub fn validate(claims: &ClaimList) -> Result<Validated, ClaimsError> {
+    validate_in(claims, Protocol::One)
+}
+
+/// [`validate`] with `protocol` selected explicitly: [`Protocol::One`] checks
+/// [`PROTOCOL_VERSION`] (`0`), and [`Protocol::Two`] checks [`PROTOCOL_VERSION_2`] (`2`) and
+/// enforces RFC-0012's masked weight rate bound at step 6 (RFC-0007 step 6, RFC-0039 step 6, #564).
+pub fn validate_in(claims: &ClaimList, protocol: Protocol) -> Result<Validated, ClaimsError> {
     // RFC-0019 step 2: the parameter set.
     let Some(params) = ParamSet::accept(&claims.params) else {
         let name = claims.params.try_clone().ok_or(ClaimsError::Memory)?;
         return Err(ClaimsError::Params { name });
     };
     // Step 1: the protocol version.
-    if claims.protocol_version != PROTOCOL_VERSION {
+    let expected_version = match protocol {
+        Protocol::One => PROTOCOL_VERSION,
+        Protocol::Two => PROTOCOL_VERSION_2,
+    };
+    if claims.protocol_version != expected_version {
         return Err(mismatch(StatementField::ProtocolVersion));
     }
     // Step 2: the architecture and the quantization data.
@@ -367,7 +439,8 @@ pub fn validate(claims: &ClaimList) -> Result<Validated, ClaimsError> {
         return Err(mismatch(StatementField::GadgetPolicy));
     }
     let selection = crate::range_checks::check(&graph, claims.gadget_policy, &claims.tables)?;
-    // Step 6: the commitment layout and the query block.
+    // Step 6: the commitment layout, the query block, the advice layout, every weight matrix's
+    // 2^32 codeword ceiling, and in protocol/2 each committed weight matrix's masked rate.
     if claims.layout != params.layout() || !claims.gadget_policy.query_block.is_power_of_two() {
         return Err(mismatch(StatementField::Layout));
     }
@@ -379,9 +452,13 @@ pub fn validate(claims: &ClaimList) -> Result<Validated, ClaimsError> {
     );
     // RFC-0047: count the complete allocation at the longest admitted sequence.
     crate::advice::Layout::derive(&graph, &selection, advice, claims.arch.max_context)?;
+    if !weight_layout_holds(claims, &public, claims.layout.weights, protocol)? {
+        return Err(mismatch(StatementField::Layout));
+    }
     // Step 7: `scoring` and `anchor` are not in the claim list (RFC-0026), so no template is
     // named and none can fail. Their check joins with them.
     Ok(Validated {
+        protocol,
         params,
         tables,
         graph,
@@ -846,4 +923,521 @@ fn regenerate(specs: &[tv_tables::TableSpec]) -> Result<Vec<Table>, ClaimsError>
         }
     }
     Ok(tables)
+}
+
+// ----- Step 6: weight codeword ceilings and protocol/2 masked rates --------------------------
+
+/// Largest 2-adic multiplicative subgroup order in Goldilocks (`P − 1 = 2^{32} · (2^{32} − 1)`):
+/// every weight matrix's evaluation coset `7 · L_T` has size `n_T ≤ 2^{32}` (RFC-0007 step 6,
+/// RFC-0040 'Encoding, leaves and roots').
+const MAX_WEIGHT_CODEWORD: u128 = 1u128 << 32;
+
+/// Power-of-two ceiling in `u128` for a positive `u32`-bounded dimension accepted by step 2.1.
+fn next_pow2(value: u64) -> Result<u128, ClaimsError> {
+    value
+        .checked_next_power_of_two()
+        .map(u128::from)
+        .ok_or(ClaimsError::Internal)
+}
+
+/// Returns `(k_T, committed)` for `matrix`, where `k_T` is RFC-0040's message width and
+/// `committed` records whether `matrix` commits at least one data row (`m_T > 0`, RFC-0040 'The
+/// matrices', RFC-0012).
+fn matrix_width(
+    claims: &ClaimList,
+    public: &PublicPart<'_>,
+    matrix: crate::weights::Matrix,
+    k_w: u128,
+) -> Result<(u128, bool), ClaimsError> {
+    use crate::weights::{Matrix, shape};
+    if matrix == Matrix::ChannelParams {
+        // Step 2.3 proved every layer rescales each site with the same kind (`Affine`, 1-class
+        // `Pot`, or multi-class `Pot`), so layer 0 decides which weight types carry channel
+        // parameters (`m_CP > 0`) and their padded output widths `C` (`C = 1` when `m_CP == 0`,
+        // RFC-0040 'ChannelParams').
+        let mut max_out_pad = 0u128;
+        for site in Site::ALL {
+            let has_params = match public.rescale(0, site) {
+                Some(Rescale::Affine(_)) => true,
+                Some(Rescale::Pot(shifts)) => shifts.len() > 1,
+                None => false,
+            };
+            if !has_params {
+                continue;
+            }
+            let ty = site.weight_before().ok_or(ClaimsError::Internal)?;
+            let (out, _, _) =
+                shape(claims, Matrix::of_weight(ty)).map_err(|_| ClaimsError::Internal)?;
+            max_out_pad = max_out_pad.max(next_pow2(out)?);
+        }
+        let committed = max_out_pad > 0;
+        let c = max_out_pad.max(1);
+        let l_pad = next_pow2(u64::from(claims.arch.n_layers))?;
+        let full = 16u128
+            .checked_mul(l_pad)
+            .and_then(|v| v.checked_mul(c))
+            .ok_or(ClaimsError::Internal)?;
+        return Ok((k_w.min(full), committed));
+    }
+    let (out, input, _) = shape(claims, matrix).map_err(|_| ClaimsError::Internal)?;
+    let out_pad = next_pow2(out)?;
+    let in_pad = next_pow2(input)?;
+    let full = out_pad.checked_mul(in_pad).ok_or(ClaimsError::Internal)?;
+    Ok((in_pad.max(k_w.min(full)), true))
+}
+
+/// RFC-0007 step 6, RFC-0039 step 6, RFC-0012 'Layout' and 'Masked rate and minimum width in
+/// `tessera-protocol/2`', and RFC-0040 'Encoding, leaves and roots' (#564, SP-8):
+///
+/// - in every protocol version, `log2_inv_rate ≥ 1`, `log2_k + log2_inv_rate ≤ 32` (`n_W ≤ 2^32`),
+///   and every weight matrix (`Embed`..`ChannelParams`) has codeword length
+///   `n_T = k_T · 2^{log2_inv_rate} ≤ 2^32` so its evaluation coset `7 · L_T` exists in
+///   Goldilocks;
+/// - under [`Protocol::Two`], `weights` additionally defines a proper masked subcode (`P_W > 0`
+///   and `k_W + P_W < n_W`) and every committed matrix (`m_T > 0`) satisfies
+///   `ρ'_T = (k_T + P_W) / n_T ≤ ρ'_W = (k_W + P_W) / n_W`.
+fn weight_layout_holds(
+    claims: &ClaimList,
+    public: &PublicPart<'_>,
+    weights: WeightLayoutParams,
+    protocol: Protocol,
+) -> Result<bool, ClaimsError> {
+    if weights.log2_inv_rate == 0 {
+        return Ok(false);
+    }
+    let log2_n_w = u32::from(weights.log2_k)
+        .checked_add(u32::from(weights.log2_inv_rate))
+        .ok_or(ClaimsError::Internal)?;
+    if log2_n_w > 32 {
+        return Ok(false);
+    }
+    // `log2_k < log2_n_w <= 32`, so both shifts fit in `u128`.
+    let k_w = 1u128
+        .checked_shl(u32::from(weights.log2_k))
+        .ok_or(ClaimsError::Internal)?;
+    let n_w = 1u128.checked_shl(log2_n_w).ok_or(ClaimsError::Internal)?;
+    let p_w = u128::from(weights.mask_coeffs);
+    let target_num = k_w.checked_add(p_w).ok_or(ClaimsError::Internal)?;
+    if protocol == Protocol::Two && (weights.mask_coeffs == 0 || target_num >= n_w) {
+        return Ok(false);
+    }
+    for matrix in crate::weights::Matrix::ALL {
+        let (k_t, committed) = matrix_width(claims, public, matrix, k_w)?;
+        let n_t = k_t
+            .checked_shl(u32::from(weights.log2_inv_rate))
+            .ok_or(ClaimsError::Internal)?;
+        if n_t > MAX_WEIGHT_CODEWORD {
+            return Ok(false);
+        }
+        if protocol == Protocol::Two && committed {
+            let lhs = k_t
+                .checked_add(p_w)
+                .and_then(|num| num.checked_mul(n_w))
+                .ok_or(ClaimsError::Internal)?;
+            let rhs = target_num.checked_mul(n_t).ok_or(ClaimsError::Internal)?;
+            if lhs > rhs {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::claims::{AdviceLayoutParams, ArchFamily, CommitmentLayout, GadgetPolicy, RopeSpec};
+
+    /// A minimal claim list whose public part passes [`check_public`] with every site 1-class
+    /// `pot` (so `ChannelParams` is uncommitted, `m_CP == 0`) and every architecture matrix at
+    /// `out_pad · in_pad = 1024 · 1024 = 2^20`.
+    fn base_claims() -> ClaimList {
+        let eps = Rational::new(1, 100_000).unwrap();
+        let arch = ArchSpec {
+            family: ArchFamily::LlamaV3,
+            n_layers: 1,
+            d_model: 1_024,
+            n_heads: 64,
+            n_kv_heads: 64,
+            d_head: 16,
+            d_ff: 1_024,
+            vocab: 1_024,
+            max_context: 16,
+            rope: RopeSpec {
+                theta: 500_000,
+                factor: 8,
+                low_freq_factor: 1,
+                high_freq_factor: 4,
+                original_max: 8_192,
+                bits: 14,
+            },
+            rms_eps: eps,
+        };
+        let mut act_exponents = vec![(QuantPoint::Embed, -6)];
+        let mut shift_class_sets = Vec::new();
+        for site in Site::ALL {
+            let point = QuantPoint::Layer { layer: 0, site };
+            if site.is_int8() {
+                act_exponents.push((point, -6));
+            }
+            shift_class_sets.push((point, vec![20]));
+        }
+        act_exponents.push((QuantPoint::FinalNorm, -6));
+        shift_class_sets.push((QuantPoint::FinalNorm, vec![20]));
+        let scale = Rational::new(1, 1).unwrap();
+        ClaimList {
+            protocol_version: PROTOCOL_VERSION_2,
+            params: ParamSetId::new("live-64/1").unwrap(),
+            arch,
+            profile: Profile::Servable,
+            quant: PublicQuantSpec {
+                act_exponents,
+                residual_exponent: -6,
+                residual_bits: 24,
+                rsqrt_kappa: 10,
+                rms_eps_int: 1,
+                exp_sigma: 12,
+                score_scales: vec![(0, scale)],
+                shift_class_sets,
+                affine_sites: Vec::new(),
+                rope: arch.rope,
+                logits_bits: 16,
+                logits_exponent: -6,
+            },
+            silu_in_exponents: vec![(0, -6)],
+            tables: Vec::new(),
+            gadget_policy: GadgetPolicy {
+                max_log2_rows: 24,
+                query_block: 16,
+                limb_bits: 16,
+            },
+            layout: CommitmentLayout {
+                advice: AdviceLayoutParams {
+                    log2_k: 22,
+                    log2_inv_rate: 1,
+                    mask_coeffs: 160,
+                    row_block: 32,
+                    segments: 8,
+                },
+                weights: WeightLayoutParams {
+                    log2_k: 20,
+                    log2_inv_rate: 2,
+                    mask_coeffs: 65_536,
+                    blinding_rows: 4_096,
+                },
+            },
+        }
+    }
+
+    #[test]
+    fn weight_layout_enforces_coset_ceilings_and_protocol_2_masked_subcodes() {
+        let claims = base_claims();
+        let public = check_public(&claims).unwrap();
+        let base = claims.layout.weights;
+        assert_eq!(
+            weight_layout_holds(&claims, &public, base, Protocol::One),
+            Ok(true)
+        );
+        assert_eq!(
+            weight_layout_holds(&claims, &public, base, Protocol::Two),
+            Ok(true)
+        );
+
+        // P_W = 0: allowed in unmasked protocol/1, refused in masked protocol/2.
+        let unmasked = WeightLayoutParams {
+            mask_coeffs: 0,
+            ..base
+        };
+        assert_eq!(
+            weight_layout_holds(&claims, &public, unmasked, Protocol::One),
+            Ok(true)
+        );
+        assert_eq!(
+            weight_layout_holds(&claims, &public, unmasked, Protocol::Two),
+            Ok(false)
+        );
+
+        // log2_inv_rate = 0: rate 1 has no disjoint evaluation blowup in either protocol, even
+        // when `mask_coeffs == 0` in protocol/1.
+        for protocol in [Protocol::One, Protocol::Two] {
+            assert_eq!(
+                weight_layout_holds(
+                    &claims,
+                    &public,
+                    WeightLayoutParams {
+                        log2_k: 8,
+                        log2_inv_rate: 0,
+                        mask_coeffs: 0,
+                        ..base
+                    },
+                    protocol
+                ),
+                Ok(false),
+                "{protocol:?} mask_coeffs=0"
+            );
+            assert_eq!(
+                weight_layout_holds(
+                    &claims,
+                    &public,
+                    WeightLayoutParams {
+                        log2_k: 8,
+                        log2_inv_rate: 0,
+                        mask_coeffs: 1,
+                        ..base
+                    },
+                    protocol
+                ),
+                Ok(false),
+                "{protocol:?} mask_coeffs=1"
+            );
+        }
+
+        // log2_k + log2_inv_rate = 32 is the largest 2-adic subgroup; 33 and overflow are refused
+        // in both protocols, including narrow protocol/1 claims where every `k_T = 2^20 < k_W` has
+        // `n_T = 2^22 <= 2^32`.
+        assert_eq!(
+            weight_layout_holds(
+                &claims,
+                &public,
+                WeightLayoutParams {
+                    log2_k: 31,
+                    log2_inv_rate: 2,
+                    mask_coeffs: 0,
+                    ..base
+                },
+                Protocol::One
+            ),
+            Ok(false)
+        );
+        let mut wide = claims.clone();
+        wide.arch.d_model = 1 << 15;
+        wide.arch.n_heads = 1 << 11;
+        wide.arch.n_kv_heads = 1 << 11;
+        wide.arch.d_ff = 1 << 15;
+        wide.arch.vocab = 1 << 18;
+        let wide_public = check_public(&wide).unwrap();
+        for protocol in [Protocol::One, Protocol::Two] {
+            assert_eq!(
+                weight_layout_holds(
+                    &wide,
+                    &wide_public,
+                    WeightLayoutParams {
+                        log2_k: 30,
+                        log2_inv_rate: 2,
+                        mask_coeffs: 1,
+                        ..base
+                    },
+                    protocol
+                ),
+                Ok(true),
+                "{protocol:?} log2_n_w=32"
+            );
+            assert_eq!(
+                weight_layout_holds(
+                    &wide,
+                    &wide_public,
+                    WeightLayoutParams {
+                        log2_k: 30,
+                        log2_inv_rate: 3,
+                        mask_coeffs: 1,
+                        ..base
+                    },
+                    protocol
+                ),
+                Ok(false),
+                "{protocol:?} log2_n_w=33 (30+3)"
+            );
+            assert_eq!(
+                weight_layout_holds(
+                    &wide,
+                    &wide_public,
+                    WeightLayoutParams {
+                        log2_k: 31,
+                        log2_inv_rate: 2,
+                        mask_coeffs: 1,
+                        ..base
+                    },
+                    protocol
+                ),
+                Ok(false),
+                "{protocol:?} log2_n_w=33 (31+2)"
+            );
+            assert_eq!(
+                weight_layout_holds(
+                    &wide,
+                    &wide_public,
+                    WeightLayoutParams {
+                        log2_k: u8::MAX,
+                        log2_inv_rate: 2,
+                        mask_coeffs: 1,
+                        ..base
+                    },
+                    protocol
+                ),
+                Ok(false),
+                "{protocol:?} log2_k=255"
+            );
+        }
+
+        // Exact boundary k_W + P_W < n_W in protocol/2: at k_W = 2^20 and n_W = 2^22,
+        // P_W = 3·2^20 − 1 passes while P_W = 3·2^20 (full rate ρ'_W = 1) and P_W = 3·2^20 + 1
+        // (ρ'_W > 1) are refused in protocol/2 (and unreferenced in protocol/1).
+        let max_subcode_mask = 3 * (1u32 << 20) - 1;
+        assert_eq!(
+            weight_layout_holds(
+                &claims,
+                &public,
+                WeightLayoutParams {
+                    mask_coeffs: max_subcode_mask,
+                    ..base
+                },
+                Protocol::Two
+            ),
+            Ok(true)
+        );
+        assert_eq!(
+            weight_layout_holds(
+                &claims,
+                &public,
+                WeightLayoutParams {
+                    mask_coeffs: max_subcode_mask + 1,
+                    ..base
+                },
+                Protocol::Two
+            ),
+            Ok(false)
+        );
+        assert_eq!(
+            weight_layout_holds(
+                &claims,
+                &public,
+                WeightLayoutParams {
+                    mask_coeffs: max_subcode_mask + 2,
+                    ..base
+                },
+                Protocol::Two
+            ),
+            Ok(false)
+        );
+        assert_eq!(
+            weight_layout_holds(
+                &claims,
+                &public,
+                WeightLayoutParams {
+                    mask_coeffs: max_subcode_mask + 1,
+                    ..base
+                },
+                Protocol::One
+            ),
+            Ok(true)
+        );
+
+        // RFC-0007 step 6 / RFC-0040 / SP-8: even when `log2_k + log2_inv_rate <= 32` and every
+        // matrix satisfies `k_T >= k_W`, a wide-input matrix with `in_pad > k_W` can push
+        // `n_T = k_T · 2^{log2_inv_rate}` past `2^32`. At `log2_inv_rate = 2`:
+        // - `d_ff = 2^30` (`in_pad = 2^30`, `n_Down = 2^32`) is at the inclusive ceiling in both
+        //   protocols;
+        // - `d_ff = 2^30 + 1` (`in_pad = 2^31`, `n_Down = 2^33 > 2^32`) has no 2-adic evaluation
+        //   coset in Goldilocks and must be refused in both protocols.
+        let mut at_coset_ceiling = claims.clone();
+        at_coset_ceiling.arch.d_ff = 1 << 30;
+        let at_coset_public = check_public(&at_coset_ceiling).unwrap();
+        for protocol in [Protocol::One, Protocol::Two] {
+            assert_eq!(
+                weight_layout_holds(&at_coset_ceiling, &at_coset_public, base, protocol),
+                Ok(true),
+                "{protocol:?} at 2^32"
+            );
+        }
+
+        let mut past_coset_ceiling = claims.clone();
+        past_coset_ceiling.arch.d_ff = (1 << 30) + 1;
+        let past_coset_public = check_public(&past_coset_ceiling).unwrap();
+        for protocol in [Protocol::One, Protocol::Two] {
+            assert_eq!(
+                weight_layout_holds(&past_coset_ceiling, &past_coset_public, base, protocol),
+                Ok(false),
+                "{protocol:?} past 2^32"
+            );
+        }
+    }
+
+    #[test]
+    fn matrix_width_matches_rfc_0040_wide_narrow_and_exempt_cases() {
+        use crate::weights::Matrix;
+        let kw = 1u128 << 20;
+
+        // Uncommitted `ChannelParams` (`m_CP == 0`) uses `C = 1` (`k_CP = 16 · 1 · 1 = 16`) with
+        // `committed = false`, while all nine architecture matrices hit `(k_W = 2^20, true)`.
+        let base = base_claims();
+        let base_public = check_public(&base).unwrap();
+        assert_eq!(
+            matrix_width(&base, &base_public, Matrix::ChannelParams, kw),
+            Ok((16, false))
+        );
+        for matrix in Matrix::ALL {
+            if matrix != Matrix::ChannelParams {
+                assert_eq!(
+                    matrix_width(&base, &base_public, matrix, kw),
+                    Ok((kw, true)),
+                    "{matrix:?}"
+                );
+            }
+        }
+
+        // Wide-input `Down` (`in_pad = 2^21 > k_W`): `max(in_pad, min(k_W, full))` must return
+        // `in_pad = 2^21`, not `k_W = 2^20`.
+        let mut wide_in = base.clone();
+        wide_in.arch.d_ff = 1 << 21;
+        let wide_in_public = check_public(&wide_in).unwrap();
+        assert_eq!(
+            matrix_width(&wide_in, &wide_in_public, Matrix::Down, kw),
+            Ok((1 << 21, true))
+        );
+        assert_eq!(
+            matrix_width(&wide_in, &wide_in_public, Matrix::Gate, kw),
+            Ok((kw, true))
+        );
+
+        // Wide committed `ChannelParams` (`16 · 1 · 2^17 = 2^21 > k_W`) is capped at `k_W`, while
+        // narrow committed `ChannelParams` (`16 · 1 · 1024 = 2^14 < k_W`) keeps `2^14`.
+        let mut wide_cp = base.clone();
+        wide_cp.arch.d_ff = 1 << 17;
+        for (_, shifts) in &mut wide_cp.quant.shift_class_sets {
+            // Keep only `Silu` (`Gate` -> `d_ff = 2^17`) multi-class.
+            *shifts = vec![20];
+        }
+        for (p, shifts) in &mut wide_cp.quant.shift_class_sets {
+            if *p
+                == (QuantPoint::Layer {
+                    layer: 0,
+                    site: Site::Silu,
+                })
+            {
+                *shifts = vec![20, 21];
+            }
+        }
+        let wide_cp_public = check_public(&wide_cp).unwrap();
+        assert_eq!(
+            matrix_width(&wide_cp, &wide_cp_public, Matrix::ChannelParams, kw),
+            Ok((kw, true))
+        );
+
+        let mut narrow_cp = base;
+        for (p, shifts) in &mut narrow_cp.quant.shift_class_sets {
+            if *p
+                == (QuantPoint::Layer {
+                    layer: 0,
+                    site: Site::RopeQ,
+                })
+            {
+                *shifts = vec![20, 21];
+            }
+        }
+        let narrow_cp_public = check_public(&narrow_cp).unwrap();
+        assert_eq!(
+            matrix_width(&narrow_cp, &narrow_cp_public, Matrix::ChannelParams, kw),
+            Ok((1 << 14, true))
+        );
+    }
 }

@@ -27,7 +27,7 @@ mod op;
 mod types;
 mod weights;
 
-pub use claim::{ClaimList, CommitmentLayout, GadgetPolicy, PROTOCOL_VERSION};
+pub use claim::{ClaimList, CommitmentLayout, GadgetPolicy, PROTOCOL_VERSION, PROTOCOL_VERSION_2};
 pub use error::IrError;
 pub use files::{LogitsFile, TokenFile};
 pub use graph::{Graph, GraphBuilder, Node};

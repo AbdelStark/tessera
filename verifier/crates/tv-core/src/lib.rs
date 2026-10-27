@@ -40,7 +40,7 @@
 //! | [`claims::ClaimList`] | the claim list's schema, decoded from its sealed envelope and encoded back for `claim_list_digest` (RFC-0007, RFC-0026, RFC-0042) |
 //! | [`protocol`] | independently bounded protocol/1 message and envelope decoding, field-based encoding and public-statement hashing (RFC-0036); syntax only |
 //! | [`params::ParamSet`] | the parameter sets the verifier accepts and the layout each prescribes (RFC-0014, RFC-0026) |
-//! | [`validation::validate`] | claim-list validation, RFC-0007 'Verifier validation' in RFC-0039's order: steps 1 to 7, and RFC-0019 step 2 before them |
+//! | [`validation::validate`] / [`validation::validate_in`] | claim-list validation, RFC-0007 'Verifier validation' in RFC-0039's order: steps 1 to 7, RFC-0019 step 2 before them, every weight matrix's `2^32` codeword ceiling, and protocol/2's masked weight rate bound (RFC-0012, RFC-0040) |
 //! | [`advice::Layout`] | complete public advice geometry, source locations, zero rows, segments and weighted whole-claim opening images (RFC-0050) |
 //! | [`model_openings::Claims`] | every complete-model opening obligation, preserving original source points, layer coefficients and external certificate debts |
 //! | [`validation::check_public`] | steps 2.1 to 2.3, which give the public part the lowering reads |

@@ -204,6 +204,27 @@ pub enum PcsError {
         /// The weight type.
         matrix: WeightMatrix,
     },
+    /// A masked weight layout whose nominal effective rate `(k_W + P_W) / n_W` reaches or exceeds
+    /// 1, leaving no Reed–Solomon redundancy at the target width (RFC-0012 'Layout', #564).
+    MaskedWeightRate {
+        /// `log2 k_W`.
+        log2_k: u8,
+        /// `log2` of the inverse rate.
+        log2_inv_rate: u8,
+        /// `P_W`, the mask coefficients per row.
+        mask_coeffs: u32,
+    },
+    /// A committed weight matrix narrower than the masked layout's target width `k_W`, which
+    /// raises its effective rate `(k_T + P_W) / n_T` above `(k_W + P_W) / n_W` in
+    /// `tessera-protocol/2` (RFC-0012 'Layout', #564).
+    NarrowWeight {
+        /// The first committed matrix in [`WeightMatrix`] order whose width is below `k_W`.
+        matrix: WeightMatrix,
+        /// `log2 k_T`.
+        log2_k: u32,
+        /// `log2 k_W`.
+        min_log2_k: u32,
+    },
     /// A weight tensor, or a weight's channel parameters, that the layout has no place for:
     /// the channel parameters' matrix, a layer the type does not have (only layer 0 for
     /// `Embed` and `LmHead`, `n_layers` layers for the others), or channel parameters for a
@@ -490,6 +511,23 @@ impl fmt::Display for PcsError {
             Self::EmptyWeight { matrix } => write!(
                 f,
                 "the {matrix:?} weight type has at least 1 output and 1 input channel"
+            ),
+            Self::MaskedWeightRate {
+                log2_k,
+                log2_inv_rate,
+                mask_coeffs,
+            } => write!(
+                f,
+                "masked weight layout 2^{log2_k} + {mask_coeffs} reaches or exceeds codeword length 2^{}",
+                u32::from(*log2_k) + u32::from(*log2_inv_rate)
+            ),
+            Self::NarrowWeight {
+                matrix,
+                log2_k,
+                min_log2_k,
+            } => write!(
+                f,
+                "the {matrix:?} matrix has width 2^{log2_k}, below the masked weight layout's 2^{min_log2_k}"
             ),
             Self::WeightPlace {
                 matrix,

@@ -14,13 +14,14 @@ mod claim_support;
 
 use claim_support::{
     affine_index, at, golden, goldens, id, live_64_layout, make_affine, make_pot, mismatch,
-    ni_100_layout, pot_index, test_small_layout, twin, validated,
+    ni_100_layout, pot_index, seal, test_small_layout, twin, validated, with_layers,
 };
 use tv_codec::{DecodeLimits, Rational};
 use tv_core::claims::{ClaimList, Profile, QuantPoint, Site};
 use tv_core::params::ParamSet;
 use tv_core::validation::{
-    ClaimsError, PROTOCOL_VERSION, StatementField, check_public, load, validate,
+    ClaimsError, PROTOCOL_VERSION, PROTOCOL_VERSION_2, Protocol, StatementField, check_public,
+    load, load_in, validate, validate_in,
 };
 use tv_tables::{TableId, TableKind};
 
@@ -1255,4 +1256,780 @@ fn softmax_auxiliary_ranges_are_canonical_even_with_valid_table_digests() {
     let tid = missing.tables[first].id;
     missing.tables.remove(first);
     assert_eq!(mismatch(&missing), StatementField::Table { table: tid });
+}
+
+// ----- Protocol/2 version tag and step-6 masked weight rate (RFC-0012, #564) -----------------
+
+struct CustomArch<'a> {
+    params: &'a str,
+    profile: Profile,
+    n_layers: u32,
+    n_heads: u32,
+    n_kv_heads: u32,
+    d_head: u32,
+    d_ff: u32,
+    vocab: u32,
+}
+
+/// Builds a claim list at `PROTOCOL_VERSION_2` whose public part, profile, tables, gadget
+/// selection, and advice layout all pass steps 2..6, with every rescale site initialized to a
+/// single `pot` class `[18]` (`m_CP == 0`) before `edit_public` customizes it.
+fn custom_protocol_2_claims(
+    spec: CustomArch<'_>,
+    edit_public: impl FnOnce(&mut ClaimList),
+) -> ClaimList {
+    let template = match spec.profile {
+        Profile::Servable => SERVABLE,
+        Profile::Minimal => MINIMAL,
+    };
+    let mut claims = with_layers(&golden(template), spec.n_layers);
+    claims.protocol_version = PROTOCOL_VERSION_2;
+    claims.params = id(spec.params);
+    claims.layout = ParamSet::accept(&claims.params)
+        .expect("accepted parameter set")
+        .layout();
+    claims.arch.n_heads = spec.n_heads;
+    claims.arch.n_kv_heads = spec.n_kv_heads;
+    claims.arch.d_head = spec.d_head;
+    claims.arch.d_model = spec.n_heads * spec.d_head;
+    claims.arch.d_ff = spec.d_ff;
+    claims.arch.vocab = spec.vocab;
+    claims.arch.max_context = 4;
+
+    for (_, exp) in &mut claims.quant.act_exponents {
+        *exp = -6;
+    }
+    claims.quant.residual_exponent = -6;
+    claims.quant.residual_bits = 16;
+    claims.quant.rsqrt_kappa = 8;
+    claims.quant.rms_eps_int = 1;
+    claims.quant.exp_sigma = 12;
+    for (_, scale) in &mut claims.quant.score_scales {
+        *scale = ratio(1, 1);
+    }
+    for (_, exp) in &mut claims.silu_in_exponents {
+        *exp = -6;
+    }
+    let points: Vec<QuantPoint> = claims
+        .quant
+        .shift_class_sets
+        .iter()
+        .map(|(p, _)| *p)
+        .chain(claims.quant.affine_sites.iter().map(|(p, _)| *p))
+        .collect();
+    for point in points {
+        make_pot(&mut claims, point, &[18]);
+    }
+
+    claims.gadget_policy.max_log2_rows = 32;
+    claims.gadget_policy.limb_bits = 16;
+    claims.gadget_policy.query_block = 4;
+
+    edit_public(&mut claims);
+
+    let public = check_public(&claims).expect("valid public part");
+    let graph = tv_core::lowering::lower(&public, claims.arch.max_context).expect("lowers");
+    let selected = tv_core::selection::derive(&graph, claims.gadget_policy).expect("selects");
+    claims.tables = selected
+        .tables
+        .iter()
+        .map(|t| {
+            tv_tables::Table::generate(t.id, t.kind.clone())
+                .expect("generates canonical table")
+                .spec()
+                .clone()
+        })
+        .collect();
+    claims
+}
+
+fn mismatch_in(claims: &ClaimList, protocol: Protocol) -> StatementField {
+    let error = match validate_in(claims, protocol) {
+        Err(error) => error,
+        Ok(_) => panic!("expected a statement mismatch in {protocol:?}, the claim list validated"),
+    };
+    assert!(error.is_rejection(), "{error:?}");
+    assert_eq!(error.code(), "REJ-STATEMENT", "{error:?}");
+    match error {
+        ClaimsError::StatementMismatch { field } => field,
+        other => panic!("expected a statement mismatch, got {other:?}"),
+    }
+}
+
+fn assert_refused_in_protocol_2_only(claims: &ClaimList, what: &str) {
+    assert_eq!(claims.protocol_version, PROTOCOL_VERSION_2, "{what}");
+    assert_eq!(
+        mismatch_in(claims, Protocol::Two),
+        Layout,
+        "{what} (validate_in)"
+    );
+    let envelope = seal(&claims.to_tce());
+    match load_in(&envelope, &DecodeLimits::MESSAGE, Protocol::Two) {
+        Err(ClaimsError::StatementMismatch { field: Layout }) => {}
+        other => panic!("{what} (load_in): expected Layout mismatch, got {other:?}"),
+    }
+
+    let mut p1 = claims.clone();
+    p1.protocol_version = PROTOCOL_VERSION;
+    let v_default = validated(&p1);
+    assert_eq!(v_default.protocol(), Protocol::One, "{what}");
+    let v_explicit = validate_in(&p1, Protocol::One)
+        .unwrap_or_else(|e| panic!("{what}: expected Protocol::One to accept: {e:?}"));
+    assert_eq!(v_explicit.protocol(), Protocol::One, "{what}");
+}
+
+#[test]
+fn protocol_aware_entry_points_check_each_protocols_version_tag() {
+    assert_eq!(PROTOCOL_VERSION, 0);
+    assert_eq!(PROTOCOL_VERSION_2, 2);
+
+    // Protocol::One entry points (`validate`, `load`, and explicit `Protocol::One`) accept 0 and
+    // keep rejecting `protocol_version = 2` at step 1 until #159 wires protocol/2 into the driver.
+    let p1 = twin(SERVABLE);
+    assert_eq!(validated(&p1).protocol(), Protocol::One);
+    assert_eq!(
+        validate_in(&p1, Protocol::One).unwrap().protocol(),
+        Protocol::One
+    );
+    let p1_env = seal(&p1.to_tce());
+    assert_eq!(
+        load(&p1_env, &DecodeLimits::MESSAGE).unwrap().1.protocol(),
+        Protocol::One
+    );
+    assert_eq!(
+        load_in(&p1_env, &DecodeLimits::MESSAGE, Protocol::One)
+            .unwrap()
+            .1
+            .protocol(),
+        Protocol::One
+    );
+    for wrong in [1u16, PROTOCOL_VERSION_2, 3, u16::MAX] {
+        let mut bad = p1.clone();
+        bad.protocol_version = wrong;
+        assert_eq!(mismatch(&bad), ProtocolVersion, "validate v={wrong}");
+        assert_eq!(
+            mismatch_in(&bad, Protocol::One),
+            ProtocolVersion,
+            "validate_in(One) v={wrong}"
+        );
+        let bad_env = seal(&bad.to_tce());
+        assert!(matches!(
+            load(&bad_env, &DecodeLimits::MESSAGE),
+            Err(ClaimsError::StatementMismatch {
+                field: ProtocolVersion
+            })
+        ));
+        assert!(matches!(
+            load_in(&bad_env, &DecodeLimits::MESSAGE, Protocol::One),
+            Err(ClaimsError::StatementMismatch {
+                field: ProtocolVersion
+            })
+        ));
+    }
+
+    // Protocol::Two entry points accept `PROTOCOL_VERSION_2` (2) when every committed matrix meets
+    // `k_T >= k_W`, and refuse 0, 1, 3, and `u16::MAX` at step 1.
+    let p2 = custom_protocol_2_claims(
+        CustomArch {
+            params: "live-64/1",
+            profile: Profile::Servable,
+            n_layers: 1,
+            n_heads: 64,
+            n_kv_heads: 64,
+            d_head: 16,
+            d_ff: 1_024,
+            vocab: 1_024,
+        },
+        |_| {},
+    );
+    let v2 = validate_in(&p2, Protocol::Two).expect("wide protocol/2 claim list validates");
+    assert_eq!(v2.protocol(), Protocol::Two);
+    assert_eq!(v2.params(), ParamSet::Live64);
+    let p2_env = seal(&p2.to_tce());
+    let (opened, loaded_v2) =
+        load_in(&p2_env, &DecodeLimits::MESSAGE, Protocol::Two).expect("sealed protocol/2 loads");
+    assert_eq!(opened, p2);
+    assert_eq!(loaded_v2.protocol(), Protocol::Two);
+
+    for wrong in [PROTOCOL_VERSION, 1u16, 3, u16::MAX] {
+        let mut bad = p2.clone();
+        bad.protocol_version = wrong;
+        assert_eq!(
+            mismatch_in(&bad, Protocol::Two),
+            ProtocolVersion,
+            "validate_in(Two) v={wrong}"
+        );
+        let bad_env = seal(&bad.to_tce());
+        assert!(matches!(
+            load_in(&bad_env, &DecodeLimits::MESSAGE, Protocol::Two),
+            Err(ClaimsError::StatementMismatch {
+                field: ProtocolVersion
+            })
+        ));
+    }
+}
+
+#[test]
+fn protocol_2_admits_exact_minimum_width_architecture_matrices_and_exempts_uncommitted_channel_params()
+ {
+    // Exact boundary `k_T == k_W = 2^20` (`ρ'_T == ρ'_W`) across all nine architecture matrices at
+    // both production parameter sets, with `m_CP == 0` (`16 · 1 · 1 = 16 < 2^20` exempt).
+    for (params, expected_set) in [
+        ("live-64/1", ParamSet::Live64),
+        ("ni-100/1", ParamSet::Ni100),
+    ] {
+        let exact = custom_protocol_2_claims(
+            CustomArch {
+                params,
+                profile: Profile::Servable,
+                n_layers: 1,
+                n_heads: 64,
+                n_kv_heads: 64,
+                d_head: 16,
+                d_ff: 1_024,
+                vocab: 1_024,
+            },
+            |_| {},
+        );
+        let v = validate_in(&exact, Protocol::Two).unwrap_or_else(|e| panic!("{params}: {e:?}"));
+        assert_eq!(v.params(), expected_set);
+        assert_eq!(v.protocol(), Protocol::Two);
+    }
+
+    // Non-power-of-two `d_ff = 513` and `vocab = 513` round up to `1024`, so `out_pad · in_pad =
+    // 1024 · 1024 = 2^20 == k_W` even though unpadded `513 · 1024 < 2^20`.
+    let padded_boundary = custom_protocol_2_claims(
+        CustomArch {
+            params: "live-64/1",
+            profile: Profile::Servable,
+            n_layers: 1,
+            n_heads: 64,
+            n_kv_heads: 64,
+            d_head: 16,
+            d_ff: 513,
+            vocab: 513,
+        },
+        |_| {},
+    );
+    validate_in(&padded_boundary, Protocol::Two).expect("padded dimensions meet k_W");
+
+    // Wide-input matrix (`in_pad = 2^21 > k_W = 2^20` on `Down` in `minimal`): `k_Down = 2^21`,
+    // `n_Down = 2^23`, so `ρ'_Down = (2^21 + 2^16) / 2^23 < ρ'_W = (2^20 + 2^16) / 2^22`.
+    let wide_input = custom_protocol_2_claims(
+        CustomArch {
+            params: "live-64/1",
+            profile: Profile::Minimal,
+            n_layers: 1,
+            n_heads: 64,
+            n_kv_heads: 64,
+            d_head: 16,
+            d_ff: 1 << 21,
+            vocab: 1_024,
+        },
+        |_| {},
+    );
+    validate_in(&wide_input, Protocol::Two).expect("k_Down > k_W has strictly lower masked rate");
+}
+
+#[test]
+fn protocol_2_refuses_narrow_architecture_matrices_with_layout_while_protocol_1_admits_them() {
+    // RFC-0012's full-code forgery shape: `d_model = 128` at `live-64/1` gives `k_Q = 2^14` and
+    // `n_Q = P_W = 2^16` (`k_Q + P_W > n_Q`, `ρ'_Q > 1`), while `Embed`, `Gate`, `Up`, `Down`,
+    // and `LmHead` all have `128 · 8192 = 2^20 == k_W`.
+    let forgery_d128 = custom_protocol_2_claims(
+        CustomArch {
+            params: "live-64/1",
+            profile: Profile::Servable,
+            n_layers: 1,
+            n_heads: 8,
+            n_kv_heads: 8,
+            d_head: 16,
+            d_ff: 8_192,
+            vocab: 8_192,
+        },
+        |_| {},
+    );
+    assert_refused_in_protocol_2_only(&forgery_d128, "d_model = 128 full-code forgery shape");
+
+    // `d_model = 512`, `d_ff = 2048`, `vocab = 2048`: `Q`, `K`, `V`, `O` have `k_T = 2^18`
+    // (`n_T = 2^20`, `k_T + P_W < n_T` proper subcode, yet `ρ'_T > ρ'_W`).
+    let narrow_attn = custom_protocol_2_claims(
+        CustomArch {
+            params: "ni-100/1",
+            profile: Profile::Servable,
+            n_layers: 1,
+            n_heads: 32,
+            n_kv_heads: 32,
+            d_head: 16,
+            d_ff: 2_048,
+            vocab: 2_048,
+        },
+        |_| {},
+    );
+    assert_refused_in_protocol_2_only(&narrow_attn, "narrow attention projections at k_T = 2^18");
+
+    // Only `K` and `V` narrow (`n_kv_heads = 32`, `kv = 512`, `k_K = k_V = 2^19 < 2^20`, while
+    // `Q`, `O`, `Embed`, `Gate`, `Up`, `Down`, `LmHead` all have `1024 · 1024 = 2^20`).
+    let narrow_kv = custom_protocol_2_claims(
+        CustomArch {
+            params: "live-64/1",
+            profile: Profile::Servable,
+            n_layers: 1,
+            n_heads: 64,
+            n_kv_heads: 32,
+            d_head: 16,
+            d_ff: 1_024,
+            vocab: 1_024,
+        },
+        |_| {},
+    );
+    assert_refused_in_protocol_2_only(&narrow_kv, "narrow K and V projections alone");
+
+    // Only `Embed` and `LmHead` narrow (`vocab = 512`, `k_Embed = k_LmHead = 2^19 < 2^20`, while
+    // every layer projection has `1024 · 1024 = 2^20`).
+    let narrow_vocab = custom_protocol_2_claims(
+        CustomArch {
+            params: "live-64/1",
+            profile: Profile::Servable,
+            n_layers: 1,
+            n_heads: 64,
+            n_kv_heads: 64,
+            d_head: 16,
+            d_ff: 1_024,
+            vocab: 512,
+        },
+        |_| {},
+    );
+    assert_refused_in_protocol_2_only(&narrow_vocab, "narrow Embed and LmHead alone");
+
+    // Only `Gate`, `Up`, and `Down` narrow (`d_ff = 512`, `k_Gate = k_Up = k_Down = 2^19 < 2^20`,
+    // while `Embed`, `Q`, `K`, `V`, `O`, `LmHead` all have `1024 · 1024 = 2^20`).
+    let narrow_mlp = custom_protocol_2_claims(
+        CustomArch {
+            params: "live-64/1",
+            profile: Profile::Servable,
+            n_layers: 1,
+            n_heads: 64,
+            n_kv_heads: 64,
+            d_head: 16,
+            d_ff: 512,
+            vocab: 1_024,
+        },
+        |_| {},
+    );
+    assert_refused_in_protocol_2_only(&narrow_mlp, "narrow MLP projections alone");
+
+    // Every production twin of the tiny golden models (`d_model = 64`) is refused in protocol/2.
+    for name in [SERVABLE, MINIMAL, AFFINE, DEEP] {
+        let mut claims = twin(name);
+        claims.protocol_version = PROTOCOL_VERSION_2;
+        assert_refused_in_protocol_2_only(&claims, name);
+    }
+    let mut live_tiny = golden(SERVABLE);
+    live_tiny.params = id("live-64/1");
+    live_tiny.layout = live_64_layout();
+    live_tiny.protocol_version = PROTOCOL_VERSION_2;
+    assert_refused_in_protocol_2_only(&live_tiny, "tiny-2-servable at live-64/1");
+}
+
+#[test]
+fn protocol_2_checks_committed_channel_params_width_and_admits_its_boundary() {
+    // All nine architecture matrices meet `k_T = 2^20`, while a single 2-class `pot` site commits
+    // `ChannelParams` (`m_CP > 0`) at `16 · 1 · 1024 = 2^14 < 2^20`.
+    let narrow_pot_cp = custom_protocol_2_claims(
+        CustomArch {
+            params: "live-64/1",
+            profile: Profile::Servable,
+            n_layers: 1,
+            n_heads: 64,
+            n_kv_heads: 64,
+            d_head: 16,
+            d_ff: 1_024,
+            vocab: 1_024,
+        },
+        |c| make_pot(c, at(0, Site::RopeQ), &[18, 19]),
+    );
+    assert_refused_in_protocol_2_only(&narrow_pot_cp, "narrow 2-class pot ChannelParams");
+
+    // An affine site with every `pot` site 1-class also commits `ChannelParams` (`m_CP > 0`).
+    let narrow_affine_cp = custom_protocol_2_claims(
+        CustomArch {
+            params: "ni-100/1",
+            profile: Profile::Servable,
+            n_layers: 1,
+            n_heads: 64,
+            n_kv_heads: 64,
+            d_head: 16,
+            d_ff: 1_024,
+            vocab: 1_024,
+        },
+        |c| make_affine(c, at(0, Site::V), 20),
+    );
+    assert_refused_in_protocol_2_only(&narrow_affine_cp, "narrow affine ChannelParams");
+
+    // `C` is the maximum padded output width over weights that *have* `ChannelParams`, not over
+    // 1-class `pot` weights: `d_ff = 32_768` on 1-class `Gate`/`Up` does not rescue `RopeK` (`K`
+    // has `out = 1024`, so `C = 1024` and `16 · 2 · 1024 = 32_768 < 2^20`).
+    let uncounted_wide_mlp = custom_protocol_2_claims(
+        CustomArch {
+            params: "live-64/1",
+            profile: Profile::Servable,
+            n_layers: 2,
+            n_heads: 64,
+            n_kv_heads: 64,
+            d_head: 16,
+            d_ff: 32_768,
+            vocab: 1_024,
+        },
+        |c| {
+            for layer in 0..2 {
+                make_pot(c, at(layer, Site::RopeK), &[18, 19]);
+            }
+        },
+    );
+    assert_refused_in_protocol_2_only(
+        &uncounted_wide_mlp,
+        "1-class Gate/Up must not inflate ChannelParams C",
+    );
+
+    // Exact `L_pad` boundary on committed `ChannelParams` (`C = 1024`):
+    // - `n_layers = 32` gives `L_pad = 32` and `16 · 32 · 1024 = 2^19 < 2^20` (refused);
+    // - `n_layers = 33` gives `L_pad = 64` and `16 · 64 · 1024 = 2^20 == k_W` (admitted, even
+    //   though unpadded `16 · 33 · 1024 = 540_672 < 2^20`).
+    let cp_32_layers = custom_protocol_2_claims(
+        CustomArch {
+            params: "live-64/1",
+            profile: Profile::Servable,
+            n_layers: 32,
+            n_heads: 64,
+            n_kv_heads: 64,
+            d_head: 16,
+            d_ff: 1_024,
+            vocab: 1_024,
+        },
+        |c| {
+            for layer in 0..32 {
+                make_pot(c, at(layer, Site::RopeQ), &[18, 19]);
+            }
+        },
+    );
+    assert_refused_in_protocol_2_only(&cp_32_layers, "n_layers = 32 gives k_CP = 2^19 < k_W");
+
+    let cp_33_layers = custom_protocol_2_claims(
+        CustomArch {
+            params: "live-64/1",
+            profile: Profile::Servable,
+            n_layers: 33,
+            n_heads: 64,
+            n_kv_heads: 64,
+            d_head: 16,
+            d_ff: 1_024,
+            vocab: 1_024,
+        },
+        |c| {
+            for layer in 0..33 {
+                make_pot(c, at(layer, Site::RopeQ), &[18, 19]);
+            }
+        },
+    );
+    validate_in(&cp_33_layers, Protocol::Two)
+        .expect("n_layers = 33 pads L_pad to 64 and meets k_CP == k_W");
+
+    // Multi-site `C = max` across `ChannelParams`-bearing weights, including a narrower site
+    // (`MlpResidual`, `Down` `out = 1024`) after a wider non-power-of-two site (`Up` `out = 32_769`
+    // -> `padded = 65_536`, giving `16 · 1 · 65_536 = 2^20 == k_W`).
+    let cp_max_across_sites = custom_protocol_2_claims(
+        CustomArch {
+            params: "live-64/1",
+            profile: Profile::Servable,
+            n_layers: 1,
+            n_heads: 64,
+            n_kv_heads: 64,
+            d_head: 16,
+            d_ff: 32_769,
+            vocab: 1_024,
+        },
+        |c| {
+            make_pot(c, at(0, Site::RopeK), &[18, 19]);
+            make_affine(c, at(0, Site::Up), 24);
+            make_affine(c, at(0, Site::MlpResidual), 24);
+        },
+    );
+    validate_in(&cp_max_across_sites, Protocol::Two)
+        .expect("C takes max padded out across all ChannelParams-bearing sites");
+}
+
+#[cfg(feature = "test-params")]
+#[test]
+fn every_golden_claim_list_validates_under_protocol_2_at_test_small() {
+    // RFC-0012: all four conformance models at `test-small/1` (`k_W = 256, P_W = 64`) satisfy
+    // `k_T >= k_W` on every committed matrix (`Embed`..`ChannelParams`).
+    for g in goldens() {
+        let mut claims = ClaimList::open(&g.envelope, &DecodeLimits::MESSAGE).unwrap();
+        claims.protocol_version = PROTOCOL_VERSION_2;
+        let v = validate_in(&claims, Protocol::Two).unwrap_or_else(|e| panic!("{}: {e:?}", g.name));
+        assert_eq!(v.protocol(), Protocol::Two, "{}", g.name);
+        assert_eq!(v.params(), ParamSet::TestSmall, "{}", g.name);
+
+        let resealed = seal(&claims.to_tce());
+        let (_, loaded) = load_in(&resealed, &DecodeLimits::MESSAGE, Protocol::Two)
+            .unwrap_or_else(|e| panic!("{} load_in: {e:?}", g.name));
+        assert_eq!(loaded.protocol(), Protocol::Two, "{}", g.name);
+    }
+}
+
+#[cfg(feature = "test-params")]
+#[test]
+fn test_small_protocol_2_refuses_narrow_architecture_and_channel_params_matrices() {
+    // At `test-small/1` (`k_W = 256, P_W = 64`): `d_model = 16, d_ff = 16, vocab = 16` meets
+    // `k_T = 256 == k_W` when `m_CP == 0`, while `vocab = 8` drops `Embed` and `LmHead` to `128`.
+    let at_bound = custom_protocol_2_claims(
+        CustomArch {
+            params: "test-small/1",
+            profile: Profile::Servable,
+            n_layers: 1,
+            n_heads: 1,
+            n_kv_heads: 1,
+            d_head: 16,
+            d_ff: 16,
+            vocab: 16,
+        },
+        |_| {},
+    );
+    validate_in(&at_bound, Protocol::Two).expect("exact k_T == 256 at test-small/1");
+
+    let narrow_arch = custom_protocol_2_claims(
+        CustomArch {
+            params: "test-small/1",
+            profile: Profile::Servable,
+            n_layers: 1,
+            n_heads: 1,
+            n_kv_heads: 1,
+            d_head: 16,
+            d_ff: 16,
+            vocab: 8,
+        },
+        |_| {},
+    );
+    assert_refused_in_protocol_2_only(&narrow_arch, "test-small narrow Embed/LmHead");
+
+    // `d_head = 2, n_heads = 64, d_model = 128, n_kv_heads = 1` (`kv = 2`, `k_K = k_V = 256 == k_W`),
+    // `d_ff = 128, vocab = 128`, with `RopeK` 2-class `pot`: every architecture matrix meets `k_W`,
+    // while `ChannelParams` has `C = 2` and `k_CP = 16 · 1 · 2 = 32 < P_W = 64 < k_W = 256`.
+    let narrow_cp = custom_protocol_2_claims(
+        CustomArch {
+            params: "test-small/1",
+            profile: Profile::Servable,
+            n_layers: 1,
+            n_heads: 64,
+            n_kv_heads: 1,
+            d_head: 2,
+            d_ff: 128,
+            vocab: 128,
+        },
+        |c| make_pot(c, at(0, Site::RopeK), &[18, 19]),
+    );
+    assert_refused_in_protocol_2_only(&narrow_cp, "test-small narrow ChannelParams (k_CP < P_W)");
+}
+
+#[test]
+fn protocol_2_checks_precede_step_6s_masked_weight_rate_in_rfc_0039_order() {
+    // Base narrow protocol/2 claim list: fails at step 6 (`Layout`) alone.
+    let mut base = twin(SERVABLE);
+    base.protocol_version = PROTOCOL_VERSION_2;
+    assert_eq!(mismatch_in(&base, Protocol::Two), Layout);
+
+    // RFC-0019 step 2 (`Params`) precedes step 6.
+    let mut bad_params = base.clone();
+    bad_params.params = id("ni-101/1");
+    assert!(matches!(
+        validate_in(&bad_params, Protocol::Two),
+        Err(ClaimsError::Params { name }) if name.as_str() == "ni-101/1"
+    ));
+
+    // Step 1 (`ProtocolVersion`) precedes step 6.
+    let mut bad_version = base.clone();
+    bad_version.protocol_version = PROTOCOL_VERSION;
+    assert_eq!(mismatch_in(&bad_version, Protocol::Two), ProtocolVersion);
+
+    // Step 2.1 (`Architecture`) precedes step 6.
+    let mut bad_arch = base.clone();
+    bad_arch.arch.n_kv_heads = 3;
+    assert_eq!(mismatch_in(&bad_arch, Protocol::Two), Architecture);
+
+    // Step 2.2 (`Quantization`) precedes step 6.
+    let mut bad_quant = base.clone();
+    bad_quant.quant.rms_eps_int = 0;
+    assert_eq!(mismatch_in(&bad_quant, Protocol::Two), Quantization);
+
+    // Step 2.3 (`Rescaling`) precedes step 6.
+    let mut bad_rescale = base.clone();
+    make_affine(&mut bad_rescale, at(0, Site::V), 20);
+    assert_eq!(
+        mismatch_in(&bad_rescale, Protocol::Two),
+        StatementField::Rescaling { site: Site::V }
+    );
+
+    // Step 3 (`Profile`) precedes step 6.
+    let mut bad_profile = base.clone();
+    bad_profile.arch.d_ff = 132_105;
+    assert_eq!(mismatch_in(&bad_profile, Protocol::Two), ProfileField);
+
+    // Step 4 (`Table`) precedes step 6.
+    let mut bad_table = base.clone();
+    bad_table.tables[0].digest[0] ^= 1;
+    assert_eq!(
+        mismatch_in(&bad_table, Protocol::Two),
+        StatementField::Table { table: TableId(0) }
+    );
+
+    // Step 5.1 (`GadgetPolicy`) precedes step 6.
+    let mut bad_policy = base.clone();
+    bad_policy.gadget_policy.max_log2_rows = 40;
+    assert_eq!(mismatch_in(&bad_policy, Protocol::Two), GadgetPolicy);
+
+    // Step 5.2 (`Gadget`) precedes step 6.
+    let mut bad_gadget = base;
+    bad_gadget.gadget_policy.limb_bits = 0;
+    assert_eq!(
+        mismatch_in(&bad_gadget, Protocol::Two),
+        StatementField::Gadget {
+            gadget: tv_core::validation::GadgetId(1)
+        }
+    );
+}
+
+#[test]
+fn overwide_weight_matrix_codeword_past_two_to_32_is_refused_as_layout_in_both_protocols() {
+    use tv_core::weights::{self, Matrix};
+
+    // 1. Narrow `Profile::Minimal` reproducer (`d_model = 2, vocab = 2, max_context = 1`):
+    //    `d_ff = 2^30` (`in_pad = 2^30`, `n_Down = 2^32` at rate 1/4) is admitted in `Protocol::One`
+    //    and derives all ten weight layouts cleanly; `d_ff = 2^30 + 1` (`in_pad = 2^31`,
+    //    `n_Down = 2^33 > 2^32`) exceeds Goldilocks's 2-adic root of unity and must be rejected at
+    //    step 6 with `StatementField::Layout` rather than escaping to `weights::derive` (`SP-8`).
+    let build_narrow_minimal = |d_ff: u32| {
+        custom_protocol_2_claims(
+            CustomArch {
+                params: "live-64/1",
+                profile: Profile::Minimal,
+                n_layers: 1,
+                n_heads: 1,
+                n_kv_heads: 1,
+                d_head: 2,
+                d_ff,
+                vocab: 2,
+            },
+            |c| {
+                c.arch.max_context = 1;
+                make_pot(c, at(0, Site::Silu), &[10]);
+                make_pot(c, at(0, Site::MlpResidual), &[41]);
+            },
+        )
+    };
+
+    let mut narrow_at_ceiling_p1 = build_narrow_minimal(1 << 30);
+    narrow_at_ceiling_p1.protocol_version = PROTOCOL_VERSION;
+    assert_eq!(validated(&narrow_at_ceiling_p1).protocol(), Protocol::One);
+    let derived_narrow =
+        weights::derive(&narrow_at_ceiling_p1, 0).expect("n_Down == 2^32 derives weight layouts");
+    assert_eq!(derived_narrow[usize::from(Matrix::Down.tag())].log2_k(), 30);
+
+    let narrow_past_ceiling_p2 = build_narrow_minimal((1 << 30) + 1);
+    let mut narrow_past_ceiling_p1 = narrow_past_ceiling_p2.clone();
+    narrow_past_ceiling_p1.protocol_version = PROTOCOL_VERSION;
+    assert!(
+        weights::derive(&narrow_past_ceiling_p1, 0).is_err(),
+        "n_Down = 2^33 has no 2-adic coset in Goldilocks"
+    );
+    assert_eq!(mismatch(&narrow_past_ceiling_p1), Layout);
+    assert_eq!(mismatch_in(&narrow_past_ceiling_p1, Protocol::One), Layout);
+    assert_eq!(mismatch_in(&narrow_past_ceiling_p2, Protocol::Two), Layout);
+    let narrow_p1_env = seal(&narrow_past_ceiling_p1.to_tce());
+    assert!(matches!(
+        load(&narrow_p1_env, &DecodeLimits::MESSAGE),
+        Err(ClaimsError::StatementMismatch { field: Layout })
+    ));
+    assert!(matches!(
+        load_in(&narrow_p1_env, &DecodeLimits::MESSAGE, Protocol::One),
+        Err(ClaimsError::StatementMismatch { field: Layout })
+    ));
+    let narrow_p2_env = seal(&narrow_past_ceiling_p2.to_tce());
+    assert!(matches!(
+        load_in(&narrow_p2_env, &DecodeLimits::MESSAGE, Protocol::Two),
+        Err(ClaimsError::StatementMismatch { field: Layout })
+    ));
+
+    // Earlier RFC-0039 steps (e.g. step 5.1 `GadgetPolicy`) still precede step 6's `2^32` codeword
+    // ceiling in `Protocol::One`.
+    let mut bad_policy_p1 = narrow_past_ceiling_p1;
+    bad_policy_p1.gadget_policy.max_log2_rows = 40;
+    assert_eq!(mismatch(&bad_policy_p1), GadgetPolicy);
+
+    // 2. Across both production parameter sets (`live-64/1` and `ni-100/1`) at `d_model = 8` (the
+    //    widest `d_model` whose `Profile::Minimal` `Down` accumulator stays inside RFC-0006's
+    //    62-bit signed integer gadget domain at `d_ff = 2^30 + 1`) and `vocab = 2^18`: `d_ff = 2^30`
+    //    (`n_Down = 2^32`) is admitted by `Protocol::One` and `weights::derive`, whereas
+    //    `d_ff = 2^30 + 1` (`n_Down = 2^33 > 2^32`) is refused with `StatementField::Layout` in
+    //    both `Protocol::One` and `Protocol::Two` (never `Ok` and never `ClaimsError::Internal`).
+    for params in ["live-64/1", "ni-100/1"] {
+        let build_minimal = |d_ff: u32| {
+            custom_protocol_2_claims(
+                CustomArch {
+                    params,
+                    profile: Profile::Minimal,
+                    n_layers: 1,
+                    n_heads: 4,
+                    n_kv_heads: 4,
+                    d_head: 2,
+                    d_ff,
+                    vocab: 1 << 18,
+                },
+                |c| {
+                    c.arch.max_context = 1;
+                    c.quant.residual_bits = 8;
+                    make_pot(c, at(0, Site::Silu), &[12]);
+                    make_pot(c, at(0, Site::MlpResidual), &[43]);
+                },
+            )
+        };
+
+        let mut at_ceiling_p1 = build_minimal(1 << 30);
+        at_ceiling_p1.protocol_version = PROTOCOL_VERSION;
+        assert_eq!(validated(&at_ceiling_p1).protocol(), Protocol::One);
+        let derived = weights::derive(&at_ceiling_p1, 0)
+            .unwrap_or_else(|e| panic!("{params} n_Down == 2^32 derives weight layouts: {e:?}"));
+        assert_eq!(derived[usize::from(Matrix::Down.tag())].log2_k(), 30);
+
+        let past_ceiling_p2 = build_minimal((1 << 30) + 1);
+        assert_eq!(
+            mismatch_in(&past_ceiling_p2, Protocol::Two),
+            Layout,
+            "{params} p2 past 2^32"
+        );
+        let p2_env = seal(&past_ceiling_p2.to_tce());
+        assert!(matches!(
+            load_in(&p2_env, &DecodeLimits::MESSAGE, Protocol::Two),
+            Err(ClaimsError::StatementMismatch { field: Layout })
+        ));
+
+        let mut past_ceiling_p1 = past_ceiling_p2;
+        past_ceiling_p1.protocol_version = PROTOCOL_VERSION;
+        assert!(weights::derive(&past_ceiling_p1, 0).is_err());
+        assert_eq!(mismatch(&past_ceiling_p1), Layout, "{params} p1");
+        assert_eq!(
+            mismatch_in(&past_ceiling_p1, Protocol::One),
+            Layout,
+            "{params} p1 explicit"
+        );
+        let p1_env = seal(&past_ceiling_p1.to_tce());
+        assert!(matches!(
+            load(&p1_env, &DecodeLimits::MESSAGE),
+            Err(ClaimsError::StatementMismatch { field: Layout })
+        ));
+        assert!(matches!(
+            load_in(&p1_env, &DecodeLimits::MESSAGE, Protocol::One),
+            Err(ClaimsError::StatementMismatch { field: Layout })
+        ));
+    }
 }
