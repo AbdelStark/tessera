@@ -80,6 +80,55 @@ domains! {
     Statement => "statement",
 }
 
+/// The secret-class per-proof BLAKE3 key-derivation domains of RFC-0004 (RFC-0018, #567).
+///
+/// Unlike [`Domain`], these domains take a secret per-proof seed and are never passed to
+/// [`Hasher`] or [`hash`], which derive `Clone` and `Debug` and do not clear their state (OBS-2).
+/// Callers build clearing heap readers directly from [`ProverDomain::context_key`], which holds
+/// only the public context key derived from `tessera/v1/<name>`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ProverDomain {
+    /// A proof's advice mask stream (`tessera/v1/advice-masks`, RFC-0004, RFC-0018).
+    AdviceMasks,
+    /// A live session's prover coin-toss share (`tessera/v1/prover-share`, RFC-0004, RFC-0018).
+    ProverShare,
+    /// A non-interactive session's identifier, first 16 bytes (`tessera/v1/ni-session`, RFC-0004, RFC-0018).
+    NiSession,
+}
+
+const PROVER_DOMAINS: usize = 3;
+
+impl ProverDomain {
+    /// Every secret-class per-proof domain, in RFC-0004's table order.
+    pub const ALL: [Self; PROVER_DOMAINS] = [Self::AdviceMasks, Self::ProverShare, Self::NiSession];
+
+    /// The domain name without the `tessera/v1/` prefix.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::AdviceMasks => "advice-masks",
+            Self::ProverShare => "prover-share",
+            Self::NiSession => "ni-session",
+        }
+    }
+
+    /// The BLAKE3 context string: `tessera/v1/` followed by the domain's name.
+    pub const fn context(self) -> &'static str {
+        match self {
+            Self::AdviceMasks => "tessera/v1/advice-masks",
+            Self::ProverShare => "tessera/v1/prover-share",
+            Self::NiSession => "tessera/v1/ni-session",
+        }
+    }
+
+    /// The public 32-byte BLAKE3 context key of `tessera/v1/<name>`, derived once.
+    pub fn context_key(self) -> &'static [u8; 32] {
+        &PROVER_CONTEXT_KEYS[self as usize]
+    }
+}
+
+static PROVER_CONTEXT_KEYS: LazyLock<[ContextKey; PROVER_DOMAINS]> =
+    LazyLock::new(|| ProverDomain::ALL.map(|domain| hash_derive_key_context(domain.context())));
+
 /// The context key of every domain, derived once. Deriving it costs one compression, as much as
 /// hashing a Merkle node, so doing it per hash would double the cost of short inputs.
 static CONTEXT_KEYS: LazyLock<[ContextKey; DOMAINS]> =

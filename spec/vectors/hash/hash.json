@@ -1,5 +1,5 @@
 {
- "description": "RFC-0004 hashing reference vectors from an independent BLAKE3 (checked against 35 official vectors): H(domain, x) = BLAKE3.derive_key(context, x) for every domain on inputs of length 0, 1, 64 and 1025 filled with i mod 251; Merkle trees with canonical multiproofs; chained column digests with row block `block`; commitment_id from the TCE of a CommitmentDescriptor (RFC-0031)",
+ "description": "RFC-0004 hashing reference vectors from an independent BLAKE3 (checked against 35 official vectors): H(domain, x) = BLAKE3.derive_key(context, x) for every domain on inputs of length 0, 1, 64 and 1025 filled with i mod 251; Merkle trees with canonical multiproofs; chained column digests with row block `block`; commitment_id from the TCE of a CommitmentDescriptor (RFC-0031); and secret-class per-proof stream domains (#567)",
  "seed": "0x07e55e7a4a5e0004",
  "input_lengths": [
   0,
@@ -2978,5 +2978,107 @@
    "tce": "01001402000001000010000009001420000000101000000000000007000000",
    "commitment_id": "c85be583f73f87f64f5a4cb207698de38ba8b6cd87186a66bfff186ec2a1c6c8"
   }
- ]
+ ],
+ "prover_streams": {
+  "domains": [
+   {
+    "name": "advice-masks",
+    "context": "tessera/v1/advice-masks",
+    "digests": [
+     "b81e1ba46ade2a8cdfa77393fbd4046702b251ca1ad26c75a42e357490202bc7",
+     "4caca864b2b32fbd575c114fde15dfb4c81e8652cb5a88bc38b9129a9c829379",
+     "12d1129c3c40a0930e3b05cf80a9a31eadde122fedbcc4c23ac9e8bb3fa939d0",
+     "57046983ca1b02bf74d5bb5f0d833064f48afc2d60d2c57f3892b2579859505a"
+    ]
+   },
+   {
+    "name": "prover-share",
+    "context": "tessera/v1/prover-share",
+    "digests": [
+     "6754a582f49b84b281dd38ac52dc10df4537ac7d570284a517b2792c8c067f11",
+     "bde5247204bc93418081e5898b2273219591e05a15e59f42c25605d238923390",
+     "c88592ba5889eb1b7f1fe587345f3dccd82a2c8bd7c3faa3d3a3cda2a059f166",
+     "6b1b061ecfff4e8fbe79500f525c6f89a4dab6c1daff75117950ba44ca6ffeb0"
+    ]
+   },
+   {
+    "name": "ni-session",
+    "context": "tessera/v1/ni-session",
+    "digests": [
+     "b58026ae319748cc8862dd255916f82e4e93c69adc6e9bb500fe9227ef4d1325",
+     "0748035bb9c3221d247d9970686b60499e799859ca85caf52a198bea480e3cc8",
+     "0ec2dfb0e47e48e5fa7aa3f42a51ab2e914cabdcc1c821314dd7ccbc26831f26",
+     "15bec4e998f2044d60cda40452dbbcf94a4707f3a1f5d1411b6889537ccfb6a1"
+    ]
+   }
+  ],
+  "proof_seed": "6440eff6caf424b063f02631775271e66cc191948106f1d2a4d7816e31a6646e",
+  "prover_share": "ba95f0d7cd421f917dfc401c228b7cf6cf1e5ab70392f0a57bf17dcd9436b670",
+  "ni_session": "f5e0049a0c7de173a1f5d0c69613ff9f",
+  "advice_masks": [
+   "0xb637d1701ab320c3",
+   "0x90bd61d129c2c711",
+   "0x33217b0d2a0ff5f6",
+   "0xcfa59e85758183f7",
+   "0x6d4d65120bc28bb1",
+   "0xf870d67a0283c690",
+   "0x2e6918e320d12614",
+   "0x16e3c7c613fca906",
+   "0x1c07a494a9f769e1",
+   "0x73a093dced1f5215",
+   "0x081d446ce1e4cd6a",
+   "0xaa67fa137aa94cb1",
+   "0x1eab3e4582ca959d",
+   "0xb86f3dfacb9f160b",
+   "0xefa5a1158a3d2c2c",
+   "0xe128cd176a951fc1",
+   "0xcfcea4d6e8f5f974",
+   "0xc32a5c110edb5103",
+   "0x1ab21e11d0b7c11d",
+   "0xe64eb986952ea1a0",
+   "0x9197e5baca7a6d39",
+   "0x387521257feb830c",
+   "0x59e37ebb1faac182",
+   "0x3beed1f6585483db"
+  ],
+  "rejection": {
+   "seed": "2b3eea1600000000000000000000000000000000000000000000000000000000",
+   "rejected_word_index": 6,
+   "words": [
+    "0xbc861183841cac25",
+    "0x75a7667ebf546319",
+    "0x6b1c870085e3d194",
+    "0xc207d30ce66f55df",
+    "0xe0dd6bbd01a9af82",
+    "0x5958ca31300a616c",
+    "0xffffffffbc84bb6d",
+    "0x5cc6b11348e8ad38",
+    "0xa697475da339d2ba",
+    "0x241814cee06e2130",
+    "0x24faf139f19b978f",
+    "0x1db53a40921c6d84",
+    "0x1e7af3a3a6308877",
+    "0x188095ff7b66c9a2",
+    "0x898c6ec571fff23e",
+    "0x9e2f32c01a0d6e5c"
+   ],
+   "values": [
+    "0xbc861183841cac25",
+    "0x75a7667ebf546319",
+    "0x6b1c870085e3d194",
+    "0xc207d30ce66f55df",
+    "0xe0dd6bbd01a9af82",
+    "0x5958ca31300a616c",
+    "0x5cc6b11348e8ad38",
+    "0xa697475da339d2ba",
+    "0x241814cee06e2130",
+    "0x24faf139f19b978f",
+    "0x1db53a40921c6d84",
+    "0x1e7af3a3a6308877",
+    "0x188095ff7b66c9a2",
+    "0x898c6ec571fff23e",
+    "0x9e2f32c01a0d6e5c"
+   ]
+  }
+ }
 }
