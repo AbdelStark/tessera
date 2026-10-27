@@ -214,6 +214,7 @@ impl LiveVerifier {
             &self.cfg,
             Session::Initial,
             tracker,
+            self.started.ok_or_else(internal)?,
         )? {
             Outcome::Ready => {}
             _ => return Err(internal()),
@@ -239,6 +240,8 @@ impl LiveVerifier {
         let mut t = Transcript::new(&context);
         t.absorb(round1_label, &first);
         t.absorb(seed_label, &seed);
+        // The session budget also covers transcript work before the share is declassified.
+        deadline(self.started.ok_or_else(internal)?, self.cfg.limits)?;
         let mut revealed = [0; 32];
         revealed.copy_from_slice(share.0.as_slice());
         self.state = State::Round2 { first, seed };
@@ -308,12 +311,14 @@ impl LiveVerifier {
                 queries: None,
             },
             tracker,
+            self.started.ok_or_else(internal)?,
         )?;
         let Outcome::Queries(queries) = result else {
             return Err(internal());
         };
         let second = message.to_tce().map_err(codec)?;
         let encoded_queries = queries.to_tce().map_err(codec)?;
+        deadline(self.started.ok_or_else(internal)?, self.cfg.limits)?;
         self.state = State::Round3 {
             first,
             second,
@@ -377,6 +382,7 @@ impl LiveVerifier {
                 queries: Some(&queries),
             },
             tracker,
+            self.started.ok_or_else(internal)?,
         )? {
             Outcome::Accepted(report) => Ok(report),
             _ => Err(internal()),

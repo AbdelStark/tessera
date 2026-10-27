@@ -88,6 +88,38 @@ fn recorded_live_and_ni_reports_are_identical_on_100_complete_replays() {
 }
 
 #[test]
+fn expired_work_cannot_release_an_accepted_report() {
+    use crate::observe::CheckEvent;
+    struct Delay;
+    impl Observer for Delay {
+        fn check_completed(&mut self, event: CheckEvent) {
+            if event.kind == CheckKind::ExactBound {
+                std::thread::sleep(Duration::from_millis(550));
+            }
+        }
+    }
+    let (claims, proof, mut cfg) = fixture();
+    cfg.limits.max_wall_time = Duration::from_millis(500);
+    let expected = &proof.round1.statement;
+    assert!(matches!(
+        verify_non_interactive(&claims, expected, &proof, &cfg),
+        Verdict::Accept(_)
+    ));
+    let bytes = include_bytes!("../../tests/fixtures/driver/ni.tnp");
+    for verdict in [
+        verify_non_interactive_observed(&claims, expected, &proof, &cfg, &mut Delay),
+        verify_non_interactive_bytes_observed(&claims, expected, bytes, &cfg, &mut Delay),
+    ] {
+        assert!(matches!(
+            verdict,
+            Verdict::Inconclusive(VerifierError {
+                code: ErrorCode::Time
+            })
+        ));
+    }
+}
+
+#[test]
 fn recorded_ni_preserves_exact_rejections_and_canonical_envelope_policy() {
     let (claims, good, cfg) = fixture();
     let expected = &good.round1.statement;

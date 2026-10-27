@@ -370,6 +370,56 @@ fn live_invalid_round1_is_terminal_and_timeout_reveals_nothing() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn live_round1_keeps_the_session_clock_and_checks_before_revealing() {
+    use std::time::Duration;
+    use tv_core::observe::{CheckEvent, CheckKind, Observer};
+    struct Delay {
+        kind: CheckKind,
+        duration: Duration,
+        seen: bool,
+    }
+    impl Observer for Delay {
+        fn check_completed(&mut self, event: CheckEvent) {
+            if event.kind == self.kind && !self.seen {
+                self.seen = true;
+                std::thread::sleep(self.duration);
+            }
+        }
+    }
+    for (kind, wait, delay) in [
+        (CheckKind::Claims, 300, 300),
+        (CheckKind::WeightReservation, 0, 550),
+    ] {
+        let (c, s, mut p, mut cfg) = live_fixture();
+        cfg.limits.max_wall_time = Duration::from_millis(500);
+        let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+        let commit = live.start().unwrap();
+        p.round1.session_id = commit.session_id;
+        let share = ProverSeedShare {
+            session_id: commit.session_id,
+            share: [17; 32],
+        };
+        std::thread::sleep(Duration::from_millis(wait));
+        let mut observer = Delay {
+            kind,
+            duration: Duration::from_millis(delay),
+            seen: false,
+        };
+        inconclusive(
+            live.on_round1_observed(&p.round1, &share, &mut observer)
+                .unwrap_err(),
+            ErrorCode::Time,
+        );
+        assert!(observer.seen);
+        inconclusive(
+            live.on_round1(&p.round1, &share).unwrap_err(),
+            ErrorCode::ProtocolOrder,
+        );
+    }
+}
+
 #[test]
 fn live_start_failure_is_terminal_and_bad_session_ids_never_reveal_a_share() {
     let (c, s, _p, cfg) = fixture();

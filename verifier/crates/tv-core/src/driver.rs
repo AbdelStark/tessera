@@ -38,7 +38,7 @@ pub struct ResourceLimits {
     /// Budget for the conservative input/codeword/metadata work estimate.
     /// Full allocation accounting belongs to the v1 hardening work (#182).
     pub max_memory_bytes: u64,
-    /// Cooperative deadline checked between verification phases.
+    /// Cooperative deadline checked between phases, covering NI decoding or the whole Live session.
     pub max_wall_time: Duration,
 }
 impl Default for ResourceLimits {
@@ -491,12 +491,8 @@ fn verify_ni_bytes(
         }
         Err(e) => return Err(codec(e.code())),
     };
-    let Some(remaining) = cfg.limits.max_wall_time.checked_sub(started.elapsed()) else {
-        return Err(fail(ErrorCode::Time));
-    };
-    let mut cfg = cfg.clone();
-    cfg.limits.max_wall_time = remaining;
-    verify_ni(claims, statement, &proof, &cfg, tracker)
+    deadline(started, cfg.limits)?;
+    verify_ni(claims, statement, &proof, cfg, tracker, started)
 }
 /// Verify protocol/1 against application-owned claims, expected statement and weight artifact.
 /// A test-small acceptance certifies nothing. No anchor, ledger or zero-knowledge claim is made.
@@ -520,7 +516,7 @@ pub fn verify_non_interactive_observed(
 ) -> Verdict {
     let mut tracker = Tracker::new(observer);
     tracker.enter(CheckKind::Input);
-    let result = verify_ni(claims, statement, proof, cfg, &mut tracker);
+    let result = verify_ni(claims, statement, proof, cfg, &mut tracker, Instant::now());
     into_verdict(conclude(&mut tracker, result))
 }
 mod live;
@@ -620,6 +616,7 @@ fn verify_ni(
     proof: &NiProof,
     cfg: &VerifierConfig,
     tracker: &mut Tracker<'_>,
+    started: Instant,
 ) -> Check<AcceptReport> {
     match verify_unit_tracked(
         claims,
@@ -635,6 +632,7 @@ fn verify_ni(
             query_nonce: proof.query_nonce,
         },
         tracker,
+        started,
     )? {
         Outcome::Accepted(report) => Ok(report),
         _ => Err(internal()),
@@ -651,7 +649,15 @@ fn verify_unit(
 ) -> Check<Outcome> {
     let mut ignored = ();
     let mut tracker = Tracker::new(&mut ignored);
-    verify_unit_tracked(claims, expected, proof, cfg, session, &mut tracker)
+    verify_unit_tracked(
+        claims,
+        expected,
+        proof,
+        cfg,
+        session,
+        &mut tracker,
+        Instant::now(),
+    )
 }
 /// One proof unit's checks in RFC-0019's order, `tracker` entering each check where its work
 /// starts (the table of [`observe`](crate::observe)). It leaves the last check it entered running:
@@ -663,9 +669,9 @@ fn verify_unit_tracked(
     cfg: &VerifierConfig,
     session: Session<'_>,
     tracker: &mut Tracker<'_>,
+    started: Instant,
 ) -> Check<Outcome> {
     tracker.enter(CheckKind::Input);
-    let started = Instant::now();
     let artifact = session.artifact();
     let mode = session.mode();
     let first_bytes = protocol::encoded_len(proof.round1).map_err(codec)?;
@@ -1237,6 +1243,7 @@ fn verify_unit_tracked(
             .iter()
             .map(|r| (r.request_id, FixedBits(0))),
     );
+    deadline(started, cfg.limits)?;
     Ok(Outcome::Accepted(AcceptReport {
         params: cfg.params,
         statement_digest,
