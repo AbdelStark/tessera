@@ -13,9 +13,9 @@ use std::path::PathBuf;
 use tv_codec::{DecodeLimits, ErrorCode};
 use tv_core::anchor::{Candidate, Failure, VerifiedLog, Window};
 use tv_core::audit::{
-    AuditPolicy, AuditReport, AuditSample, AuditToss, BitSet, CoinTossTranscript, LedgerFile,
-    PolicyError, RateBucket, RequestKey, RequestOutcome, UnprovenReason, VerifierLedger,
-    read_ledger, select, selection_value,
+    AuditPolicy, AuditReport, AuditSample, AuditToss, BitSet, BlindingRows, CoinTossTranscript,
+    LEDGER_LIMITS, LedgerFile, PolicyError, RateBucket, RequestKey, RequestOutcome, UnprovenReason,
+    VerifierLedger, WeightRoots, read_ledger, select, selection_value,
 };
 use tv_core::claims::ParamSetId;
 use tv_core::protocol::{BatchDescriptor, FixedBits, PublicStatement, RequestRef};
@@ -1241,6 +1241,148 @@ fn a_bit_set_has_one_encoding_per_set() {
     assert!(!set.contains(1) && !set.contains(1001) && !set.contains(u64::MAX));
     assert_eq!(set.as_bytes().len(), 126);
     assert_eq!(*set.as_bytes().last().unwrap(), 1 << 0);
+}
+
+#[test]
+fn the_ledger_matches_rfc_0019_size_bounds_and_round_trips() {
+    // 1. An empty ledger is 40 payload bytes + 52 envelope bytes = 92 sealed bytes
+    //    (RFC-0019 'Ledger' 'Size bound', RFC-0067 'One limit', #569).
+    let empty = VerifierLedger::new();
+    assert_eq!(empty.encode_payload().unwrap(), [0u8; 40]);
+    let empty_tvl = empty.seal().unwrap();
+    assert_eq!(empty_tvl.len(), 92);
+    assert_eq!(
+        VerifierLedger::open(&empty_tvl, &LEDGER_LIMITS).unwrap(),
+        empty
+    );
+
+    // 2. Weight epochs at 405B (RFC-0065: nine `4,096`-row matrices with highest bit 4,095 ->
+    //    `512` B each, `9 * (45 + 512) = 5,013` B, and `ChannelParams`' `12,280` rows with highest
+    //    bit 12,279 -> `1,535` B, `45 + 1,535 = 1,580` B; `sum_T = 6,593` B):
+    //    - Unlinked epoch 0 (`epochs: [(0, r0)]`, `successors: []`, 10 `used_blinding_rows`):
+    //      `40 + (36 + 6,593) = 40 + 6,629 = 6,669` B delta -> `6,761` B sealed.
+    //    - Linked successor epoch 1 (`epochs: [(0, r0), (1, r1)]`, `successors: [(r0, r1)]`,
+    //      plus epoch 1's 10 `used_blinding_rows`): `+ (36 + 64 + 6,593) = +6,693` B -> `13,454` B
+    //      sealed.
+    let r0 = [0x22; 32];
+    let r1 = [0x33; 32];
+    let build_weight_payload = |epochs: &[(u32, [u8; 32])],
+                                successors: &[([u8; 32], [u8; 32])]|
+     -> (Vec<u8>, Vec<BlindingRows>) {
+        let mut payload = Vec::new();
+        payload.extend(1u64.to_le_bytes());
+        payload.extend([0x11; 32]);
+        payload.extend((epochs.len() as u64).to_le_bytes());
+        for &(epoch, root) in epochs {
+            payload.extend(epoch.to_le_bytes());
+            payload.extend(root);
+        }
+        payload.extend((successors.len() as u64).to_le_bytes());
+        for &(prev, next) in successors {
+            payload.extend(prev);
+            payload.extend(next);
+        }
+        payload.extend(((epochs.len() * 10) as u64).to_le_bytes());
+        let mut expected_rows = Vec::new();
+        for &(epoch, root) in epochs {
+            for matrix in 0u8..10 {
+                let mut rows = BitSet::new();
+                let max_bit = if matrix == 9 { 12_279 } else { 4_095 };
+                rows.insert(max_bit).unwrap();
+                assert_eq!(rows.as_bytes().len(), if matrix == 9 { 1_535 } else { 512 });
+                payload.extend(root);
+                payload.extend(epoch.to_le_bytes());
+                payload.push(matrix);
+                payload.extend((rows.as_bytes().len() as u64).to_le_bytes());
+                payload.extend_from_slice(rows.as_bytes());
+                expected_rows.push(BlindingRows {
+                    root,
+                    epoch,
+                    matrix,
+                    rows,
+                });
+            }
+        }
+        payload.extend(0u64.to_le_bytes());
+        payload.extend(0u64.to_le_bytes());
+        (payload, expected_rows)
+    };
+
+    let (epoch0_payload, epoch0_rows) = build_weight_payload(&[(0, r0)], &[]);
+    let epoch0_ledger = VerifierLedger::decode_payload(&epoch0_payload, &LEDGER_LIMITS).unwrap();
+    assert_eq!(
+        epoch0_ledger.weight_roots(),
+        [WeightRoots {
+            claim_list: [0x11; 32],
+            epochs: vec![(0, r0)],
+        }]
+    );
+    assert!(epoch0_ledger.successors().is_empty());
+    assert_eq!(epoch0_ledger.used_blinding_rows(), epoch0_rows);
+    let epoch0_tvl = epoch0_ledger.seal().unwrap();
+    assert_eq!(epoch0_tvl.len() - empty_tvl.len(), 40 + 6_629);
+    assert_eq!(epoch0_tvl.len(), 6_761);
+    assert_eq!(
+        VerifierLedger::open(&epoch0_tvl, &LEDGER_LIMITS).unwrap(),
+        epoch0_ledger
+    );
+
+    let (epoch1_payload, epoch1_rows) = build_weight_payload(&[(0, r0), (1, r1)], &[(r0, r1)]);
+    let epoch1_ledger = VerifierLedger::decode_payload(&epoch1_payload, &LEDGER_LIMITS).unwrap();
+    assert_eq!(
+        epoch1_ledger.weight_roots(),
+        [WeightRoots {
+            claim_list: [0x11; 32],
+            epochs: vec![(0, r0), (1, r1)],
+        }]
+    );
+    assert_eq!(epoch1_ledger.successors(), [(r0, r1)]);
+    assert_eq!(epoch1_ledger.used_blinding_rows(), epoch1_rows);
+    let epoch1_tvl = epoch1_ledger.seal().unwrap();
+    assert_eq!(epoch1_tvl.len() - epoch0_tvl.len(), 6_693);
+    assert_eq!(epoch1_tvl.len(), 13_454);
+    assert_eq!(
+        VerifierLedger::open(&epoch1_tvl, &LEDGER_LIMITS).unwrap(),
+        epoch1_ledger
+    );
+
+    // 3. A derived audit sample of `|selected|` requests with all `|selected|` accepted adds
+    //    `64` B in `derived` and `48 + ceil(|selected| / 8) + 8 * |selected|` B in `proven`.
+    for selected_count in [1usize, 7, 8, 9, 257] {
+        let keys: Vec<RequestKey> = (1..=selected_count).map(|r| key(1, r as u64)).collect();
+        let sample = sample_with(&keys);
+        let mut ledger = owning(&[&sample]);
+        let derived_tvl = ledger.seal().unwrap();
+        assert_eq!(derived_tvl.len() - empty_tvl.len(), 64);
+        assert_eq!(
+            VerifierLedger::open(&derived_tvl, &LEDGER_LIMITS).unwrap(),
+            ledger
+        );
+
+        let reqs: Vec<RequestRef> = (1..=selected_count).map(|r| req(1, r as u64)).collect();
+        let uhats: Vec<FixedBits> = (0..selected_count)
+            .map(|i| FixedBits((i + 1) as u64))
+            .collect();
+        ledger
+            .record_accepted(
+                &sample,
+                sample.policy().params(),
+                &statement(*sample.manifest_digest(), reqs),
+                &uhats,
+            )
+            .unwrap();
+        let proven_tvl = ledger.seal().unwrap();
+        let expected_delta = 64 + 48 + selected_count.div_ceil(8) + 8 * selected_count;
+        assert_eq!(
+            proven_tvl.len() - empty_tvl.len(),
+            expected_delta,
+            "selected_count = {selected_count}"
+        );
+        assert_eq!(
+            VerifierLedger::open(&proven_tvl, &LEDGER_LIMITS).unwrap(),
+            ledger
+        );
+    }
 }
 
 // ----- The ledger's file -----------------------------------------------------------------------
