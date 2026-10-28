@@ -1,0 +1,26 @@
+[book]
+title = "Tessera"
+description = "Specification, RFCs, guides and independent verifier API"
+authors = ["Tessera contributors"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "site"
+create-missing = false
+# Keep canonical README paths; the staging script builds the navigation explicitly.
+use-default-preprocessors = false
+
+[rust]
+edition = "2024"
+
+[output.html]
+git-repository-url = "https://github.com/AbdelStark/tessera"
+default-theme = "light"
+preferred-dark-theme = "navy"
+
+[output.html.print]
+enable = false
+
+[output.html.playground]
+runnable = false
