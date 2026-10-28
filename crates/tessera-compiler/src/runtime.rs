@@ -453,7 +453,8 @@ impl TemperaturePlan {
         let span = u32::try_from(logits.hi - logits.lo)
             .map_err(|_| CompileError::Model { rule: VOCAB_RANGE })?;
         let min_key_bits = (u32::BITS - span.leading_zeros()).max(1) as u8;
-        let max_key_bits = claims.gadget_policy.max_log2_rows.min(32);
+        let max_log2_rows = claims.gadget_policy.max_log2_rows;
+        let max_key_bits = max_log2_rows.min(32);
         let sigma = claims.quant.exp_sigma;
 
         let mut distinct: Vec<Rational> = Vec::new();
@@ -465,7 +466,7 @@ impl TemperaturePlan {
                 return Err(usage(TEMP_REQUEST));
             }
             let _ = vocab_exp_scale(claims.quant.logits_exponent, req.temperature)?;
-            if !distinct.contains(&req.temperature) {
+            if req.prompt < req.positions && !distinct.contains(&req.temperature) {
                 distinct.push(req.temperature);
             }
         }
@@ -476,11 +477,21 @@ impl TemperaturePlan {
         let mut selection = selection.clone();
         let mut intern = |kind: TableKind| -> Result<TableId, CompileError> {
             if let Some(existing) = selection.tables.iter().find(|t| t.kind == kind) {
+                if existing.log2_rows > max_log2_rows {
+                    return Err(CompileError::Model {
+                        rule: "runtime scoring tables fit GadgetPolicy.max_log2_rows",
+                    });
+                }
                 return Ok(existing.id);
             }
             let id = TableId(u32::try_from(selection.tables.len()).map_err(|_| usage(METADATA))?);
             let generated = GeneratedTable::new(id, kind)
                 .map_err(|error| CompileError::ModelTable { table: id, error })?;
+            if generated.log2_rows() > max_log2_rows {
+                return Err(CompileError::Model {
+                    rule: "runtime scoring tables fit GadgetPolicy.max_log2_rows",
+                });
+            }
             selection.tables.push(generated.spec().clone());
             Ok(id)
         };
@@ -922,7 +933,7 @@ impl MixturePlan {
             }
             let temp = req.decoding.effective_temperature();
             let _ = vocab_exp_scale(claims.quant.logits_exponent, temp)?;
-            if !distinct.contains(&temp) {
+            if req.prompt < req.positions && !distinct.contains(&temp) {
                 distinct.push(temp);
             }
         }

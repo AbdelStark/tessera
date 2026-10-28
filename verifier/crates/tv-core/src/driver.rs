@@ -21,7 +21,7 @@ use crate::verdict::{
     VerifierError,
 };
 use crate::{
-    advice, gadgets, leaf, model_openings, opening, params::ParamSet, protocol, runtime,
+    advice, gadgets, leaf, model_openings, opening, params::ParamSet, protocol, runtime, scoring,
     soundness::SoundnessParams, stages, sumcheck, validation, weights,
 };
 use std::time::{Duration, Instant};
@@ -828,6 +828,7 @@ fn verify_unit_tracked(
     if request.prompt_len == 0 || n > claims.arch.max_context {
         return Err(mismatch(F::Batch));
     }
+    scoring::validate_predictor(&expected.predictor).map_err(|_| mismatch(F::Predictor))?;
     if expected.predictor
         != (PredictorSpec::Exact {
             decoding: Decoding::Greedy,
@@ -1286,20 +1287,24 @@ fn verify_unit_tracked(
     }
     deadline(started, cfg.limits)?;
     tracker.enter(CheckKind::ExactBound);
-    for (request, &uhat) in expected
-        .batch
-        .requests
-        .iter()
-        .zip(&proof.round2.scoring.requests)
-    {
-        if uhat.0 != 0 {
-            return Err(reject(RejectReason::UBoundExceeded {
-                request_id: Some(request.request_id),
-                uhat,
-                bound: FixedBits(0),
-            }));
-        }
-    }
+    let batch_uhat = scoring::check_uhat_bound(
+        expected.predictor,
+        &expected.batch.requests,
+        &proof.round2.scoring.requests,
+        cfg.accept_bound,
+    )
+    .map_err(|e| match e {
+        scoring::UhatError::Malformed => malformed(artifact),
+        scoring::UhatError::Exceeded {
+            request_id,
+            uhat,
+            bound,
+        } => reject(RejectReason::UBoundExceeded {
+            request_id,
+            uhat,
+            bound,
+        }),
+    })?;
     tracker.enter(CheckKind::Complete);
     let mut requests = reserve(expected.batch.requests.len())?;
     requests.extend(
@@ -1307,7 +1312,8 @@ fn verify_unit_tracked(
             .batch
             .requests
             .iter()
-            .map(|r| (r.request_id, FixedBits(0))),
+            .zip(&proof.round2.scoring.requests)
+            .map(|(r, &uhat)| (r.request_id, uhat)),
     );
     deadline(started, cfg.limits)?;
     Ok(Outcome::Accepted(AcceptReport {
@@ -1317,7 +1323,7 @@ fn verify_unit_tracked(
         weights_root: expected.weights_root,
         manifest_digest: expected.manifest_digest,
         requests,
-        batch_uhat: FixedBits(0),
+        batch_uhat,
         budget,
     }))
 }

@@ -51,12 +51,14 @@ pub mod argmax_outputs;
 pub mod comparison;
 pub mod decomposition;
 pub mod greedy;
+pub mod inverse_cdf;
 pub mod model;
 pub mod onehot;
 pub mod requant;
 pub mod root;
 pub mod root_products;
 pub mod runtime;
+pub mod scoring;
 pub mod softmax;
 pub mod stacked;
 

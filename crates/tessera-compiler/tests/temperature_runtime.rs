@@ -421,4 +421,46 @@ fn temperature_plan_groups_up_to_four_temperatures_preserves_claim_list_and_chec
         ),
         Err(CompileError::Model { .. })
     ));
+
+    // Zero-output requests (`prompt == positions`) do not intern `Exp_T` ahead of earlier
+    // output-bearing temperatures and do not consume the 4-temperature budget (RFC-0017 item 6).
+    let zero_then_swapped = [
+        TemperatureRequestSpec {
+            prompt: 4,
+            positions: 4,
+            temperature: t1,
+            bounded: false,
+        },
+        TemperatureRequestSpec {
+            prompt: 1,
+            positions: 3,
+            temperature: t2,
+            bounded: false,
+        },
+        TemperatureRequestSpec {
+            prompt: 1,
+            positions: 3,
+            temperature: t1,
+            bounded: false,
+        },
+    ];
+    let swapped_plan =
+        TemperaturePlan::derive(&lowering, &selection, &claims, &zero_then_swapped, 0).unwrap();
+    assert_eq!(swapped_plan.temperatures().len(), 2);
+    assert_eq!(swapped_plan.temperatures()[0].temperature, t2);
+    assert_eq!(swapped_plan.temperatures()[1].temperature, t1);
+
+    // `max_log2_rows = 15` cannot hold `InverseCdf`'s `Range { bits: 16 }` even when `Exp_T` fits.
+    let mut narrow_policy_claims = claims.clone();
+    narrow_policy_claims.gadget_policy.max_log2_rows = 15;
+    assert!(matches!(
+        TemperaturePlan::derive(
+            &lowering,
+            &selection,
+            &narrow_policy_claims,
+            &requests[..1],
+            0
+        ),
+        Err(CompileError::Model { .. })
+    ));
 }

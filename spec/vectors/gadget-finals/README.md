@@ -287,3 +287,42 @@ source columns. The graph sources still need their graph reductions/openings.
 The maximum remains a typed certificate commitment debt: it is not an auxiliary
 of a fabricated model node. Complete certificate advice placement, global ids,
 stage assembly and soundness/resource accounting remain driver obligations.
+
+## InverseCdf temperature sampling
+
+`inverse-cdf.json`, schema version 1, contains six parameter-schema cases across
+`W ∈ [1, 51]` (including all three rows of [RFC-0058](../../../docs/rfcs/RFC-0058-inverse-cdf-columns.md)'s
+cost table) and 17 full component cases: six honest exact/bounded shapes and 11
+isolated alternatives (`neighbour-high`, `neighbour-low`, `zero-weight-token`,
+`draw-overflow`, `real-row-zero-mass`, `padded-z-nonzero`, `bounded-nonboolean`,
+`bounded-vocab-padding`, `bounded-two-hot`, `bounded-padded-h`, `bad-suffix`),
+each sumcheck alternative carrying an adapted omission proof. `inverse_cdf.py`
+selects tokens by prefix bisection and proves the three-stage chain (row `u · Z`
+limb products and padded-row `Z` zero-check, vocabulary contractions `Z, B, S`
+plus bounded-mode `OneHot` booleanity/vocabulary/count, and strict-suffix dot
+product) by direct cube sums.
+
+The independent consumer is `verifier/crates/tv-core/tests/gadget_inverse_cdf.rs`;
+the producer consumer `crates/tessera-prover/tests/gadget_inverse_cdf.rs` checks
+actual `InverseCdf` witnesses and reproduces every round, final evaluation and
+transcript state with the CPU sumcheck engine.
+
+## Vocabulary softmax and mixture OneSidedLog2 scoring
+
+`one-sided-log2.json`, schema version 1, freezes `c_match(0..=16)` from exact
+256th-power integer inequalities, six `VocabMax` cases (three honest, three
+omission alternatives), three runtime `TableId` interning scenarios
+([RFC-0017](../../../docs/rfcs/RFC-0017-scoring.md) item 6), seven `OneSidedLog2`
+parameter-schema cases up to `(V = 2^18, σ = 32)`, and 15 full `OneSidedLog2`
+component cases: five honest shapes (including `k = 0` pure surprisal, zero-tail
+`e = 0` smoothing, `σ = 32`, and intentional one-sided slack) and ten isolated
+alternatives (`false-match-on-mismatch`, `match-when-k-zero`, `nonboolean-match`,
+`deflated-exponent`, `deflated-fraction`, `inflated-qt`, `padded-z-nonzero`,
+`underclaimed-uhat`, `bad-q-decomposition`, `bad-p-decomposition`). Every honest
+real row is checked in exact arbitrary-precision integer arithmetic against Gibbs
+code-length validity `den^256 ≤ num^256 · 2^{B_t}`.
+
+The independent consumer is `verifier/crates/tv-core/tests/gadget_scoring.rs`;
+the producer consumer `crates/tessera-prover/tests/gadget_scoring.rs` checks
+actual `VocabMax` and `OneSidedLog2` witnesses and reproduces every round, final
+evaluation and transcript state with the CPU sumcheck engine.

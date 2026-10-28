@@ -395,3 +395,100 @@ fn both_pow_phases_reject_actually_invalid_twenty_bit_nonces() {
         );
     }
 }
+
+#[test]
+fn live_replay_reaches_step_twelve_uhat_bound_and_enforces_exact_zero_bound() {
+    use crate::observe::{CheckEvent, CheckOutcome};
+
+    let (claims, _ni, mut cfg) = fixture();
+    // Even with a generous caller accept_bound, Exact mode enforces bound == 0 (RFC-0017, RFC-0019).
+    cfg.accept_bound = FixedBits(25_600);
+    let limits = DecodeLimits::MESSAGE;
+    let mut live = NiProof::open(
+        include_bytes!("../../tests/fixtures/driver/live-messages.tnp"),
+        &limits,
+    )
+    .unwrap();
+    let queries = tv_codec::decode(
+        include_bytes!("../../tests/fixtures/driver/queries.tce"),
+        &limits,
+        protocol::ColumnQueries::decode,
+    )
+    .unwrap();
+    let seed = include_bytes!("../../tests/fixtures/driver/live-seed.bin");
+    let expected = live.round1.statement.clone();
+    let req_id = expected.batch.requests[0].request_id;
+
+    // Live queries are chosen from OS entropy rather than squeezed after Round2.scoring, so
+    // Steps 1 through 11 pass completely and Step 12 (`ExactBound`) rejects with `REJ-UHAT`.
+    live.round2.scoring.requests[0] = FixedBits(1);
+    let mut events: Vec<CheckEvent> = Vec::new();
+    let mut tracker = Tracker::new(&mut events);
+    let started = Instant::now();
+    let res = verify_unit_tracked(
+        &claims,
+        &expected,
+        Frame {
+            round1: &live.round1,
+            round2: &live.round2,
+            round3: &live.round3,
+        },
+        &cfg,
+        Session::Live {
+            seed,
+            queries: Some(&queries),
+        },
+        &mut tracker,
+        started,
+    )
+    .and_then(|o| match o {
+        Outcome::Accepted(report) => Ok(report),
+        _ => Err(internal()),
+    });
+    let verdict = into_verdict(conclude_with_deadline(
+        &mut tracker,
+        res,
+        Some(started),
+        cfg.limits,
+    ));
+    assert_eq!(verdict.exit_code(), 10);
+    match &verdict {
+        Verdict::Reject(reason) => assert_eq!(
+            *reason,
+            RejectReason::UBoundExceeded {
+                request_id: Some(req_id),
+                uhat: FixedBits(1),
+                bound: FixedBits(0),
+            }
+        ),
+        other => panic!("expected REJ-UHAT at Step 12, got {other:?}"),
+    }
+    let json = verdict.to_json().unwrap();
+    assert!(json.contains("\"code\":\"REJ-UHAT\""), "{json}");
+    assert!(
+        json.contains(&format!(
+            "\"request_id\":{req_id},\"uhat_fixed\":1,\"bound_fixed\":0"
+        )),
+        "{json}"
+    );
+    assert_eq!(
+        events
+            .iter()
+            .map(|e| (e.kind, e.outcome))
+            .collect::<Vec<_>>(),
+        [
+            (CheckKind::Input, CheckOutcome::Pass),
+            (CheckKind::Params, CheckOutcome::Pass),
+            (CheckKind::Claims, CheckOutcome::Pass),
+            (CheckKind::Statement, CheckOutcome::Pass),
+            (CheckKind::WeightReservation, CheckOutcome::NotApplicable),
+            (CheckKind::Transcript, CheckOutcome::Pass),
+            (CheckKind::Leaf, CheckOutcome::Pass),
+            (CheckKind::Stages, CheckOutcome::Pass),
+            (CheckKind::Evaluations, CheckOutcome::Pass),
+            (CheckKind::Queries, CheckOutcome::Pass),
+            (CheckKind::Columns, CheckOutcome::Pass),
+            (CheckKind::ExactBound, CheckOutcome::Reject),
+        ]
+    );
+}

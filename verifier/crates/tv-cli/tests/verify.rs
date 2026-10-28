@@ -468,3 +468,34 @@ fn symlink_output_alias_is_refused_and_inputs_are_preserved() {
     assert_eq!(fs::read(&original).unwrap(), b"public fixture canary");
     assert!(alias.is_symlink());
 }
+
+#[test]
+fn bound_option_accepts_exact_256ths_and_rejects_inexact_or_overflowing_decimals() {
+    let dir = Dir::new();
+    let base = dir.args();
+    let at = base.iter().position(|a| a == "--bound").unwrap();
+
+    for exact in ["0", "0.00390625", "6.25", "72057594037927935.99609375"] {
+        let mut args = base.clone();
+        args[at + 1] = exact.into();
+        let (code, report) = binary(&args);
+        // Passes CLI --bound validation and proceeds to artifact envelope opening (65).
+        assert_eq!(code, 65, "exact --bound {exact} should pass CLI parsing");
+        assert_eq!(error(&report), "ERR-CODEC-MAGIC", "{exact}");
+    }
+
+    for invalid in [
+        "0.001",
+        "0.3",
+        "-0.5",
+        "1.",
+        "0.000000001",
+        "72057594037927936",
+    ] {
+        let mut args = base.clone();
+        args[at + 1] = invalid.into();
+        let (code, report) = binary(&args);
+        assert_eq!(code, 64, "invalid --bound {invalid} must fail as ERR-USAGE");
+        assert_eq!(error(&report), "ERR-USAGE", "{invalid}");
+    }
+}
