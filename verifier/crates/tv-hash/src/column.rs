@@ -145,6 +145,9 @@ mod cancellation_tests {
                 }),
                 Ok(expected)
             );
+            if rows == 0 {
+                assert_eq!(polls, 2, "entry and completion both check the deadline");
+            }
             assert!(polls >= 2 + rows.div_ceil(128));
             for stop in 1..=polls {
                 let mut seen = 0;

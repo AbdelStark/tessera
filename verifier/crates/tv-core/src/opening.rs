@@ -1275,6 +1275,69 @@ mod tests {
     }
 
     #[test]
+    fn encoding_cancels_after_progress_in_copy_zero_and_mask_phases() {
+        let k = 16384;
+        let n = 65536;
+        let row = CombinedRow {
+            u: vec![Fp2::ONE; k],
+            mask: vec![Fp2::ONE; 8193],
+        };
+        let mut codeword = Vec::with_capacity(n);
+        let mut polls = 0;
+        assert_eq!(
+            encode_with_cancel(&row, k, n, &mut codeword, &mut || {
+                polls += 1;
+                polls == 2
+            }),
+            Err(OpeningError::Time)
+        );
+        assert_eq!(
+            codeword.len(),
+            4096,
+            "cancel within copying, before the second chunk"
+        );
+        polls = 0;
+        assert_eq!(
+            encode_with_cancel(&row, k, n, &mut codeword, &mut || {
+                polls += 1;
+                polls == 6
+            }),
+            Err(OpeningError::Time)
+        );
+        assert_eq!(
+            codeword.len(),
+            k + 4096,
+            "cancel after one zero-filled chunk"
+        );
+        let mut transformed = row.u.clone();
+        let mut transform_polls = 0;
+        intt_with_cancel(&mut transformed, || {
+            transform_polls += 1;
+            false
+        })
+        .unwrap();
+        polls = 0;
+        let mask_stop = k.div_ceil(4096) + (n - k).div_ceil(4096) + transform_polls + 2;
+        assert_eq!(
+            encode_with_cancel(&row, k, n, &mut codeword, &mut || {
+                polls += 1;
+                polls == mask_stop
+            }),
+            Err(OpeningError::Time)
+        );
+        assert!(codeword[k..k + 4096].iter().all(|&x| x == Fp2::ONE));
+        assert_eq!(
+            codeword[k + 4096],
+            Fp2::ZERO,
+            "masking stops before its second chunk"
+        );
+        assert_eq!(
+            encode_with_cancel(&row, k, n, &mut codeword, &mut || false),
+            Ok(())
+        );
+    }
+
+    #[test]
     fn cancelled_transforms_are_operational_time_errors() {
         let row = CombinedRow {
             u: vec![Fp2::ONE; 8],

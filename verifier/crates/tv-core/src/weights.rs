@@ -884,6 +884,68 @@ impl Evaluated<'_> {
 mod cancellation_tests {
     use super::*;
     #[test]
+    fn weight_coefficients_cancel_after_progress_on_both_row_kinds() {
+        let layout = Layout {
+            matrix: Matrix::Embed,
+            log2_k: 0,
+            row_vars: 15,
+            count: 16385,
+            rows: Rows::Layers {
+                live: 16385,
+                stride: 32768,
+            },
+            commitment_id: [0; 32],
+            row_block: NonZeroU32::new(1).unwrap(),
+        };
+        let point = [Fp2::ZERO; 15];
+        let claims = [Claim {
+            column_point: &[],
+            row_point: &point,
+            gamma: Fp2::ONE,
+            value: Fp2::ZERO,
+        }];
+        let opening = Opening {
+            layout: &layout,
+            root: [0; 32],
+            claims: &claims,
+            xi_point: &point,
+        };
+        let combined = vec![
+            CombinedRow {
+                u: vec![Fp2::ZERO],
+                mask: vec![]
+            };
+            2
+        ];
+        let evaluated = Evaluated {
+            opening,
+            combined: &combined,
+            k: 1,
+            n: 2,
+        };
+        for kind in [0, 1] {
+            let mut coefficients = Vec::with_capacity(16385);
+            assert_eq!(
+                evaluated.coefficients(kind, &mut coefficients, &mut || false),
+                Ok(())
+            );
+            assert_eq!(coefficients[0], Fp2::ONE);
+            assert!(coefficients[1..].iter().all(|&x| x == Fp2::ZERO));
+            for (stop, written) in [(2, 4096), (4, 12288), (6, 16385)] {
+                let mut polls = 0;
+                assert_eq!(
+                    evaluated.coefficients(kind, &mut coefficients, &mut || {
+                        polls += 1;
+                        polls == stop
+                    }),
+                    Err(Error::Time)
+                );
+                assert_eq!(coefficients.len(), written);
+            }
+        }
+    }
+
+    #[test]
     fn authenticated_weight_columns_propagate_transform_cancellation() {
         let layout = Layout {
             matrix: Matrix::Embed,

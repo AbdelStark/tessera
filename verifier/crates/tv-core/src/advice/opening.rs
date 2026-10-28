@@ -459,6 +459,45 @@ mod cancellation_tests {
             opening.coefficients(0, &mut coefficients, &mut || true),
             Err(OpeningError::Time)
         );
+        let tokens = layout
+            .graph
+            .inputs()
+            .iter()
+            .find(|input| input.role == crate::lowering::Role::Tokens)
+            .unwrap()
+            .tensor;
+        let pieces = vec![
+            Piece {
+                source: Source::Tensor(tokens),
+                coefficient: Fp2::ONE
+            };
+            4097
+        ];
+        let claim = Claim {
+            point: &[],
+            pieces: &pieces,
+            value: Fp2::ZERO,
+        };
+        let grouped = commitment.prepare(&[claim], Fp2::ONE, &xi).unwrap();
+        assert_eq!(grouped.groups.len(), 1);
+        let mut coefficients = Vec::with_capacity(sizes.rows);
+        let mut polls = 0;
+        assert_eq!(
+            grouped.coefficients(0, &mut coefficients, &mut || {
+                polls += 1;
+                polls == 3
+            }),
+            Err(OpeningError::Time)
+        );
+        assert!(
+            coefficients.is_empty(),
+            "cancel within the first row's 4097 pieces"
+        );
+        assert_eq!(polls, 3);
+        assert_eq!(
+            grouped.coefficients(0, &mut coefficients, &mut || false),
+            Ok(())
+        );
         let wrong = Commitment {
             root: [1; 32],
             ..commitment
