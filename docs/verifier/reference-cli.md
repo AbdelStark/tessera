@@ -55,7 +55,12 @@ allowance and 300 seconds of cooperative verification time. Override with
 an input/decoded-object allowance of one eighth of the memory policy, checks
 lengths before allocation and detects input growth while reading. These are
 conservative allowances and phase deadlines, not hard peak-RSS or blocking-I/O
-guarantees; full hardening remains [#182](https://github.com/AbdelStark/tessera/issues/182).
+guarantees. Advice and weight openings carry the same deadline through NTTs,
+column-chain hashing (between blocks and each 128-symbol piece of a long block),
+coefficient construction and consistency folds (at most 4,096 entries per check).
+Codeword copying, zero initialization and mask application also poll it. These
+checks return `ERR-RES-TIME`; other verification loops and blocking I/O still need
+hardening. Full hardening remains [#182](https://github.com/AbdelStark/tessera/issues/182).
 
 `--json` prints one result. `--out` always writes a
 [`tessera.verdict/1`](../../spec/schemas/verdict-v1.schema.json) object. Existing
