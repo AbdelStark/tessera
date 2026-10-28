@@ -61,7 +61,11 @@ coefficient construction and consistency folds (at most 4,096 entries per check)
 Codeword copying, zero initialization and mask application also poll it.
 Merkle multiproofs check before work, at most every 4,096 validation/counting/tree
 steps and before releasing successful authentication. These
-checks return `ERR-RES-TIME`; other verification loops and blocking I/O still need
+checks return `ERR-RES-TIME`. NI and Live artifact hashing polls each 64 KiB block;
+payload reads and sequence decoding poll at most every 4,096 operations, with
+additional checks through long ASCII/map comparisons and before releasing a value.
+Live message decoding and cached replay retain the session's original deadline;
+idle expiry remains `ERR-PROTO-TIMEOUT`. Other verification loops and blocking I/O still need
 hardening. Full hardening remains [#182](https://github.com/AbdelStark/tessera/issues/182).
 
 `--json` prints one result. `--out` always writes a

@@ -14,7 +14,7 @@
 use core::fmt;
 use tv_codec::{Cursor, DecodeError, DecodeLimits, Envelope, ErrorCode, Expected, Rational, size};
 use tv_field::{Fp, Fp2};
-use tv_hash::{Digest, Domain, DomainHasher, hash};
+use tv_hash::{Digest, Domain, DomainHasher};
 
 use crate::opening::CombinedRow;
 use crate::stages::StageProof;
@@ -609,6 +609,29 @@ impl NiProof {
     }
 }
 
+fn decode_time(deadline: Option<std::time::Instant>, offset: u64) -> Result<(), DecodeError> {
+    if deadline.is_some_and(|until| std::time::Instant::now() >= until) {
+        return Err(DecodeError::new(ErrorCode::Time, offset));
+    }
+    Ok(())
+}
+
+fn envelope_digest(
+    bytes: &[u8],
+    mut check: impl FnMut(u64) -> Result<(), DecodeError>,
+) -> Result<Digest, DecodeError> {
+    let mut digest = DomainHasher::new(Domain::Envelope);
+    let mut offset = 0u64;
+    for block in bytes.chunks(65536) {
+        check(offset)?;
+        digest.update(block);
+        offset = offset.saturating_add(u64::try_from(block.len()).unwrap_or(u64::MAX));
+    }
+    let digest = digest.finalize();
+    check(offset)?;
+    Ok(digest)
+}
+
 macro_rules! message {
     ($ty:ident, $id:literal) => {
         impl $ty {
@@ -622,8 +645,23 @@ macro_rules! message {
             /// # Errors
             /// The first RFC-0003 envelope/payload failure, with envelope-relative offset.
             pub fn open(bytes: &[u8], limits: &DecodeLimits) -> Result<Self, DecodeError> {
-                Envelope::open(bytes, Self::SCHEMA, limits, |b| hash(Domain::Envelope, b))?
-                    .decode_payload(|c, _| Self::decode(c))
+                Self::open_with_deadline(bytes, limits, None)
+            }
+            pub(crate) fn open_with_deadline(
+                bytes: &[u8],
+                limits: &DecodeLimits,
+                deadline: Option<std::time::Instant>,
+            ) -> Result<Self, DecodeError> {
+                decode_time(deadline, 0)?;
+                Envelope::open_checked_digest(bytes, Self::SCHEMA, limits, |bytes| {
+                    envelope_digest(bytes, |offset| decode_time(deadline, offset))
+                })?
+                .decode_payload(|c, _| {
+                    if let Some(deadline) = deadline {
+                        c.set_deadline(deadline)?;
+                    }
+                    Self::decode(c)
+                })
             }
             /// Reconstruct its TCE payload from values, without an envelope.
             ///
@@ -654,6 +692,15 @@ pub trait ProverMessage: Sized {
     /// # Errors
     /// The first RFC-0003 envelope or payload failure.
     fn open_sealed(bytes: &[u8], limits: &DecodeLimits) -> Result<Self, DecodeError>;
+    /// Open under an absolute cooperative deadline; `None` retains ordinary decoding.
+    ///
+    /// # Errors
+    /// The first framing/payload fault, or operational `Time` on expiry.
+    fn open_sealed_with_deadline(
+        bytes: &[u8],
+        limits: &DecodeLimits,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<Self, DecodeError>;
 }
 macro_rules! prover_message {
     ($($ty:ident),+) => {$(
@@ -661,6 +708,9 @@ macro_rules! prover_message {
             const SCHEMA: Expected = $ty::SCHEMA;
             fn open_sealed(bytes: &[u8], limits: &DecodeLimits) -> Result<Self, DecodeError> {
                 $ty::open(bytes, limits)
+            }
+            fn open_sealed_with_deadline(bytes: &[u8], limits: &DecodeLimits, deadline: Option<std::time::Instant>) -> Result<Self, DecodeError> {
+                $ty::open_with_deadline(bytes, limits, deadline)
             }
         }
     )+};
@@ -827,3 +877,39 @@ fields!(MultiProof, siblings);
 fields!(MatrixColumns, matrix, columns, proof);
 fields!(Round3Response, advice_columns, advice_proof, weight_columns);
 fields!(NiProof, round1, seed_nonce, round2, query_nonce, round3);
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+    #[test]
+    fn envelope_hash_checks_between_blocks_and_before_completion() {
+        let bytes = vec![7; 3 * 65536];
+        assert_eq!(
+            envelope_digest(&bytes, |_| Ok(())).unwrap(),
+            tv_hash::hash(Domain::Envelope, &bytes)
+        );
+        for stop in 1..=4 {
+            let mut polls = 0;
+            let error = envelope_digest(&bytes, |offset| {
+                polls += 1;
+                if polls == stop {
+                    Err(DecodeError::new(ErrorCode::Time, offset))
+                } else {
+                    Ok(())
+                }
+            })
+            .unwrap_err();
+            assert_eq!(error, DecodeError::new(ErrorCode::Time, (stop - 1) * 65536));
+        }
+        assert_eq!(
+            NiProof::open_with_deadline(
+                &[],
+                &DecodeLimits::MESSAGE,
+                Some(std::time::Instant::now())
+            )
+            .unwrap_err()
+            .code(),
+            ErrorCode::Time
+        );
+    }
+}

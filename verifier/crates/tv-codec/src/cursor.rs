@@ -3,6 +3,7 @@
 //! The cursor: primitive reads, depth levels, the sequence check and the combinators that build
 //! composite values from closures.
 
+use std::time::Instant;
 use tv_field::{Fp, Fp2};
 
 use crate::{DecodeError, DecodeLimits, ErrorCode, Rational, size};
@@ -40,6 +41,10 @@ pub struct Cursor<'a> {
     max_depth: u16,
     /// The levels taken by the composite values being decoded.
     depth: u16,
+    deadline: Option<Instant>,
+    work_left: u16,
+    // A private clock keeps deadline conformance tests deterministic.
+    now: fn() -> Instant,
 }
 
 impl<'a> Cursor<'a> {
@@ -61,7 +66,43 @@ impl<'a> Cursor<'a> {
             max_vec_len: limits.max_vec_len,
             max_depth: limits.effective_max_depth(),
             depth: 0,
+            deadline: None,
+            work_left: 0,
+            now: Instant::now,
         }
+    }
+
+    /// Use the reader's absolute cooperative deadline (RFC-0019, SP-8).
+    /// Subsequent reads/sequence steps poll at most every 4,096 operations; finishing
+    /// always checks again. Expiry is `ERR-RES-TIME`, never an input fault.
+    ///
+    /// # Errors
+    /// `Time` at the current offset if the deadline has already expired.
+    pub fn set_deadline(&mut self, deadline: Instant) -> Result<(), DecodeError> {
+        self.deadline = Some(deadline);
+        self.work_left = 0;
+        self.check_time()
+    }
+
+    fn check_time(&self) -> Result<(), DecodeError> {
+        if self
+            .deadline
+            .is_some_and(|deadline| (self.now)() >= deadline)
+        {
+            return Err(self.error(ErrorCode::Time));
+        }
+        Ok(())
+    }
+
+    fn step(&mut self) -> Result<(), DecodeError> {
+        if self.deadline.is_some() {
+            if self.work_left == 0 {
+                self.check_time()?;
+                self.work_left = 4096;
+            }
+            self.work_left = self.work_left.saturating_sub(1);
+        }
+        Ok(())
     }
 
     /// The offset of the next byte, from the start of the outermost input.
@@ -86,6 +127,7 @@ impl<'a> Cursor<'a> {
 
     /// Consumes `len` bytes, or fails with `ERR-CODEC-TRUNCATED` here.
     fn take_slice(&mut self, len: usize) -> Result<&'a [u8], DecodeError> {
+        self.step()?;
         let (head, tail) = self
             .rest
             .split_at_checked(len)
@@ -97,6 +139,7 @@ impl<'a> Cursor<'a> {
 
     /// Consumes `N` bytes, or fails with `ERR-CODEC-TRUNCATED` here.
     pub(crate) fn take<const N: usize>(&mut self) -> Result<[u8; N], DecodeError> {
+        self.step()?;
         let (head, tail) = self
             .rest
             .split_first_chunk::<N>()
@@ -264,6 +307,7 @@ impl<'a> Cursor<'a> {
     ) -> Result<Vec<T>, DecodeError> {
         let mut values = Vec::new();
         for _ in 0..len {
+            self.step()?;
             make_room(&mut values, len, at)?;
             let start = self.offset;
             values.push(element(self)?);
@@ -289,12 +333,20 @@ impl<'a> Cursor<'a> {
             let len = c.sequence_len(size::U8)?;
             let start = c.offset;
             let text = c.take_slice(len)?;
-            if let Some(index) = text.iter().position(|byte| !(0x20..=0x7E).contains(byte)) {
-                let at = start.saturating_add(wide(index));
-                return Err(DecodeError::new(ErrorCode::Noncanonical, at));
+            for (block, chunk) in text.chunks(4096).enumerate() {
+                c.check_time()?;
+                if let Some(index) = chunk.iter().position(|byte| !(0x20..=0x7E).contains(byte)) {
+                    let at = start
+                        .saturating_add(wide(block).saturating_mul(4096))
+                        .saturating_add(wide(index));
+                    return Err(DecodeError::new(ErrorCode::Noncanonical, at));
+                }
             }
             // Printable ASCII is UTF-8, so this cannot fail.
-            core::str::from_utf8(text).map_err(|_| DecodeError::new(ErrorCode::Noncanonical, start))
+            let value = core::str::from_utf8(text)
+                .map_err(|_| DecodeError::new(ErrorCode::Noncanonical, start))?;
+            c.check_time()?;
+            Ok(value)
         })
     }
 
@@ -322,8 +374,21 @@ impl<'a> Cursor<'a> {
                     let encoding = before
                         .get(..used)
                         .ok_or(DecodeError::new(ErrorCode::Internal, key_at))?;
-                    if previous.is_some_and(|previous| encoding <= previous) {
-                        return Err(DecodeError::new(ErrorCode::Noncanonical, key_at));
+                    if let Some(previous) = previous {
+                        let mut order = core::cmp::Ordering::Equal;
+                        for (left, right) in encoding.chunks(4096).zip(previous.chunks(4096)) {
+                            c.check_time()?;
+                            order = left.cmp(right);
+                            if !order.is_eq() {
+                                break;
+                            }
+                        }
+                        if order.is_eq() {
+                            order = encoding.len().cmp(&previous.len());
+                        }
+                        if !order.is_gt() {
+                            return Err(DecodeError::new(ErrorCode::Noncanonical, key_at));
+                        }
                     }
                     previous = Some(encoding);
                     Ok((k, value(c)?))
@@ -421,6 +486,7 @@ impl<'a> Cursor<'a> {
     /// Ends a whole input, or an envelope's payload: a byte left over is
     /// `ERR-CODEC-NONCANONICAL` at that byte (INV-TCE-4).
     pub(crate) fn finish(self) -> Result<(), DecodeError> {
+        self.check_time()?;
         if self.rest.is_empty() {
             Ok(())
         } else {
@@ -483,4 +549,106 @@ fn make_room<T>(values: &mut Vec<T>, len: usize, at: u64) -> Result<(), DecodeEr
 /// A length as `u64`. Every supported target has 64-bit or smaller pointers, so this is exact.
 pub(crate) fn wide(len: usize) -> u64 {
     u64::try_from(len).unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+    use std::sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use std::time::Duration;
+    static LOCK: Mutex<()> = Mutex::new(());
+    static BASE: OnceLock<Instant> = OnceLock::new();
+    static CALLS: AtomicUsize = AtomicUsize::new(0);
+    static STOP: AtomicUsize = AtomicUsize::new(usize::MAX);
+    fn now() -> Instant {
+        let base = *BASE.get_or_init(Instant::now);
+        if CALLS.fetch_add(1, Ordering::SeqCst) + 1 >= STOP.load(Ordering::SeqCst) {
+            base + Duration::from_secs(2)
+        } else {
+            base
+        }
+    }
+    fn timed(input: &[u8], stop: usize) -> Cursor<'_> {
+        let mut cursor = Cursor::new(input, &DecodeLimits::MESSAGE).unwrap();
+        cursor.now = now;
+        cursor.deadline = Some(*BASE.get_or_init(Instant::now) + Duration::from_secs(1));
+        CALLS.store(0, Ordering::SeqCst);
+        STOP.store(stop, Ordering::SeqCst);
+        cursor
+    }
+    #[test]
+    fn expired_entry_cannot_run_the_schema_and_time_is_not_an_input_fault() {
+        let mut ran = false;
+        let result = decode(&[], &DecodeLimits::MESSAGE, |c| {
+            c.set_deadline(Instant::now())?;
+            ran = true;
+            Ok(())
+        });
+        assert_eq!(result, Err(DecodeError::new(ErrorCode::Time, 0)));
+        assert!(!ran);
+        assert!(!ErrorCode::Time.is_input_fault());
+        assert_eq!(ErrorCode::Time.id(), "ERR-RES-TIME");
+    }
+    #[test]
+    fn primitive_and_sequence_loops_stop_at_their_work_boundary() {
+        let _lock = LOCK.lock().unwrap();
+        let bytes = vec![1; 8192];
+        let mut c = timed(&bytes, 2);
+        for _ in 0..4096 {
+            assert_eq!(c.u8(), Ok(1));
+        }
+        assert_eq!(c.u8(), Err(DecodeError::new(ErrorCode::Time, 4096)));
+        let mut c = timed(&bytes, 2);
+        assert_eq!(
+            c.elements(8192, 1, 0, Cursor::u8),
+            Err(DecodeError::new(ErrorCode::Time, 2048))
+        );
+        let mut c = timed(&bytes, 1);
+        assert_eq!(
+            c.take_slice(4096),
+            Err(DecodeError::new(ErrorCode::Time, 0))
+        );
+    }
+    #[test]
+    fn ascii_and_map_comparison_check_between_chunks_before_late_input_faults() {
+        let _lock = LOCK.lock().unwrap();
+        let mut bytes = (8192u64).to_le_bytes().to_vec();
+        bytes.extend([b'A'; 8192]);
+        bytes[8 + 4096] = 0xff;
+        assert_eq!(
+            decode(&bytes, &DecodeLimits::MESSAGE, Cursor::ascii)
+                .unwrap_err()
+                .code(),
+            ErrorCode::Noncanonical
+        );
+        let mut c = timed(&bytes, 3);
+        assert_eq!(c.ascii().unwrap_err().code(), ErrorCode::Time);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 3);
+        let mut bytes = (2u64).to_le_bytes().to_vec();
+        for _ in 0..2 {
+            bytes.extend(8192u64.to_le_bytes());
+            bytes.extend([1; 8192]);
+            bytes.push(0);
+        }
+        let map = |c: &mut Cursor<'_>| c.map(8, 1, |c| c.bytes().map(|_| ()), Cursor::u8);
+        assert_eq!(
+            decode(&bytes, &DecodeLimits::MESSAGE, map)
+                .unwrap_err()
+                .code(),
+            ErrorCode::Noncanonical
+        );
+        let mut c = timed(&bytes, 3);
+        assert_eq!(map(&mut c).unwrap_err().code(), ErrorCode::Time);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 3);
+    }
+    #[test]
+    fn completion_checks_even_when_the_last_read_succeeded() {
+        let _lock = LOCK.lock().unwrap();
+        let mut c = timed(&[1], 2);
+        assert_eq!(c.u8(), Ok(1));
+        assert_eq!(c.finish(), Err(DecodeError::new(ErrorCode::Time, 1)));
+    }
 }

@@ -436,17 +436,29 @@ pub fn open_live_observed<T: protocol::ProverMessage>(
 ) -> Result<T, Verdict> {
     let mut tracker = Tracker::new(observer);
     tracker.enter(CheckKind::Input);
-    let opened = T::open_sealed(bytes, limits).map_err(|e| {
-        if e.code().is_input_fault() {
-            reject(RejectReason::Malformed {
-                artifact: ArtifactKind(T::SCHEMA.schema_id),
-                code: e.code().into(),
-            })
-        } else {
-            codec(e.code())
-        }
-    });
+    let opened = open_message::<T>(bytes, limits, None);
     conclude(&mut tracker, opened).map_err(Into::into)
+}
+fn open_message<T: protocol::ProverMessage>(
+    bytes: &[u8],
+    limits: &DecodeLimits,
+    deadline: Option<Instant>,
+) -> Check<T> {
+    let decoded = match deadline {
+        Some(_) => T::open_sealed_with_deadline(bytes, limits, deadline),
+        None => T::open_sealed(bytes, limits),
+    };
+    decoded.map_err(|e| decode_error(e, ArtifactKind(T::SCHEMA.schema_id)))
+}
+fn decode_error(error: tv_codec::DecodeError, artifact: ArtifactKind) -> Failure {
+    if error.code().is_input_fault() {
+        reject(RejectReason::Malformed {
+            artifact,
+            code: error.code().into(),
+        })
+    } else {
+        codec(error.code())
+    }
 }
 /// Verify a canonical NI envelope under the caller's limits, then every semantic predicate.
 /// Decoding a prover artifact fails as Malformed; reader failures remain Inconclusive.
@@ -511,16 +523,12 @@ fn verify_ni_bytes(
         return Err(memory());
     }
     deadline(started, cfg.limits)?;
-    let proof = match NiProof::open(bytes, &limits) {
-        Ok(proof) => proof,
-        Err(e) if e.code().is_input_fault() => {
-            return Err(reject(RejectReason::Malformed {
-                artifact: ArtifactKind(0x0520),
-                code: e.code().into(),
-            }));
-        }
-        Err(e) => return Err(codec(e.code())),
-    };
+    let proof = NiProof::open_with_deadline(
+        bytes,
+        &limits,
+        started.checked_add(cfg.limits.max_wall_time),
+    )
+    .map_err(|e| decode_error(e, ArtifactKind(0x0520)))?;
     deadline(started, cfg.limits)?;
     verify_ni(claims, statement, &proof, cfg, tracker, started)
 }
