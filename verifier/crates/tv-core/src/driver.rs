@@ -721,9 +721,13 @@ fn verify_unit_tracked(
     tracker.enter(CheckKind::Input);
     let artifact = session.artifact();
     let mode = session.mode();
-    let first_bytes = protocol::encoded_len(proof.round1).map_err(codec)?;
-    let second_bytes = protocol::encoded_len(proof.round2).map_err(codec)?;
-    let third_bytes = protocol::encoded_len(proof.round3).map_err(codec)?;
+    let mut cancel = || started.elapsed() >= cfg.limits.max_wall_time;
+    let first_bytes =
+        protocol::encoded_len_with_cancel(proof.round1, &mut cancel).map_err(codec)?;
+    let second_bytes =
+        protocol::encoded_len_with_cancel(proof.round2, &mut cancel).map_err(codec)?;
+    let third_bytes =
+        protocol::encoded_len_with_cancel(proof.round3, &mut cancel).map_err(codec)?;
     let total = first_bytes
         .checked_add(second_bytes)
         .and_then(|n| n.checked_add(third_bytes))
@@ -876,7 +880,7 @@ fn verify_unit_tracked(
             claims.layout.advice.segments,
         ))
         .map_err(claims_error)?;
-    let statement_digest = expected.digest();
+    let statement_digest = expected.digest_with_cancel(&mut cancel).map_err(codec)?;
     let commitment = advice::opening::Commitment::bind(
         &layout,
         claims.layout.advice,
@@ -977,7 +981,10 @@ fn verify_unit_tracked(
         statement_digest,
         session_id: proof.round1.session_id,
     });
-    t.absorb(ascii("round1")?, &proof.round1.to_tce().map_err(codec)?);
+    t.absorb(
+        ascii("round1")?,
+        &protocol::encode_with_cancel(proof.round1, &mut cancel).map_err(codec)?,
+    );
     match session {
         Session::Ni { seed_nonce, .. } => {
             t = proof_of_work(t, &parameters, PowPhase::Seed, seed_nonce)?;
@@ -1138,7 +1145,8 @@ fn verify_unit_tracked(
         .map_err(opening_error)?;
     t.absorb(
         ascii("pcs/advice/combined")?,
-        &protocol::encode(proof.round2.advice_combined.as_slice()).map_err(codec)?,
+        &protocol::encode_with_cancel(proof.round2.advice_combined.as_slice(), &mut cancel)
+            .map_err(codec)?,
     );
     let mut rows: [Vec<opening::CombinedRow>; 10] = core::array::from_fn(|_| Vec::new());
     for packet in &proof.round2.weight_combined {
@@ -1170,12 +1178,15 @@ fn verify_unit_tracked(
                 .find(|p| usize::from(p.matrix) == i)
                 .ok_or_else(internal)?;
             let label = weight_label(l.matrix(), "combined")?;
-            t.absorb(ascii(&label)?, &protocol::encode(packet).map_err(codec)?);
+            t.absorb(
+                ascii(&label)?,
+                &protocol::encode_with_cancel(packet, &mut cancel).map_err(codec)?,
+            );
         }
     }
     t.absorb(
         ascii("scoring")?,
-        &protocol::encode(&proof.round2.scoring).map_err(codec)?,
+        &protocol::encode_with_cancel(&proof.round2.scoring, &mut cancel).map_err(codec)?,
     );
     deadline(started, cfg.limits)?;
     tracker.enter(CheckKind::Queries);
@@ -1233,7 +1244,10 @@ fn verify_unit_tracked(
         _ => generated.as_ref().ok_or_else(internal)?,
     };
     if mode == Mode::Live {
-        t.absorb(ascii("queries")?, &protocol::encode(packet).map_err(codec)?);
+        t.absorb(
+            ascii("queries")?,
+            &protocol::encode_with_cancel(packet, &mut cancel).map_err(codec)?,
+        );
         if matches!(session, Session::Live { queries: None, .. }) {
             return Ok(Outcome::Queries(generated.ok_or_else(internal)?));
         }
@@ -1266,7 +1280,6 @@ fn verify_unit_tracked(
     {
         return Err(malformed(artifact));
     }
-    let mut cancel = || started.elapsed() >= cfg.limits.max_wall_time;
     advice_evaluated
         .check_columns_with_cancel(
             &advice_queries,

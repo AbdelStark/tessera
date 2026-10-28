@@ -297,12 +297,18 @@ impl LiveVerifier {
         // Step 5 reserves nothing in `tessera-protocol/1`; step 6 binds Round1 and the seed.
         tracker.not_applicable(CheckKind::WeightReservation);
         tracker.enter(CheckKind::Transcript);
-        let first = message.to_tce().map_err(codec)?;
+        let started = self.started.ok_or_else(internal)?;
+        let limits = self.cfg.limits;
+        let mut cancel = || started.elapsed() >= limits.max_wall_time;
+        let first = protocol::encode_with_cancel(message, &mut cancel).map_err(codec)?;
         let context = SessionContext {
             protocol: ascii("tessera-protocol/1")?,
             mode: Mode::Live,
             params: tv_hash::transcript::ParamSetId(ascii(self.cfg.params.name())?),
-            statement_digest: self.statement.digest(),
+            statement_digest: self
+                .statement
+                .digest_with_cancel(&mut cancel)
+                .map_err(codec)?,
             session_id: id,
         };
         let round1_label = ascii("round1")?;
@@ -396,8 +402,11 @@ impl LiveVerifier {
         let Outcome::Queries(queries) = result else {
             return Err(internal());
         };
-        let second = message.to_tce().map_err(codec)?;
-        let encoded_queries = queries.to_tce().map_err(codec)?;
+        let started = self.started.ok_or_else(internal)?;
+        let limits = self.cfg.limits;
+        let mut cancel = || started.elapsed() >= limits.max_wall_time;
+        let second = protocol::encode_with_cancel(message, &mut cancel).map_err(codec)?;
+        let encoded_queries = protocol::encode_with_cancel(&queries, &mut cancel).map_err(codec)?;
         deadline(self.started.ok_or_else(internal)?, self.cfg.limits)?;
         self.state = State::Round3 {
             first,
