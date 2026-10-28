@@ -11,6 +11,8 @@ provides no zero knowledge. The [independent verifier CLI](docs/verifier/referen
 checks NI proofs against caller-owned statement and weight pins. Prover CLI
 orchestration and the pass planner remain separate milestones.
 
+Optional metrics and collector export are described in the [telemetry guide](docs/telemetry.md).
+
 ## Specification
 
 - [`SPEC.md`](SPEC.md): executive summary, reading order, release plan and risk register.

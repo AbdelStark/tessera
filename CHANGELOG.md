@@ -6,6 +6,7 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Optional prover CLI telemetry ([#177](https://github.com/AbdelStark/tessera/issues/177), 05 §4–§5): an explicit `--metrics-addr` Prometheus endpoint over the existing registry, and `otel`-gated OTLP/HTTP JSON trace export with `--otlp-endpoint`. Default invocations open no telemetry socket; CI checks both builds in a network namespace. See the [telemetry guide](docs/telemetry.md).
 - Conformance vectors and differential prover-to-verifier adapter tests for temperature and mixture scoring checks ([#160](https://github.com/AbdelStark/tessera/issues/160), RFC-0017, RFC-0019, RFC-0030, RFC-0035, RFC-0043, RFC-0050, RFC-0058, RFC-0061):
   - **Specification clarification (`RFC-0017`).** Spelled out `Exp_T`'s precision `sigma = exp_sigma` and deterministic narrowest `key_bits ∈ [min_key_bits, max_log2_rows]` selection (`min_key_bits = max(1, bit_length(hi − lo))` over the lowered LM-head logit interval `[lo, hi]`) under `'D's decoded token'`.
   - **Independent gadget-finals oracles (`spec/vectors/gadget-finals/`).** Added `inverse_cdf.py` (`inverse-cdf.json`: 6 schema cases across `W ∈ [1, 51]` and 17 component cases, 6 honest and 11 isolated alternatives with omission proofs) and `one_sided_log2.py` (`one-sided-log2.json`: exact `c_match(0..=16)`, 6 `VocabMax` cases, 3 runtime table-interning cases, 7 `OneSidedLog2` schema cases, and 15 `OneSidedLog2` component cases, 5 honest and 10 isolated alternatives with omission proofs).
