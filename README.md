@@ -11,6 +11,8 @@ provides no zero knowledge. The [independent verifier CLI](docs/verifier/referen
 checks NI proofs against caller-owned statement and weight pins. Prover CLI
 orchestration and the pass planner remain separate milestones.
 
+For recorder placement, TLS boundaries and serving-engine conformance, start with the [integration guide](docs/integration.md).
+
 ## Specification
 
 - [`SPEC.md`](SPEC.md): executive summary, reading order, release plan and risk register.

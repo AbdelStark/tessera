@@ -160,6 +160,14 @@ jobs:
       - name: A sampled audit from the recorder's logs to the verifier's verdict (02 §2.2)
         if: matrix.workspace == 'prover'
         run: cargo nextest run --locked -p tessera-cli --test prove_sample
+      - name: Serving integration guide, reference recorder and sampler conformance
+        if: matrix.workspace == 'prover'
+        run: |
+          cargo test -p tessera-scoring --test sampler --test exact --locked
+          cargo test -p tessera-witness --test engine the_engine_computes_the_conformance_vectors --locked
+          cargo test -p tessera-cli --example recorder_integration --test recorder --locked
+          cargo run -p tessera-cli --example recorder_integration --locked -- \
+            "$TESSERA_BIN" "$RUNNER_TEMP/recorder-integration"
       - name: Accept real CPU proofs in NI and fresh Live sessions
         if: matrix.workspace == 'prover'
         run: >-
