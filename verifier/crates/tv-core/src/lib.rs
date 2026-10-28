@@ -53,7 +53,8 @@
 //! | [`leaf::grouped::Stage`] / [`leaf::split::LeafPoint`] | a grouped leaf stage's checks through the merge and its atom splits; where either stage leaves its claims, `P[0..n]` or the merged `r(n, S)`, the one rule every later consumer reads (RFC-0054 'The stage's outputs') |
 //! | [`stages::verify`] | the leaf stage's splits, then each reduction stage: its layer and zero-check points, its batched sumcheck with the public factors, its splits; and the claim pool |
 //! | [`selectors`] | the public factors: `LT`, the causal selector `C̃`, the row selector `ψ̃`, layer weights `w̃`, `Rotate`'s kernel, and RFC-0035's padding zero-check |
-//! | [`gadgets`] | final checks for requantization, NonNeg, BigIntCompare, OneHot, roots, causal Softmax and Argmax, with canonical source/range obligations (RFC-0009/0050) |
+//! | [`gadgets`] | final checks for requantization, NonNeg, BigIntCompare, OneHot, roots, causal Softmax, Argmax, InverseCdf, VocabMax and OneSidedLog2, plus runtime scoring table interning (RFC-0009/0017/0050/0058) |
+//! | [`scoring`] | sampler key derivation, keyed stream classes, FIPS-197 AES-128 draws, reference inverse-CDF selection, predictor validation and RFC-0019 step-12 `Û` bound checks (RFC-0017, RFC-0061) |
 //! | [`soundness::SoundnessReport::evaluate`] | independent integer-only soundness calculator for every row of RFC-0014's table, a leaf stage in token groups included (RFC-0014, RFC-0049, RFC-0054 'Soundness') |
 //! | [`anchor`] | the transcript anchor's log checks: the recorder's manifest and its signature under pinned keys, the period's verified log, the previous period's log, the candidates, the sampler pins at load, and each request's session, frame and sampler-key rules (RFC-0015, RFC-0059 to RFC-0063) |
 //! | [`audit`] | the audit's accounting: the policy and its exact thresholds, the verifier's coin toss and its pending file (schema `0x0702`), the sample derived from the verified logs (schema `0x0403`), batching, the ledger (schema `0x0701`) with its membership and replay checks and atomic file, and the audit report (RFC-0016, RFC-0019 'Ledger') |
@@ -590,6 +591,7 @@ mod range_checks;
 pub mod ranges;
 pub mod runtime;
 pub mod schedule;
+pub mod scoring;
 pub mod selection;
 pub mod selectors;
 pub mod soundness;

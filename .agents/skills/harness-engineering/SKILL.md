@@ -76,7 +76,7 @@ python3 .agents/skills/harness-engineering/scripts/mutate.py \
 
 If any mutation **survives** (all tests still pass), you have found one of:
 - A **missing adversarial test**: write the test that kills the mutant before committing.
-- A **shadowed adversarial test**: its input violates two checks, and an earlier one rejects with the same reason, so the targeted check is never exercised. Make the input violate exactly that check. In #135, zeroing a LogUp root's `d_a` alone also broke the identity `n_a·d_t + n_t·d_a = 0`; zeroing the whole root `(n_a, d_a)` keeps the identity and leaves only `d_a ≠ 0` to reject.
+- A **shadowed adversarial test**: its input violates two checks, and an earlier one rejects with the same reason, so the targeted check is never exercised. Make the input violate exactly that check. In #135, zeroing a LogUp root's `d_a` alone also broke the identity `n_a·d_t + n_t·d_a = 0`; zeroing the whole root `(n_a, d_a)` keeps the identity and leaves only `d_a ≠ 0` to reject. Likewise, when a parameter branch tightens a relaxed polynomial identity to a stricter one (such as `eps_log2 == 0` tightening `m_t − m_t^2 = 0` to `m_t = 0` in #160), an omission proof (`0`) still fails the relaxed polynomial at the random point; the adversarial proof must prove the relaxed polynomial itself so disabling the branch accepts.
 - **Dead or redundant code**: simplify the code.
 - An **equivalent mutant**: one the specification cannot tell apart, such as an event renamed to another valid name. Replace it with a mutant of observable behavior.
 

@@ -12,7 +12,7 @@ From the repository root:
 
 ```sh
 cargo test --manifest-path verifier/Cargo.toml -p tv-core --locked
-cargo test -p tessera-prover --locked --test gadget_comparison --test gadget_root_products --test gadget_requant --test gadget_onehot --test gadget_root --test gadget_softmax --test gadget_argmax --test gadget_argmax_outputs
+cargo test -p tessera-prover --locked --test gadget_comparison --test gadget_root_products --test gadget_requant --test gadget_onehot --test gadget_root --test gadget_softmax --test gadget_argmax --test gadget_argmax_outputs --test gadget_inverse_cdf --test gadget_scoring
 cargo test -p tessera-e2e --locked --test alternative_witnesses
 cargo xtask gen-vectors --check
 cargo xtask check-isolation
@@ -74,6 +74,9 @@ still required.
 | OneHot | Booleanity, vocabulary padding, row sum, token index | Original token claim and the same indicator source at each final point |
 | SoftmaxRow | Masked lookup key, masked maximum-forest leaf, reciprocal product and both NonNeg decompositions | Earlier forest/LogUp claims; maximum, reciprocal and exponential sources; both row-padding checks |
 | Argmax | Masked Range29 key, selected logit and strict suffix | Certificate maximum, logits and the same next-token OneHot; output views bind original graph rows |
+| VocabMax | Narrowest zero-tail `Exp_T` width, forest root `1 - psi`, masked key/leaf and padded-row maximum zero-check | Earlier `Exp_T` LogUp and maximum-forest claims; certificate maximum and lowered LM-head logits |
+| InverseCdf | `u`, `Z` and `B` decompositions, lower/upper `BigIntCompare` brackets, `u*Z` limbs, padded-row `Z`, `Z`/`B`/`S` contractions, bounded `OneHot` and strict suffix | Range memberships; draw, advice, exponential and recorded/sampled indicator sources |
+| OneSidedLog2 | `Z`, `q` and 63-bit `P` decompositions, `BigIntCompare` bound, match booleanity/`k=0` pin, `q` product, padded-row `Z`, `Uhat` contraction and `m*(h_y - h_yhat) = 0` | `Pow2(63)`, `Exp2Frac(8, 16)` and Range memberships; row advice, exponentials and recorded/decoded indicators |
 
 `Plan` derives graph sites, identities, tables and geometry from the verifier's
 private lowered graph and selection. Scoring owns Argmax's global certificate id
@@ -111,7 +114,8 @@ The blanket `Reject(Gadget)` wording in #124 must be read with RFC-0019's normat
 first-failure order: illegal lookup membership fails LogUp in step 7; a failed
 nonlinear batched relation fails Sumcheck at its exact stage and round. A mixed
 sumcheck batch cannot identify one guilty gadget. Relabeling either failure as
-Gadget would violate that order. InverseCdf alternatives belong to #160.
+Gadget would violate that order. `InverseCdf`, `VocabMax` and `OneSidedLog2`
+alternatives are covered by `inverse-cdf.json` and `one-sided-log2.json` (#160).
 
 RFC-0066's `BitDecompose` and `AssertEqual` have no final check here: their relations are stage
 1's zero-checks (RFC-0072 'The bit zero-checks'), so a false bit fails stage 1's final check,

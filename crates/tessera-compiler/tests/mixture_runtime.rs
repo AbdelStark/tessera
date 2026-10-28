@@ -277,4 +277,29 @@ fn mixture_plan_derives_greedy_and_temperature_tables_without_changing_claim_lis
         MixturePlan::derive(&lowering, &selection, &narrow_claims, &requests[..1], 6, 0),
         Err(CompileError::Model { .. })
     ));
+
+    // 5. Zero-output requests (`prompt == positions`) do not shift output-bearing `Exp_T` TableId
+    // ordering or consume the 4-temperature budget (RFC-0017 item 6).
+    let zero_then_swapped = [
+        MixtureRequestSpec {
+            prompt: 4,
+            positions: 4,
+            decoding: MixtureDecoding::Temperature(t07),
+        },
+        MixtureRequestSpec {
+            prompt: 1,
+            positions: 4,
+            decoding: MixtureDecoding::Temperature(t15),
+        },
+        MixtureRequestSpec {
+            prompt: 1,
+            positions: 4,
+            decoding: MixtureDecoding::Temperature(t07),
+        },
+    ];
+    let swapped_plan =
+        MixturePlan::derive(&lowering, &selection, &claims, &zero_then_swapped, 6, 0).unwrap();
+    assert_eq!(swapped_plan.temperatures().len(), 2);
+    assert_eq!(swapped_plan.temperatures()[0].temperature, t15);
+    assert_eq!(swapped_plan.temperatures()[1].temperature, t07);
 }

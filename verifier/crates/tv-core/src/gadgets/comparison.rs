@@ -107,6 +107,16 @@ impl Comparison {
         self.left_carries.len()
     }
 
+    /// Verifier-derived Range widths for each limb's outgoing left carry.
+    pub fn left_carries(&self) -> &[u8] {
+        &self.left_carries
+    }
+
+    /// Verifier-derived Range widths for each limb's outgoing right carry.
+    pub fn right_carries(&self) -> &[u8] {
+        &self.right_carries
+    }
+
     /// Check left normalization, right normalization and subtraction in limb
     /// order, then both terminal carries and the terminal borrow, all at one point.
     /// The caller has absorbed the claimed values at their specified transcript step.

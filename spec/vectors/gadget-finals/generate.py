@@ -350,6 +350,14 @@ def main():
     views = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(views)
     write('argmax-views.json', views.cases())
+    spec = importlib.util.spec_from_file_location('inverse_cdf_oracle', Path(__file__).with_name('inverse_cdf.py'))
+    icdf = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(icdf)
+    write('inverse-cdf.json', icdf.cases(sys.modules[__name__]))
+    spec = importlib.util.spec_from_file_location('one_sided_log2_oracle', Path(__file__).with_name('one_sided_log2.py'))
+    osl2 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(osl2)
+    write('one-sided-log2.json', osl2.cases(sys.modules[__name__]))
     print(f'{len(cases)} comparison cases, {sum(len(c["rows"]) for c in cases)} integer witnesses')
 
 

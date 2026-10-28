@@ -850,3 +850,70 @@ fn test_params_names_whether_this_build_accepts_test_small() {
     let accepted = ParamSet::accept(&ParamSetId::new("test-small/1").unwrap()).is_some();
     assert_eq!(tv_core::TEST_PARAMS, accepted);
 }
+
+#[test]
+fn predictor_domain_bounds_reject_as_statement_mismatch_before_runtime_support() {
+    let rat = |n: i64, d: u64| tv_codec::Rational::new(n, d).unwrap();
+    let out_of_domain = [
+        PredictorSpec::Exact {
+            decoding: Decoding::Temperature { t: rat(0, 1) },
+        },
+        PredictorSpec::Exact {
+            decoding: Decoding::Temperature { t: rat(-1, 2) },
+        },
+        PredictorSpec::Exact {
+            decoding: Decoding::Temperature { t: rat(9, 2) },
+        },
+        PredictorSpec::Exact {
+            decoding: Decoding::Temperature {
+                t: rat(1_000_000_001, 250_000_000),
+            },
+        },
+        PredictorSpec::Mixture {
+            decoding: Decoding::Greedy,
+            eps_log2: 17,
+        },
+        PredictorSpec::Mixture {
+            decoding: Decoding::Greedy,
+            eps_log2: u8::MAX,
+        },
+        PredictorSpec::Mixture {
+            decoding: Decoding::Temperature { t: rat(5, 1) },
+            eps_log2: 6,
+        },
+    ];
+    for bad in out_of_domain {
+        let (c, mut s, mut p, cfg) = fixture();
+        s.predictor = bad;
+        p.round1.statement = s.clone();
+        rejected(
+            verify(&c, &s, &p, &cfg),
+            R::StatementMismatch {
+                field: tv_core::validation::StatementField::Predictor,
+            },
+        );
+    }
+
+    let in_domain_unwired = [
+        PredictorSpec::Exact {
+            decoding: Decoding::Temperature { t: rat(4, 1) },
+        },
+        PredictorSpec::Exact {
+            decoding: Decoding::Temperature { t: rat(1, 1000) },
+        },
+        PredictorSpec::Mixture {
+            decoding: Decoding::Greedy,
+            eps_log2: 0,
+        },
+        PredictorSpec::Mixture {
+            decoding: Decoding::Temperature { t: rat(4, 1) },
+            eps_log2: 16,
+        },
+    ];
+    for supported_domain in in_domain_unwired {
+        let (c, mut s, mut p, cfg) = fixture();
+        s.predictor = supported_domain;
+        p.round1.statement = s.clone();
+        inconclusive(verify(&c, &s, &p, &cfg), ErrorCode::Usage);
+    }
+}
