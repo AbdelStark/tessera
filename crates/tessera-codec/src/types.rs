@@ -102,6 +102,9 @@ fn gcd(mut a: u64, mut b: u64) -> u64 {
 }
 
 impl Rational {
+    /// The multiplicative identity `1 / 1`.
+    pub const ONE: Self = Self { num: 1, den: 1 };
+
     /// `num / den` in lowest terms, or `None` when `den` is zero.
     pub fn new(num: i64, den: u64) -> Option<Self> {
         if den == 0 {

@@ -57,9 +57,10 @@ pub use report::{
     Tally, report, stage_count,
 };
 pub use runtime::{
-    CdfAdviceColumn, GreedyCertificate, MAX_BATCH_TEMPERATURES, RuntimePlan,
+    CdfAdviceColumn, GreedyCertificate, Log2AdviceColumn, MAX_BATCH_TEMPERATURES,
+    MixtureCertificate, MixtureDecoding, MixturePlan, MixtureRequestSpec, RuntimePlan,
     TemperatureCertificate, TemperaturePlan, TemperatureRequestSpec, TemperatureTable,
-    cdf_columns_and_requests, vocab_exp_scale,
+    cdf_columns_and_requests, log2_columns_and_requests, vocab_exp_scale,
 };
 pub use schedule::{StageSchedule, derive_graph_schedule, derive_schedule};
 pub use select::{Gadget, Selection, select};
