@@ -58,7 +58,9 @@ conservative allowances and phase deadlines, not hard peak-RSS or blocking-I/O
 guarantees. Advice and weight openings carry the same deadline through NTTs,
 column-chain hashing (between blocks and each 128-symbol piece of a long block),
 coefficient construction and consistency folds (at most 4,096 entries per check).
-Codeword copying, zero initialization and mask application also poll it. These
+Codeword copying, zero initialization and mask application also poll it.
+Merkle multiproofs check before work, at most every 4,096 validation/counting/tree
+steps and before releasing successful authentication. These
 checks return `ERR-RES-TIME`; other verification loops and blocking I/O still need
 hardening. Full hardening remains [#182](https://github.com/AbdelStark/tessera/issues/182).
 

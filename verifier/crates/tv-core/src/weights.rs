@@ -44,7 +44,7 @@ use tv_field::{Fp, Fp2};
 use tv_hash::column::column_digest;
 use tv_hash::column::column_digest_with_cancel;
 use tv_hash::hash;
-use tv_hash::merkle::{MultiproofError, verify_multiproof};
+use tv_hash::merkle::{MultiproofError, verify_multiproof_with_cancel};
 use tv_hash::{Digest, Domain, DomainHasher};
 
 /// A matrix in RFC-0012's declaration order, including the hidden channel parameters.
@@ -840,12 +840,15 @@ impl Evaluated<'_> {
                 })?,
             ));
         }
-        verify_multiproof(&o.root, n, &leaves, siblings).map_err(|error| match error {
-            MultiproofError::MissingSiblings { .. }
-            | MultiproofError::ExtraSiblings { .. }
-            | MultiproofError::RootMismatch => merkle,
-            _ => Error::Internal,
-        })?;
+        verify_multiproof_with_cancel(&o.root, n, &leaves, siblings, &mut *cancel).map_err(
+            |error| match error {
+                MultiproofError::Cancelled => Error::Time,
+                MultiproofError::MissingSiblings { .. }
+                | MultiproofError::ExtraSiblings { .. }
+                | MultiproofError::RootMismatch => merkle,
+                _ => Error::Internal,
+            },
+        )?;
         let mut coefficients = reserve(count)?;
         let mut codeword = reserve(self.n)?;
         let mut agreed = distinct.len();
@@ -1031,6 +1034,20 @@ mod cancellation_tests {
             Err(Error::Time)
         );
         assert_eq!(polls, 3);
+        polls = 0;
+        assert_eq!(
+            check_evaluations(wrong, &combined)
+                .unwrap()
+                .check_columns_with_cancel(&queries, &columns, &[], &mut || {
+                    polls += 1;
+                    polls == 14
+                }),
+            Err(Error::Time)
+        );
+        assert_eq!(
+            polls, 14,
+            "deadline reaches Merkle authentication after four column chains"
+        );
         for stop in [1, 3] {
             let mut polls = 0;
             assert_eq!(

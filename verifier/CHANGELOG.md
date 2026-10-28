@@ -6,6 +6,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Fixed
 
+- Poll the existing driver deadline during Merkle multiproof validation, sibling counting and tree reconstruction, at most every 4,096 work steps and before success (RFC-0019, SP-8, [#182](https://github.com/AbdelStark/tessera/issues/182)). Advice and weight openings map interruption to `ERR-RES-TIME`; uncancelled authentication errors retain their original order. The original `verify_multiproof` API remains uncancelled; `verify_multiproof_with_cancel` adds explicit cancellation.
+
 - Carry the original verification deadline through column-chain hashing, advice/weight coefficient construction, consistency folds, and codeword copy/zero/mask loops (RFC-0019, SP-8, [#182](https://github.com/AbdelStark/tessera/issues/182)). Chained hashes check between blocks and 128-symbol pieces; row loops check at most every 4,096 entries. Cancellation returns `ERR-RES-TIME` without releasing a digest or an accepted opening. Other verifier phases and blocking I/O still require hardening.
 
 - Refine the driver's memory preflight with the derived row coefficients, codeword and NTT twiddles that must coexist for each advice or weight opening ([#182](https://github.com/AbdelStark/tessera/issues/182), SP-8). Use the largest sequential opening, retaining the existing coarse allowance when larger. Checked size overflow and insufficient budget return `ERR-RES-MEMORY` before a Live reveal or opening-buffer reservation. Boundary tests first validate large advice and weight geometries; this remains a partial allocation estimate.

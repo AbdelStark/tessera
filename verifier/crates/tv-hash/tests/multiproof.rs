@@ -9,7 +9,7 @@ mod support;
 
 use support::{Rng, Tree, canonical_count, multiproof_outcome};
 use tv_hash::Digest;
-use tv_hash::merkle::{MultiproofError, node, verify_multiproof};
+use tv_hash::merkle::{MultiproofError, node, verify_multiproof, verify_multiproof_with_cancel};
 
 /// `count` distinct sorted indices below `n`.
 fn indices(rng: &mut Rng, n: u64, count: usize) -> Vec<u64> {
@@ -377,5 +377,37 @@ fn internal_nodes_open_as_leaves_only_under_a_smaller_tree_size() {
             honest_n,
             multiproof_outcome(&tree.root(), 64, &nodes, &siblings)
         );
+    }
+}
+
+#[test]
+fn a_cancellable_opening_of_an_independent_tree_preserves_its_result() {
+    let mut rng = Rng::new(0x182_004);
+    let tree = Tree::random(13, &mut rng);
+    let set: Vec<_> = (0..tree.n()).collect();
+    let leaves = tree.open(&set);
+    let siblings = tree.multiproof(&set);
+    let mut polls = 0;
+    assert_eq!(
+        verify_multiproof_with_cancel(&tree.root(), tree.n(), &leaves, &siblings, || {
+            polls += 1;
+            false
+        }),
+        Ok(())
+    );
+    assert!(
+        polls > 4,
+        "the traversal must check beyond its entry and exit"
+    );
+    for stop in 1..=polls {
+        let mut seen = 0;
+        assert_eq!(
+            verify_multiproof_with_cancel(&tree.root(), tree.n(), &leaves, &siblings, || {
+                seen += 1;
+                seen == stop
+            }),
+            Err(MultiproofError::Cancelled)
+        );
+        assert_eq!(seen, stop);
     }
 }

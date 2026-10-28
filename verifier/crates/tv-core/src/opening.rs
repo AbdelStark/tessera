@@ -73,7 +73,7 @@ use core::num::NonZeroU32;
 
 use tv_field::{Fp, Fp2, NttError, TWO_ADICITY, coset_ntt_with_cancel, intt_with_cancel};
 use tv_hash::column::column_digest_with_cancel;
-use tv_hash::merkle::{MultiproofError, verify_multiproof};
+use tv_hash::merkle::{MultiproofError, verify_multiproof_with_cancel};
 use tv_hash::{Digest, Domain, DomainHasher};
 
 /// The largest bit count of a row index: a row is a `u64`.
@@ -558,18 +558,20 @@ impl ColumnCheck<'_> {
         for (&j, column) in distinct.iter().zip(columns) {
             leaves.push((j, make_leaf(j, column, cancel)?));
         }
-        verify_multiproof(root, sizes.leaves, &leaves, siblings).map_err(|error| {
-            match error {
-                MultiproofError::MissingSiblings { .. }
-                | MultiproofError::ExtraSiblings { .. }
-                | MultiproofError::RootMismatch => merkle_path,
-                // n is a power of two and D sorted, distinct, non-empty and below n.
-                MultiproofError::TreeSize
-                | MultiproofError::NoLeaves
-                | MultiproofError::Unordered { .. }
-                | MultiproofError::OutOfRange { .. } => OpeningError::Internal,
-            }
-        })?;
+        verify_multiproof_with_cancel(root, sizes.leaves, &leaves, siblings, &mut *cancel)
+            .map_err(|error| {
+                match error {
+                    MultiproofError::Cancelled => OpeningError::Time,
+                    MultiproofError::MissingSiblings { .. }
+                    | MultiproofError::ExtraSiblings { .. }
+                    | MultiproofError::RootMismatch => merkle_path,
+                    // n is a power of two and D sorted, distinct, non-empty and below n.
+                    MultiproofError::TreeSize
+                    | MultiproofError::NoLeaves
+                    | MultiproofError::Unordered { .. }
+                    | MultiproofError::OutOfRange { .. } => OpeningError::Internal,
+                }
+            })?;
 
         // 4. Step 8.3: each combined row against each queried column, one codeword at a time.
         let mut coefficients = Vec::new();
@@ -1272,6 +1274,18 @@ mod tests {
             Err(OpeningError::Time)
         );
         assert_eq!(polls, 3);
+        polls = 0;
+        assert_eq!(
+            check(&mut || {
+                polls += 1;
+                polls == 6
+            }),
+            Err(OpeningError::Time)
+        );
+        assert_eq!(
+            polls, 6,
+            "deadline reaches Merkle authentication after the column chain"
+        );
     }
 
     #[test]
