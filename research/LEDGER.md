@@ -8,7 +8,7 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 |---|---|
 | Survey | SUR-0017 |
 | Idea | IDEA-0041 |
-| Experiment | EXP-0028 |
+| Experiment | EXP-0029 |
 
 ## Queue
 
@@ -30,7 +30,7 @@ Upstream on 2026-10-19 (`gh issue list`): every issue the loop fed upstream is c
 
 | # | Action | Mode | Why | Feasible here |
 |---|---|---|---|---|
-| 0 | Pre-register the complete weight-mask draw/support audit for #568, from [SUR-0016](surveys/SUR-0016-weight-mask-draw-cost.md), then compare regeneration/store accounting under the current generator | experiment | The 530 GB/s proxy is not a measured XOF rate; 216 GB omits reservation rows and 242 GB assumes different mask support. Audit matrix widths, claims, reservations and every consumer before choosing a budget/storage amendment. No blinder-exclusion security credit | yes, E0 counts only; E2 needs #38 |
+| 0 | Run the frozen [EXP-0028](experiments/EXP-0028-weight-mask-draws/README.md) public geometry/support/pass audit for #568, then compare regeneration/store accounting under the current generator | experiment | The 530 GB/s proxy is not a measured XOF rate; 216 GB omits reservation rows and 242 GB assumes different mask support. Audit matrix widths, claims, reservations and every consumer before choosing a budget/storage amendment. No blinder-exclusion security credit | yes, E0 counts only; E2 needs #38 |
 | 1 | RFC-0070 drafts the RFC #489 asks for, from [IDEA-0040](ideas/IDEA-0040-batched-mask-opening.md) and [EXP-0027](experiments/EXP-0027-batched-mask-opening/README.md): `M`'s layout, `S` over `Fp2` on it, the order and labels, one group, `G(r)` under `…/evals`, the calculator's sizes, Lemma 4a and R11 | promoted | It settles both gaps the independent reading raised and counts its two soundness terms. Owed: implementation (#148, #149, #159) and #162's negative controls. Follow-ups: OQ-0070-1 (a smaller pad, L3 with a rank lemma) and OQ-0070-2 (the column and fold masks' groups) | yes |
 | 2 | Draft RFC-0021 revised against current main in [PR #390](https://github.com/AbdelStark/tessera/pull/390) | review | Fresh pinned-source review and independent exact oracle reconcile RFC-0047/0049 allocation, virtual rows and empty matrices. OQ-0021-4/6/7 remain open; [#394](https://github.com/AbdelStark/tessera/issues/394) tracks the joint masking/invariant conflict. No complete soundness or ZK approval | PR Draft; independent review and decisions pending |
 | 9 | Production-port proposal for IDEA-0026/0030: [#391](https://github.com/AbdelStark/tessera/issues/391) | handed off | E1 CPU validation promoted with explicit accumulator-bound, SecretBuf, branchlessness, equivalence, mutation and independent-acceptance criteria; no production implementation or E2 claim | issue filed; implementation separate |
@@ -167,6 +167,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | ID | Title | Idea | Status | Verdict | Evidence |
 |---|---|---|---|---|---|
+| [EXP-0028](experiments/EXP-0028-weight-mask-draws/README.md) | Complete weight-mask draw accounting | #568 | `planned` | pending | Frozen E0 public geometry/support/pass audit; no code or timing at registration |
 | [EXP-0027](experiments/EXP-0027-batched-mask-opening/README.md) | Batched mask opening: rank, distinguisher, soundness, 405B count | IDEA-0040 | `done: validated` | validated | E0. 13,500 rank draws, generic rank `2m` on every draw. Candidate distinguishable on 0 of 300 draws, four controls on 100%. 366 and 421 accepted cheats against 381.4 and 427.2 predicted. The 405B count from the compiler. Seeding amendment disclosed |
 | [EXP-0025](experiments/EXP-0025-greedy-boundary/README.md) | Original-source greedy boundary | IDEA-0038 | `done: validated` | validated | E0: 324 domains, 129,885 integer cases, 18 experiment faults; no full protocol credit |
 | [EXP-0026](experiments/EXP-0026-causal-score-rounds/README.md) | Causal score rounds without the score tensor | IDEA-0039 | `done: validated` | validated | E0: 336 runs exactly equal in Fp2, 9/9 faults detected, key-bit-round multiplications 0.027 of the literal prover's at n = 2^10 and falling as d·log n/n |
@@ -300,3 +301,5 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-10-25 | `autoresearch ideate` + `experiment IDEA-0040` (#489) | **The unit.** IDEA-0040 was triaged, and EXP-0027 pre-registered (SHA-256 79c531f7, frozen 19:19:41Z). The frozen plan is not committed, since this unit makes no git writes, and its digests stand in. The plan was amended once, for overlapping worker streams (cefd62a0). The judged run is `done: validated` (E0). **Findings.** The batching's revealed functionals reach rank `2m`, not the pre-registered `2m + 1`: the last round brings one. Sub-cube supports lose `j`, or `2j` under `S` on `C`'s support. Coverage of `M`'s layout, not full rank, decides zero knowledge (Lemma B). The bare batching leaks on a protocol-like layout. **At 405B.** 2,667 mask claims, one group of 64 MiB in place of 612 (38.25 GiB), an `S` of 0.163% of the advice rows, and soundness `+2^-116.6`. **Review.** An independent reading of Lemma B found no break, two specification gaps and two missing soundness terms; they are recorded in the report. **Next.** The RFC for #489. |
 
 | 2026-10-29 | `autoresearch survey hash` (#568) | [SUR-0016](surveys/SUR-0016-weight-mask-draw-cost.md) reconciles conditional draw sets: 654.109 GB full support, 216.735 GB selected-only, 242.463 GB all masks plus selected values (E0). RFC-0004's 530 GB/s is an implied column-hash budget, not a measured XOF rate. No design promotion, security claim, GPU result or cost-model credit. Next bounded unit: pre-register a complete per-matrix/support/consumer audit before choosing #568's storage/budget amendment. |
+
+| 2026-10-29 | `autoresearch experiment` (#568, registration) | [EXP-0028](experiments/EXP-0028-weight-mask-draws/README.md) frozen before code: five model and eight opening geometries, synthetic supports/widths/reservations, two 405B channel cases, pass/epoch accounting and ten negative controls. E0 only; no masked-layout implementation, throughput or security claim. |
