@@ -24,6 +24,15 @@ use aes::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
 use core::borrow::{Borrow, BorrowMut};
 use core::fmt;
 use tessera_codec::{HeapKey, Secret, SecretBuf};
+use tessera_compiler::anchor::{
+    PinnedSamplerPrf, SamplerPinPublic, StandaloneSamplerPrf, aes_rcon_values,
+    sampler_class_layout, sampler_class_public_bits, sampler_commit_layout,
+    sampler_commit_public_bits, sampler_derive_layout, sampler_derive_public_bits,
+    sampler_key_block_layout, sampler_key_block_public_bits, sampler_position_blocks, sha256_bits,
+    sha256_iv_bits, sha256_mask_bits,
+};
+use tessera_ir::TensorId;
+use tessera_witness::SecretGraphInputs;
 use zeroize::Zeroize;
 
 /// The prover's base key `K_p` (RFC-0061 'The sampler key and its pins'), whose commitment the
@@ -91,6 +100,77 @@ impl SamplerBaseKey {
         state.zeroize();
         SamplerKey { key, bits }
     }
+
+    /// Builds sealed clearing graph-input buffers (`Secret<SecretGraphInputs>`) for
+    /// [`PinnedSamplerPrf`] on `pin`, `salt`, `prompt` and `positions` (`RFC-0061` 'The circuits',
+    /// `05 §3` OBS-1).
+    #[allow(clippy::disallowed_methods)]
+    pub fn pinned_prf_inputs(
+        &self,
+        salt: &Secret<HeapKey>,
+        pin: &SamplerPinPublic,
+        prompt: &Secret<Vec<u32>>,
+        positions: &[u32],
+        circuit: &PinnedSamplerPrf,
+    ) -> Secret<SecretGraphInputs> {
+        let base_bytes: &[u8; 16] = self.0.expose_secret().borrow();
+        let salt_bytes: &[u8; 16] = salt.expose_secret().borrow();
+        let mut base_and_salt = SecretBuf::with_capacity(32);
+        base_and_salt.extend(base_bytes.iter().map(|&b| i64::from(b)));
+        base_and_salt.extend(salt_bytes.iter().map(|&b| i64::from(b)));
+
+        let to_buf = |vals: &[i64]| -> SecretBuf<i64> { vals.iter().copied().collect() };
+        let commit_layout = sampler_commit_layout();
+        let derive_layout = sampler_derive_layout();
+        let digest_bits = sha256_bits(&[&pin.sampler_commitment[..]]);
+
+        let mut out: Vec<(TensorId, SecretBuf<i64>)> = Vec::with_capacity(15);
+        out.extend([
+            (
+                circuit.derive.commit_message,
+                to_buf(&sampler_commit_public_bits()),
+            ),
+            (
+                circuit.derive.derive_message,
+                to_buf(&sampler_derive_public_bits(
+                    &pin.nonce,
+                    pin.class_bits,
+                    pin.from_ns,
+                )),
+            ),
+            (circuit.derive.iv, to_buf(&sha256_iv_bits())),
+            (circuit.derive.masks, to_buf(&sha256_mask_bits())),
+            (circuit.derive.commit_place, to_buf(&commit_layout.place())),
+            (circuit.derive.derive_place, to_buf(&derive_layout.place())),
+            (circuit.derive.commitment_digest, to_buf(&digest_bits)),
+            (circuit.derive.base_and_salt, base_and_salt),
+            (circuit.rcon, to_buf(&aes_rcon_values())),
+        ]);
+
+        if let Some((kb_msg, kb_place, ref class_in, prompt_id)) = circuit.class_stage {
+            let tokens = prompt.expose_secret();
+            let prompt_len = u32::try_from(tokens.len()).unwrap_or(u32::MAX);
+            out.push((kb_msg, to_buf(&sampler_key_block_public_bits())));
+            out.push((kb_place, to_buf(&sampler_key_block_layout().place())));
+            out.push((
+                class_in.message,
+                to_buf(&sampler_class_public_bits(prompt_len)),
+            ));
+            if let Some(place) = class_in.place {
+                out.push((place, to_buf(&sampler_class_layout(prompt_len).place())));
+            }
+            if let Some(pid) = prompt_id {
+                let mut p_buf = SecretBuf::with_capacity(tokens.len());
+                p_buf.extend(tokens.iter().map(|&x| i64::from(x)));
+                out.push((pid, p_buf));
+            }
+        }
+        out.push((
+            circuit.position_blocks,
+            to_buf(&sampler_position_blocks(positions)),
+        ));
+        SecretGraphInputs::new(out)
+    }
 }
 
 /// Shows nothing of the key (05 §3).
@@ -110,6 +190,50 @@ impl SamplerKey {
     /// The class bits `b` the key was derived with.
     pub fn bits(&self) -> ClassBits {
         self.bits
+    }
+
+    /// Builds sealed clearing graph-input buffers (`Secret<SecretGraphInputs>`) for
+    /// [`StandaloneSamplerPrf`] on `prompt` and `positions` (`05 §3` OBS-1).
+    #[allow(clippy::disallowed_methods)]
+    pub fn standalone_prf_inputs(
+        &self,
+        prompt: &Secret<Vec<u32>>,
+        positions: &[u32],
+        circuit: &StandaloneSamplerPrf,
+    ) -> Secret<SecretGraphInputs> {
+        let key_bytes: &[u8; 16] = self.key.expose_secret().borrow();
+        let mut key_buf = SecretBuf::with_capacity(16);
+        key_buf.extend(key_bytes.iter().map(|&b| i64::from(b)));
+
+        let to_buf = |vals: &[i64]| -> SecretBuf<i64> { vals.iter().copied().collect() };
+        let mut out: Vec<(TensorId, SecretBuf<i64>)> = Vec::with_capacity(9);
+        out.push((circuit.key, key_buf));
+        out.push((circuit.rcon, to_buf(&aes_rcon_values())));
+        if let Some((iv, masks, kb_msg, kb_place, ref class_in, prompt_id)) = circuit.class_stage {
+            let tokens = prompt.expose_secret();
+            let prompt_len = u32::try_from(tokens.len()).unwrap_or(u32::MAX);
+            out.push((iv, to_buf(&sha256_iv_bits())));
+            out.push((masks, to_buf(&sha256_mask_bits())));
+            out.push((kb_msg, to_buf(&sampler_key_block_public_bits())));
+            out.push((kb_place, to_buf(&sampler_key_block_layout().place())));
+            out.push((
+                class_in.message,
+                to_buf(&sampler_class_public_bits(prompt_len)),
+            ));
+            if let Some(place) = class_in.place {
+                out.push((place, to_buf(&sampler_class_layout(prompt_len).place())));
+            }
+            if let Some(pid) = prompt_id {
+                let mut p_buf = SecretBuf::with_capacity(tokens.len());
+                p_buf.extend(tokens.iter().map(|&x| i64::from(x)));
+                out.push((pid, p_buf));
+            }
+        }
+        out.push((
+            circuit.position_blocks,
+            to_buf(&sampler_position_blocks(positions)),
+        ));
+        SecretGraphInputs::new(out)
     }
 }
 

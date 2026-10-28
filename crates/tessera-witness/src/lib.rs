@@ -64,7 +64,7 @@ mod structure;
 mod tile;
 
 pub use checkpoint::Checkpoints;
-pub use engine::{Engine, Witness};
+pub use engine::{Engine, SecretGraphInputs, Witness};
 pub use error::WitnessError;
 pub use multiplicity::MultiplicityColumn;
 pub use source::{Regenerator, Resident, WitnessSource};

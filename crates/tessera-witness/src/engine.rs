@@ -27,7 +27,7 @@
 use core::num::NonZeroUsize;
 use std::thread;
 
-use tessera_codec::{Secret, SecretBuf};
+use tessera_codec::{Secret, SecretBuf, Zeroize};
 use tessera_compiler::Lowering;
 use tessera_ir::{
     Broadcast, Graph, IntRange, IntegerModel, LogitsFile, Node, Op, TableId, TensorId,
@@ -58,6 +58,26 @@ pub(crate) enum Input<'m> {
     Weight(&'m [i8]),
     /// The tokens, the positions, or a channel-class or multiplier vector.
     Values(SecretBuf<i64>),
+}
+
+/// Sealed graph input tensors (`(TensorId, SecretBuf<i64>)`) whose buffers clear on drop.
+///
+/// Key and token readers outside `tessera-witness` seal graph inputs inside `Secret<SecretGraphInputs>`
+/// via [`SecretGraphInputs::new`] so raw keys, salts, and tokens never leave their [`Secret`] to
+/// unlisted callers (05 §3 OBS-1); [`Engine::evaluate_secret`] unpacks them inside this reader.
+pub struct SecretGraphInputs(Vec<(TensorId, SecretBuf<i64>)>);
+
+impl SecretGraphInputs {
+    /// Seals pre-sized `(TensorId, SecretBuf<i64>)` graph inputs inside a [`Secret`].
+    pub fn new(inputs: Vec<(TensorId, SecretBuf<i64>)>) -> Secret<Self> {
+        Secret::new(Self(inputs))
+    }
+}
+
+impl Zeroize for SecretGraphInputs {
+    fn zeroize(&mut self) {
+        self.0.clear();
+    }
 }
 
 /// A graph ready to run: its tables regenerated from their specifications.
@@ -179,6 +199,20 @@ impl<'a> Engine<'a> {
         let mut witness = self.execute(values)?;
         witness.logits = Some((lowering.logits, model.arch.vocab));
         Ok(witness)
+    }
+
+    /// Evaluates the graph on sealed [`SecretGraphInputs`], keeping raw keys, salts and tokens
+    /// inside their [`Secret`] across crate boundaries (05 §3 OBS-1).
+    ///
+    /// # Errors
+    /// Same as [`Engine::evaluate`].
+    pub fn evaluate_secret(
+        &self,
+        mut inputs: Secret<SecretGraphInputs>,
+    ) -> Result<Witness, WitnessError> {
+        #[allow(clippy::disallowed_methods)]
+        let pairs = core::mem::take(&mut inputs.expose_secret_mut().0);
+        self.evaluate(pairs)
     }
 
     /// Every tensor of the graph from its inputs' values: each tensor no node produces, given

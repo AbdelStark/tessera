@@ -32,8 +32,19 @@
 //! 67 per plaintext byte and 268 per four-byte token. Each lookup commits its output, one byte.
 //! The key schedule costs 72 lookups per round, 720 per key, once per session.
 
+mod sampler;
 mod sha256;
 
+pub use sampler::{
+    PinnedSamplerPrf, SAMPLER_CLASS_LABEL, SAMPLER_DERIVE_LABEL, SAMPLER_KEY_LABEL,
+    SamplerDeriveSubgraph, SamplerPinPublic, StandaloneSamplerPrf, StreamClassInputs,
+    aes_rcon_values, build_pinned_sampler_prf, build_sampler_derive, build_sampler_draws,
+    build_sampler_key_block, build_sampler_stream_class, build_standalone_sampler_prf,
+    sampler_class_layout, sampler_class_public_bits, sampler_commit_layout,
+    sampler_commit_public_bits, sampler_derive_layout, sampler_derive_public_bits,
+    sampler_key_block_layout, sampler_key_block_public_bits, sampler_position_blocks,
+    sha256_first_16_bytes, sha256_iv_bits, sha256_mask_bits,
+};
 pub use sha256::{
     SHA256_BITS_PER_BLOCK, SHA256_IV, SHA256_K, SHA256_MASKS, Sha256, Sha256Assembly, Sha256Layout,
     sha256, sha256_bind, sha256_bits, sha256_blocks, sha256_digest_input, sha256_inputs,

@@ -90,7 +90,7 @@ pub struct WeightLayoutParams {
 
 RFC-0007's `scoring` and `anchor` fields leave the schema. Each comes back when an implementation defines it, by amending RFC-0007's schema:
 
-- **Scoring.** It comes back with the first predictor that needs a model-level public parameter: temperature sampling (#152) or the mixture (#155). Each needs the logits' scale. Greedy decoding (#127) needs none.
+- **Scoring.** Greedy decoding (#127) needs no claim-list field. With `PublicQuantSpec.logits_exponent` added by [RFC-0027](RFC-0027-logits-exponent.md), temperature decoding ([#152](https://github.com/AbdelStark/tessera/issues/152)) also needs none: `logits_exponent`, `exp_sigma`, `arch.vocab`, `gadget_policy.max_log2_rows` and `PublicStatement.predictor` determine `Exp_T` and `InverseCdf` at runtime without changing `ClaimList`. Any model-level field would join only if #155 needs one beyond these.
 - **The anchor.** It comes back with the anchor circuits (#137 to #146), in v0.4. Draft [RFC-0074](RFC-0074-anchor-binding.md#the-claim-list-and-the-statement), in effect when it is accepted, finds that it does not: the circuits state nothing a model or deployment chooses, and every proof is anchored.
 
 While no release has written a claim list, the schema changes in place (09 §3). After that, a change is a new version of the schema and of the protocol. RFC-0007 'Verifier validation' step 7, "Scoring and anchor templates name supported variants", applies once the fields exist; under draft RFC-0074 it reads the scoring template alone.

@@ -207,7 +207,7 @@ The comparisons cannot be satisfied when `Z = 0`, which a real row's vocabulary 
 
 1. **Byte radix, as in `RsqrtRow`.** That gives `m = ⌈(W + 32)/8⌉`, 11 at `W = 49`, so 132 comparison columns where radix `2^16` uses 72. Radix `2^16` keeps every product below `2^32`, and `RsqrtRow`'s triple products are what needed bytes there. Rejected on cost.
 2. **A decomposition of `C_≤`.** That costs `k − 1` more columns and `k` requests per row. `S` fits as one coefficient instead. Rejected.
-3. **The draw's limbs from the PRF circuit's output bytes**, `u_0 = b_0 + 2^8·b_1`. That saves one column and two requests per row, but it ties this gadget's layout to the AES circuit's. Left to #152 (OQ-0058-1).
+3. **The draw's limbs from the PRF circuit's output bytes**, `u_0 = b_0 + 2^8·b_1`. That saves one column and two requests per row, but ties `InverseCdf`'s layout to the AES `[16, B]` state tensor, whereas at `b = 0` ([RFC-0061](RFC-0061-sampling-randomness.md)) AES counter blocks are shared across requests while `InverseCdf` batches rows by temperature table. Rejected in [#152](https://github.com/AbdelStark/tessera/issues/152) (resolving OQ-0058-1): `DrawLimb` stays self-contained.
 4. **Radix `2^20`.** A limb product reaches `2^40`, beyond RFC-0050's input bound. Rejected.
 
 ## Drawbacks
@@ -248,7 +248,7 @@ The comparisons cannot be satisfied when `Z = 0`, which a real row's vocabulary 
 
 ## Open Questions
 
-- **OQ-0058-1.** Should the draw's limbs come from the PRF circuit's output bytes? Owner: @AbdelStark. Resolve in #152, by amending 'The decompositions' if it saves the column.
+None. (**OQ-0058-1**, resolved in [#152](https://github.com/AbdelStark/tessera/issues/152): `DrawLimb` remains a self-contained column of `InverseCdf` rather than borrowing bytes from the AES state tensor.)
 
 ## References
 
