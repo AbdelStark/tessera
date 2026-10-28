@@ -51,7 +51,7 @@ tessera audit share     --manifest MANIFEST.tlm --policy POLICY.json --commitmen
 tessera audit sample    --manifest MANIFEST.tlm --log LOG.tdl
                         [--previous-manifest MANIFEST.tlm --previous-log LOG.tdl] [--between MANIFEST.tlm]...
                         --state DIR --verifier-share HEX --out SAMPLE.tas
-tessera audit batch     --sample SAMPLE.tas LOGS --out-dir DIR             # writes DIR/batches.json
+tessera audit batch     --sample SAMPLE.tas LOGS [--plan PLAN.tep] --out-dir DIR             # writes DIR/batches.json
 tessera audit plan      --policy POLICY.json --traffic PROFILE.json (--plan plan.tep | --source-defaults)
                         [--eta η] [--target-overhead O] [--out PLAN.json]           # detection and overhead
 tessera params check    --params PARAMSET [--lookups N] [--table-rows T]   # soundness report
@@ -93,6 +93,7 @@ A log that is not its manifest's exits 65 with `ERR-CODEC-DIGEST`. A share that 
 - **The sample** must be its logs': its manifest is `--manifest`, and its policy and coin toss select exactly its requests among the period's candidates.
 - **The lengths.** A request's `L` is its candidate's length. Its `prompt_len` and `output_len` are the tokens of its `In` and `Out` frames in both periods.
 - **One group.** Every request is packed as greedy, since a temperature request's group is a pin of [RFC-0061](../rfcs/RFC-0061-sampling-randomness.md#which-pin-applies), which no crate implements yet.
+- **The layout bound.** With `--plan PLAN.tep`, batches exceeding the complete runtime advice layout limit are split by halving the padded request capacity and repeating the same decreasing-length packing rule (RFC-0071). An unfit singleton retains its index and fails when selected for proving. Use the same plan as `prove --sample`, which always applies this bound, to obtain its batch indices. Without a plan the report applies the policy token bound alone.
 - **The output.** `DIR/batches.json`, the `tessera.audit-batches/1` report ([schema](../../spec/schemas/audit-batches-v1.schema.json)), which `--json` prints too. Batches are numbered from 0 in packing order.
 
 `prove --sample` proves batch `--batch K` of a sample, one batch per invocation:

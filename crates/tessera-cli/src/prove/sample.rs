@@ -93,7 +93,7 @@ pub(super) fn request(a: &ProveArgs, path: &Path) -> Result<Sampled, TesseraErro
         previous_log: a.previous_log.as_deref(),
         between: &a.between,
     };
-    let sampled = audit::sampled(path, &logs)?;
+    let sampled = audit::sampled(path, &logs, Some(&a.plan))?;
     let mut inputs: Vec<PathBuf> = logs.paths().into_iter().map(Path::to_path_buf).collect();
     let count = sampled.batches.len();
     let batch = usize::try_from(k)
@@ -189,6 +189,14 @@ pub(super) fn request(a: &ProveArgs, path: &Path) -> Result<Sampled, TesseraErro
         window.previous.as_ref(),
     )
     .map_err(anchor)?;
+    let plan: tessera_compiler::ExecutionPlan =
+        Input::new(&a.plan, &schema::EXECUTION_PLAN).open()?;
+    let lengths: Vec<_> = requests
+        .iter()
+        .map(|r| (r.prompt_len, r.output_len))
+        .collect();
+    tessera_compiler::check_batch_advice_rows(&plan.claims, &lengths)
+        .map_err(|e| TesseraError::new(e.code()).with_source(e.to_string()))?;
     // The pre-check found the session's transcript and replayed every logged frame.
     let stored = requests
         .iter()

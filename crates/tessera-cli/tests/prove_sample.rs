@@ -593,6 +593,8 @@ impl Fixture {
         let mut args = os(&["--json", "audit", "batch", "--sample"]);
         args.push(sample.into());
         args.extend_from_slice(&self.logs);
+        args.push("--plan".into());
+        args.push(self.path("compiled/plan.tep").into());
         args.push("--out-dir".into());
         args.push(self.path(out).into());
         args
