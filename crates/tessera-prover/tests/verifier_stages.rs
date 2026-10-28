@@ -218,6 +218,10 @@ fn verifier_side(name: &str, n: u32) -> VerifierSide {
 }
 
 fn verifier_vocabulary(name: &str, n: u32, vocab: Option<u32>) -> VerifierSide {
+    verifier_variant(name, n, vocab, false)
+}
+
+fn verifier_variant(name: &str, n: u32, vocab: Option<u32>, singleton: bool) -> VerifierSide {
     let lists = json(&vectors().join("claims/claim-lists.json"));
     let case = lists["cases"]
         .as_array()
@@ -234,6 +238,16 @@ fn verifier_vocabulary(name: &str, n: u32, vocab: Option<u32>) -> VerifierSide {
         .expect("the claim list opens");
     if let Some(v) = vocab {
         claims.arch.vocab = v;
+    }
+    if singleton {
+        use tv_core::claims::QuantPoint;
+        claims.arch.n_layers = 1;
+        let keep = |p: QuantPoint| !matches!(p,QuantPoint::Layer { layer, .. } if layer != 0);
+        claims.quant.act_exponents.retain(|(p, _)| keep(*p));
+        claims.quant.shift_class_sets.retain(|(p, _)| keep(*p));
+        claims.quant.affine_sites.retain(|(p, _)| keep(*p));
+        claims.quant.score_scales.retain(|(l, _)| *l == 0);
+        claims.silu_in_exponents.retain(|(l, _)| *l == 0);
     }
     let public = tv_core::validation::check_public(&claims).expect("its public part");
     let graph = tv_core::lowering::lower(&public, n).expect("the verifier's lowering");
@@ -678,5 +692,62 @@ fn six_and_three_heads_prove_through_the_actual_cpu_engine_and_verify() {
                 round: u32::try_from(stage1.rounds).expect("small"),
             })
         );
+    }
+}
+
+/// #598: the independent verifier already uses public parameter roles at L=1. Both
+/// profiles, classed/affine sites and zero/padded token-coordinate cases must agree.
+#[test]
+fn one_layer_schedules_and_original_opening_claims_agree_independently() {
+    for name in MODELS {
+        for n in [1, 3, 5] {
+            let (mut model, tokens) = conformance(name);
+            model.arch.n_layers = 1;
+            model.weights.retain(|w| w.layer == 0);
+            model.quant.channels.retain(|c| c.layer == 0);
+            let keep = |p: tessera_ir::QuantPoint| !matches!(p,tessera_ir::QuantPoint::Layer { layer, .. } if layer != 0);
+            model.quant.public.act_exponents.retain(|(p, _)| keep(*p));
+            model
+                .quant
+                .public
+                .shift_class_sets
+                .retain(|(p, _)| keep(*p));
+            model.quant.public.affine_sites.retain(|(p, _)| keep(*p));
+            model.quant.public.score_scales.retain(|(l, _)| *l == 0);
+            model.quant.silu_in_exponents.retain(|(l, _)| *l == 0);
+            let tokens = tokens.iter().copied().cycle().take(n as usize).collect();
+            let proven = prove_model(&model, tokens, 0x598);
+            let side = verifier_variant(name, n, None, true);
+            assert_eq!((side.schedule.layers(), side.schedule.layer_vars()), (1, 0));
+            let schedule = derive_schedule(&proven.lowering).unwrap();
+            let compiler_degrees =
+                tessera_compiler::schedule::protocol2_stages(&proven.lowering.graph, &schedule, 9)
+                    .unwrap();
+            let independent_degrees =
+                tv_core::schedule::degree::protocol2_stages(&side.graph, &side.schedule, 9)
+                    .unwrap();
+            assert_eq!(compiler_degrees.len(), independent_degrees.len());
+            for (a, b) in compiler_degrees.iter().zip(&independent_degrees) {
+                assert_eq!(
+                    (a.index, a.rounds as usize, a.folds, a.d),
+                    (b.index, b.rounds, b.folds, b.degree)
+                );
+                assert_eq!(a.instances.len(), b.instances.len());
+                for (a, b) in a.instances.iter().zip(&b.instances) {
+                    assert_eq!(
+                        (a.key.stacked, &a.key.public, a.row.d),
+                        (b.stacked, &b.public, b.row.degree)
+                    );
+                }
+            }
+            let checked = check(&side, &proven, &messages(&proven))
+                .unwrap_or_else(|e| panic!("{name} n={n}: {e:?}"));
+            assert_eq!(checked.pool.len(), proven.pool.len());
+            for (i, claim) in checked.pool.iter().enumerate() {
+                let value = proven.pool[i].unwrap();
+                assert_eq!(claim.value, tv_fp2(value));
+                assert_eq!(from_witness(&side, &proven, claim), value);
+            }
+        }
     }
 }

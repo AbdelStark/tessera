@@ -117,6 +117,92 @@ fn models() -> impl Iterator<Item = (Profile, u32, u32, (u32, u32), Sites)> {
 
 // ----- Invariants -----------------------------------------------------------------------------
 
+/// RFC-0037: logical layer membership survives L=1, even though lambda is zero. Expected
+/// roles come from the lowering's named weights/classes/multipliers, not source cardinality.
+#[test]
+fn one_layer_parameters_remain_stacked_without_layer_variables() {
+    use tessera_compiler::schedule::LayerMap;
+    for profile in [Profile::Servable, Profile::Minimal] {
+        for sites in [Sites::Pot, Sites::Classed, Sites::Affine] {
+            for (n, heads) in [(1, (1, 1)), (3, (2, 1)), (5, (2, 2))] {
+                let low = lowering(profile, 1, n, heads, sites);
+                let map = LayerMap::new(&low).unwrap();
+                assert_eq!((map.count, map.vars), (1, 0));
+                let mut parameters = 0;
+                let mut shared = 0;
+                for p in 0..map.width {
+                    let node = &low.graph.nodes[map.node(p, 0).0 as usize];
+                    for (i, &t) in node.inputs.iter().enumerate() {
+                        let named = low
+                            .graph
+                            .weights
+                            .iter()
+                            .chain(&low.classes)
+                            .chain(&low.multipliers)
+                            .any(|(_, id)| *id == t);
+                        if named {
+                            assert_eq!(
+                                map.input(p, i as u32),
+                                Kind::LayerParameter {
+                                    position: p,
+                                    input: i as u32
+                                }
+                            );
+                            parameters += 1;
+                        } else if t == low.positions {
+                            assert_eq!(map.input(p, i as u32), Kind::Tensor(t));
+                            shared += 1;
+                        }
+                    }
+                }
+                assert!(parameters > 0 && shared > 0);
+                let schedule = derive_schedule(&low).unwrap();
+                let label = format!("one layer {profile:?} {sites:?} n={n}");
+                check_parts(&schedule, &label);
+                check_rules(&low, &schedule, &label);
+            }
+        }
+    }
+}
+
+#[test]
+fn repeated_graph_inputs_do_not_become_per_layer_parameters() {
+    use tessera_compiler::schedule::LayerMap;
+    for count in [2, 3] {
+        let mut low = lowering(Profile::Servable, count, 3, (2, 1), Sites::Pot);
+        let map = LayerMap::new(&low).unwrap();
+        let p = (0..map.width)
+            .find(|&p| {
+                matches!(
+                    low.graph.nodes[map.node(p, 0).0 as usize].op,
+                    Op::MatMulWeight { .. }
+                )
+            })
+            .unwrap();
+        let first = map.node(p, 0);
+        let weight = low.graph.nodes[first.0 as usize].inputs[1];
+        let second = map.node(p, 1);
+        low.graph.nodes[second.0 as usize].inputs[1] = weight;
+        if count == 2 {
+            let shared = LayerMap::new(&low).unwrap();
+            assert_eq!(shared.input(p, 1), Kind::Tensor(weight));
+            let error = derive_schedule(&low).unwrap_err();
+            assert!(
+                matches!(error,CompileError::Schedule { node:Some(node),rule }
+                if node==first && rule=="a claim in a layer reaches a tensor that every layer shares"),
+                "{error:?}"
+            );
+        } else {
+            let error = LayerMap::new(&low).unwrap_err();
+            assert!(
+                matches!(error,CompileError::Schedule { node:Some(node),rule }
+                if node==first && rule=="a graph input is every layer's, or one of its own in each"),
+                "{error:?}"
+            );
+        }
+    }
+}
+
 /// INV-SCH-4: the stage count is the profile's, 3 for `servable` and 4 for `minimal`, whatever the
 /// layers and positions, and the commitment report's; an affine RoPE site adds its `Mul` to RoPE's
 /// chain, a fourth stage for `servable` (RFC-0010 'Stages').
