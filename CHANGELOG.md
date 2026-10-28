@@ -6,6 +6,7 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Tag-triggered draft release workflow and dry runs, with two clean container builds per Linux verifier architecture, byte comparisons, SHA-256 release notes and a scripted second-builder procedure ([#178](https://github.com/AbdelStark/tessera/issues/178), 09 §9).
 - Conformance vectors and differential prover-to-verifier adapter tests for temperature and mixture scoring checks ([#160](https://github.com/AbdelStark/tessera/issues/160), RFC-0017, RFC-0019, RFC-0030, RFC-0035, RFC-0043, RFC-0050, RFC-0058, RFC-0061):
   - **Specification clarification (`RFC-0017`).** Spelled out `Exp_T`'s precision `sigma = exp_sigma` and deterministic narrowest `key_bits ∈ [min_key_bits, max_log2_rows]` selection (`min_key_bits = max(1, bit_length(hi − lo))` over the lowered LM-head logit interval `[lo, hi]`) under `'D's decoded token'`.
   - **Independent gadget-finals oracles (`spec/vectors/gadget-finals/`).** Added `inverse_cdf.py` (`inverse-cdf.json`: 6 schema cases across `W ∈ [1, 51]` and 17 component cases, 6 honest and 11 isolated alternatives with omission proofs) and `one_sided_log2.py` (`one-sided-log2.json`: exact `c_match(0..=16)`, 6 `VocabMax` cases, 3 runtime table-interning cases, 7 `OneSidedLog2` schema cases, and 15 `OneSidedLog2` component cases, 5 honest and 10 isolated alternatives with omission proofs).
