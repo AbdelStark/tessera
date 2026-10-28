@@ -18,7 +18,7 @@ use tv_core::sumcheck::{SumcheckError, SumcheckProof};
 use tv_core::tree::{FractionClaim, LevelClaim, TreeClaim, verify_level};
 use tv_field::{Fp, Fp2};
 use tv_fuzz::sumcheck::context;
-use tv_hash::transcript::{Ascii, Transcript};
+use tv_hash::transcript::{Ascii, Transcript, TranscriptError};
 use tv_testkit::SplitMix64;
 use tv_testkit::logup::{Forest, LogUp, StageClaim, StageTree, prove_leaf_stage};
 use tv_testkit::sumcheck::{self as kit, Fe};
@@ -233,7 +233,40 @@ fn hostile_logup_messages_allocate_no_more_than_honest_ones() {
 
 /// Runs on the process's only thread (`harness = false`): libtest would keep a thread of its own,
 /// whose allocations the process-wide cap counts against this test's budget (#501).
+fn transcript_message_shortages_are_operational_and_do_not_absorb_partial_bytes() {
+    for budget in [0usize, 7, 8] {
+        let mut transcript = Transcript::new(&context());
+        let mut expected = Transcript::new(&context());
+        expected
+            .challenge_fp2(Ascii::new("logup/alpha").unwrap())
+            .unwrap();
+        expected
+            .challenge_fp2(Ascii::new("logup/beta").unwrap())
+            .unwrap();
+        let before = ALLOCATOR.total_allocated();
+        ALLOCATOR
+            .set_limit(ALLOCATOR.allocated().checked_add(budget).unwrap())
+            .unwrap();
+        let result = check_roots(&mut transcript, 0, &[]);
+        ALLOCATOR.set_limit(usize::MAX).unwrap();
+        let allocated = ALLOCATOR.total_allocated() - before;
+        if budget < 8 {
+            assert!(matches!(
+                result,
+                Err(LookupError::Transcript(TranscriptError::Memory))
+            ));
+            assert_eq!(allocated, 0);
+        } else {
+            assert!(result.unwrap().instances.is_empty());
+            assert_eq!(allocated, 8);
+            expected.absorb(Ascii::new("logup/roots").unwrap(), &0u64.to_le_bytes());
+        }
+        assert_eq!(transcript, expected);
+    }
+}
+
 fn main() {
+    transcript_message_shortages_are_operational_and_do_not_absorb_partial_bytes();
     hostile_logup_messages_allocate_no_more_than_honest_ones();
     println!("hostile_logup_messages_allocate_no_more_than_honest_ones: ok");
 }

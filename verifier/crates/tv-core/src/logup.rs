@@ -154,8 +154,9 @@ pub struct LeafClaims {
 /// `TableEvaluation` judge the proof: `Reject(Lookup { table })` in 04 §2, for the table of the
 /// instance [`rejected_instance`](Self::rejected_instance) gives. `RootsWithoutInstance` and
 /// `ValuesWithoutInstance` judge the proof too, but name no instance, so no table. The others
-/// judge what the verifier passes in, or the verifier itself: from a correct verifier they never
-/// come, and they mean a fault of the verifier (`Inconclusive(ERR-INTERNAL)`), not of the proof.
+/// report verifier input faults (`Inconclusive(ERR-INTERNAL)`), except
+/// `Transcript(TranscriptError::Memory)`, which is exhausted reader memory
+/// (`Inconclusive(ERR-RES-MEMORY)`), never a rejection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LookupError {
     /// The roots message holds `found` values where the instances need `expected`, four each.
@@ -226,13 +227,14 @@ pub enum LookupError {
     },
     /// A label built here is not printable ASCII.
     Label(NotAscii),
-    /// `α` or `β` found no value in the squeezes RFC-0004 allows ('Failure modes').
+    /// A challenge failed, or message encoding could not reserve memory (RFC-0004, SP-8).
     Transcript(TranscriptError),
 }
 
 impl LookupError {
     /// Whether the error is a fault of the proof, a rejection, rather than of the verifier,
-    /// which is `Inconclusive(ERR-INTERNAL)`.
+    /// reported as Inconclusive: `ERR-RES-MEMORY` for exhausted transcript memory,
+    /// `ERR-INTERNAL` for other verifier faults.
     pub fn is_rejection(&self) -> bool {
         match self {
             LookupError::RootsLength { .. }
@@ -561,7 +563,10 @@ mod tests {
             stub.script(),
             ["?logup/alpha", "?logup/beta", "+logup/roots"]
         );
-        assert_eq!(stub.ops[2], Op::Absorb("logup/roots".into(), tce(&roots)));
+        assert_eq!(
+            stub.ops[2],
+            Op::Absorb("logup/roots".into(), tce(&roots).unwrap())
+        );
         assert_eq!(
             checked.challenges,
             Challenges {
@@ -721,7 +726,10 @@ mod tests {
         })
         .unwrap();
         assert_eq!(stub.script(), ["+logup/values"]);
-        assert_eq!(stub.ops[0], Op::Absorb("logup/values".into(), tce(&values)));
+        assert_eq!(
+            stub.ops[0],
+            Op::Absorb("logup/values".into(), tce(&values).unwrap())
+        );
         let table_points: Vec<(usize, Vec<Fp2>)> = leaves
             .iter()
             .enumerate()
@@ -893,8 +901,8 @@ mod tests {
             [
                 Op::Challenge("logup/alpha".into()),
                 Op::Challenge("logup/beta".into()),
-                Op::Absorb("logup/roots".into(), tce(&[])),
-                Op::Absorb("logup/values".into(), tce(&[])),
+                Op::Absorb("logup/roots".into(), tce(&[]).unwrap()),
+                Op::Absorb("logup/values".into(), tce(&[]).unwrap()),
             ]
         );
         for found in [1, 4, 1000] {

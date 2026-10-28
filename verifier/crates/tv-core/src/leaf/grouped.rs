@@ -1411,7 +1411,10 @@ mod tests {
                 "+group/0/logup/roots"
             ]
         );
-        assert_eq!(stub.ops[2], Op::Absorb("logup/roots".into(), tce(&[])));
+        assert_eq!(
+            stub.ops[2],
+            Op::Absorb("logup/roots".into(), tce(&[]).unwrap())
+        );
         // A message of another count is judged before the transcript moves.
         trees.table_roots.push(Fp2::ONE);
         let mut stub = Stub::default();

@@ -6,6 +6,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Fixed
 
+- Reserve arithmetic transcript message buffers fallibly with checked sizes (RFC-0019, SP-8, [#182](https://github.com/AbdelStark/tessera/issues/182)). Even the empty LogUp roots message previously aborted under an eight-byte allocation shortage; it now returns operational `TranscriptError::Memory` before absorption. Exact-fit allocation retains canonical bytes and transcript state. LogUp claim vectors, point copies and other arithmetic allocations still require hardening.
+
 - Poll the original NI/Live deadline during direct transcript absorption, including 64 KiB label and message chunks and completion (RFC-0004, INV-FS-1..3; RFC-0019, SP-8; [#182](https://github.com/AbdelStark/tessera/issues/182)). `Transcript::absorb_with_cancel` returns the callback error unchanged and leaves state/counter unchanged on cancellation; uncancelled state and challenges retain the same framing. Propagating deadlines through inner arithmetic/check transcripts remains unfinished.
 
 - Check the original cooperative deadline while counting and encoding protocol messages and hashing the public statement in NI/Live drivers (RFC-0019, SP-8, [#182](https://github.com/AbdelStark/tessera/issues/182)). Entry, at most 4,096 primitive writes and completion are checked; cancellation stops nested sequences and fields, returning `ERR-RES-TIME` without releasing partial bytes or a digest. Canonical bytes and transcript ordering are unchanged. Other arithmetic and transcript hashing loops still require hardening.

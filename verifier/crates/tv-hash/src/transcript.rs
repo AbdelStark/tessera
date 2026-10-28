@@ -201,7 +201,7 @@ pub enum TranscriptError {
     /// reports it as `Inconclusive(ERR-INTERNAL)`, never as a verdict on the proof (RFC-0004
     /// 'Failure modes'), and does not use the transcript again: it is those squeezes ahead.
     Exhausted,
-    /// Memory for the indices could not be reserved (`ERR-RES-MEMORY`).
+    /// Memory for transcript work could not be reserved (`ERR-RES-MEMORY`).
     Memory,
 }
 
@@ -215,7 +215,7 @@ impl fmt::Display for TranscriptError {
                 f,
                 "no challenge after {MAX_CHALLENGE_SQUEEZES} squeezes of the transcript"
             ),
-            TranscriptError::Memory => f.write_str("no memory for the challenge indices"),
+            TranscriptError::Memory => f.write_str("no memory for transcript work"),
         }
     }
 }
