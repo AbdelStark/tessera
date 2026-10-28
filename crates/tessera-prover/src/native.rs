@@ -334,6 +334,31 @@ impl ModelNativePlan {
             schedule,
         })
     }
+    /// Public resident native table geometry, with each raw evaluation and public factor charged.
+    pub(crate) fn window_shape(
+        &self,
+        tag: u32,
+    ) -> Result<tessera_sumcheck::WindowShape, StageError> {
+        let index = tag.checked_sub(1).ok_or_else(bad)? as usize;
+        let meta = self.native.get(index).ok_or_else(bad)?;
+        let slot = self.slots.get(index).ok_or_else(bad)?;
+        let family = &self.families[slot.family];
+        let public = match (&family.kind, slot.relation) {
+            (Kind::Runtime(Runtime::Tokens), _) => 2,
+            (Kind::Runtime(Runtime::Observe), _) => 0,
+            (Kind::Runtime(Runtime::Key(_)), _) => 4 + vars(&[family.shape[0]]) as usize,
+            (Kind::Runtime(Runtime::Selected(_)), _) => 3 + vars(&[family.shape[0]]) as usize,
+            (_, Relation::Product | Relation::Reciprocal) => 1,
+            _ => 2,
+        };
+        Ok(tessera_sumcheck::WindowShape {
+            vars: meta.vars as usize,
+            tables: meta.evaluations + public,
+            delta: meta.degree,
+            windowable: false,
+        })
+    }
+
     /// Complete single-batch graph/native stage schedule.
     pub fn schedule(&self) -> &StageSchedule {
         &self.schedule
@@ -861,6 +886,16 @@ impl NativeProver for ModelNativeProver<'_> {
             tables.push(Table::base(m).public());
         }
         tables.extend(d.public.iter().map(|v| Table::ext(v).public()));
+        // RFC-0055: the pre-P1 allocation plan charges every resident native column, including
+        // the public equality, masks and runtime coefficients. Keep that public projection
+        // pinned to the actual builder rather than silently undercharging a new column.
+        let shape = self.plan.window_shape(tag)?;
+        let width = 1usize
+            .checked_shl(shape.vars as u32)
+            .ok_or(StageError::Memory)?;
+        if tables.len() != shape.tables || tables.iter().any(|t| t.len() != width) {
+            return Err(bad());
+        }
         Ok(Instance::sum_of_products(tables, d.terms.clone()))
     }
     fn claims(&self, tag: u32, point: &[F], values: &[F]) -> Result<Vec<Claim<F>>, StageError> {
@@ -921,6 +956,75 @@ impl NativeProver for ModelNativeProver<'_> {
 mod tests {
     use super::*;
     use tessera_field::QuadraticExtension;
+    #[test]
+    fn native_memory_projection_rejects_an_extra_public_column_and_a_short_private_column() {
+        let plan = ModelNativePlan {
+            families: vec![Family {
+                site: 0,
+                nodes: vec![NodeId(0)],
+                shape: vec![4],
+                lambda: 0,
+                kind: Kind::Root {
+                    digits: 1,
+                    coefficients: 1,
+                    epsilon: 1,
+                    residual: TensorId(0),
+                },
+            }],
+            slots: vec![Slot {
+                family: 0,
+                relation: Relation::Product,
+            }],
+            native: vec![Native {
+                tag: 1,
+                kind: NativeKind::Product,
+                node: NodeId(0),
+                vars: 2,
+                degree: 4,
+                evaluations: 1,
+                zero: false,
+                outputs: Vec::new(),
+            }],
+            schedule: StageSchedule {
+                layers: LayerMap::none(),
+                sites: Vec::new(),
+                stages: Vec::new(),
+                pool: Vec::new(),
+            },
+        };
+        let mut prover = ModelNativeProver {
+            plan: &plan,
+            tables: vec![SecretBuf::filled(G::ONE, 4)],
+            data: vec![Data {
+                raw: vec![0],
+                mask: None,
+                terms: vec![Term::new(F::ONE, vec![0, 1])],
+                fixed: Vec::new(),
+                point: Vec::new(),
+                full_point: false,
+                equality: vec![F::ONE; 4],
+                target: F::ZERO,
+                public: Vec::new(),
+            }],
+        };
+        assert!(prover.instance(1).is_ok());
+        prover.data[0].public.push(vec![F::ZERO; 4]);
+        assert!(matches!(
+            prover.instance(1),
+            Err(StageError::Internal {
+                rule: "native model sources have their canonical identities and domains"
+            })
+        ));
+        prover.data[0].public.pop();
+        prover.tables[0].truncate(3);
+        assert!(matches!(
+            prover.instance(1),
+            Err(StageError::Internal {
+                rule: "native model sources have their canonical identities and domains"
+            })
+        ));
+    }
+
     #[test]
     fn every_quartic_coefficient_matches_the_frozen_integer_oracle() {
         let document: serde_json::Value = serde_json::from_str(include_str!(

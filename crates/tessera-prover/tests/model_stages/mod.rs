@@ -10,6 +10,50 @@ use tessera_sumcheck::{Claim, Instance, Table};
 use tv_core::gadgets::model;
 use tv_core::stages;
 
+enum Event {
+    Message(String, Vec<F>),
+    Challenge(String, F),
+}
+struct Record<'a> {
+    inner: &'a mut Transcript,
+    events: Vec<Event>,
+}
+impl SumcheckTranscript<F> for Record<'_> {
+    fn absorb_message(&mut self, label: &str, values: &[F]) {
+        self.inner.absorb_message(label, values);
+        self.events
+            .push(Event::Message(label.to_owned(), values.to_vec()));
+    }
+    fn challenge(&mut self, label: &str) -> F {
+        let value = self.inner.challenge(label);
+        self.events.push(Event::Challenge(label.to_owned(), value));
+        value
+    }
+}
+struct Replay {
+    events: std::vec::IntoIter<Event>,
+}
+impl SumcheckTranscript<F> for Replay {
+    fn absorb_message(&mut self, label: &str, values: &[F]) {
+        match self.events.next().unwrap() {
+            Event::Message(expected, message) => {
+                assert_eq!(label, expected);
+                assert_eq!(values, message);
+            }
+            _ => panic!("a resident message is followed by that same windowed message"),
+        }
+    }
+    fn challenge(&mut self, label: &str) -> F {
+        match self.events.next().unwrap() {
+            Event::Challenge(expected, value) => {
+                assert_eq!(label, expected);
+                value
+            }
+            _ => panic!("a windowed challenge has the resident label"),
+        }
+    }
+}
+
 pub fn compare_schedules(plan: &ModelNativePlan, independent: &model::Plan<'_>) {
     let a = plan.schedule();
     let b = independent.schedule();
@@ -100,6 +144,7 @@ impl NativeProver for Broken<'_> {
 #[allow(clippy::too_many_arguments)]
 pub fn prove_stages(
     p: &Public,
+    model: &IntegerModel,
     graph: &tv_core::lowering::Graph,
     layout: &LeafLayout<ModelColumn>,
     bound: &split::Bound,
@@ -181,13 +226,56 @@ pub fn prove_stages(
             checked.graph
         );
     }
+    let mut recorded = Record {
+        inner: transcript,
+        events: Vec::new(),
+    };
     let proofs: Vec<_> = (1..native_plan.schedule().stages.len())
         .map(|k| {
             prover
-                .prove_stage_composed(transcript, k as u16, &mut native)
+                .prove_stage_composed(&mut recorded, k as u16, &mut native)
                 .unwrap()
         })
         .collect();
+    let mut windowed =
+        tessera_prover::StageProver::new(&p.lowering, native_plan.schedule(), witness);
+    let _leaf = windowed.leaf(points).unwrap();
+    windowed.leaf_split_values().unwrap();
+    let mut native_window =
+        ModelNativeProver::new(native_plan, &p.lowering, actual, witness, proof).unwrap();
+    let mut replay = Replay {
+        events: recorded.events.into_iter(),
+    };
+    let cuts: Vec<_> = native_plan
+        .schedule()
+        .stages
+        .iter()
+        .map(|stage| 2usize.min(stage.rounds.saturating_sub(1) as usize))
+        .collect();
+    let engine = Engine::new(&p.lowering).unwrap();
+    let mut regenerate = || {
+        engine
+            .regenerate(model, witness)
+            .map_err(|_| StageError::Internal {
+                rule: "the complete native witness regenerates",
+            })
+    };
+    for (k, expected) in proofs.iter().enumerate() {
+        let k = k + 1;
+        let actual = windowed
+            .prove_stage_windowed_composed(
+                &mut replay,
+                k as u16,
+                cuts[k],
+                cuts.get(k + 1).copied().unwrap_or(0),
+                &mut native_window,
+                &mut regenerate,
+            )
+            .unwrap();
+        assert_eq!(&actual, expected);
+    }
+    assert!(replay.events.next().is_none());
+    assert_eq!(windowed.pool(), prover.pool());
     if let Some(g) = geometry {
         assert_eq!(proofs.len(), g.stages().len());
         for (p, f) in proofs.iter().zip(g.stages()) {

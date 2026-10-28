@@ -2,6 +2,8 @@
 
 //! The batched sumcheck prover (RFC-0010 'Batching within a stage', 'Sumcheck messages').
 
+pub mod window;
+
 use core::fmt;
 use core::fmt::Write as _;
 use core::ops::Range;

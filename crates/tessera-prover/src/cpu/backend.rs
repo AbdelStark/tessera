@@ -26,6 +26,7 @@ pub(super) struct Unit {
     /// The leaf stage's token groups, and their layouts when it has any (RFC-0054).
     groups: protocol::LeafGroups,
     grouped: Option<GroupedLayout>,
+    windows: Vec<usize>,
 }
 /// A proven leaf stage: in one batch, or in token groups with its atom splits.
 enum Leaf {
@@ -60,8 +61,8 @@ fn plan_groups(
     tokens: u32,
     budget: MemoryBudget,
 ) -> Result<(PassPlan, Option<GroupedLayout>), ProverError> {
-    if plan.check(budget).is_ok() {
-        return Ok((plan, None));
+    if let Ok(fit) = plan.clone().for_budget(budget) {
+        return Ok((fit, None));
     }
     let token_vars = tokens.next_power_of_two().trailing_zeros();
     for g in 1..=u32::from(protocol::MAX_LEAF_GROUP_BITS) {
@@ -91,8 +92,8 @@ fn plan_groups(
             lookups = lookups.max(held);
         }
         let candidate = plan.clone().grouped(groups, lookups);
-        if candidate.check(budget).is_ok() {
-            return Ok((candidate, Some(grouped)));
+        if let Ok(fit) = candidate.for_budget(budget) {
+            return Ok((fit, Some(grouped)));
         }
     }
     Ok((plan, None))
@@ -308,7 +309,24 @@ impl<'a> CpuBackend<'a> {
             .rows()
             .checked_mul(1u64 << c.layout.advice.log2_k)
             .ok_or_else(memory)?;
-        let plan = PassPlan::new(native.schedule().stages.len(), cells, weight_memory(c)?);
+        struct MetadataOnly;
+        impl crate::stages::WitnessSource for MetadataOnly {
+            fn values(&self, _: tessera_ir::TensorId) -> Option<&[i64]> {
+                None
+            }
+        }
+        let metadata = crate::StageProver::new(&lowering, native.schedule(), &MetadataOnly);
+        let shapes = (0..native.schedule().stages.len())
+            .map(|k| {
+                if k == 0 {
+                    Ok(Vec::new())
+                } else {
+                    metadata.window_shapes(k as u16, |tag| native.window_shape(tag))
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let plan = PassPlan::new(native.schedule().stages.len(), cells, weight_memory(c)?)
+            .staged(shapes)?;
         let (plan, grouped) = plan_groups(plan, &leaf, &layers, n, prepared.cfg.memory_budget)?;
         Ok((
             Unit {
@@ -319,6 +337,7 @@ impl<'a> CpuBackend<'a> {
                 native,
                 groups: plan.leaf_groups(),
                 grouped,
+                windows: plan.stage_windows().iter().map(|s| s.cut).collect(),
             },
             plan,
         ))
@@ -464,13 +483,36 @@ impl<'a> CpuBackend<'a> {
         let mut native =
             ModelNativeProver::new(&u.native, &u.lowering, &actual, &d.witness, claims)?;
         let mut proofs = Vec::new();
+        let windowed = u.windows.iter().any(|&c| c != 0);
+        let mut regenerate = || {
+            engine.regenerate(p.model, &d.witness).map_err(|e| match e {
+                tessera_witness::WitnessError::Memory { .. }
+                | tessera_witness::WitnessError::MemoryTable { .. } => crate::StageError::Memory,
+                _ => crate::StageError::Internal {
+                    rule: "the canonical stage witness regenerates",
+                },
+            })
+        };
         for k in 1..u.native.schedule().stages.len() {
             let _stage = span!(DEBUG, "stage", id = k as u16).entered();
             let started = Instant::now();
-            let result = stages.prove_stage_composed(tr, k as u16, &mut native)?;
+            let result = if windowed {
+                stages.prove_stage_windowed_composed(
+                    tr,
+                    k as u16,
+                    u.windows[k],
+                    u.windows.get(k + 1).copied().unwrap_or(0),
+                    &mut native,
+                    &mut regenerate,
+                )?
+            } else {
+                stages.prove_stage_composed(tr, k as u16, &mut native)?
+            };
             metrics::stage(k as u16, started.elapsed());
             metrics::phase(metrics::Phase::Stage, started.elapsed());
-            metrics::pass(Pass::P3, started.elapsed());
+            if !windowed {
+                metrics::pass(Pass::P3, started.elapsed());
+            }
             event!(
                 DEBUG,
                 "prover.stage_proved",
@@ -666,7 +708,7 @@ impl CpuBackend<'_> {
         plan.check(self.prepared.cfg.memory_budget)?;
         let c = &self.prepared.plan.claims;
         let engine = Engine::new(&unit.lowering)?.threads(self.prepared.threads);
-        // The resident CPU backend runs one tile of every layer; streamed tiles are #132's.
+        // P1 retains one canonical witness; budgeted stage windows regenerate from its tokens.
         let tile = Public(format!("0..{}", c.arch.n_layers));
         let witness = {
             let _pass = span!(DEBUG, "witness_pass", layer_tile = tile).entered();

@@ -695,6 +695,7 @@ fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Opt
 
         model_stages::prove_stages(
             &p,
+            model,
             &graph,
             &layout,
             &bound,

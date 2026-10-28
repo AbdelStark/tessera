@@ -38,9 +38,11 @@
 //! and the schedule cannot disagree silently. The witness's tables are secret-class (05 §3): this
 //! module borrows them, and keeps what it derives in `SecretBuf`s that clear their memory.
 
+mod columns;
 mod padded;
 mod public;
 mod relations;
+mod stream;
 mod tables;
 
 use std::collections::HashMap;
@@ -55,7 +57,7 @@ use tessera_compiler::schedule::{
 };
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
 use tessera_ir::{Graph, Node, NodeId, Op, TensorId};
-use tessera_poly::{eq, evaluate_base, less_than};
+use tessera_poly::{eq, less_than};
 use tessera_sumcheck::{
     Prefix, Protocol, SumcheckError, SumcheckProof, SumcheckTranscript, prove_batch,
     zero_check_point,
@@ -225,6 +227,7 @@ pub struct StageProver<'a, W: WitnessSource + ?Sized> {
     parts: Vec<Vec<Vec<Vec<GoldilocksExt2>>>>,
     /// The pool's values, as the stages reach them.
     pool: Vec<Option<GoldilocksExt2>>,
+    pending_window: Option<stream::PreparedStage>,
 }
 
 /// Shows the progress, never a value (05 §3).
@@ -269,6 +272,7 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
             claims: Vec::new(),
             parts: Vec::new(),
             pool: vec![None; schedule.pool.len()],
+            pending_window: None,
         }
     }
 
@@ -412,6 +416,16 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
         k: u16,
         native: &mut impl NativeProver,
     ) -> Result<StageProof, StageError> {
+        let proof = self.prove_stage_body(transcript, k, native)?;
+        self.finish_stage(transcript, k, proof)
+    }
+
+    fn begin_stage<T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
+        &mut self,
+        transcript: &mut T,
+        k: u16,
+        native: &mut impl NativeProver,
+    ) -> Result<(), StageError> {
         let index = usize::from(k);
         if index == 0 || self.parts.len() != index {
             return internal("the stages are proven in order, after the leaf stage's splits");
@@ -461,6 +475,18 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
                 zero: &zero,
             })?;
         }
+        Ok(())
+    }
+
+    fn prove_stage_body<T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
+        &mut self,
+        transcript: &mut T,
+        k: u16,
+        native: &mut impl NativeProver,
+    ) -> Result<SumcheckProof<GoldilocksExt2>, StageError> {
+        self.begin_stage(transcript, k, native)?;
+        let index = usize::from(k);
+        let stage = &self.schedule.stages[index];
         let mut arena = Arena::default();
         let mut plans = Vec::new();
         let mut points = Vec::new();
@@ -556,12 +582,22 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
             }
         }
         self.claims.push(values);
+        Ok(proven.into_proof())
+    }
+
+    fn finish_stage<T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
+        &mut self,
+        transcript: &mut T,
+        k: u16,
+        proof: SumcheckProof<GoldilocksExt2>,
+    ) -> Result<StageProof, StageError> {
+        let index = usize::from(k);
         let splits = self.split_values(index)?;
         transcript.absorb_message(&format!("stage/{index}/split"), &splits);
         self.fill_pool(index)?;
         Ok(StageProof {
             stage: k,
-            sumcheck: proven.into_proof(),
+            sumcheck: proof,
             splits,
         })
     }
@@ -706,6 +742,14 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
         part: &Part,
         layer: Option<u32>,
     ) -> Result<GoldilocksExt2, StageError> {
+        if layer.is_none()
+            && let (Part::Instance { instance, .. }, Some(pending)) = (part, &self.pending_window)
+            && usize::from(pending.index) == self.claims.len()
+        {
+            return pending.prepared.sum(*instance).ok_or(StageError::Internal {
+                rule: "the prepared grid supplies every virtual split",
+            });
+        }
         match part {
             Part::Instance { atom, .. } => self.atom_value(&claim.atoms[*atom], layer, false),
             Part::Pool { atoms, .. } => {
@@ -832,11 +876,10 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
         layer: u32,
         point: &[Coord],
     ) -> Result<GoldilocksExt2, StageError> {
-        let table = self.slice(kind, layer)?;
-        let r = self.point(point)?;
-        evaluate_base::<GoldilocksExt2>(&table, &r).map_err(|_| StageError::Internal {
-            rule: "a claim's point has its tensor's coordinates",
-        })
+        let tensor = self.tensor(kind, layer)?;
+        let shape = &self.graph.tensors[tensor.0 as usize].shape;
+        let reader = tables::TensorReader::new(self.witness, tensor, shape)?;
+        reader.extension(&self.point(point)?)
     }
 
     /// The values of `coords`, every one drawn.
