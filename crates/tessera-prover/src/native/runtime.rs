@@ -223,7 +223,7 @@ pub(super) fn prepare(
     let time = eq_table(&zero[nv..]).map_err(|_| bad())?;
     data.public.clear();
     data.terms.clear();
-    data.equality.clear();
+    data.equality = Default::default();
     data.target = F::ZERO;
     let count = data.raw.len();
     let mut coefficients = vec![
@@ -383,13 +383,14 @@ mod tests {
                 let mut target = point(&case["target_v"]);
                 target.extend(point(&case["target_o"]));
                 let mut data = Data {
+                    score: None,
                     raw: vec![0; raw.len()],
                     mask: None,
                     terms: Vec::new(),
                     fixed: vec![ext(&case["key_claim"])],
                     point: target,
                     full_point: true,
-                    equality: Vec::new(),
+                    equality: Default::default(),
                     target: F::ZERO,
                     public: Vec::new(),
                 };
