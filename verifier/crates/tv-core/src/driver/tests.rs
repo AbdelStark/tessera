@@ -492,3 +492,16 @@ fn live_replay_reaches_step_twelve_uhat_bound_and_enforces_exact_zero_bound() {
         ]
     );
 }
+
+#[test]
+fn lookup_claim_memory_is_operational_before_table_mapping() {
+    let error = crate::logup::LookupError::Memory;
+    assert!(!error.is_rejection());
+    assert_eq!(error.rejected_instance(), None);
+    assert!(matches!(
+        leaf_error(leaf::Error::Lookup(error), &[], ArtifactKind(0x0511)),
+        Failure::Inconclusive(VerifierError {
+            code: ErrorCode::Memory
+        })
+    ));
+}

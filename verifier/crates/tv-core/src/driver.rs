@@ -297,10 +297,11 @@ fn leaf_error(
             if e.is_rejection() {
                 return malformed(artifact);
             }
-            if let crate::logup::LookupError::Transcript(e) = e {
-                return transcript(e);
+            match e {
+                crate::logup::LookupError::Memory => memory(),
+                crate::logup::LookupError::Transcript(e) => transcript(e),
+                _ => internal(),
             }
-            internal()
         }
         leaf::Error::Level { level, error } => match error.rejected_round() {
             Some(round) => reject(RejectReason::TreeLevel {

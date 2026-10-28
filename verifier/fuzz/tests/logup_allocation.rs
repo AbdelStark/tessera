@@ -13,7 +13,9 @@
 use std::alloc::System;
 
 use cap::Cap;
-use tv_core::logup::{Leaves, LookupError, check_leaves, check_roots};
+use tv_core::logup::{
+    Challenges, InstanceClaims, Leaves, LookupError, RootClaims, check_leaves, check_roots,
+};
 use tv_core::sumcheck::{SumcheckError, SumcheckProof};
 use tv_core::tree::{FractionClaim, LevelClaim, TreeClaim, verify_level};
 use tv_field::{Fp, Fp2};
@@ -265,8 +267,208 @@ fn transcript_message_shortages_are_operational_and_do_not_absorb_partial_bytes(
     }
 }
 
+fn limited<T>(budget: usize, f: impl FnOnce() -> T) -> (T, usize, usize) {
+    let before = ALLOCATOR.allocated();
+    let total = ALLOCATOR.total_allocated();
+    ALLOCATOR
+        .set_limit(before.checked_add(budget).unwrap())
+        .unwrap();
+    let result = f();
+    ALLOCATOR.set_limit(usize::MAX).unwrap();
+    (
+        result,
+        ALLOCATOR.total_allocated() - total,
+        ALLOCATOR.allocated() - before,
+    )
+}
+
+fn root_claim_reservation_is_fallible_after_the_roots_message() {
+    let roots = [Fp2::ZERO, Fp2::ONE, Fp2::ZERO, Fp2::ONE];
+    let size = core::mem::size_of::<RootClaims>();
+    assert!(size > 72);
+    let mut payload = 4u64.to_le_bytes().to_vec();
+    for root in roots {
+        payload.extend_from_slice(&root.to_le_bytes());
+    }
+    for budget in [72, size - 1, size] {
+        let mut transcript = Transcript::new(&context());
+        let mut expected = Transcript::new(&context());
+        expected
+            .challenge_fp2(Ascii::new("logup/alpha").unwrap())
+            .unwrap();
+        expected
+            .challenge_fp2(Ascii::new("logup/beta").unwrap())
+            .unwrap();
+        expected.absorb(Ascii::new("logup/roots").unwrap(), &payload);
+        let (result, allocated, retained) =
+            limited(budget, || check_roots(&mut transcript, 1, &roots));
+        assert_eq!(result.is_ok(), budget >= size, "root budget {budget}");
+        if budget < size {
+            assert_eq!(result.unwrap_err(), LookupError::Memory);
+            assert_eq!((allocated, retained), (72, 0));
+        } else {
+            let result = result.unwrap();
+            assert_eq!(result.instances.len(), 1);
+            assert_eq!((allocated, retained), (72 + size, size));
+            assert!(result.instances[0].lookup.point.is_empty());
+            assert_eq!(result.instances[0].lookup.denominator, Fp2::ONE);
+        }
+        assert_eq!(transcript, expected);
+    }
+    let mut transcript = Transcript::new(&context());
+    let (result, allocated, retained) = limited(0, || check_roots(&mut transcript, 1, &[]));
+    assert_eq!(
+        result.unwrap_err(),
+        LookupError::RootsLength {
+            instance: 0,
+            expected: 4,
+            found: 0
+        }
+    );
+    assert_eq!((allocated, retained), (0, 0));
+    let (result, allocated, retained) = limited(0, || check_roots(&mut transcript, 0, &roots));
+    assert_eq!(
+        result.unwrap_err(),
+        LookupError::RootsWithoutInstance { found: 4 }
+    );
+    assert_eq!((allocated, retained), (0, 0));
+}
+
+fn leaf_claim_and_each_point_reservation_are_fallible() {
+    let challenges = Challenges {
+        alpha: Fp2::ONE,
+        beta: Fp2::ONE,
+    };
+    let size = core::mem::size_of::<InstanceClaims>();
+    assert!(size > 24);
+    for has_values in [true, false] {
+        let leaves = [Leaves {
+            has_values,
+            lookup: FractionClaim {
+                point: vec![Fp2::ONE, Fp2::ZERO],
+                numerator: Fp2::ONE,
+                denominator: Fp2::ZERO,
+            },
+            table: FractionClaim {
+                point: vec![Fp2::ONE; 3],
+                numerator: Fp2::ONE,
+                denominator: Fp2::ONE,
+            },
+        }];
+        let values = if has_values {
+            vec![Fp2::ONE]
+        } else {
+            Vec::new()
+        };
+        let mut payload = u64::from(has_values).to_le_bytes().to_vec();
+        for value in &values {
+            payload.extend_from_slice(&value.to_le_bytes());
+        }
+        let encoded = payload.len();
+        let total = size + 32 + if has_values { 32 } else { 0 } + 48;
+        let mut budgets = vec![
+            encoded,
+            size - 1,
+            size,
+            size + 31,
+            size + 32,
+            total - 1,
+            total,
+        ];
+        if has_values {
+            budgets.extend([size + 63, size + 64]);
+        }
+        for budget in budgets {
+            let mut transcript = Transcript::new(&context());
+            let mut expected = Transcript::new(&context());
+            expected.absorb(Ascii::new("logup/values").unwrap(), &payload);
+            let (result, allocated, retained) = limited(budget, || {
+                check_leaves(&mut transcript, &challenges, &leaves, &values, |_, _| {
+                    Some(Fp2::ZERO)
+                })
+            });
+            assert_eq!(
+                result.is_ok(),
+                budget >= total,
+                "leaf budget {budget}, values {has_values}"
+            );
+            if budget < total {
+                assert_eq!(
+                    result.unwrap_err(),
+                    LookupError::Memory,
+                    "budget {budget}, values {has_values}"
+                );
+                assert_eq!(retained, 0);
+                assert!(allocated <= encoded + total);
+            } else {
+                let claims = result.unwrap();
+                let claim = &claims.instances[0];
+                assert_eq!(claim.key.point, leaves[0].lookup.point);
+                assert_eq!(
+                    claim.key.value,
+                    if has_values { Fp2::ZERO } else { Fp2::ONE }
+                );
+                assert_eq!(
+                    claim.value.as_ref().map(|v| (&v.point, v.value)),
+                    has_values.then_some((&leaves[0].lookup.point, Fp2::ONE))
+                );
+                assert_eq!(claim.multiplicity.point, leaves[0].table.point);
+                assert_eq!(claim.multiplicity.value, -Fp2::ONE);
+                assert_eq!((allocated, retained), (encoded + total, total));
+            }
+            assert_eq!(transcript, expected);
+        }
+        for bad_table in [false, true] {
+            let mut bad = leaves[0].clone();
+            let error = if bad_table {
+                bad.table.denominator = Fp2::ZERO;
+                LookupError::TableEvaluation { instance: 0 }
+            } else {
+                bad.lookup.numerator = Fp2::ZERO;
+                LookupError::LeafNumerator { instance: 0 }
+            };
+            let mut transcript = Transcript::new(&context());
+            let (result, allocated, retained) = limited(size, || {
+                check_leaves(
+                    &mut transcript,
+                    &challenges,
+                    core::slice::from_ref(&bad),
+                    &values,
+                    |_, _| Some(Fp2::ZERO),
+                )
+            });
+            assert_eq!(result.unwrap_err(), error);
+            assert_eq!((allocated, retained), (encoded + size, 0));
+        }
+        let wrong = if has_values {
+            Vec::new()
+        } else {
+            vec![Fp2::ONE]
+        };
+        let mut transcript = Transcript::new(&context());
+        let expected = Transcript::new(&context());
+        let (result, allocated, retained) = limited(0, || {
+            check_leaves(&mut transcript, &challenges, &leaves, &wrong, |_, _| {
+                Some(Fp2::ZERO)
+            })
+        });
+        assert_eq!(
+            result.unwrap_err(),
+            LookupError::ValuesLength {
+                instance: 0,
+                expected: usize::from(has_values),
+                found: wrong.len()
+            }
+        );
+        assert_eq!((allocated, retained), (0, 0));
+        assert_eq!(transcript, expected);
+    }
+}
+
 fn main() {
     transcript_message_shortages_are_operational_and_do_not_absorb_partial_bytes();
+    root_claim_reservation_is_fallible_after_the_roots_message();
+    leaf_claim_and_each_point_reservation_are_fallible();
     hostile_logup_messages_allocate_no_more_than_honest_ones();
     println!("hostile_logup_messages_allocate_no_more_than_honest_ones: ok");
 }

@@ -66,6 +66,8 @@ payload reads and sequence decoding poll at most every 4,096 operations, with
 additional checks through long ASCII/map comparisons and before releasing a value.
 Protocol size counting, encoding and public-statement hashing also check entry,
 at most every 4,096 primitive writes and completion, stopping nested traversal on expiry.
+LogUp result vectors and claim-point copies also reserve fallibly; shortages return
+`ERR-RES-MEMORY` after the same transcript steps and validation checks as before.
 Arithmetic `Vec<Fp2>` transcript messages reserve their encoding buffers fallibly;
 allocation failure returns an operational memory error before absorption.
 Direct NI/Live transcript absorption polls at each 64 KiB label/message chunk

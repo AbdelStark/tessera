@@ -155,7 +155,7 @@ pub struct LeafClaims {
 /// instance [`rejected_instance`](Self::rejected_instance) gives. `RootsWithoutInstance` and
 /// `ValuesWithoutInstance` judge the proof too, but name no instance, so no table. The others
 /// report verifier input faults (`Inconclusive(ERR-INTERNAL)`), except
-/// `Transcript(TranscriptError::Memory)`, which is exhausted reader memory
+/// `Memory` or `Transcript(TranscriptError::Memory)`, which is exhausted reader memory
 /// (`Inconclusive(ERR-RES-MEMORY)`), never a rejection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LookupError {
@@ -225,6 +225,8 @@ pub enum LookupError {
         /// The instance.
         instance: usize,
     },
+    /// A result vector or claim point could not be reserved (`ERR-RES-MEMORY`).
+    Memory,
     /// A label built here is not printable ASCII.
     Label(NotAscii),
     /// A challenge failed, or message encoding could not reserve memory (RFC-0004, SP-8).
@@ -233,7 +235,7 @@ pub enum LookupError {
 
 impl LookupError {
     /// Whether the error is a fault of the proof, a rejection, rather than of the verifier,
-    /// reported as Inconclusive: `ERR-RES-MEMORY` for exhausted transcript memory,
+    /// reported as Inconclusive: `ERR-RES-MEMORY` for exhausted memory,
     /// `ERR-INTERNAL` for other verifier faults.
     pub fn is_rejection(&self) -> bool {
         match self {
@@ -247,6 +249,7 @@ impl LookupError {
             | LookupError::RootsWithoutInstance { .. }
             | LookupError::ValuesWithoutInstance { .. } => true,
             LookupError::TableUnavailable { .. }
+            | LookupError::Memory
             | LookupError::Label(_)
             | LookupError::Transcript(_) => false,
         }
@@ -267,6 +270,7 @@ impl LookupError {
             LookupError::RootsWithoutInstance { .. }
             | LookupError::ValuesWithoutInstance { .. }
             | LookupError::TableUnavailable { .. }
+            | LookupError::Memory
             | LookupError::Label(_)
             | LookupError::Transcript(_) => None,
         }
@@ -333,6 +337,7 @@ impl fmt::Display for LookupError {
                 f,
                 "instance {instance}: the table could not be evaluated at its leaf point"
             ),
+            LookupError::Memory => f.write_str("memory for LogUp claims could not be reserved"),
             LookupError::Label(error) => write!(f, "a LogUp label is not ASCII: {error}"),
             LookupError::Transcript(error) => write!(f, "{error}"),
         }
@@ -384,7 +389,7 @@ pub(crate) fn check_roots_with(
     // 3. The message, absorbed whole, even when empty.
     fiat_shamir::absorb_under(transcript, ROOTS, roots)?;
     // 4. Instance by instance.
-    let mut claims = Vec::with_capacity(complete);
+    let mut claims = reserve(complete)?;
     for (instance, block) in blocks.enumerate() {
         let &[n_a, d_a, n_t, d_t] = block else {
             // Not reached: `chunks_exact` gives blocks of exactly four.
@@ -412,6 +417,20 @@ pub(crate) fn check_roots_with(
         challenges: Challenges { alpha, beta },
         instances: claims,
     })
+}
+
+fn reserve<T>(len: usize) -> Result<Vec<T>, LookupError> {
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(len)
+        .map_err(|_| LookupError::Memory)?;
+    Ok(values)
+}
+
+fn copy_point(point: &[Fp2]) -> Result<Vec<Fp2>, LookupError> {
+    let mut values = reserve(point.len())?;
+    values.extend_from_slice(point);
+    Ok(values)
 }
 
 /// A tree's root `(n, d)` as its claims on its level 0, on no variable.
@@ -485,7 +504,7 @@ where
     fiat_shamir::absorb_under(transcript, VALUES, values)?;
     // 3. Instance by instance, each taking the next value if its table has values.
     let mut sent = values.iter();
-    let mut claims = Vec::with_capacity(leaves.len());
+    let mut claims = reserve(leaves.len())?;
     for (instance, leaf) in leaves.iter().enumerate() {
         let value = if leaf.has_values {
             // The count check above gives each such instance its value.
@@ -508,15 +527,19 @@ where
         let v = value.unwrap_or(Fp2::ZERO);
         claims.push(InstanceClaims {
             key: Claim {
-                point: leaf.lookup.point.clone(),
+                point: copy_point(&leaf.lookup.point)?,
                 value: alpha - leaf.lookup.denominator - beta * v,
             },
-            value: value.map(|value| Claim {
-                point: leaf.lookup.point.clone(),
-                value,
-            }),
+            value: if let Some(value) = value {
+                Some(Claim {
+                    point: copy_point(&leaf.lookup.point)?,
+                    value,
+                })
+            } else {
+                None
+            },
             multiplicity: Claim {
-                point: leaf.table.point.clone(),
+                point: copy_point(&leaf.table.point)?,
                 value: -leaf.table.numerator,
             },
         });
