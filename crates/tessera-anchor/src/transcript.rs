@@ -190,6 +190,45 @@ impl SessionTranscript {
         }
         Some(Secret::new(tokens))
     }
+
+    /// The tokens of a batch of `requests` (`(transcript, request_id)` in slot order) for a proof
+    /// unit (RFC-0071 'The slots').
+    ///
+    /// With one request, returns its [`Self::request_tokens`] when non-empty. With two or more
+    /// requests, requires `slot_len` to be a power of two and copies request `r`'s `n_r` tokens
+    /// (`1 ≤ n_r ≤ slot_len`) into `r · slot_len .. r · slot_len + n_r` of one pre-sized zeroed
+    /// buffer, leaving `0` on every padded slot row (05 §3 OBS-6).
+    #[allow(clippy::disallowed_methods)]
+    pub fn batch_tokens(
+        previous: Option<&VerifiedLog>,
+        current: &VerifiedLog,
+        slot_len: u32,
+        requests: &[(&Self, u64)],
+    ) -> Option<Secret<Vec<u32>>> {
+        if let &[(transcript, request_id)] = requests {
+            let single = transcript.request_tokens(previous, current, request_id)?;
+            if single.expose_secret().is_empty() {
+                return None;
+            }
+            return Some(single);
+        }
+        if requests.is_empty() || !slot_len.is_power_of_two() {
+            return None;
+        }
+        let s = slot_len as usize;
+        let total = requests.len().checked_mul(s)?;
+        let mut packed = Secret::new(vec![0u32; total]);
+        let dst = packed.expose_secret_mut();
+        for (r, &(transcript, request_id)) in requests.iter().enumerate() {
+            let seq = transcript.request_tokens(previous, current, request_id)?;
+            let src = seq.expose_secret();
+            if src.is_empty() || src.len() > s {
+                return None;
+            }
+            dst[r * s..r * s + src.len()].copy_from_slice(src);
+        }
+        Some(packed)
+    }
 }
 
 /// The frame's encoding, after its counter.
@@ -405,6 +444,64 @@ mod tests {
         assert_eq!(
             read(transcript.request_tokens(Some(&previous), &current, 99)),
             Some(Vec::new())
+        );
+
+        // Multi-request batch_tokens places each request into its S-aligned slot with zero padding.
+        assert_eq!(
+            read(SessionTranscript::batch_tokens(
+                Some(&previous),
+                &current,
+                8,
+                &[(&transcript, 5), (&transcript, 6)],
+            )),
+            Some(vec![1, 2, 2, 6, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0])
+        );
+        // Single-request batch_tokens matches request_tokens without slot padding, and refuses 0 tokens.
+        assert_eq!(
+            read(SessionTranscript::batch_tokens(
+                Some(&previous),
+                &current,
+                8,
+                &[(&transcript, 5)],
+            )),
+            Some(vec![1, 2, 2, 6, 0])
+        );
+        assert_eq!(
+            read(SessionTranscript::batch_tokens(
+                Some(&previous),
+                &current,
+                8,
+                &[(&transcript, 99)],
+            )),
+            None
+        );
+        // Refuses empty batches, non-power-of-two slot_len, or a sequence longer than slot_len.
+        assert_eq!(
+            read(SessionTranscript::batch_tokens(
+                Some(&previous),
+                &current,
+                8,
+                &[]
+            )),
+            None
+        );
+        assert_eq!(
+            read(SessionTranscript::batch_tokens(
+                Some(&previous),
+                &current,
+                6,
+                &[(&transcript, 5), (&transcript, 6)],
+            )),
+            None
+        );
+        assert_eq!(
+            read(SessionTranscript::batch_tokens(
+                Some(&previous),
+                &current,
+                4,
+                &[(&transcript, 5), (&transcript, 6)],
+            )),
+            None
         );
     }
 }

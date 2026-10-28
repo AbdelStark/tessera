@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Protocol/1 CPU driver for one exact-greedy request (02 section 3.1).
+//! Protocol/1 CPU driver for exact-greedy request-slot batches (RFC-0071, 02 section 3.1).
 
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::time::Instant;
@@ -81,14 +81,15 @@ pub struct ProverConfig {
     pub release: ReleaseConfig,
 }
 
-/// One caller-owned exact-greedy request. Tokens never enter Debug or errors.
+/// One caller-owned exact-greedy batch. Tokens never enter Debug or errors.
 ///
-/// The tokens include the prompt and recorded continuation. Multi-request units and their
-/// planning are separate work (RFC-0018); this driver rejects them before a commitment.
+/// The tokens include each prompt and recorded continuation. Multiple requests occupy
+/// RFC-0071 slots of width `next_power_of_two(max(prompt_len + output_len))`,
+/// with zero tokens between each request end and the next slot.
 pub struct ProofBatch {
     /// Public expected statement, including the committed epoch and request lengths.
     pub statement: protocol::PublicStatement,
-    /// Prompt followed by the recorded continuation, in request order.
+    /// Prompt followed by the recorded continuation in each request slot, with zero gap rows.
     pub tokens: Secret<Vec<u32>>,
 }
 impl core::fmt::Debug for ProofBatch {
@@ -239,6 +240,20 @@ impl<'a> Prover<'a> {
             .as_ref()
             .ok_or_else(|| order(protocol::MessageKind::SeedCommit))?;
         backend::CpuBackend::unit(prepared, batch).map(|(_, plan)| plan)
+    }
+
+    /// Replay the exact-greedy witness within the configured budget, without a commitment,
+    /// randomness, weight-opening budget changes or session transition (RFC-0071).
+    ///
+    /// # Errors
+    /// The same public metadata, memory and witness errors as proving, including
+    /// `ERR-WITNESS-EXACT-MISMATCH` for a recorded continuation that differs from D.
+    pub fn check_witness(&self, batch: &ProofBatch) -> Result<(), ProverError> {
+        let prepared = self
+            .prepared
+            .as_ref()
+            .ok_or_else(|| order(protocol::MessageKind::SeedCommit))?;
+        backend::CpuBackend::check_witness(prepared, batch)
     }
 
     /// Commit P1 and return the public first round and the per-proof coin-toss share.

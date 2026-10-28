@@ -33,6 +33,23 @@ pub enum ModelColumn {
     Slack(Slack),
     /// Exact-greedy comparison key, reduced to original model/certificate sources.
     GreedyKey,
+    /// Exact-greedy key for a later request ordinal (RFC-0071).
+    GreedyKeyOrdinal(u32),
+}
+
+impl ModelColumn {
+    /// Exact-greedy key identity in batch order, preserving the single-request identity.
+    pub const fn greedy_key(ordinal: u32) -> Self {
+        if ordinal == 0 {
+            Self::GreedyKey
+        } else {
+            Self::GreedyKeyOrdinal(ordinal)
+        }
+    }
+    /// Whether this source is an exact-greedy key.
+    pub const fn is_greedy_key(self) -> bool {
+        matches!(self, Self::GreedyKey | Self::GreedyKeyOrdinal(_))
+    }
 }
 
 fn own<T>() -> Result<T, LeafError> {
@@ -324,7 +341,7 @@ impl LeafLayout<ModelColumn> {
         Self::derive_model(lowering, layers, selection, claims, None)
     }
 
-    /// Complete model sites followed by the request's exact-greedy key (draft RFC-0053).
+    /// Complete model sites followed by each output-bearing request's exact-greedy key (RFC-0071).
     ///
     /// # Errors
     /// The same public geometry and scalar constraint errors as [`Self::model`].
@@ -337,13 +354,7 @@ impl LeafLayout<ModelColumn> {
         if !runtime.selection().tables.starts_with(&claims.tables) {
             return own();
         }
-        Self::derive_model(
-            lowering,
-            layers,
-            runtime.selection(),
-            claims,
-            runtime.certificate(),
-        )
+        Self::derive_model(lowering, layers, runtime.selection(), claims, Some(runtime))
     }
 
     fn derive_model(
@@ -351,7 +362,7 @@ impl LeafLayout<ModelColumn> {
         layers: &LayerMap,
         selection: &Selection,
         claims: &ClaimList,
-        greedy: Option<tessera_compiler::GreedyCertificate>,
+        greedy: Option<&RuntimePlan>,
     ) -> Result<Self, LeafError> {
         // Token axes only a grouped leaf stage reads (RFC-0072 'Non-Goals' 'Token groups').
         let (tokens, ungroupable) = match token_rules(lowering) {
@@ -386,7 +397,9 @@ impl LeafLayout<ModelColumn> {
                     .collect::<Result<_, LeafError>>()?,
             });
         }
-        if let Some(c) = greedy {
+        if let Some(runtime) = greedy
+            && let Some(c) = runtime.certificate()
+        {
             let node = lowering
                 .graph
                 .nodes
@@ -399,22 +412,29 @@ impl LeafLayout<ModelColumn> {
             sites.push(Site {
                 node: NodeRef::Node(node),
                 layers: vec![SiteGadget {
-                    lookups: vec![SiteLookup {
-                        lookup: Lookup {
-                            table: c.table,
-                            key: Affine {
-                                constant: Goldilocks::ZERO,
-                                terms: vec![(Goldilocks::ONE, ModelColumn::GreedyKey)],
+                    lookups: runtime
+                        .key_columns()
+                        .iter()
+                        .map(|column| SiteLookup {
+                            lookup: Lookup {
+                                table: c.table,
+                                key: Affine {
+                                    constant: Goldilocks::ZERO,
+                                    terms: vec![(
+                                        Goldilocks::ONE,
+                                        ModelColumn::greedy_key(column.request_index),
+                                    )],
+                                },
+                                value: None,
                             },
-                            value: None,
-                        },
-                        domain: vec![c.positions - c.prompt, c.vocab],
-                        axes: Vec::new(),
-                        // The generated positions, not the batch's token index: no token
-                        // indexes the key, so its block stays in token subset 0 (RFC-0054
-                        // 'What a group holds').
-                        token: None,
-                    }],
+                            domain: vec![column.output_len(), c.vocab],
+                            axes: Vec::new(),
+                            // The generated positions, not the batch's token index: no token
+                            // indexes the key, so its block stays in token subset 0 (RFC-0054
+                            // 'What a group holds').
+                            token: None,
+                        })
+                        .collect(),
                 }],
             });
         }

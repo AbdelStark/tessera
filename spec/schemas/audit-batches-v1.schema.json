@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/audit-batches-v1.schema.json",
   "title": "tessera.audit-batches/1",
-  "description": "What `tessera audit batch` writes to `<out-dir>/batches.json`, and prints with `--json` (RFC-0016 'Batching'): a sample's selected requests packed into proof batches by first-fit decreasing on their length, each with the lengths its statement carries, read from the period's log and the previous period's. Greedy only: every request is in one group until RFC-0061's pins are implemented. Informational: `tessera prove --sample` reads the batches from the sample and the logs again, never from this report.",
+  "description": "What `tessera audit batch` writes to `<out-dir>/batches.json`, and prints with `--json` (RFC-0016 'Batching', RFC-0071 'The statement and the batching'): a sample's selected requests packed into proof batches by slot class `c = ⌈log2 max(L, 1)⌉` (decreasing) and first-fit decreasing on `L`, counting `2^{c + ⌈log2 R⌉}` tokens against `max_batch_tokens`, each request with the lengths its statement carries, read from the period's log and the previous period's. Greedy only: every request is in one group until RFC-0061's pins are implemented. Informational: `tessera prove --sample` reads the batches from the sample and the logs again, never from this report.",
   "type": "object",
   "required": [
     "schema",
@@ -27,11 +27,11 @@
       "$ref": "#/$defs/digest"
     },
     "min_batch_tokens": {
-      "description": "The policy's `min_batch_tokens`: at most one batch of each group has fewer tokens.",
+      "description": "The policy's `min_batch_tokens`: at most one batch of each slot class in a group has fewer counted tokens.",
       "$ref": "#/$defs/u32"
     },
     "max_batch_tokens": {
-      "description": "The policy's `max_batch_tokens`: no batch has more tokens but a request longer than it, alone.",
+      "description": "The policy's `max_batch_tokens`: no batch has more counted tokens (`2^{c + ⌈log2 R⌉}`) except a request of class `c > ⌊log2 max_batch_tokens⌋`, alone.",
       "$ref": "#/$defs/u32"
     },
     "selected": {
@@ -68,7 +68,7 @@
       "additionalProperties": false,
       "properties": {
         "index": {
-          "description": "The batch's position, from 0, which `tessera prove --batch` takes: groups in order, and each group's batches in the order they were opened.",
+          "description": "The batch's position, from 0, which `tessera prove --batch` takes: groups in order, classes in decreasing order within each group, and each class's batches in the order they were opened.",
           "type": "integer",
           "minimum": 0
         },

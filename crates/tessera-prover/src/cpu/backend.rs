@@ -247,27 +247,38 @@ impl<'a> CpuBackend<'a> {
                 != (protocol::PredictorSpec::Exact {
                     decoding: protocol::Decoding::Greedy,
                 })
-            || s.batch.requests.len() != 1
+            || s.batch.requests.is_empty()
         {
             return Err(usage(
-                "one exact-greedy request must bind this claim list and weight epoch",
+                "an exact-greedy batch must bind this claim list and weight epoch",
             ));
         }
-        let r = &s.batch.requests[0];
-        let n = r
-            .prompt_len
-            .checked_add(r.output_len)
-            .ok_or_else(|| usage("request length overflow"))?;
-        if r.prompt_len == 0 || r.output_len == 0 || n > c.arch.max_context {
-            return Err(usage(
-                "request requires a nonempty prompt and continuation within max_context",
-            ));
+        let mut keys = std::collections::HashSet::new();
+        let mut lengths = Vec::with_capacity(s.batch.requests.len());
+        let mut requests = Vec::with_capacity(s.batch.requests.len());
+        for r in &s.batch.requests {
+            if !keys.insert((r.session_id, r.request_id)) {
+                return Err(usage("a batch names each request key once"));
+            }
+            let n = r
+                .prompt_len
+                .checked_add(r.output_len)
+                .ok_or_else(|| usage("request length overflow"))?;
+            if r.prompt_len == 0 || n > c.arch.max_context {
+                return Err(usage(
+                    "requests require a nonempty prompt within max_context",
+                ));
+            }
+            lengths.push(n);
+            requests.push((r.prompt_len, r.output_len));
         }
-        let lowering = compiler::lower(PublicModel::of(prepared.model), n)?;
+        compiler::check_batch_advice_rows(c, &requests)?;
+        let lowering = compiler::lower_batch(PublicModel::of(prepared.model), &lengths)?;
+        let n = lowering.graph.tensors[lowering.tokens.0 as usize].shape[0];
         let ranges = compiler::analyze(&lowering.graph, &lowering.tables)?;
         let selected =
             compiler::select(&lowering.graph, &ranges, &lowering.tables, &c.gadget_policy)?;
-        let runtime = RuntimePlan::derive(&lowering, &selected, c, r.prompt_len, 0)?;
+        let runtime = RuntimePlan::derive_batch(&lowering, &selected, c, &requests)?;
         let layers = LayerMap::new(&lowering)?;
         let leaf = LeafLayout::runtime(&lowering, &layers, &runtime, c)?;
         let native = ModelNativePlan::derive_runtime(&lowering, &runtime, c, &leaf)?;
@@ -323,6 +334,26 @@ impl<'a> CpuBackend<'a> {
             plan,
         ))
     }
+    pub(super) fn check_witness(
+        prepared: &Prepared<'_>,
+        batch: &ProofBatch,
+    ) -> Result<(), ProverError> {
+        let (unit, plan) = Self::unit(prepared, batch)?;
+        plan.check(prepared.cfg.memory_budget)?;
+        let engine = Engine::new(&unit.lowering)?.threads(prepared.threads);
+        let witness = engine.run(prepared.model, &batch.tokens)?;
+        let source = unit.source(&engine, prepared.model, &witness)?;
+        let advice =
+            ModelAdviceLayout::runtime(&unit.lowering, &unit.runtime, &prepared.plan.claims)?;
+        use tessera_witness::WitnessSource as _;
+        for tile in advice.tiles() {
+            if matches!(tile.tile, compiler::Tile::GreedyMaximum { .. }) {
+                source.tile(tile)?;
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn round2(
         &mut self,
         tr: &mut Transcript,
@@ -583,7 +614,7 @@ impl<'a> CpuBackend<'a> {
         metrics::phase(metrics::Phase::Opening, opening.elapsed());
         metrics::pass(Pass::P4, opening.elapsed());
         let scoring = protocol::ScoringClaims {
-            requests: vec![protocol::FixedBits(0)],
+            requests: vec![protocol::FixedBits(0); d.statement.batch.requests.len()],
         };
         tr.absorb("scoring", &scoring);
         let round2 = protocol::Round2Response {

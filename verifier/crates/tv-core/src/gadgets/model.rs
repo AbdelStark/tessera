@@ -243,6 +243,7 @@ pub struct Plan<'p> {
     /// Every tensor's token axis, which places a leaf claim in a grouped stage (RFC-0054).
     axes: leaf::groups::TokenAxes,
     families: Vec<Family<'p>>,
+    windows: Vec<greedy::Window>,
     slots: Vec<Slot>,
     native: Vec<Native>,
     schedule: Schedule,
@@ -267,6 +268,12 @@ impl<'p> Plan<'p> {
     }
     fn derive_inner(gadgets: &'p Gadgets<'p>, runtime: Option<&runtime::Plan<'p>>) -> Result<Self> {
         let graph = gadgets.graph;
+        let mut windows = reserve(runtime.map_or(0, |r| r.certificates().len()))?;
+        if let Some(runtime) = runtime {
+            for c in runtime.certificates() {
+                windows.push(c.boundary().window());
+            }
+        }
         let sites = match runtime {
             Some(r) => r.split_sites(),
             None => split::model_sites(graph, gadgets.policy),
@@ -528,37 +535,45 @@ impl<'p> Plan<'p> {
             let logits = *last.outputs().first().ok_or_else(internal)?;
             let vars = variables(graph, logits)?;
             let family = families.len();
-            if let Some(certificate) = runtime.certificate() {
-                push(&mut families, Family::Greedy { node, certificate })?;
-                for (relation, kind, zero) in [
-                    (Relation::GreedyKey, greedy::Kind::Key, false),
-                    (Relation::GreedySelected, greedy::Kind::Selected, true),
-                ] {
-                    let boundary = certificate.boundary();
-                    append(
-                        &mut slots,
-                        &mut native,
-                        Slot {
-                            family,
-                            relation,
-                            outputs: list([Projection::new(
-                                0,
-                                [Source::Tensor(logits)].into_iter(),
-                                0,
+            if !runtime.certificates().is_empty() {
+                for (index, &certificate) in runtime.certificates().iter().enumerate() {
+                    let family = families.len();
+                    push(&mut families, Family::Greedy { node, certificate })?;
+                    for (relation, kind, zero) in [
+                        (Relation::GreedyKey, greedy::Kind::Key, false),
+                        (Relation::GreedySelected, greedy::Kind::Selected, true),
+                    ] {
+                        if matches!(kind, greedy::Kind::Selected)
+                            && index.saturating_add(1) != runtime.certificates().len()
+                        {
+                            continue;
+                        }
+                        let boundary = certificate.boundary();
+                        append(
+                            &mut slots,
+                            &mut native,
+                            Slot {
+                                family,
+                                relation,
+                                outputs: list([Projection::new(
+                                    0,
+                                    [Source::Tensor(logits)].into_iter(),
+                                    0,
+                                    vars,
+                                )?])?,
+                            },
+                            Native {
+                                kind: relation.kind(),
+                                tag: 0,
+                                node,
                                 vars,
-                            )?])?,
-                        },
-                        Native {
-                            kind: relation.kind(),
-                            tag: 0,
-                            node,
-                            vars,
-                            degree: boundary.degree(kind),
-                            evaluations: boundary.evaluations(kind),
-                            zero,
-                            outputs: Vec::new(),
-                        },
-                    )?;
+                                degree: boundary.degree(kind),
+                                evaluations: boundary.evaluations(kind),
+                                zero,
+                                outputs: Vec::new(),
+                            },
+                        )?;
+                    }
                 }
             } else {
                 push(
@@ -604,6 +619,7 @@ impl<'p> Plan<'p> {
             layout,
             axes,
             families,
+            windows,
             slots,
             native,
             schedule,
@@ -900,8 +916,15 @@ impl<'a, 'p> Prepared<'a, 'p> {
                         if c.point != point {
                             return Err(internal());
                         }
-                        let psi = crate::selectors::lt(point, u64::from(graph.length()))
-                            .ok_or_else(internal)?;
+                        let psi = match graph.slots().filter(|s| s.lengths().len() >= 2) {
+                            Some(slots) => crate::selectors::slot_selector(
+                                point,
+                                usize::try_from(slots.slot_bits()).map_err(|_| internal())?,
+                                slots.lengths(),
+                            ),
+                            None => crate::selectors::lt(point, u64::from(graph.length())),
+                        }
+                        .ok_or_else(internal)?;
                         return Ok(c.value - Fp2::from(Fp::reduce(*eps_int)) * psi);
                     }
                     split::Column::Input(u8::try_from(i).map_err(|_| internal())?)
@@ -987,7 +1010,7 @@ impl<'a, 'p> Prepared<'a, 'p> {
                         }
                         let scale = Fp2::from(Fp::reduce(
                             1u64.checked_shl(
-                                u32::try_from(bits(graph.length())?).map_err(|_| internal())?,
+                                u32::try_from(site.key_variables()).map_err(|_| internal())?,
                             )
                             .ok_or_else(internal)?,
                         ));
@@ -1265,11 +1288,11 @@ impl Prepared<'_, '_> {
         let boundary = certificate.boundary();
         match slot.relation {
             Relation::GreedyKey => {
-                let claim = self.column(*node, split::Column::GreedyKey)?;
+                let claim = self.column(*node, split::Column::greedy_key(certificate.ordinal()))?;
                 call(&boundary.key(&claim.point, claim.value)?)
             }
-            Relation::GreedySelected => call(&boundary.zero(
-                greedy::Kind::Selected,
+            Relation::GreedySelected => call(&boundary.selected_zero(
+                &self.plan.windows,
                 own_point(ctx.zero, bits(self.plan.gadgets.graph.length())?)?,
             )?),
             _ => Err(internal()),

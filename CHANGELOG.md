@@ -1683,6 +1683,8 @@ All notable changes to the prover release train are recorded here: the crates un
 - Add exact greedy request scoring in `tessera-scoring`: original teacher-forcing source rows, clearing maximum certificates with zero output padding, per-request `Û = 0` claims, and deterministic `ERR-WITNESS-EXACT-MISMATCH` context after all rows. Proof operands reuse the recorded token's existing OneHot. Actual tiny-model CPU scoring subproofs are checked independently; full model drivers and temperature/mixture scoring remain separate (#127).
 
 - Derive all four OneHot relations in the native stage-one schedule: booleanity, vocabulary padding, row count and the original token index. Proof operands and returned opening claims retain the original indicator/token sources. Independent and CPU proof tests cover isolated alternatives, padded vocabularies, scalar axes and consistent downstream recomputation (#124).
+- Exact-greedy request-slot batches (RFC-0071, [#551](https://github.com/AbdelStark/tessera/issues/551)): batch-aware lowering, advice layouts, witness replay, attention reductions and per-request greedy keys; sampled CLI NI/Live proofs, with public omission receipts for failed anchor checks or non-greedy continuations. `Prover::check_witness` checks a candidate within the configured memory budget before any commitment. Independent oracle vectors cover slot selectors and request windows; single-request deterministic proof, claim-list and execution-plan bytes match the pre-batch fixture.
+
 
 ### Changed
 

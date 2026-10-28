@@ -6,8 +6,7 @@
 //!
 //! 1. **The batch.** The sample's batches come from `crate::audit::sampled`, the function
 //!    `tessera audit batch` reports them with, so `--batch K` names the report's batch `K`. A `K`
-//!    past the last batch is `ERR-USAGE`, and so is a batch of several requests until
-//!    multi-request proof units exist (#357).
+//!    past the last batch is `ERR-USAGE`.
 //! 2. **The transcripts.** `--transcripts DIR` holds one `SessionTranscript` (0x0404) per session,
 //!    named `<session_id>.tst`, the identifier in 32 lowercase hexadecimal digits. A session with
 //!    no file there has no stored transcript, which the pre-check refuses.
@@ -38,24 +37,33 @@ use super::{ProveArgs, usage};
 use crate::audit::{self, Logs};
 use crate::{Input, io_error};
 
-/// The request of a batch of one, ready to prove.
+/// The sampled requests and their slotted tokens, ready to prove.
 pub(super) struct Sampled {
-    /// The request as its statement lists it.
-    pub(super) request: protocol::RequestRef,
+    /// Requests in statement order.
+    pub(super) requests: Vec<protocol::RequestRef>,
+    /// Public receipt entries for requests whose anchor pre-check failed.
+    pub(super) unproven: Vec<serde_json::Value>,
     /// The sample's `manifest_digest`, the period's manifest identity.
     pub(super) manifest_digest: [u8; 32],
     /// The parameter set the sample's policy names.
     pub(super) params: tessera_hash::ParamSetId,
-    /// Its prompt, then its output.
+    /// Per-request prompt/output tokens in RFC-0071 slots.
     pub(super) tokens: Secret<Vec<u32>>,
     /// Every file read, which the proof must not overwrite.
     pub(super) inputs: Vec<PathBuf>,
+    transcripts: Vec<SessionTranscript>,
+    window: audit::Window,
 }
 
 /// The file of `session_id`'s transcript in `dir`: `<session_id>.tst`, in lowercase hex.
 fn transcript_path(dir: &Path, session_id: &[u8; 16]) -> PathBuf {
     let name: String = session_id.iter().map(|b| format!("{b:02x}")).collect();
     dir.join(format!("{name}.tst"))
+}
+
+fn omitted(session: [u8; 16], request_id: u64, code: ErrorCode) -> serde_json::Value {
+    let session_id: String = session.iter().map(|b| format!("{b:02x}")).collect();
+    serde_json::json!({"session_id":session_id,"request_id":request_id,"code":code.to_string()})
 }
 
 fn anchor(failure: PrecheckFailure) -> TesseraError {
@@ -96,19 +104,30 @@ pub(super) fn request(a: &ProveArgs, path: &Path) -> Result<Sampled, TesseraErro
                 "the sample has {count} batches, numbered from 0: there is no batch {k}"
             ))
         })?;
-    let [only] = &batch.requests[..] else {
-        return Err(usage(format!(
-            "batch {k} holds {} requests, and a proof of several waits on multi-request proof units (#357)",
-            batch.requests.len()
-        )));
-    };
-    let key = only.key;
-    let lengths = only.lengths.ok_or_else(|| {
-        anchor(PrecheckFailure {
+    if batch.requests.is_empty() {
+        return Err(usage("a sampled batch contains at least one request"));
+    }
+    let mut unproven = Vec::new();
+    let mut first_failure = None;
+    let mut requests = Vec::new();
+    for request in &batch.requests {
+        let key = request.key;
+        let Some(lengths) = request.lengths else {
+            let failure = PrecheckFailure {
+                request_id: key.request_id,
+                kind: PrecheckKind::Lengths,
+            };
+            unproven.push(omitted(key.session_id, key.request_id, failure.code()));
+            first_failure.get_or_insert_with(|| anchor(failure));
+            continue;
+        };
+        requests.push(BatchRequest {
+            session_id: key.session_id,
             request_id: key.request_id,
-            kind: PrecheckKind::Lengths,
-        })
-    })?;
+            prompt_len: lengths.prompt_len,
+            output_len: lengths.output_len,
+        });
+    }
     if !fs::metadata(dir)
         .map_err(io_error(format!("cannot open {}", dir.display())))?
         .is_dir()
@@ -118,22 +137,51 @@ pub(super) fn request(a: &ProveArgs, path: &Path) -> Result<Sampled, TesseraErro
     }
     // One transcript per session of the batch; a missing one is the pre-check's to name.
     let mut transcripts: Vec<SessionTranscript> = Vec::new();
-    let file = transcript_path(dir, &key.session_id);
-    match fs::symlink_metadata(&file) {
-        Ok(_) => {
-            transcripts.push(Input::new(&file, &schema::SESSION_TRANSCRIPT).open()?);
-            inputs.push(file);
+    for request in &requests {
+        if transcripts
+            .iter()
+            .any(|t| t.session_id() == request.session_id)
+        {
+            continue;
         }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(io_error(format!("cannot read {}", file.display()))(e)),
+        let file = transcript_path(dir, &request.session_id);
+        match fs::symlink_metadata(&file) {
+            Ok(_) => {
+                transcripts.push(Input::new(&file, &schema::SESSION_TRANSCRIPT).open()?);
+                inputs.push(file);
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(io_error(format!("cannot read {}", file.display()))(e)),
+        }
     }
-    let requests = [BatchRequest {
-        session_id: key.session_id,
-        request_id: key.request_id,
-        prompt_len: lengths.prompt_len,
-        output_len: lengths.output_len,
-    }];
     let window = &sampled.window;
+    let requests: Vec<_> = requests
+        .into_iter()
+        .filter(|request| {
+            match precheck(
+                core::slice::from_ref(request),
+                &transcripts,
+                &window.current,
+                window.previous.as_ref(),
+            ) {
+                Ok(()) => true,
+                Err(failure) => {
+                    unproven.push(omitted(
+                        request.session_id,
+                        request.request_id,
+                        failure.code(),
+                    ));
+                    first_failure.get_or_insert_with(|| anchor(failure));
+                    false
+                }
+            }
+        })
+        .collect();
+    if requests.is_empty() {
+        return Err(
+            first_failure.unwrap_or_else(|| internal("a sampled batch has no pre-checked request"))
+        );
+    }
     precheck(
         &requests,
         &transcripts,
@@ -142,21 +190,113 @@ pub(super) fn request(a: &ProveArgs, path: &Path) -> Result<Sampled, TesseraErro
     )
     .map_err(anchor)?;
     // The pre-check found the session's transcript and replayed every logged frame.
-    let tokens = transcripts
+    let stored = requests
         .iter()
-        .find(|t| t.session_id() == key.session_id)
-        .and_then(|t| t.request_tokens(window.previous.as_ref(), &window.current, key.request_id))
-        .ok_or_else(|| internal("a pre-checked request's tokens cannot be rebuilt"))?;
+        .map(|request| {
+            transcripts
+                .iter()
+                .find(|t| t.session_id() == request.session_id)
+                .map(|t| (t, request.request_id))
+                .ok_or_else(|| internal("a pre-checked request has its session transcript"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let slot_len = requests
+        .iter()
+        .map(|r| r.prompt_len.checked_add(r.output_len))
+        .collect::<Option<Vec<_>>>()
+        .and_then(|lengths| lengths.into_iter().max())
+        .and_then(u32::checked_next_power_of_two)
+        .ok_or_else(|| usage("batch slot length overflow"))?;
+    let tokens = SessionTranscript::batch_tokens(
+        window.previous.as_ref(),
+        &window.current,
+        slot_len,
+        &stored,
+    )
+    .ok_or_else(|| internal("a pre-checked batch's tokens cannot be rebuilt"))?;
     Ok(Sampled {
-        request: protocol::RequestRef {
-            request_id: key.request_id,
-            session_id: key.session_id,
-            prompt_len: lengths.prompt_len,
-            output_len: lengths.output_len,
-        },
+        transcripts,
+        window: sampled.window,
+        unproven,
+        requests: requests
+            .iter()
+            .map(|r| protocol::RequestRef {
+                request_id: r.request_id,
+                session_id: r.session_id,
+                prompt_len: r.prompt_len,
+                output_len: r.output_len,
+            })
+            .collect(),
         manifest_digest: *sampled.sample.manifest_digest(),
         params: sampled.sample.policy().params().clone(),
         tokens,
         inputs,
     })
+}
+
+impl Sampled {
+    pub(super) fn replay(
+        &mut self,
+        prover: &tessera_prover::Prover<'_>,
+        batch: &mut tessera_prover::ProofBatch,
+    ) -> Result<(), TesseraError> {
+        let mut survivors = Vec::new();
+        let mut first = None;
+        for &request in &batch.statement.batch.requests {
+            let transcript = self
+                .transcripts
+                .iter()
+                .find(|t| t.session_id() == request.session_id)
+                .ok_or_else(|| internal("a checked request has its transcript"))?;
+            let tokens = transcript
+                .request_tokens(
+                    self.window.previous.as_ref(),
+                    &self.window.current,
+                    request.request_id,
+                )
+                .ok_or_else(|| internal("a checked request has its tokens"))?;
+            let mut statement = batch.statement.clone();
+            statement.batch.requests = vec![request];
+            match prover.check_witness(&tessera_prover::ProofBatch { statement, tokens }) {
+                Ok(()) => survivors.push(request),
+                Err(error) if error.code() == ErrorCode::WitnessExactMismatch => {
+                    self.unproven.push(omitted(
+                        request.session_id,
+                        request.request_id,
+                        error.code(),
+                    ));
+                    first.get_or_insert_with(|| super::prover_error(error));
+                }
+                Err(error) => return Err(super::prover_error(error)),
+            }
+        }
+        if survivors.is_empty() {
+            return Err(first.unwrap_or_else(|| internal("no sampled request survived replay")));
+        }
+        let slot = survivors
+            .iter()
+            .filter_map(|r| r.prompt_len.checked_add(r.output_len))
+            .max()
+            .and_then(u32::checked_next_power_of_two)
+            .ok_or_else(|| usage("batch slot length overflow"))?;
+        let stored = survivors
+            .iter()
+            .map(|r| {
+                self.transcripts
+                    .iter()
+                    .find(|t| t.session_id() == r.session_id)
+                    .map(|t| (t, r.request_id))
+                    .ok_or_else(|| internal("a checked request has its transcript"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        batch.tokens = SessionTranscript::batch_tokens(
+            self.window.previous.as_ref(),
+            &self.window.current,
+            slot,
+            &stored,
+        )
+        .ok_or_else(|| internal("checked batch tokens fit their slots"))?;
+        batch.statement.batch.requests = survivors;
+        Ok(())
+    }
 }

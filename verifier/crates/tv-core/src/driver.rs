@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Protocol/1 verification over trusted application inputs (RFC-0019).
-//! The current runtime composes one exact-greedy request; unsupported predictors/batches
-//! fail explicitly. Anchor signatures, scoring circuits and persistent ledgers are v0.4.
+//! The current runtime composes exact-greedy requests in public slots (RFC-0071);
+//! unsupported predictors fail explicitly. Anchor signatures, scoring circuits and persistent ledgers are v0.4.
 //!
 //! A leaf stage in token groups (RFC-0054) runs in this order: `Round1.leaf_groups` within
 //! `t = ⌈log2 n⌉` token bits and `n_ℓ = ⌈log2 L⌉` layer bits of the trusted statement and claim
@@ -358,12 +358,16 @@ fn layout_error(e: &leaf::groups::Error, artifact: ArtifactKind) -> Failure {
 /// tokens (0 for none), and the claim list's layers (one at least: a claim list of none fails
 /// its own validation, RFC-0007).
 fn grouping_extent(claims: &ClaimList, statement: &PublicStatement) -> leaf::groups::Extent {
-    let tokens = statement.batch.requests.iter().fold(0u64, |n, r| {
-        n.saturating_add(u64::from(r.prompt_len))
-            .saturating_add(u64::from(r.output_len))
-    });
+    let requests = &statement.batch.requests;
+    let maximum = requests
+        .iter()
+        .map(|r| u64::from(r.prompt_len).saturating_add(u64::from(r.output_len)))
+        .max()
+        .unwrap_or(0);
+    let position_bits = u64::BITS.saturating_sub(maximum.saturating_sub(1).leading_zeros());
+    let request_bits = usize::BITS.saturating_sub(requests.len().saturating_sub(1).leading_zeros());
     leaf::groups::Extent {
-        token_bits: u64::BITS.saturating_sub(tokens.saturating_sub(1).leading_zeros()),
+        token_bits: position_bits.saturating_add(request_bits),
         layers: claims.arch.n_layers.max(1),
     }
 }
@@ -818,22 +822,62 @@ fn verify_unit_tracked(
         }
     }
     public.map_err(weight_error)?;
-    let [request] = expected.batch.requests.as_slice() else {
-        return Err(fail(ErrorCode::Usage));
-    };
-    let n = request
-        .prompt_len
-        .checked_add(request.output_len)
-        .ok_or_else(|| mismatch(F::Batch))?;
-    if request.prompt_len == 0 || n > claims.arch.max_context {
+    let exact_greedy = expected.predictor
+        == (PredictorSpec::Exact {
+            decoding: Decoding::Greedy,
+        });
+    let requests = &expected.batch.requests;
+    if requests.is_empty() || (requests.len() >= 2 && !exact_greedy) {
         return Err(mismatch(F::Batch));
     }
-    scoring::validate_predictor(&expected.predictor).map_err(|_| mismatch(F::Predictor))?;
-    if expected.predictor
-        != (PredictorSpec::Exact {
-            decoding: Decoding::Greedy,
-        })
+    // RFC-0071 / SP-8: bound metadata before reserving it; sort public keys instead of
+    // scanning every earlier request. Slot order remains the statement's order.
+    let metadata_bytes = requests
+        .len()
+        .checked_mul(
+            size_of::<([u8; 16], u64)>()
+                .saturating_add(size_of::<u32>())
+                .saturating_add(size_of::<(u32, u32)>()),
+        )
+        .and_then(|n| u64::try_from(n).ok())
+        .ok_or_else(memory)?;
+    if memory_estimate
+        .checked_add(metadata_bytes)
+        .is_none_or(|n| n > cfg.limits.max_memory_bytes)
     {
+        return Err(memory());
+    }
+    {
+        let mut keys = reserve(requests.len())?;
+        for (i, request) in requests.iter().enumerate() {
+            if i.is_multiple_of(4096) {
+                deadline(started, cfg.limits)?;
+            }
+            if request.prompt_len == 0
+                || request
+                    .prompt_len
+                    .checked_add(request.output_len)
+                    .is_none_or(|n| n > claims.arch.max_context)
+            {
+                return Err(mismatch(F::Batch));
+            }
+            keys.push((request.session_id, request.request_id));
+        }
+        // In-place O(R log R), with no scratch allocation; cooperative deadline surrounds it.
+        deadline(started, cfg.limits)?;
+        keys.sort_unstable();
+        deadline(started, cfg.limits)?;
+        for (i, pair) in keys.windows(2).enumerate() {
+            if i.is_multiple_of(4096) {
+                deadline(started, cfg.limits)?;
+            }
+            if pair.first() == pair.get(1) {
+                return Err(mismatch(F::Batch));
+            }
+        }
+    }
+    scoring::validate_predictor(&expected.predictor).map_err(|_| mismatch(F::Predictor))?;
+    if !exact_greedy {
         return Err(fail(ErrorCode::Usage));
     }
     if !matches!(session, Session::Initial)
@@ -841,19 +885,33 @@ fn verify_unit_tracked(
     {
         return Err(malformed(artifact));
     }
-    let graph = crate::lowering::lower(&validation::check_public(claims).map_err(claims_error)?, n)
-        .map_err(|e| {
-            if e == crate::lowering::LowerError::Memory {
-                memory()
-            } else {
-                internal()
-            }
-        })?;
-    let runtime = gadgets::runtime::Plan::derive(
+    let mut lengths = reserve(requests.len())?;
+    let mut request_lengths = reserve(requests.len())?;
+    for (i, request) in requests.iter().enumerate() {
+        if i.is_multiple_of(4096) {
+            deadline(started, cfg.limits)?;
+        }
+        lengths.push(
+            request
+                .prompt_len
+                .checked_add(request.output_len)
+                .ok_or_else(|| mismatch(F::Batch))?,
+        );
+        request_lengths.push((request.prompt_len, request.output_len));
+    }
+    let graph = crate::lowering::lower_batch(
+        &validation::check_public(claims).map_err(claims_error)?,
+        &lengths,
+    )
+    .map_err(|e| match e {
+        crate::lowering::LowerError::Memory => memory(),
+        crate::lowering::LowerError::Length { .. } => mismatch(F::Batch),
+        _ => internal(),
+    })?;
+    let runtime = gadgets::runtime::Plan::derive_batch(
         &graph,
         claims.gadget_policy,
-        request.prompt_len,
-        0,
+        &request_lengths,
         validated.tables(),
     )
     .map_err(claims_error)?;
@@ -864,7 +922,10 @@ fn verify_unit_tracked(
             claims.layout.advice.log2_k,
             claims.layout.advice.segments,
         ))
-        .map_err(claims_error)?;
+        .map_err(|e| match e {
+            validation::ClaimsError::StatementMismatch { field: F::Layout } => mismatch(F::Batch),
+            other => claims_error(other),
+        })?;
     let statement_digest = expected.digest();
     let commitment = advice::opening::Commitment::bind(
         &layout,

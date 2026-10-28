@@ -21,7 +21,8 @@
 //!   a frame): `ERR-WITNESS-ANCHOR` too;
 //! - a request not in the sample: no batch past the last, no sample that selects it (a sample
 //!   edited to add it and resealed), no reference flags beside `--sample`: `ERR-USAGE`;
-//! - a batch of two requests, under a policy that selects both: `ERR-USAGE`, naming #357;
+//! - selected requests of different slot classes are packed into separate batches;
+//!   two requests of the same class prove together and verify against their own statement pin;
 //! - a sample whose policy names another parameter set than the claim list's: `ERR-USAGE`, since
 //!   the verifier would refuse the proof (`Reject(Params)`, RFC-0016 'Verifier checks', #530);
 //! - malformed inputs: a corrupted sample or transcript, a log that is not its manifest's (65);
@@ -267,6 +268,8 @@ struct Fixture {
     manifest_digest: String,
     weights_root: String,
     pin: String,
+    second_pin: String,
+    first_pin: String,
 }
 
 fn os(items: &[&str]) -> Vec<OsString> {
@@ -302,6 +305,14 @@ impl Fixture {
     }
 
     fn new() -> Self {
+        Self::with_batched_second(false)
+    }
+
+    fn with_batched_second(batched: bool) -> Self {
+        Self::with_second_and_mismatch(batched, false)
+    }
+
+    fn with_second_and_mismatch(batched: bool, mismatch: bool) -> Self {
         let dir = Dir::new();
         let model = root().join("spec/vectors/exact-cli/tiny-3-reference.d");
         let tessera = |args: &[OsString]| {
@@ -346,13 +357,18 @@ impl Fixture {
         let inbound = [
             WireFrame::Open(open),
             seal(23, Direction::In, 0, &[1, 2]),
-            seal(24, Direction::In, 0, &[3]),
+            seal(24, Direction::In, 0, if batched { &[1, 2] } else { &[3] }),
         ];
         // Both ends together, so that one period holds them.
         let outbound = [
             seal(23, Direction::Out, 0, &[2, 6]),
-            seal(23, Direction::Out, 1, &[0]),
-            seal(24, Direction::Out, 0, &[1]),
+            seal(23, Direction::Out, 1, if mismatch { &[1] } else { &[0] }),
+            seal(
+                24,
+                Direction::Out,
+                0,
+                if batched { &[2, 6, 0, 0] } else { &[1] },
+            ),
             end(23),
             end(24),
         ];
@@ -363,10 +379,16 @@ impl Fixture {
         // The tampered copy: request 23's last output token, 0, stored as 1. Frames encode
         // their counter, request, tag, index and token count in 26 bytes, after 56 of header.
         let mut bytes = encode(&transcript);
-        let sizes = [2usize, 1, 2, 1, 1];
+        let sizes = [
+            2usize,
+            if batched { 2 } else { 1 },
+            2,
+            1,
+            if batched { 4 } else { 1 },
+        ];
         let at = 56 + sizes[..3].iter().map(|n| 26 + 4 * n).sum::<usize>() + 26;
-        assert_eq!(&bytes[at..at + 4], &0u32.to_le_bytes());
-        bytes[at] = 1;
+        assert_eq!(&bytes[at..at + 4], &u32::from(mismatch).to_le_bytes());
+        bytes[at] = u8::from(!mismatch);
         let tampered: SessionTranscript =
             decode(&bytes, DecodeLimits::MESSAGE).expect("still a transcript");
         let tampered_dir = dir.join("tampered");
@@ -377,6 +399,21 @@ impl Fixture {
             &tampered,
         )
         .expect("written");
+
+        // Redirect request 24's stored output to request 23 while keeping its counter/tokens.
+        let mut cross = encode(&transcript);
+        let header = 56 + sizes[..4].iter().map(|n| 26 + 4 * n).sum::<usize>() + 4;
+        assert_eq!(&cross[header..header + 8], &24u64.to_le_bytes());
+        cross[header..header + 8].copy_from_slice(&23u64.to_le_bytes());
+        let cross: SessionTranscript = decode(&cross, DecodeLimits::MESSAGE).unwrap();
+        let cross_dir = dir.join("cross-request");
+        fs::create_dir(&cross_dir).unwrap();
+        envelope::write_file(
+            &cross_dir.join(format!("{}.tst", hex(&id))),
+            &schema::SESSION_TRANSCRIPT,
+            &cross,
+        )
+        .unwrap();
 
         // The recorder, between the client and the upstream.
         let log_dir = dir.join("log");
@@ -488,7 +525,7 @@ impl Fixture {
             &limits,
         )
         .expect("a manifest");
-        let statement = PublicStatement {
+        let mut statement = PublicStatement {
             claim_list_digest: claims.digest(),
             weights_root,
             weights_epoch: weights.epoch,
@@ -505,7 +542,26 @@ impl Fixture {
                 decoding: Decoding::Greedy,
             },
         };
+        if batched {
+            statement.batch.requests.push(RequestRef {
+                request_id: 24,
+                session_id: id,
+                prompt_len: 2,
+                output_len: 4,
+            });
+        }
+        let mut first_statement = statement.clone();
+        first_statement.batch.requests.truncate(1);
+        let mut second_statement = statement.clone();
+        second_statement.batch.requests = vec![RequestRef {
+            request_id: 24,
+            session_id: id,
+            prompt_len: if batched { 2 } else { 1 },
+            output_len: if batched { 4 } else { 1 },
+        }];
         let f = Self {
+            first_pin: hex(&first_statement.digest()),
+            second_pin: hex(&second_statement.digest()),
             logs: logs_of(at),
             next_logs: logs_of(at + 1),
             session: id,
@@ -711,9 +767,13 @@ fn a_sampled_batch_is_proven_from_the_cli_and_refused_when_it_must_be() {
         &f.run(false, &f.batch(&f.path("both.tas"), "batches-both"), 0),
         "audit-batches",
     );
-    assert_eq!(
-        both["batches"][0]["requests"].as_array().map(Vec::len),
-        Some(2)
+    assert_eq!(both["batches"].as_array().map(Vec::len), Some(2));
+    assert!(
+        both["batches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|b| b["requests"].as_array().unwrap().len() == 1)
     );
 
     // 4 and 5. Non-interactive, then live; each proof accepted against the test's own statement.
@@ -808,8 +868,7 @@ fn a_sampled_batch_is_proven_from_the_cli_and_refused_when_it_must_be() {
     flags.extend(os(&["--request-id", "24"]));
     usage(&flags, "required arguments were not provided");
 
-    // A batch of two requests.
-    usage(&replace(&out, "--sample", f.path("both.tas"))[1..], "#357");
+    // Requests of different slot classes occupy different batches (RFC-0071).
     // A sample of the same selection under another parameter set: refused before anything is
     // proven, so the proof file the accepted run wrote is left as it was.
     let before = fs::read(f.path("proof.tnp")).ok();
@@ -978,4 +1037,121 @@ fn a_request_whose_frames_give_no_lengths_is_batched_alone_then_refused() {
         "request 25: its lengths are not its frames' token counts"
     );
     assert!(!dir.join("proof.tnp").exists());
+}
+
+#[test]
+fn two_sampled_requests_prove_and_verify_from_cli() {
+    let f = Fixture::with_batched_second(true);
+    let batches = report(
+        &f.run(false, &f.batch(&f.path("both.tas"), "batch-two"), 0),
+        "audit-batches",
+    );
+    assert_eq!(
+        batches["batches"][0]["requests"].as_array().unwrap().len(),
+        2
+    );
+    let produced = report(
+        &f.run(false, &f.prove(&f.path("both.tas"), "transcripts", None), 0),
+        "proof-run",
+    );
+    assert_eq!(produced["statement_digest"], f.pin);
+    f.accepted(&f.run(true, &f.verify(None), 0));
+    let live = f.path("live-batch");
+    fs::create_dir(&live).unwrap();
+    let mut verifier_args = f.verify(Some(&live));
+    for flag in [
+        "--request-id",
+        "--request-session",
+        "--prompt-len",
+        "--output-len",
+    ] {
+        let at = verifier_args.iter().position(|arg| arg == flag).unwrap();
+        verifier_args.drain(at..at + 2);
+    }
+    verifier_args.extend(os(&[
+        "--requests",
+        &format!("{}:23:2:3,{}:24:2:4", hex(&f.session), hex(&f.session)),
+    ]));
+    let verifier = f.process(true, &verifier_args);
+    let producer = f.process(
+        false,
+        &f.prove(&f.path("both.tas"), "transcripts", Some(&live)),
+    );
+    let produced = report(&producer.wait(0), "proof-run");
+    assert_eq!(produced["mode"], "Live");
+    assert_eq!(produced["statement_digest"], f.pin);
+    f.accepted(&verifier.wait(0));
+}
+
+#[test]
+fn sampled_batch_omits_failed_anchor_and_reports_request() {
+    let mut f = Fixture::with_batched_second(true);
+    let produced = report(
+        &f.run(false, &f.prove(&f.path("both.tas"), "tampered", None), 0),
+        "proof-run",
+    );
+    assert_eq!(
+        produced["unproven"],
+        json!([{"session_id":hex(&f.session),"request_id":23,"code":"ERR-WITNESS-ANCHOR"}])
+    );
+    assert_eq!(produced["statement_digest"], f.second_pin);
+    f.pin = f.second_pin.clone();
+    let verdict = report(&f.run(true, &f.verify(None), 0), "verdict");
+    assert_eq!(verdict["verdict"]["status"], "accept");
+    assert_eq!(verdict["requests"].as_array().unwrap().len(), 1);
+    assert_eq!(verdict["requests"][0]["request_id"], 24);
+}
+
+#[test]
+fn sampled_batch_omits_logged_non_greedy_request_before_commitment() {
+    let mut f = Fixture::with_second_and_mismatch(true, true);
+    let produced = report(
+        &f.run(false, &f.prove(&f.path("both.tas"), "transcripts", None), 0),
+        "proof-run",
+    );
+    assert_eq!(
+        produced["unproven"],
+        json!([{"session_id":hex(&f.session),"request_id":23,"code":"ERR-WITNESS-EXACT-MISMATCH"}])
+    );
+    assert_eq!(produced["statement_digest"], f.second_pin);
+    f.pin = f.second_pin.clone();
+    let verdict = report(&f.run(true, &f.verify(None), 0), "verdict");
+    assert_eq!(verdict["verdict"]["status"], "accept");
+    assert_eq!(verdict["requests"].as_array().unwrap().len(), 1);
+    assert_eq!(verdict["requests"][0]["request_id"], 24);
+}
+
+#[test]
+fn no_greedy_survivor_refuses_before_live_packets_or_proof_output() {
+    let f = Fixture::with_second_and_mismatch(false, true);
+    let live = f.path("live-no-survivor");
+    fs::create_dir(&live).unwrap();
+    let args = f.prove(&f.path("one.tas"), "transcripts", Some(&live));
+    let error: Value = serde_json::from_str(&f.run(false, &args, 20)).unwrap();
+    assert_eq!(error["error"]["code"], "ERR-WITNESS-EXACT-MISMATCH");
+    assert_eq!(fs::read_dir(&live).unwrap().count(), 0);
+    assert!(!f.path("proof.tnp").exists());
+}
+
+#[test]
+fn a_stored_output_bound_to_another_request_is_not_proven() {
+    let mut f = Fixture::with_batched_second(true);
+    let produced = report(
+        &f.run(
+            false,
+            &f.prove(&f.path("both.tas"), "cross-request", None),
+            0,
+        ),
+        "proof-run",
+    );
+    assert_eq!(
+        produced["unproven"],
+        json!([{"session_id":hex(&f.session),"request_id":24,"code":"ERR-WITNESS-ANCHOR"}])
+    );
+    assert_eq!(produced["statement_digest"], f.first_pin);
+    f.pin = f.first_pin.clone();
+    let verdict = report(&f.run(true, &f.verify(None), 0), "verdict");
+    assert_eq!(verdict["verdict"]["status"], "accept");
+    assert_eq!(verdict["requests"].as_array().unwrap().len(), 1);
+    assert_eq!(verdict["requests"][0]["request_id"], 23);
 }

@@ -1,0 +1,3448 @@
+{
+  "description": "Conformance vectors for RFC-0071 batched request slots: slot geometry, RFC-0044 batch-lowered shapes and public positions, multilinear slot/causal selectors and SoftmaxRow forest root claims over Fp2, and exact-greedy runtime windows, key coefficients and U_hat_r window sums for batches of 1, 2 and 3 requests.",
+  "lowering": [
+    {
+      "name": "tiny-2-minimal-r1-n5",
+      "model": "tiny-2-minimal.d",
+      "protocol": 1,
+      "lengths": [
+        5
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 5,
+      "padded_tokens": 8,
+      "real_rows": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "positions": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "positions_bounds": [
+        0,
+        4
+      ],
+      "shapes": {
+        "tokens": [
+          5
+        ],
+        "positions": [
+          5
+        ],
+        "one_hot": [
+          5,
+          512
+        ],
+        "embed": [
+          5,
+          64
+        ],
+        "q": [
+          4,
+          5,
+          16
+        ],
+        "k": [
+          4,
+          5,
+          16
+        ],
+        "v": [
+          4,
+          5,
+          16
+        ],
+        "scores": [
+          4,
+          5,
+          5
+        ],
+        "exp": [
+          4,
+          5,
+          5
+        ],
+        "reciprocal": [
+          4,
+          5
+        ],
+        "pv": [
+          4,
+          5,
+          16
+        ],
+        "logits": [
+          5,
+          512
+        ]
+      },
+      "node_count": 108,
+      "tensor_count": 138,
+      "table_count": 5
+    },
+    {
+      "name": "tiny-2-minimal-r2-5-2",
+      "model": "tiny-2-minimal.d",
+      "protocol": 1,
+      "lengths": [
+        5,
+        2
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 16,
+      "padded_tokens": 16,
+      "real_rows": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "positions": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "positions_bounds": [
+        0,
+        4
+      ],
+      "shapes": {
+        "tokens": [
+          16
+        ],
+        "positions": [
+          16
+        ],
+        "one_hot": [
+          16,
+          512
+        ],
+        "embed": [
+          16,
+          64
+        ],
+        "q": [
+          4,
+          16,
+          16
+        ],
+        "k": [
+          4,
+          16,
+          16
+        ],
+        "v": [
+          4,
+          16,
+          16
+        ],
+        "scores": [
+          4,
+          16,
+          5
+        ],
+        "exp": [
+          4,
+          16,
+          5
+        ],
+        "reciprocal": [
+          4,
+          16
+        ],
+        "pv": [
+          4,
+          16,
+          16
+        ],
+        "logits": [
+          16,
+          512
+        ]
+      },
+      "node_count": 108,
+      "tensor_count": 138,
+      "table_count": 5
+    },
+    {
+      "name": "tiny-2-minimal-r2-1-4",
+      "model": "tiny-2-minimal.d",
+      "protocol": 1,
+      "lengths": [
+        1,
+        4
+      ],
+      "slot_bits": 2,
+      "slot_len": 4,
+      "token_len": 8,
+      "padded_tokens": 8,
+      "real_rows": [
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true
+      ],
+      "positions": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2,
+        3
+      ],
+      "positions_bounds": [
+        0,
+        3
+      ],
+      "shapes": {
+        "tokens": [
+          8
+        ],
+        "positions": [
+          8
+        ],
+        "one_hot": [
+          8,
+          512
+        ],
+        "embed": [
+          8,
+          64
+        ],
+        "q": [
+          4,
+          8,
+          16
+        ],
+        "k": [
+          4,
+          8,
+          16
+        ],
+        "v": [
+          4,
+          8,
+          16
+        ],
+        "scores": [
+          4,
+          8,
+          4
+        ],
+        "exp": [
+          4,
+          8,
+          4
+        ],
+        "reciprocal": [
+          4,
+          8
+        ],
+        "pv": [
+          4,
+          8,
+          16
+        ],
+        "logits": [
+          8,
+          512
+        ]
+      },
+      "node_count": 108,
+      "tensor_count": 138,
+      "table_count": 5
+    },
+    {
+      "name": "tiny-2-minimal-r3-5-1-7",
+      "model": "tiny-2-minimal.d",
+      "protocol": 1,
+      "lengths": [
+        5,
+        1,
+        7
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 24,
+      "padded_tokens": 32,
+      "real_rows": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false
+      ],
+      "positions": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        0
+      ],
+      "positions_bounds": [
+        0,
+        6
+      ],
+      "shapes": {
+        "tokens": [
+          24
+        ],
+        "positions": [
+          24
+        ],
+        "one_hot": [
+          24,
+          512
+        ],
+        "embed": [
+          24,
+          64
+        ],
+        "q": [
+          4,
+          24,
+          16
+        ],
+        "k": [
+          4,
+          24,
+          16
+        ],
+        "v": [
+          4,
+          24,
+          16
+        ],
+        "scores": [
+          4,
+          24,
+          7
+        ],
+        "exp": [
+          4,
+          24,
+          7
+        ],
+        "reciprocal": [
+          4,
+          24
+        ],
+        "pv": [
+          4,
+          24,
+          16
+        ],
+        "logits": [
+          24,
+          512
+        ]
+      },
+      "node_count": 108,
+      "tensor_count": 138,
+      "table_count": 5
+    },
+    {
+      "name": "tiny-2-minimal-r2-p1-small",
+      "model": "tiny-2-minimal.d",
+      "protocol": 1,
+      "lengths": [
+        1,
+        2
+      ],
+      "slot_bits": 1,
+      "slot_len": 2,
+      "token_len": 4,
+      "padded_tokens": 4,
+      "real_rows": [
+        true,
+        false,
+        true,
+        true
+      ],
+      "positions": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "positions_bounds": [
+        0,
+        1
+      ],
+      "shapes": {
+        "tokens": [
+          4
+        ],
+        "positions": [
+          4
+        ],
+        "one_hot": [
+          4,
+          512
+        ],
+        "embed": [
+          4,
+          64
+        ],
+        "q": [
+          4,
+          4,
+          16
+        ],
+        "k": [
+          4,
+          4,
+          16
+        ],
+        "v": [
+          4,
+          4,
+          16
+        ],
+        "scores": [
+          4,
+          4,
+          2
+        ],
+        "exp": [
+          4,
+          4,
+          2
+        ],
+        "reciprocal": [
+          4,
+          4
+        ],
+        "pv": [
+          4,
+          4,
+          16
+        ],
+        "logits": [
+          4,
+          512
+        ]
+      },
+      "node_count": 108,
+      "tensor_count": 138,
+      "table_count": 5
+    },
+    {
+      "name": "tiny-2-minimal-r2-p2-small",
+      "model": "tiny-2-minimal.d",
+      "protocol": 2,
+      "lengths": [
+        1,
+        2
+      ],
+      "slot_bits": 2,
+      "slot_len": 4,
+      "token_len": 8,
+      "padded_tokens": 8,
+      "real_rows": [
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false,
+        false
+      ],
+      "positions": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "positions_bounds": [
+        0,
+        1
+      ],
+      "shapes": {
+        "tokens": [
+          8
+        ],
+        "positions": [
+          8
+        ],
+        "one_hot": [
+          8,
+          512
+        ],
+        "embed": [
+          8,
+          64
+        ],
+        "q": [
+          4,
+          8,
+          16
+        ],
+        "k": [
+          4,
+          8,
+          16
+        ],
+        "v": [
+          4,
+          8,
+          16
+        ],
+        "scores": [
+          4,
+          8,
+          2
+        ],
+        "exp": [
+          4,
+          8,
+          2
+        ],
+        "reciprocal": [
+          4,
+          8
+        ],
+        "pv": [
+          4,
+          8,
+          16
+        ],
+        "logits": [
+          8,
+          512
+        ]
+      },
+      "node_count": 108,
+      "tensor_count": 138,
+      "table_count": 5
+    },
+    {
+      "name": "tiny-2-minimal-r3-p2-small",
+      "model": "tiny-2-minimal.d",
+      "protocol": 2,
+      "lengths": [
+        2,
+        1,
+        3
+      ],
+      "slot_bits": 2,
+      "slot_len": 4,
+      "token_len": 12,
+      "padded_tokens": 16,
+      "real_rows": [
+        true,
+        true,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        false
+      ],
+      "positions": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2,
+        0
+      ],
+      "positions_bounds": [
+        0,
+        2
+      ],
+      "shapes": {
+        "tokens": [
+          12
+        ],
+        "positions": [
+          12
+        ],
+        "one_hot": [
+          12,
+          512
+        ],
+        "embed": [
+          12,
+          64
+        ],
+        "q": [
+          4,
+          12,
+          16
+        ],
+        "k": [
+          4,
+          12,
+          16
+        ],
+        "v": [
+          4,
+          12,
+          16
+        ],
+        "scores": [
+          4,
+          12,
+          3
+        ],
+        "exp": [
+          4,
+          12,
+          3
+        ],
+        "reciprocal": [
+          4,
+          12
+        ],
+        "pv": [
+          4,
+          12,
+          16
+        ],
+        "logits": [
+          12,
+          512
+        ]
+      },
+      "node_count": 108,
+      "tensor_count": 138,
+      "table_count": 5
+    },
+    {
+      "name": "tiny-4-servable-r1-n5",
+      "model": "tiny-4-servable.d",
+      "protocol": 1,
+      "lengths": [
+        5
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 5,
+      "padded_tokens": 8,
+      "real_rows": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "positions": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "positions_bounds": [
+        0,
+        4
+      ],
+      "shapes": {
+        "tokens": [
+          5
+        ],
+        "positions": [
+          5
+        ],
+        "one_hot": [
+          5,
+          512
+        ],
+        "embed": [
+          5,
+          256
+        ],
+        "q": [
+          8,
+          5,
+          32
+        ],
+        "k": [
+          8,
+          5,
+          32
+        ],
+        "v": [
+          8,
+          5,
+          32
+        ],
+        "scores": [
+          8,
+          5,
+          5
+        ],
+        "exp": [
+          8,
+          5,
+          5
+        ],
+        "reciprocal": [
+          8,
+          5
+        ],
+        "pv": [
+          8,
+          5,
+          32
+        ],
+        "logits": [
+          5,
+          512
+        ]
+      },
+      "node_count": 216,
+      "tensor_count": 276,
+      "table_count": 7
+    },
+    {
+      "name": "tiny-4-servable-r2-5-2",
+      "model": "tiny-4-servable.d",
+      "protocol": 1,
+      "lengths": [
+        5,
+        2
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 16,
+      "padded_tokens": 16,
+      "real_rows": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "positions": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "positions_bounds": [
+        0,
+        4
+      ],
+      "shapes": {
+        "tokens": [
+          16
+        ],
+        "positions": [
+          16
+        ],
+        "one_hot": [
+          16,
+          512
+        ],
+        "embed": [
+          16,
+          256
+        ],
+        "q": [
+          8,
+          16,
+          32
+        ],
+        "k": [
+          8,
+          16,
+          32
+        ],
+        "v": [
+          8,
+          16,
+          32
+        ],
+        "scores": [
+          8,
+          16,
+          5
+        ],
+        "exp": [
+          8,
+          16,
+          5
+        ],
+        "reciprocal": [
+          8,
+          16
+        ],
+        "pv": [
+          8,
+          16,
+          32
+        ],
+        "logits": [
+          16,
+          512
+        ]
+      },
+      "node_count": 216,
+      "tensor_count": 276,
+      "table_count": 7
+    },
+    {
+      "name": "tiny-4-servable-r2-1-4",
+      "model": "tiny-4-servable.d",
+      "protocol": 1,
+      "lengths": [
+        1,
+        4
+      ],
+      "slot_bits": 2,
+      "slot_len": 4,
+      "token_len": 8,
+      "padded_tokens": 8,
+      "real_rows": [
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true
+      ],
+      "positions": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2,
+        3
+      ],
+      "positions_bounds": [
+        0,
+        3
+      ],
+      "shapes": {
+        "tokens": [
+          8
+        ],
+        "positions": [
+          8
+        ],
+        "one_hot": [
+          8,
+          512
+        ],
+        "embed": [
+          8,
+          256
+        ],
+        "q": [
+          8,
+          8,
+          32
+        ],
+        "k": [
+          8,
+          8,
+          32
+        ],
+        "v": [
+          8,
+          8,
+          32
+        ],
+        "scores": [
+          8,
+          8,
+          4
+        ],
+        "exp": [
+          8,
+          8,
+          4
+        ],
+        "reciprocal": [
+          8,
+          8
+        ],
+        "pv": [
+          8,
+          8,
+          32
+        ],
+        "logits": [
+          8,
+          512
+        ]
+      },
+      "node_count": 216,
+      "tensor_count": 276,
+      "table_count": 7
+    },
+    {
+      "name": "tiny-4-servable-r3-5-1-7",
+      "model": "tiny-4-servable.d",
+      "protocol": 1,
+      "lengths": [
+        5,
+        1,
+        7
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 24,
+      "padded_tokens": 32,
+      "real_rows": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false
+      ],
+      "positions": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        0
+      ],
+      "positions_bounds": [
+        0,
+        6
+      ],
+      "shapes": {
+        "tokens": [
+          24
+        ],
+        "positions": [
+          24
+        ],
+        "one_hot": [
+          24,
+          512
+        ],
+        "embed": [
+          24,
+          256
+        ],
+        "q": [
+          8,
+          24,
+          32
+        ],
+        "k": [
+          8,
+          24,
+          32
+        ],
+        "v": [
+          8,
+          24,
+          32
+        ],
+        "scores": [
+          8,
+          24,
+          7
+        ],
+        "exp": [
+          8,
+          24,
+          7
+        ],
+        "reciprocal": [
+          8,
+          24
+        ],
+        "pv": [
+          8,
+          24,
+          32
+        ],
+        "logits": [
+          24,
+          512
+        ]
+      },
+      "node_count": 216,
+      "tensor_count": 276,
+      "table_count": 7
+    },
+    {
+      "name": "tiny-4-servable-r2-p1-small",
+      "model": "tiny-4-servable.d",
+      "protocol": 1,
+      "lengths": [
+        1,
+        2
+      ],
+      "slot_bits": 1,
+      "slot_len": 2,
+      "token_len": 4,
+      "padded_tokens": 4,
+      "real_rows": [
+        true,
+        false,
+        true,
+        true
+      ],
+      "positions": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "positions_bounds": [
+        0,
+        1
+      ],
+      "shapes": {
+        "tokens": [
+          4
+        ],
+        "positions": [
+          4
+        ],
+        "one_hot": [
+          4,
+          512
+        ],
+        "embed": [
+          4,
+          256
+        ],
+        "q": [
+          8,
+          4,
+          32
+        ],
+        "k": [
+          8,
+          4,
+          32
+        ],
+        "v": [
+          8,
+          4,
+          32
+        ],
+        "scores": [
+          8,
+          4,
+          2
+        ],
+        "exp": [
+          8,
+          4,
+          2
+        ],
+        "reciprocal": [
+          8,
+          4
+        ],
+        "pv": [
+          8,
+          4,
+          32
+        ],
+        "logits": [
+          4,
+          512
+        ]
+      },
+      "node_count": 216,
+      "tensor_count": 276,
+      "table_count": 7
+    },
+    {
+      "name": "tiny-4-servable-r2-p2-small",
+      "model": "tiny-4-servable.d",
+      "protocol": 2,
+      "lengths": [
+        1,
+        2
+      ],
+      "slot_bits": 2,
+      "slot_len": 4,
+      "token_len": 8,
+      "padded_tokens": 8,
+      "real_rows": [
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false,
+        false
+      ],
+      "positions": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "positions_bounds": [
+        0,
+        1
+      ],
+      "shapes": {
+        "tokens": [
+          8
+        ],
+        "positions": [
+          8
+        ],
+        "one_hot": [
+          8,
+          512
+        ],
+        "embed": [
+          8,
+          256
+        ],
+        "q": [
+          8,
+          8,
+          32
+        ],
+        "k": [
+          8,
+          8,
+          32
+        ],
+        "v": [
+          8,
+          8,
+          32
+        ],
+        "scores": [
+          8,
+          8,
+          2
+        ],
+        "exp": [
+          8,
+          8,
+          2
+        ],
+        "reciprocal": [
+          8,
+          8
+        ],
+        "pv": [
+          8,
+          8,
+          32
+        ],
+        "logits": [
+          8,
+          512
+        ]
+      },
+      "node_count": 216,
+      "tensor_count": 276,
+      "table_count": 7
+    },
+    {
+      "name": "tiny-4-servable-r3-p2-small",
+      "model": "tiny-4-servable.d",
+      "protocol": 2,
+      "lengths": [
+        2,
+        1,
+        3
+      ],
+      "slot_bits": 2,
+      "slot_len": 4,
+      "token_len": 12,
+      "padded_tokens": 16,
+      "real_rows": [
+        true,
+        true,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        false
+      ],
+      "positions": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2,
+        0
+      ],
+      "positions_bounds": [
+        0,
+        2
+      ],
+      "shapes": {
+        "tokens": [
+          12
+        ],
+        "positions": [
+          12
+        ],
+        "one_hot": [
+          12,
+          512
+        ],
+        "embed": [
+          12,
+          256
+        ],
+        "q": [
+          8,
+          12,
+          32
+        ],
+        "k": [
+          8,
+          12,
+          32
+        ],
+        "v": [
+          8,
+          12,
+          32
+        ],
+        "scores": [
+          8,
+          12,
+          3
+        ],
+        "exp": [
+          8,
+          12,
+          3
+        ],
+        "reciprocal": [
+          8,
+          12
+        ],
+        "pv": [
+          8,
+          12,
+          32
+        ],
+        "logits": [
+          12,
+          512
+        ]
+      },
+      "node_count": 216,
+      "tensor_count": 276,
+      "table_count": 7
+    }
+  ],
+  "predicates": [
+    {
+      "name": "r1-n5-random",
+      "protocol": 1,
+      "lengths": [
+        5
+      ],
+      "heads": 4,
+      "slot_bits": 3,
+      "slot_len": 8,
+      "r_token": [
+        [
+          3395661596801297713,
+          2447826290889042895
+        ],
+        [
+          8475312375356274365,
+          15808894063867708474
+        ],
+        [
+          1703460208749585194,
+          4517792990073651
+        ]
+      ],
+      "r_key": [
+        [
+          10795995393219509472,
+          16954105779772409697
+        ],
+        [
+          5418949055642400084,
+          2136310821220680534
+        ],
+        [
+          4366623240195305892,
+          919386147172774319
+        ]
+      ],
+      "r_head": [
+        [
+          5438282117597583845,
+          17086548277764370330
+        ],
+        [
+          9553664118771816989,
+          10101344591358589631
+        ]
+      ],
+      "slot_selector": [
+        15357583527409031332,
+        14465041156432609570
+      ],
+      "head_row_selector": [
+        15357583527409031332,
+        14465041156432609570
+      ],
+      "causal_selector": [
+        6393443136820531047,
+        17278029053966588739
+      ],
+      "head_causal_selector": [
+        6393443136820531047,
+        17278029053966588739
+      ],
+      "softmax_root": [
+        3089160542005552990,
+        3981702912981974751
+      ]
+    },
+    {
+      "name": "r2-5-2-random-a",
+      "protocol": 1,
+      "lengths": [
+        5,
+        2
+      ],
+      "heads": 4,
+      "slot_bits": 3,
+      "slot_len": 8,
+      "r_token": [
+        [
+          7898657202700684824,
+          13171765067804345876
+        ],
+        [
+          11729256070603944252,
+          11224466443055686298
+        ],
+        [
+          15533330483043265579,
+          15741406267688722937
+        ],
+        [
+          18354327644781620049,
+          16360004139439464619
+        ]
+      ],
+      "r_key": [
+        [
+          7939922044559915108,
+          9047395596568167745
+        ],
+        [
+          14084706089773903088,
+          11470958108422810608
+        ],
+        [
+          5716758252885307804,
+          945340518018063787
+        ]
+      ],
+      "r_head": [
+        [
+          102945185104199914,
+          410026729298738259
+        ],
+        [
+          11984427784630621150,
+          12501385983177356358
+        ]
+      ],
+      "slot_selector": [
+        13122844322233459317,
+        7555587543256209982
+      ],
+      "head_row_selector": [
+        13122844322233459317,
+        7555587543256209982
+      ],
+      "causal_selector": [
+        10262167335303476827,
+        7589577091027540749
+      ],
+      "head_causal_selector": [
+        10262167335303476827,
+        7589577091027540749
+      ],
+      "softmax_root": [
+        5323899747181125005,
+        10891156526158374339
+      ]
+    },
+    {
+      "name": "r2-5-2-random-b",
+      "protocol": 1,
+      "lengths": [
+        5,
+        2
+      ],
+      "heads": 3,
+      "slot_bits": 3,
+      "slot_len": 8,
+      "r_token": [
+        [
+          12986210957817183223,
+          1342628392969552069
+        ],
+        [
+          13794096279223324279,
+          6205867408525926064
+        ],
+        [
+          11630287329862961760,
+          18098138224759326727
+        ],
+        [
+          17417947906123302511,
+          11945386119627953324
+        ]
+      ],
+      "r_key": [
+        [
+          15159498945863957248,
+          13466920084012094243
+        ],
+        [
+          12572457645242121304,
+          18172551382075985648
+        ],
+        [
+          13066802671546130134,
+          6605777618496505503
+        ]
+      ],
+      "r_head": [
+        [
+          11377232769502728529,
+          1090304571998554212
+        ],
+        [
+          6567302751974599411,
+          5800119721132197723
+        ]
+      ],
+      "slot_selector": [
+        13534326771147999696,
+        8188899863464034
+      ],
+      "head_row_selector": [
+        12201208296407439473,
+        13796868096492169012
+      ],
+      "causal_selector": [
+        2291109574055248270,
+        14433196957705047393
+      ],
+      "head_causal_selector": [
+        5590564210994753773,
+        17852055270128022088
+      ],
+      "softmax_root": [
+        6245535773007144849,
+        4649875972922415309
+      ]
+    },
+    {
+      "name": "r2-3-6-random",
+      "protocol": 1,
+      "lengths": [
+        3,
+        6
+      ],
+      "heads": 1,
+      "slot_bits": 3,
+      "slot_len": 8,
+      "r_token": [
+        [
+          7151730237532745815,
+          14089313752590451144
+        ],
+        [
+          7231031620390172616,
+          14184631294386517985
+        ],
+        [
+          13172536324874959419,
+          1667980469939220081
+        ],
+        [
+          3205512845139414796,
+          214125201660045697
+        ]
+      ],
+      "r_key": [
+        [
+          18028834778166205328,
+          15243421619916698697
+        ],
+        [
+          1147395047508026904,
+          10002596825797226632
+        ],
+        [
+          2927789449869670110,
+          7716913874135879979
+        ]
+      ],
+      "r_head": [],
+      "slot_selector": [
+        496228385270384905,
+        5398393621505126949
+      ],
+      "head_row_selector": [
+        496228385270384905,
+        5398393621505126949
+      ],
+      "causal_selector": [
+        12015766614657995055,
+        1239088474197424993
+      ],
+      "head_causal_selector": [
+        12015766614657995055,
+        1239088474197424993
+      ],
+      "softmax_root": [
+        17950515684144199417,
+        13048350447909457372
+      ]
+    },
+    {
+      "name": "r3-5-1-7-random-a",
+      "protocol": 1,
+      "lengths": [
+        5,
+        1,
+        7
+      ],
+      "heads": 4,
+      "slot_bits": 3,
+      "slot_len": 8,
+      "r_token": [
+        [
+          9867670798436463067,
+          16073586401040739293
+        ],
+        [
+          7276633147627894966,
+          1065343236920674968
+        ],
+        [
+          16605407281278423012,
+          13502255659160128679
+        ],
+        [
+          15894094903924378784,
+          6302458327224560710
+        ],
+        [
+          7310738580430730264,
+          6695358412341849586
+        ]
+      ],
+      "r_key": [
+        [
+          12933253773371434963,
+          17437066588149011774
+        ],
+        [
+          15626836710633218085,
+          5225426187814499887
+        ],
+        [
+          9908383426835669766,
+          9205478238169001397
+        ]
+      ],
+      "r_head": [
+        [
+          13775694844124962340,
+          11215201313360506145
+        ],
+        [
+          12239728282518976980,
+          18126220790855767131
+        ]
+      ],
+      "slot_selector": [
+        901869309315782381,
+        14836424611559113740
+      ],
+      "head_row_selector": [
+        901869309315782381,
+        14836424611559113740
+      ],
+      "causal_selector": [
+        1496911003487701276,
+        11093843015483998472
+      ],
+      "head_causal_selector": [
+        1496911003487701276,
+        11093843015483998472
+      ],
+      "softmax_root": [
+        17544874760098801941,
+        3610319457855470581
+      ]
+    },
+    {
+      "name": "r3-5-1-7-random-b",
+      "protocol": 1,
+      "lengths": [
+        5,
+        1,
+        7
+      ],
+      "heads": 3,
+      "slot_bits": 3,
+      "slot_len": 8,
+      "r_token": [
+        [
+          4583657551518004079,
+          15776347974899773146
+        ],
+        [
+          17828910074322381251,
+          3619866874105683623
+        ],
+        [
+          16824281592641531001,
+          15517183649369085649
+        ],
+        [
+          3161746225871193138,
+          12363120535822148720
+        ],
+        [
+          15352058411160274119,
+          4617896564337950686
+        ]
+      ],
+      "r_key": [
+        [
+          3686815525712320065,
+          276673667144534966
+        ],
+        [
+          1641214319935699148,
+          18413115530720302473
+        ],
+        [
+          4580860349607819255,
+          4970856666740476575
+        ]
+      ],
+      "r_head": [
+        [
+          15102287815647623426,
+          12108531710100321662
+        ],
+        [
+          11304082083424478546,
+          9689346003591008617
+        ]
+      ],
+      "slot_selector": [
+        9056157925319808506,
+        9438252909368255585
+      ],
+      "head_row_selector": [
+        15466329162775338582,
+        8879070891488844378
+      ],
+      "causal_selector": [
+        11924142502771289493,
+        16359059794720689598
+      ],
+      "head_causal_selector": [
+        11171872032725814587,
+        17185225602518202619
+      ],
+      "softmax_root": [
+        2980414906639245740,
+        9567673177925739943
+      ]
+    },
+    {
+      "name": "r3-2-4-3-random",
+      "protocol": 1,
+      "lengths": [
+        2,
+        4,
+        3
+      ],
+      "heads": 2,
+      "slot_bits": 2,
+      "slot_len": 4,
+      "r_token": [
+        [
+          5182794595729011809,
+          8186328742328489496
+        ],
+        [
+          2502051724160063331,
+          1340834811820983055
+        ],
+        [
+          7804661719521817474,
+          13420440474901864515
+        ],
+        [
+          11396160974853579196,
+          212862272595955453
+        ]
+      ],
+      "r_key": [
+        [
+          173406772047354524,
+          2090147676254556973
+        ],
+        [
+          2816537795112766628,
+          16111859625971910609
+        ]
+      ],
+      "r_head": [
+        [
+          11250308404114868502,
+          16545557545136820154
+        ]
+      ],
+      "slot_selector": [
+        11952601905403426038,
+        16363024857759204521
+      ],
+      "head_row_selector": [
+        11952601905403426038,
+        16363024857759204521
+      ],
+      "causal_selector": [
+        18028101881185994483,
+        7536775316910031425
+      ],
+      "head_causal_selector": [
+        18028101881185994483,
+        7536775316910031425
+      ],
+      "softmax_root": [
+        6494142164011158284,
+        2083719211655379800
+      ]
+    },
+    {
+      "name": "r2-small-p1",
+      "protocol": 1,
+      "lengths": [
+        1,
+        2
+      ],
+      "heads": 2,
+      "slot_bits": 1,
+      "slot_len": 2,
+      "r_token": [
+        [
+          7147159497844249321,
+          5353388672031781292
+        ],
+        [
+          16316948895669247231,
+          10820800732240168918
+        ]
+      ],
+      "r_key": [
+        [
+          17683046538829434625,
+          10839778477357378698
+        ]
+      ],
+      "r_head": [
+        [
+          4520454062919044213,
+          816496683530531303
+        ]
+      ],
+      "slot_selector": [
+        16915193248190455904,
+        8868346533805273525
+      ],
+      "head_row_selector": [
+        16915193248190455904,
+        8868346533805273525
+      ],
+      "causal_selector": [
+        10228579598129356849,
+        9452658395764999286
+      ],
+      "head_causal_selector": [
+        10228579598129356849,
+        9452658395764999286
+      ],
+      "softmax_root": [
+        1531550821224128418,
+        9578397535609310796
+      ]
+    },
+    {
+      "name": "r2-small-p2",
+      "protocol": 2,
+      "lengths": [
+        1,
+        2
+      ],
+      "heads": 2,
+      "slot_bits": 2,
+      "slot_len": 4,
+      "r_token": [
+        [
+          266123216550022485,
+          11231342861603944489
+        ],
+        [
+          15982573369691185329,
+          8147959798046781361
+        ],
+        [
+          16850520849564325184,
+          17529301530846887601
+        ]
+      ],
+      "r_key": [
+        [
+          15592489539251977471,
+          14769918335784725301
+        ],
+        [
+          14014173514155116146,
+          10164006508608154683
+        ]
+      ],
+      "r_head": [
+        [
+          4147380202259158101,
+          1119941509582639343
+        ]
+      ],
+      "slot_selector": [
+        790772655637904084,
+        4061979078386133377
+      ],
+      "head_row_selector": [
+        790772655637904084,
+        4061979078386133377
+      ],
+      "causal_selector": [
+        8634344538291314485,
+        11624111853148689860
+      ],
+      "head_causal_selector": [
+        8634344538291314485,
+        11624111853148689860
+      ],
+      "softmax_root": [
+        17655971413776680238,
+        14384764991028450944
+      ]
+    },
+    {
+      "name": "r2-5-2-bool-real-slot0",
+      "protocol": 1,
+      "lengths": [
+        5,
+        2
+      ],
+      "heads": 4,
+      "slot_bits": 3,
+      "slot_len": 8,
+      "r_token": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "r_key": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "r_head": [
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "slot_selector": [
+        1,
+        0
+      ],
+      "head_row_selector": [
+        1,
+        0
+      ],
+      "causal_selector": [
+        1,
+        0
+      ],
+      "head_causal_selector": [
+        1,
+        0
+      ],
+      "softmax_root": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "r2-5-2-bool-padded-slot0",
+      "protocol": 1,
+      "lengths": [
+        5,
+        2
+      ],
+      "heads": 4,
+      "slot_bits": 3,
+      "slot_len": 8,
+      "r_token": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "r_key": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "r_head": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "slot_selector": [
+        0,
+        0
+      ],
+      "head_row_selector": [
+        0,
+        0
+      ],
+      "causal_selector": [
+        0,
+        0
+      ],
+      "head_causal_selector": [
+        0,
+        0
+      ],
+      "softmax_root": [
+        1,
+        0
+      ]
+    },
+    {
+      "name": "r2-5-2-bool-real-slot1",
+      "protocol": 1,
+      "lengths": [
+        5,
+        2
+      ],
+      "heads": 4,
+      "slot_bits": 3,
+      "slot_len": 8,
+      "r_token": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "r_key": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "r_head": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "slot_selector": [
+        1,
+        0
+      ],
+      "head_row_selector": [
+        1,
+        0
+      ],
+      "causal_selector": [
+        1,
+        0
+      ],
+      "head_causal_selector": [
+        1,
+        0
+      ],
+      "softmax_root": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "r2-5-2-bool-future-key-slot1",
+      "protocol": 1,
+      "lengths": [
+        5,
+        2
+      ],
+      "heads": 4,
+      "slot_bits": 3,
+      "slot_len": 8,
+      "r_token": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "r_key": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "r_head": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "slot_selector": [
+        1,
+        0
+      ],
+      "head_row_selector": [
+        1,
+        0
+      ],
+      "causal_selector": [
+        0,
+        0
+      ],
+      "head_causal_selector": [
+        0,
+        0
+      ],
+      "softmax_root": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "r2-5-2-bool-padded-slot1",
+      "protocol": 1,
+      "lengths": [
+        5,
+        2
+      ],
+      "heads": 4,
+      "slot_bits": 3,
+      "slot_len": 8,
+      "r_token": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "r_key": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "r_head": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "slot_selector": [
+        0,
+        0
+      ],
+      "head_row_selector": [
+        0,
+        0
+      ],
+      "causal_selector": [
+        0,
+        0
+      ],
+      "head_causal_selector": [
+        0,
+        0
+      ],
+      "softmax_root": [
+        1,
+        0
+      ]
+    },
+    {
+      "name": "r3-5-1-7-bool-past-r-slot3",
+      "protocol": 1,
+      "lengths": [
+        5,
+        1,
+        7
+      ],
+      "heads": 4,
+      "slot_bits": 3,
+      "slot_len": 8,
+      "r_token": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "r_key": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "r_head": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "slot_selector": [
+        0,
+        0
+      ],
+      "head_row_selector": [
+        0,
+        0
+      ],
+      "causal_selector": [
+        0,
+        0
+      ],
+      "head_causal_selector": [
+        0,
+        0
+      ],
+      "softmax_root": [
+        1,
+        0
+      ]
+    }
+  ],
+  "greedy": [
+    {
+      "name": "r1-2p-3o",
+      "protocol": 1,
+      "vocab": 11,
+      "requests": [
+        {
+          "prompt_len": 2,
+          "output_len": 3
+        }
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 5,
+      "padded_tokens": 8,
+      "has_maximum": true,
+      "active_positions": [
+        1,
+        2,
+        3
+      ],
+      "native_kinds": [
+        "tokens",
+        "greedy_key:0",
+        "greedy_selected"
+      ],
+      "r_time": [
+        [
+          11069155670094871656,
+          13983613670826784234
+        ],
+        [
+          12209444572290437256,
+          5148450306373450130
+        ],
+        [
+          3833689620919514005,
+          9032407977983802256
+        ]
+      ],
+      "selected_active_mle": [
+        15819420007722578703,
+        263450799651616216
+      ],
+      "key_columns": [
+        {
+          "request_index": 0,
+          "prompt_len": 2,
+          "output_len": 3,
+          "entries": 64,
+          "p_row": [
+            [
+              5187909947662862760,
+              15797721865341858393
+            ],
+            [
+              81398083184670182,
+              16065723142532456330
+            ]
+          ],
+          "key_time_coeff": [
+            8560791030859227755,
+            17817762299394680697
+          ],
+          "window_mle": [
+            15819420007722578703,
+            263450799651616216
+          ]
+        }
+      ],
+      "greedy_u_hat": [
+        0
+      ],
+      "row_bounds": [
+        144,
+        1406,
+        293,
+        1786,
+        765,
+        1888,
+        755,
+        2008
+      ],
+      "window_u_hat": [
+        3485
+      ]
+    },
+    {
+      "name": "r1-4p-0o",
+      "protocol": 1,
+      "vocab": 11,
+      "requests": [
+        {
+          "prompt_len": 4,
+          "output_len": 0
+        }
+      ],
+      "slot_bits": 2,
+      "slot_len": 4,
+      "token_len": 4,
+      "padded_tokens": 4,
+      "has_maximum": false,
+      "active_positions": [],
+      "native_kinds": [
+        "tokens",
+        "observe"
+      ],
+      "r_time": [
+        [
+          8355202976277184981,
+          5747560010853308825
+        ],
+        [
+          11383169816918736380,
+          16522821516521086463
+        ]
+      ],
+      "selected_active_mle": [
+        0,
+        0
+      ],
+      "key_columns": [],
+      "greedy_u_hat": [
+        0
+      ],
+      "row_bounds": [
+        1034,
+        329,
+        1206,
+        1101
+      ],
+      "window_u_hat": [
+        0
+      ]
+    },
+    {
+      "name": "r2-diff-both-outputs",
+      "protocol": 1,
+      "vocab": 11,
+      "requests": [
+        {
+          "prompt_len": 2,
+          "output_len": 3
+        },
+        {
+          "prompt_len": 1,
+          "output_len": 1
+        }
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 16,
+      "padded_tokens": 16,
+      "has_maximum": true,
+      "active_positions": [
+        1,
+        2,
+        3,
+        8
+      ],
+      "native_kinds": [
+        "tokens",
+        "greedy_key:0",
+        "greedy_key:1",
+        "greedy_selected"
+      ],
+      "r_time": [
+        [
+          8328144522762883372,
+          15005733548036415257
+        ],
+        [
+          4190450938152541364,
+          3558424618811480311
+        ],
+        [
+          11943840851546243857,
+          3986489976833420566
+        ],
+        [
+          816817167453421567,
+          6284039786378993534
+        ]
+      ],
+      "selected_active_mle": [
+        4660961822168033348,
+        11382014753172162612
+      ],
+      "key_columns": [
+        {
+          "request_index": 0,
+          "prompt_len": 2,
+          "output_len": 3,
+          "entries": 64,
+          "p_row": [
+            [
+              504693031265099872,
+              10809564724158620664
+            ],
+            [
+              6546161634040068556,
+              14195855731597571906
+            ]
+          ],
+          "key_time_coeff": [
+            3450003606687172242,
+            8463481846774794205
+          ],
+          "window_mle": [
+            15802553069437795263,
+            1822370754831786852
+          ]
+        },
+        {
+          "request_index": 1,
+          "prompt_len": 1,
+          "output_len": 1,
+          "entries": 16,
+          "p_row": [],
+          "key_time_coeff": [
+            7305152822144822406,
+            9559643998340375760
+          ],
+          "window_mle": [
+            7305152822144822406,
+            9559643998340375760
+          ]
+        }
+      ],
+      "greedy_u_hat": [
+        0,
+        0
+      ],
+      "row_bounds": [
+        712,
+        1617,
+        715,
+        1869,
+        318,
+        264,
+        126,
+        900,
+        1657,
+        1408,
+        1039,
+        1204,
+        1779,
+        307,
+        1407,
+        1654
+      ],
+      "window_u_hat": [
+        4201,
+        1657
+      ]
+    },
+    {
+      "name": "r2-first-zero-output",
+      "protocol": 1,
+      "vocab": 16,
+      "requests": [
+        {
+          "prompt_len": 3,
+          "output_len": 0
+        },
+        {
+          "prompt_len": 2,
+          "output_len": 4
+        }
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 16,
+      "padded_tokens": 16,
+      "has_maximum": true,
+      "active_positions": [
+        9,
+        10,
+        11,
+        12
+      ],
+      "native_kinds": [
+        "tokens",
+        "greedy_key:1",
+        "greedy_selected"
+      ],
+      "r_time": [
+        [
+          13918205228140754007,
+          5224590350492646695
+        ],
+        [
+          14628213691371452859,
+          7558749008519360000
+        ],
+        [
+          9407476943821232379,
+          11781454362462599117
+        ],
+        [
+          11779614163253286598,
+          5839667619862748847
+        ]
+      ],
+      "selected_active_mle": [
+        10927590863996532595,
+        429240916449307290
+      ],
+      "key_columns": [
+        {
+          "request_index": 1,
+          "prompt_len": 2,
+          "output_len": 4,
+          "entries": 64,
+          "p_row": [
+            [
+              5530066408533463916,
+              6640493087021710502
+            ],
+            [
+              14946254926690619011,
+              16322632083155639210
+            ]
+          ],
+          "key_time_coeff": [
+            598803728628050564,
+            2170617851360145940
+          ],
+          "window_mle": [
+            10927590863996532595,
+            429240916449307290
+          ]
+        }
+      ],
+      "greedy_u_hat": [
+        0,
+        0
+      ],
+      "row_bounds": [
+        1221,
+        1559,
+        1455,
+        1625,
+        1569,
+        1638,
+        317,
+        356,
+        101,
+        1230,
+        919,
+        1474,
+        1543,
+        786,
+        600,
+        1473
+      ],
+      "window_u_hat": [
+        0,
+        5166
+      ]
+    },
+    {
+      "name": "r2-second-zero-output",
+      "protocol": 1,
+      "vocab": 16,
+      "requests": [
+        {
+          "prompt_len": 1,
+          "output_len": 4
+        },
+        {
+          "prompt_len": 3,
+          "output_len": 0
+        }
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 16,
+      "padded_tokens": 16,
+      "has_maximum": true,
+      "active_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "native_kinds": [
+        "tokens",
+        "greedy_key:0",
+        "greedy_selected"
+      ],
+      "r_time": [
+        [
+          3644384913572851022,
+          937285696566945833
+        ],
+        [
+          17243845513839083852,
+          17059417422720589462
+        ],
+        [
+          8315043336301487716,
+          15541667588471154502
+        ],
+        [
+          8809755279017676689,
+          7548215921204601181
+        ]
+      ],
+      "selected_active_mle": [
+        2094897183274966821,
+        18375974206020025840
+      ],
+      "key_columns": [
+        {
+          "request_index": 0,
+          "prompt_len": 1,
+          "output_len": 4,
+          "entries": 64,
+          "p_row": [
+            [
+              14446749571848392301,
+              14366283889711769191
+            ],
+            [
+              9500941823086399636,
+              9415266102731252411
+            ]
+          ],
+          "key_time_coeff": [
+            15322020198215149543,
+            15051558622454442877
+          ],
+          "window_mle": [
+            2094897183274966821,
+            18375974206020025840
+          ]
+        }
+      ],
+      "greedy_u_hat": [
+        0,
+        0
+      ],
+      "row_bounds": [
+        619,
+        1804,
+        2014,
+        539,
+        557,
+        2019,
+        1040,
+        297,
+        1677,
+        658,
+        1473,
+        433,
+        1328,
+        891,
+        825,
+        484
+      ],
+      "window_u_hat": [
+        4976,
+        0
+      ]
+    },
+    {
+      "name": "r2-both-zero-outputs",
+      "protocol": 1,
+      "vocab": 11,
+      "requests": [
+        {
+          "prompt_len": 3,
+          "output_len": 0
+        },
+        {
+          "prompt_len": 5,
+          "output_len": 0
+        }
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 16,
+      "padded_tokens": 16,
+      "has_maximum": false,
+      "active_positions": [],
+      "native_kinds": [
+        "tokens",
+        "observe"
+      ],
+      "r_time": [
+        [
+          13991521547695165143,
+          1514566511839691546
+        ],
+        [
+          5907555311850933539,
+          15661160968894691357
+        ],
+        [
+          14887892330901113181,
+          12940188983786107168
+        ],
+        [
+          7326498414371628081,
+          15861033513516582010
+        ]
+      ],
+      "selected_active_mle": [
+        0,
+        0
+      ],
+      "key_columns": [],
+      "greedy_u_hat": [
+        0,
+        0
+      ],
+      "row_bounds": [
+        1161,
+        1554,
+        823,
+        520,
+        187,
+        674,
+        937,
+        114,
+        541,
+        1952,
+        888,
+        716,
+        859,
+        1331,
+        1090,
+        1514
+      ],
+      "window_u_hat": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "r3-diff-all-outputs",
+      "protocol": 1,
+      "vocab": 32,
+      "requests": [
+        {
+          "prompt_len": 2,
+          "output_len": 3
+        },
+        {
+          "prompt_len": 4,
+          "output_len": 1
+        },
+        {
+          "prompt_len": 1,
+          "output_len": 6
+        }
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 24,
+      "padded_tokens": 32,
+      "has_maximum": true,
+      "active_positions": [
+        1,
+        2,
+        3,
+        11,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "native_kinds": [
+        "tokens",
+        "greedy_key:0",
+        "greedy_key:1",
+        "greedy_key:2",
+        "greedy_selected"
+      ],
+      "r_time": [
+        [
+          2015669597682725428,
+          3271237712584937772
+        ],
+        [
+          14946880301251366252,
+          15976495329154857391
+        ],
+        [
+          3397175205668290050,
+          12127364127042478283
+        ],
+        [
+          70673193217046462,
+          14264722443224974649
+        ],
+        [
+          6353048325505798093,
+          5338894615910657885
+        ]
+      ],
+      "selected_active_mle": [
+        2707277102282396228,
+        13083449698074823754
+      ],
+      "key_columns": [
+        {
+          "request_index": 0,
+          "prompt_len": 2,
+          "output_len": 3,
+          "entries": 128,
+          "p_row": [
+            [
+              8752699435134908137,
+              16162248034609104161
+            ],
+            [
+              11498961864367719339,
+              4486213150311637430
+            ]
+          ],
+          "key_time_coeff": [
+            8838335511990841065,
+            6132655918696859647
+          ],
+          "window_mle": [
+            9445512093378794662,
+            17524425732295058114
+          ]
+        },
+        {
+          "request_index": 1,
+          "prompt_len": 4,
+          "output_len": 1,
+          "entries": 32,
+          "p_row": [],
+          "key_time_coeff": [
+            6766654944287996500,
+            1300920206175583930
+          ],
+          "window_mle": [
+            6766654944287996500,
+            1300920206175583930
+          ]
+        },
+        {
+          "request_index": 2,
+          "prompt_len": 1,
+          "output_len": 6,
+          "entries": 256,
+          "p_row": [
+            [
+              15921441749896513337,
+              15579242708121301349
+            ],
+            [
+              1606129803693274284,
+              1129806592232608239
+            ],
+            [
+              9893971924022787000,
+              7448324426097865786
+            ]
+          ],
+          "key_time_coeff": [
+            9957361855300613651,
+            12072966599772821833
+          ],
+          "window_mle": [
+            4941854134030189387,
+            12704847829018766031
+          ]
+        }
+      ],
+      "greedy_u_hat": [
+        0,
+        0,
+        0
+      ],
+      "row_bounds": [
+        555,
+        1606,
+        1432,
+        469,
+        1970,
+        1833,
+        126,
+        437,
+        394,
+        816,
+        773,
+        5,
+        1489,
+        272,
+        1328,
+        1323,
+        1129,
+        287,
+        1594,
+        671,
+        1708,
+        1158,
+        362,
+        81,
+        1088,
+        1561,
+        1542,
+        1011,
+        706,
+        1736,
+        1225,
+        808
+      ],
+      "window_u_hat": [
+        3507,
+        5,
+        6547
+      ]
+    },
+    {
+      "name": "r3-mixed-zero-middle",
+      "protocol": 1,
+      "vocab": 32,
+      "requests": [
+        {
+          "prompt_len": 2,
+          "output_len": 3
+        },
+        {
+          "prompt_len": 1,
+          "output_len": 0
+        },
+        {
+          "prompt_len": 3,
+          "output_len": 4
+        }
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 24,
+      "padded_tokens": 32,
+      "has_maximum": true,
+      "active_positions": [
+        1,
+        2,
+        3,
+        18,
+        19,
+        20,
+        21
+      ],
+      "native_kinds": [
+        "tokens",
+        "greedy_key:0",
+        "greedy_key:2",
+        "greedy_selected"
+      ],
+      "r_time": [
+        [
+          16375418581187588867,
+          11399466936341203960
+        ],
+        [
+          11420522628577889929,
+          10545307133972252342
+        ],
+        [
+          17648416720106328058,
+          16145275489322479606
+        ],
+        [
+          3440553375848505455,
+          5939206261487716009
+        ],
+        [
+          13479386951178806694,
+          14531565394894075279
+        ]
+      ],
+      "selected_active_mle": [
+        12178923700256883057,
+        7015877668526667791
+      ],
+      "key_columns": [
+        {
+          "request_index": 0,
+          "prompt_len": 2,
+          "output_len": 3,
+          "entries": 128,
+          "p_row": [
+            [
+              16514492990792778403,
+              9560155899475139156
+            ],
+            [
+              17195161923644307979,
+              3282440023187196927
+            ]
+          ],
+          "key_time_coeff": [
+            14298716285265690389,
+            7267998046991009582
+          ],
+          "window_mle": [
+            2283798086536050482,
+            162723499678070848
+          ]
+        },
+        {
+          "request_index": 2,
+          "prompt_len": 3,
+          "output_len": 4,
+          "entries": 128,
+          "p_row": [
+            [
+              1264342690688521169,
+              9250057171051024404
+            ],
+            [
+              1362228911032088965,
+              3792086254819922877
+            ]
+          ],
+          "key_time_coeff": [
+            1867577992282022744,
+            3320343566093215648
+          ],
+          "window_mle": [
+            9895125613720832575,
+            6853154168848596943
+          ]
+        }
+      ],
+      "greedy_u_hat": [
+        0,
+        0,
+        0
+      ],
+      "row_bounds": [
+        973,
+        803,
+        916,
+        521,
+        1545,
+        1798,
+        639,
+        366,
+        122,
+        720,
+        709,
+        802,
+        1972,
+        941,
+        366,
+        1073,
+        361,
+        1910,
+        1935,
+        615,
+        819,
+        391,
+        1588,
+        635,
+        996,
+        1410,
+        1343,
+        1913,
+        1155,
+        1851,
+        566,
+        1639
+      ],
+      "window_u_hat": [
+        2240,
+        0,
+        3760
+      ]
+    },
+    {
+      "name": "r3-all-zero-outputs",
+      "protocol": 1,
+      "vocab": 32,
+      "requests": [
+        {
+          "prompt_len": 2,
+          "output_len": 0
+        },
+        {
+          "prompt_len": 1,
+          "output_len": 0
+        },
+        {
+          "prompt_len": 5,
+          "output_len": 0
+        }
+      ],
+      "slot_bits": 3,
+      "slot_len": 8,
+      "token_len": 24,
+      "padded_tokens": 32,
+      "has_maximum": false,
+      "active_positions": [],
+      "native_kinds": [
+        "tokens",
+        "observe"
+      ],
+      "r_time": [
+        [
+          10870066837926801139,
+          11380422933017218609
+        ],
+        [
+          11631609487176158291,
+          1276627648433788427
+        ],
+        [
+          4422588247825179923,
+          12960501702722377841
+        ],
+        [
+          5619316508456648061,
+          15763869455759920072
+        ],
+        [
+          10075015998157635629,
+          5680655616565008922
+        ]
+      ],
+      "selected_active_mle": [
+        0,
+        0
+      ],
+      "key_columns": [],
+      "greedy_u_hat": [
+        0,
+        0,
+        0
+      ],
+      "row_bounds": [
+        328,
+        81,
+        1329,
+        187,
+        1089,
+        888,
+        986,
+        1951,
+        135,
+        211,
+        961,
+        877,
+        1752,
+        340,
+        528,
+        1506,
+        1750,
+        93,
+        309,
+        480,
+        19,
+        1506,
+        1026,
+        396,
+        78,
+        1681,
+        1951,
+        628,
+        1084,
+        1346,
+        196,
+        1168
+      ],
+      "window_u_hat": [
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

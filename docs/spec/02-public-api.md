@@ -96,10 +96,10 @@ A log that is not its manifest's exits 65 with `ERR-CODEC-DIGEST`. A share that 
 - **The output.** `DIR/batches.json`, the `tessera.audit-batches/1` report ([schema](../../spec/schemas/audit-batches-v1.schema.json)), which `--json` prints too. Batches are numbered from 0 in packing order.
 
 `prove --sample` proves batch `--batch K` of a sample, one batch per invocation:
-- **The batch** is `audit batch`'s `K`, read again from the sample and `LOGS`, never from the report. A `K` past the last batch exits 64, and so does a batch of more than one request, until multi-request proof units are implemented ([RFC-0071](../rfcs/RFC-0071-request-slots.md), [#551](https://github.com/AbdelStark/tessera/issues/551)).
+- **The batch** is `audit batch`'s `K`, read again from the sample and `LOGS`, never from the report. A `K` past the last batch exits 64 ([RFC-0071](../rfcs/RFC-0071-request-slots.md)).
 - **The transcripts.** `--transcripts DIR` holds each session's stored `SessionTranscript` as `DIR/<session_id>.tst`, the identifier in 32 lowercase hexadecimal digits.
-- **The pre-check** ([RFC-0015](../rfcs/RFC-0015-transcript-anchor.md#prover-pre-check)) runs before the prover commits anything. A session with no transcript, a stored frame that does not re-seal to its logged digest, or a request whose frames give no lengths, exits 20 with `ERR-WITNESS-ANCHOR`, and no packet is sent. In a batch of several requests, a request that fails is left out and named in the report, and the rest is proven; the command exits 20 only when no request passes ([RFC-0071](../rfcs/RFC-0071-request-slots.md#the-statement-and-the-batching)).
-- **The proof.** The request's tokens are its `In` frames', then its `Out` frames', from the stored frames the log names. Its statement is built as the reference path's below, with the sample's `manifest_digest`.
+- **The pre-check** ([RFC-0015](../rfcs/RFC-0015-transcript-anchor.md#prover-pre-check)) runs before the prover commits anything. A session with no transcript, a stored frame that does not re-seal to its logged digest, or a request whose frames give no lengths, exits 20 with `ERR-WITNESS-ANCHOR`, and no packet is sent. In a batch of several requests, a request that fails pre-check or exact-greedy witness replay is left out and named in the report's `unproven` list, and the rest is proven; the command exits 20 only when no request passes ([RFC-0071](../rfcs/RFC-0071-request-slots.md#the-statement-and-the-batching)).
+- **The proof.** Each surviving request's tokens are its `In` frames', then its `Out` frames', from the stored frames the log names, concatenated in batch order. Its statement is built as the reference path's below, with the sample's `manifest_digest`.
 
 Both commands refuse `LOGS` with `audit sample`'s codes. A sample of another period, or one that its logs and coin toss do not give, exits 64, and a malformed sample or transcript exits 65.
 
@@ -108,15 +108,16 @@ Both commands refuse `LOGS` with `audit sample`'s codes. A sample of another per
 - **The output.** A table, or with `--json` the `tessera.audit-plan/1` report ([schema](../../spec/schemas/audit-plan-v1.schema.json)), which `--out` writes too. It gives the detection against a prover that pads violations into a later bucket, the detection if none leaves its bucket, the amortized overhead and each bucket's rate for `--target-overhead`.
 - **Refusals.** A profile that is not one well-formed entry per bucket, or that has no request, exits 64.
 
-The v0.3 CPU reference path implements one exact-greedy request from an existing
-`TokenFile` (one prompt followed by its recorded continuation):
+The v0.3 CPU reference path implements exact-greedy batches of one or more requests from an existing
+`TokenFile` (one sequence per request in batch order, each prompt followed by its recorded continuation;
+repeat or comma-delimit `--prompt-len`, `--request-id` and `--request-session` for several requests):
 
 ```text
 tessera compile --model MODEL.d --params PARAMSET --out-dir DIR
                 [--max-log2-rows 32] [--query-block 512]
 tessera prove --plan plan.tep --model MODEL.d --weights WEIGHTS.twc
-              --reference-tokens TOKENS.ttk --prompt-len N --request-id N
-              --request-session HEX --manifest-digest HEX
+              --reference-tokens TOKENS.ttk --prompt-len N[,...] --request-id N[,...]
+              --request-session HEX[,...] --manifest-digest HEX
               (--live DIR | --out PROOF.tnp) [--memory-budget GIB] [--json]
               [--timeout-ms N]  # Live only
 ```
@@ -126,14 +127,14 @@ remain unchanged. `--live DIR` uses RFC-0014's one-shot directory transport.
 A completed producer emits an informational `tessera.proof-run/1` receipt;
 only the independent verifier supplies acceptance. A changed recorded output
 returns `ERR-WITNESS-EXACT-MISMATCH`. The sampled-audit route, `--sample` in
-place of `--reference-tokens` and its four flags, proves a batch of one request
-the same way, on the CPU, with `--live DIR` for Live. See the
+place of `--reference-tokens` and its four flags, proves a batch of one or more
+requests the same way, on the CPU, with `--live DIR` for Live. See the
 [exact CLI suite](../testing/exact-cli.md) for reproducible commands and limits.
 
 ### 2.3 `tessera-verify` (Rust, verifier side, independent build)
 
-The current v0.3 protocol/1 reference interface verifies one exact-greedy NI
-or directory Live request. Its application-owned whole-statement digest authenticates the expected
+The current v0.3 protocol/1 reference interface verifies exact-greedy NI
+or directory Live batches of one or more requests ([RFC-0071](../rfcs/RFC-0071-request-slots.md)). Its application-owned whole-statement digest authenticates the expected
 statement before any proof is evaluated:
 
 ```text
@@ -143,8 +144,8 @@ tessera-verify verify --claims claims.tcl --weights-root ROOT --weights WEIGHTS.
                       [--max-memory-bytes N] [--timeout-ms N] [--run-manifest PATH]
 tessera-verify live --claims claims.tcl --weights-root ROOT --weights WEIGHTS.twr
                     --statement-digest HEX --bound BITS --connect DIR
-                    --request-id N --request-session HEX --prompt-len N
-                    --output-len N --manifest-digest HEX [--out VERDICT.json] [--json]
+                    --request-id N[,...] --request-session HEX[,...] --prompt-len N[,...]
+                    --output-len N[,...] --manifest-digest HEX [--out VERDICT.json] [--json]
                     [--max-artifact-bytes N] [--max-memory-bytes N] [--timeout-ms N]
 tessera-verify tables --claims claims.tcl [--json] [--max-table-rows N]
 tessera-verify params --params PARAMSET [--lookups N] [--table-rows T] [--json]

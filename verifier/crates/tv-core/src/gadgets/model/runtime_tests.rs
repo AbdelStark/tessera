@@ -265,3 +265,44 @@ fn empty_output_observation_still_routes_the_actual_lm_head_value() {
         graph.nodes().last().unwrap().outputs()[0]
     );
 }
+
+#[test]
+fn batched_runtime_registers_each_key_then_one_selected_union() {
+    for requests in [vec![(2u32, 3u32), (1, 2)], vec![(1, 0), (2, 2), (1, 1)]] {
+        let c = claims(8, 11);
+        let public = crate::validation::check_public(&c).unwrap();
+        let lengths: Vec<_> = requests.iter().map(|&(p, o)| p + o).collect();
+        let graph = crate::lowering::lower_batch(&public, &lengths).unwrap();
+        let selected = crate::selection::derive(&graph, c.gadget_policy).unwrap();
+        let tables: Vec<_> = selected
+            .tables
+            .iter()
+            .map(|t| tv_tables::Table::generate(t.id, t.kind.clone()).unwrap())
+            .collect();
+        let runtime =
+            runtime::Plan::derive_batch(&graph, c.gadget_policy, &requests, &tables).unwrap();
+        let plan = Plan::derive_runtime(&runtime).unwrap();
+        let epilogue: Vec<_> = plan
+            .slots
+            .iter()
+            .filter(|s| matches!(s.relation, Relation::GreedyKey | Relation::GreedySelected))
+            .collect();
+        let count = requests.iter().filter(|&&(_, o)| o > 0).count();
+        assert_eq!(epilogue.len(), count + 1);
+        for slot in &epilogue[..count] {
+            assert!(matches!(slot.relation, Relation::GreedyKey));
+        }
+        assert!(matches!(epilogue[count].relation, Relation::GreedySelected));
+        assert_eq!(plan.windows.len(), count);
+        let ordinals: Vec<_> = plan.windows.iter().map(|w| w.ordinal).collect();
+        assert_eq!(
+            ordinals,
+            requests
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, o))| *o > 0)
+                .map(|(r, _)| r as u32)
+                .collect::<Vec<_>>()
+        );
+    }
+}

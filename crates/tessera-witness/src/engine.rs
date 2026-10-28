@@ -342,6 +342,13 @@ impl<'a> Engine<'a> {
                 rule: "every token lies inside the vocabulary",
             });
         }
+        if let Some(slots) = &lowering.graph.slots
+            && (0..n).any(|tau| !slots.is_real_row(tau) && ids[tau] != 0)
+        {
+            return Err(WitnessError::Usage {
+                rule: "every padded slot position holds token 0 (RFC-0071)",
+            });
+        }
         let mut values = zeros(lowering.tokens, n)?;
         for (slot, &t) in values.iter_mut().zip(ids) {
             *slot = i64::from(t);
@@ -376,10 +383,14 @@ impl<'a> Engine<'a> {
             return self.tokens(lowering, model, tokens).map(Input::Values);
         }
         if tensor == lowering.positions {
-            let mut positions = zeros(tensor, len)?;
-            for (p, slot) in positions.iter_mut().enumerate() {
-                *slot = p as i64;
+            let vals = tessera_compiler::positions_values(lowering);
+            if vals.len() != len {
+                return Err(WitnessError::Internal {
+                    rule: "positions_values matches the lowering's positions shape",
+                });
             }
+            let mut positions = zeros(tensor, len)?;
+            positions.copy_from_slice(&vals);
             return Ok(Input::Values(positions));
         }
         if let Some(&(weight, _)) = graph.weights.iter().find(|&&(_, t)| t == tensor) {
@@ -555,8 +566,15 @@ impl<'a> Engine<'a> {
                 let width = last(shape(0));
                 let half = width / 2;
                 let per_row = x.len() / shape(0)[0] as usize;
+                let slotted = graph
+                    .slots
+                    .as_ref()
+                    .filter(|s| shape(0).first() == Some(&s.token_len()));
                 let mut y = zeros(out(0), x.len())?;
                 for (r, row) in y.chunks_mut(per_row).enumerate() {
+                    if slotted.is_some_and(|s| !s.is_real_row(r)) {
+                        continue;
+                    }
                     let position = u32::try_from(pos[r]).map_err(|_| WitnessError::Internal {
                         rule: "a position is a u32",
                     })?;
@@ -684,20 +702,38 @@ impl<'a> Engine<'a> {
                 let (a, b) = (input(0)?, input(1)?);
                 let (sa, sb) = (shape(0), shape(1));
                 let (m, k) = (sa[sa.len() - 2] as usize, last(sa));
-                let n = if *transpose_rhs {
-                    sb[sb.len() - 2] as usize
-                } else {
-                    last(sb)
-                };
+                let n = last(&graph.tensors[out(0).0 as usize].shape);
+                let transpose = *transpose_rhs;
+                let b_rows = sb[sb.len() - 2] as usize;
+                let slotted = graph.slots.as_ref().filter(|s| {
+                    let tok = s.token_len() as usize;
+                    m == tok
+                        && b_rows == tok
+                        && ((transpose && n != b_rows) || (!transpose && k != b_rows))
+                });
                 let batch = a.len() / (m * k);
                 let mut y = zeros(out(0), batch * m * n)?;
-                let transpose = *transpose_rhs;
-                self.parallel(&mut y, batch * m, n, |r, row| {
-                    let (g, i) = (r / m, r % m);
-                    let ar = &a[(g * m + i) * k..(g * m + i + 1) * k];
-                    let bg = &b[g * k * n..(g + 1) * k * n];
-                    act_row(ar, bg, (k, n), transpose, row);
-                });
+                if let Some(slots) = slotted {
+                    let slot_len = slots.slot_len as usize;
+                    self.parallel(&mut y, batch * m, n, |r, row| {
+                        let (g, i) = (r / m, r % m);
+                        let ar = &a[(g * m + i) * k..(g * m + i + 1) * k];
+                        let slot_base = (i / slot_len) * slot_len;
+                        let bg = if transpose {
+                            &b[(g * m + slot_base) * k..(g * m + slot_base + n) * k]
+                        } else {
+                            &b[(g * m + slot_base) * n..(g * m + slot_base + k) * n]
+                        };
+                        act_row(ar, bg, (k, n), transpose, row);
+                    });
+                } else {
+                    self.parallel(&mut y, batch * m, n, |r, row| {
+                        let (g, i) = (r / m, r % m);
+                        let ar = &a[(g * m + i) * k..(g * m + i + 1) * k];
+                        let bg = &b[g * k * n..(g + 1) * k * n];
+                        act_row(ar, bg, (k, n), transpose, row);
+                    });
+                }
                 vec![y]
             }
             Op::Mul { broadcast } => {
@@ -723,8 +759,17 @@ impl<'a> Engine<'a> {
             Op::OneHot { vocab } => {
                 let t = input(0)?;
                 let vocab = *vocab as usize;
+                let slotted = graph.slots.as_ref().filter(|s| shape(0) == [s.token_len()]);
                 let mut y = zeros(out(0), t.len() * vocab)?;
                 for (i, &token) in t.iter().enumerate() {
+                    if slotted.is_some_and(|s| !s.is_real_row(i)) {
+                        if token != 0 {
+                            return Err(WitnessError::Internal {
+                                rule: "a padded slot row holds token 0",
+                            });
+                        }
+                        continue;
+                    }
                     let token = usize::try_from(token).ok().filter(|&v| v < vocab).ok_or(
                         WitnessError::Internal {
                             rule: "a token indexes its one-hot vector",
@@ -783,14 +828,33 @@ impl<'a> Engine<'a> {
             Op::SoftmaxRow { exp_table, sigma } => {
                 let s = input(0)?;
                 let t = self.lookup(*exp_table)?;
-                let n = last(shape(0));
+                let in_shape = shape(0);
+                let n = last(in_shape);
+                let seq_rows = in_shape
+                    .get(in_shape.len().saturating_sub(2))
+                    .copied()
+                    .unwrap_or(1) as usize;
+                let slotted = graph
+                    .slots
+                    .as_ref()
+                    .filter(|sl| seq_rows == sl.token_len() as usize && n == sl.n_max() as usize);
                 let rows = s.len() / n;
                 let mut e = zeros(out(0), s.len())?;
                 let mut reciprocal = zeros(out(1), rows)?;
                 for (r, slot) in reciprocal.iter_mut().enumerate() {
-                    // Row q of its sequence sees keys 0 to q (RFC-0006 'Operation set').
-                    let row = r * n..(r + 1) * n;
-                    *slot = softmax_row(t, *sigma, &s[row.clone()], r % n, &mut e[row])?;
+                    let q_row = r % seq_rows;
+                    if let Some(slots) = slotted {
+                        if !slots.is_real_row(q_row) {
+                            continue;
+                        }
+                        let row = r * n..(r + 1) * n;
+                        let q_pos = q_row % (slots.slot_len as usize);
+                        *slot = softmax_row(t, *sigma, &s[row.clone()], q_pos, &mut e[row])?;
+                    } else {
+                        // Row q of its sequence sees keys 0 to q (RFC-0006 'Operation set').
+                        let row = r * n..(r + 1) * n;
+                        *slot = softmax_row(t, *sigma, &s[row.clone()], q_row, &mut e[row])?;
+                    }
                 }
                 vec![e, reciprocal]
             }
@@ -800,9 +864,17 @@ impl<'a> Engine<'a> {
                 dim,
             } => {
                 let u = input(0)?;
+                let slotted = graph
+                    .slots
+                    .as_ref()
+                    .filter(|s| shape(0).first() == Some(&s.token_len()));
+                let per_tok = slotted.map_or(1, |s| (u.len() / s.token_len() as usize).max(1));
                 let bound = u128::from(*dim) << (2 * u32::from(*kappa));
                 let mut rho = zeros(out(0), len(0))?;
-                for (slot, &v) in rho.iter_mut().zip(u) {
+                for (i, (slot, &v)) in rho.iter_mut().zip(u).enumerate() {
+                    if slotted.is_some_and(|s| !s.is_real_row(i / per_tok)) {
+                        continue;
+                    }
                     let total = u128::try_from(v)
                         .ok()
                         .and_then(|v| v.checked_add(u128::from(*eps_int)))
