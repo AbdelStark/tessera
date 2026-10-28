@@ -83,6 +83,7 @@ jobs:
         if: needs.scope.outputs.code == 'true'
         run: |
           cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo clippy -p tessera-protocol --features tls --all-targets --locked -- -D warnings
           (cd verifier && cargo clippy --workspace --all-targets --locked -- -D warnings)
       # Invoke xtask directly so reviewed repository configuration cannot rewrite the cargo alias.
       - name: Repository policies
@@ -144,6 +145,9 @@ jobs:
       - name: Runtime library unit tests
         if: matrix.workspace == 'prover'
         run: cargo nextest run --workspace --exclude xtask --exclude tessera-bench --lib --locked
+      - name: Opt-in TLS 1.3 Live transport and adversarial framing checks (RFC-0014)
+        if: matrix.workspace == 'prover'
+        run: cargo test -p tessera-protocol --features tls --lib transport --locked
       - name: Build the real exact-mode CLI pair
         if: matrix.workspace == 'prover'
         run: |
