@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "controls": [
+    {
+      "name": "control",
+      "exit_code": 0,
+      "expected": "pass",
+      "last_line": "{\"independent_checks\": 28500, \"cases\": 3671, \"geometry_cases\": 14, \"faults\": 10, \"result\": \"pass\", \"evidence\": \"E0\"}"
+    },
+    {
+      "name": "fixture-arch",
+      "exit_code": 1,
+      "expected": "reject",
+      "last_line": "AssertionError"
+    },
+    {
+      "name": "row-digest",
+      "exit_code": 1,
+      "expected": "reject",
+      "last_line": "AssertionError"
+    },
+    {
+      "name": "case-width",
+      "exit_code": 1,
+      "expected": "reject",
+      "last_line": "AssertionError"
+    },
+    {
+      "name": "case-claims",
+      "exit_code": 1,
+      "expected": "reject",
+      "last_line": "AssertionError"
+    },
+    {
+      "name": "case-mask-count",
+      "exit_code": 1,
+      "expected": "reject",
+      "last_line": "AssertionError"
+    },
+    {
+      "name": "case-budget",
+      "exit_code": 1,
+      "expected": "reject",
+      "last_line": "AssertionError"
+    },
+    {
+      "name": "store-read",
+      "exit_code": 1,
+      "expected": "reject",
+      "last_line": "AssertionError"
+    },
+    {
+      "name": "missing-pass",
+      "exit_code": 1,
+      "expected": "reject",
+      "last_line": "AssertionError"
+    },
+    {
+      "name": "missing-case",
+      "exit_code": 1,
+      "expected": "reject",
+      "last_line": "AssertionError"
+    },
+    {
+      "name": "proxy-rate",
+      "exit_code": 1,
+      "expected": "reject",
+      "last_line": "AssertionError"
+    },
+    {
+      "name": "rejection",
+      "exit_code": 1,
+      "expected": "reject",
+      "last_line": "AssertionError"
+    }
+  ]
+}

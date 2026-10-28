@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `planned` |
+| Status | `done: validated` |
 | Idea | issue #568 ([source](https://github.com/AbdelStark/tessera/issues/568)), a specification/accounting audit from [SUR-0016](../../surveys/SUR-0016-weight-mask-draw-cost.md), not a new masking protocol |
 | Evidence level | E0: exact integers, finite enumeration and rational cost scenarios |
 | Hardware | CPU execution of public metadata only; no GPU timing |
@@ -155,23 +155,90 @@ not import `audit.py`. Freeze this report's bytes and SHA-256 before either scri
 
 ## Results
 
-Not run. No experiment implementation exists at registration.
+The final run is [results/run-7.json.gz](results/run-7.json.gz), losslessly compressed
+JSON with schema version 1, fixture digests and both scripts' SHA-256 values. The
+`source_revision` is the committed registration HEAD; code fingerprints identify the
+subsequent implementation. Environment: Python 3.15.2, ARM64, macOS 15.6.1; UTC time
+is in the saved record. The result is E0, not CPU throughput evidence.
+
+| Check | Result (E0) |
+|---|---|
+| Public geometry records | 14: five model, eight opening and one tight 405B case |
+| Existing fixture matrices checked | 50 model matrices plus eight opening matrices |
+| Accounting cases | 3,671: 15 fixture/405B cases, 3,456 Cartesian cases and 200 seeded cases |
+| Per-matrix accounting judgments | 25,576, literal consumers versus closed-form counts |
+| Independent saved-record checks | 28,500; no import of the generating program |
+| Behavioral accounting faults | All ten caught, with counterexamples and passing controls in the raw record |
+| Reader sensitivity controls | One unmodified record passes; eleven corruptions reject ([results/reader-controls.json](results/reader-controls.json)) |
+| Tight 405B full-support accepted bytes | 653,675,986,944 |
+| Historical 405B full-support accepted bytes | 654,109,048,832 |
+| Tight / historical selected-only accepted bytes | 216,302,354,432 / 216,735,416,320 |
+| Tight / historical all-masks, selected-values accepted bytes | 242,030,215,168 / 242,463,277,056 |
+
+The tight layout has 411,284 weight data rows and 56 channel data rows: 411,340 data
+rows plus 49,144 blinders. Historical 882-channel-row counts remain a separate
+scenario. At the **hypothetical** 530e9 accepted B/s rate, one tight full-support
+generation costs 1.2333509187622642 GPU-s, and the historical case 1.234168016664151;
+setup, rejection, folding and clearing must be included in an actual effective rate.
+No comparable rate was measured. A fallback that must regenerate at P5 adds another
+full-support generation, even if P4's hypothetical support was selected-only.
+
+Reproduce the final record without overwriting it:
+
+```sh
+python3 -I research/experiments/EXP-0028-weight-mask-draws/audit.py \
+  --out /tmp/weight-mask-audit-new.json.gz
+python3 -I research/experiments/EXP-0028-weight-mask-draws/check.py \
+  /tmp/weight-mask-audit-new.json.gz
+```
+
+The preregistration's uncompressed `.json` output is also supported. Gzip compression
+changes storage only; the input domains, criteria and computations are unchanged.
+The checker binds saved public inputs to the original fixtures, replays the seeded
+and Cartesian domains, validates every supported pass/epoch combination and checks
+the exact rational scenarios. Failed or intermediate records are retained:
+
+- Attempt 1 stopped before a result because the opening vectors use numeric matrix
+  tags, whereas the weight vectors use names ([results/attempt-1.log](results/attempt-1.log)).
+  The reader now handles both public encodings; no fixture or criterion changed.
+- Attempts 2–7 complete the same frozen domain. The independent reader was strengthened
+  to bind all fixture inputs and frozen parameters and tested against corrupted saved
+  records. Output compression, timestamps, source fingerprints and formatting were
+  added. Earlier records are preserved; only the final record matches both current
+  script fingerprints. Earlier attempts have no archived source snapshot of each intermediate script
+  version; this limits their provenance. None is the final validation evidence.
+- Existing independent conformance tests pass: five prover `weights_vectors` tests and
+  eighteen verifier `weight_layouts`/`weight_openings` tests. They do not implement
+  Protocol Two mask generation.
 
 ## Analysis
 
-Pending. Finite metadata agreement will not establish GPU throughput, constant-time
-secret handling, a joint hiding/rank argument, or completeness of a future Protocol
-Two implementation's consumer list. Unsupported or absent consumers remain an open
-implementation obligation, not a measured zero cost.
+Every frozen condition passes. The complete union of consumers matters: adding a
+second consumer in the same generation adds no bytes for entries already drawn;
+restarting a generation at P5 adds the full requirement again. The reserved mask and
+message rows explain the data-only subtotal's omission. Claim-dependent channel
+blinders and per-matrix widths cannot be replaced by one fixed six-row/common-width
+rule. The empty and invalid/unfit cases remain explicitly classified, not accepted
+as deployable masked layouts.
+
+This finite audit is not a GPU implementation or benchmark. It validates the stated
+public geometry/support accounting, not a complete compiled Protocol Two schedule
+or the algebra/security of blinder exclusion. The store byte comparison prices a
+raw store of the same reached accepted values, not transfer latency or memory traffic
+inside a GPU kernel. Consumer duplication, repeated passes and checkpoint retries in
+an eventual implementation still require measurement and trace accounting.
 
 ## Verdict
 
-Pending; status `planned`.
+`validated` for the frozen E0 accounting domain. No security, performance or production
+qualification follows. This supports pricing full-support regeneration as an explicit
+planning path; it grants no cost credit for #394's unproved alternatives.
 
 ## Follow-ups
 
-If validated, draft #568's accounting/storage decision for the current full-support
-generator, preserving its explicit #394/#145 security prerequisites and adding an
-H100 XOF/rejection/all-consumer benchmark requirement. Any cost-model/budget amendment
-must distinguish a conditional projection from a measured rate, retain the core-pass
-gate, price repeated generation and leave blinder-exclusion savings uncredited.
+Draft #568's accounting/storage decision for the current full-support generator,
+preserving #394/#145 prerequisites and adding an H100 XOF/rejection/all-consumer
+benchmark requirement. Keep the existing core-pass gate, account for repeated draws,
+price the complete stream work and distinguish a conditional projection from a
+measured effective rate. Model a mask store or blinder exclusion only in a separately
+reviewed design; neither has earned a measured or security-approved saving here.

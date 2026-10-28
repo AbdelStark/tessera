@@ -215,3 +215,34 @@ XOF blocks contain 64 output bytes per compression ([B3XofDraft24], [B3XofCode26
 Selected-only/full-support byte ratio is about 0.331 (E0), with no security-approved
 saving. Secret-store cost is a full read of the reached values plus transfers/folding;
 no effective store bandwidth or H100 stream throughput was measured.
+
+
+## Complete weight-draw audit (2026-10-29)
+
+[EXP-0028](experiments/EXP-0028-weight-mask-draws/README.md), **E0 only**, validates
+its frozen finite accounting domain: 14 geometry records (five model/eight opening
+fixtures and tight 405B), 3,671 accounting cases, 25,576 per-matrix judgments and
+28,500 independent replay checks. Ten behavioral accounting faults and eleven reader
+corruptions are caught, each with a passing control. These are research controls,
+not production mutants or security proofs.
+
+| Conditional 405B case | Data rows | Full support accepted bytes | Selected-only | All masks / selected values |
+|---|---:|---:|---:|---:|
+| Tight: 56 channel rows | 411,340 | 653,675,986,944 | 216,302,354,432 | 242,030,215,168 |
+| Historical: 882 channel rows | 412,166 | 654,109,048,832 | 216,735,416,320 | 242,463,277,056 |
+
+Both have 411,284 weight data rows and 49,144 blinders under e_CP=7. At a hypothetical
+530e9 accepted B/s, the tight FULL / SELECTED / MASK-ALL-SELECTED-VALUES cases cost
+1.2333509187622642 / 0.40811764987169813 / 0.45666078333584903 GPU-s. The saved record
+also computes rational scenarios at 100 and 1000 GB/s. None is a measured rate.
+No change to a scoreboard, security result or production qualification follows.
+
+
+Draft [RFC-0075](../docs/rfcs/RFC-0075-weight-mask-cost.md) proposes full-support bounded
+GPU regeneration as the planning default, retaining stored P5 columns. Under the
+historical 654,109,048,832-byte envelope and explicitly unmeasured 530e9 effective B/s
+scenario, total weight-work target is `0.24 + B/530e9`, about 1.474 GPU-s; re-plan above
+`0.5 + B/530e9`, about 1.734 GPU-s, or if the separate original core gate fails.
+These are E0 proposed budgets, not measured costs or an accepted protocol decision.
+No source/default chart or security score changes. Actual bounded draw/consumer work
+must be measured on H100, with secret rejection counts excluded from production reports.
