@@ -24,11 +24,10 @@
 //! - [`OneHot`] and [`Argmax`]: the token indicator and lowest-index greedy certificate
 //!   (RFC-0009 Lemmas 8–9), with sumcheck relations and a public suffix kernel. Argmax
 //!   borrows the next token's existing indicator (teacher forcing).
-//! - [`VocabMax`] and [`InverseCdf`]: the vocabulary maximum/exponential certificate (RFC-0009
-//!   Lemma 5 without reciprocal, RFC-0017, RFC-0030) and the temperature-sampling certificate
-//!   (RFC-0009 Lemma 10) in RFC-0058's columns: three degree-3 vocabulary contractions, the
-//!   radix-`2^16` limbs of the draw, the partition and the prefix, and two exact comparisons,
-//!   with a branch-free honest sampler.
+//! - [`VocabMax`], [`InverseCdf`] and [`OneSidedLog2`]: the vocabulary maximum/exponential
+//!   certificate (RFC-0009 Lemma 5 without reciprocal, RFC-0017, RFC-0030), the
+//!   temperature-sampling certificate (RFC-0009 Lemma 10) in RFC-0058's columns, and the mixture
+//!   predictor's one-sided `-log2 q_t(y_t)` bound certificate (RFC-0017 'In-circuit scoring').
 //!
 //! The scalar gadgets (`Requant` and `NonNeg`) give:
 //!
@@ -113,6 +112,7 @@ mod compare;
 mod constraints;
 mod error;
 mod inverse_cdf;
+mod log2_bound;
 mod lookups;
 #[cfg(debug_assertions)]
 pub mod malicious;
@@ -124,8 +124,8 @@ mod vocab;
 mod witness;
 
 pub use choice::{
-    Argmax, ArgmaxEvaluation, ArgmaxRelations, ArgmaxWitness, OneHot, OneHotRelations,
-    OneHotWitness, suffix_kernel,
+    Argmax, ArgmaxEvaluation, ArgmaxRelations, ArgmaxWitness, BatchedArgmaxEvaluation,
+    BatchedArgmaxSelector, OneHot, OneHotRelations, OneHotWitness, suffix_kernel,
 };
 pub use compare::{BigIntCompare, CompareColumn, CompareConstraints, CompareWitness, Side};
 pub use constraints::{Affine, Committed, Constraints, Lookup, Term, Virtual};
@@ -134,6 +134,11 @@ pub use inverse_cdf::{
     BatchedCdfEvaluation, BatchedCdfSelector, CdfBatchColumns, CdfColumn, CdfConstraints,
     CdfEvaluation, CdfRelation, CdfRelations, CdfTerm, CdfWitness, Edge, InverseCdf,
     SampledRelations,
+};
+pub use log2_bound::{
+    BatchedLog2Evaluation, BatchedLog2Selector, EXP2_FRAC_BITS, EXP2_OUT_BITS, Log2BatchColumns,
+    Log2Column, Log2Constraints, Log2Relation, Log2Term, Log2VocabRelations, Log2Witness,
+    MAX_EPS_LOG2, MAX_ROW_BOUND, OneSidedLog2, POW2_MAX_EXP, c_match,
 };
 pub use lookups::{Group, Lookups, TableColumns};
 pub use non_neg::NonNeg;

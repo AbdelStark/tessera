@@ -598,3 +598,509 @@ impl TemperaturePlan {
         &self.certificates
     }
 }
+
+/// Canonical committed columns of one mixture [`OneSidedLog2`](RFC-0017) row in allocation order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Log2AdviceColumn {
+    /// `m_t ∈ {0, 1}` (`0` when `eps_log2 == 0`), the match indicator bit.
+    MatchBit,
+    /// `I_t ∈ [0, 63)`, the integer part of the `log2` bound.
+    IntExp,
+    /// `P_t = 2^{I_t}`, looked up in `Pow2 { max_exp: 63 }`.
+    Pow2Val,
+    /// `f_t ∈ [0, 256)`, the `2^{−8}`-bit fractional exponent.
+    FracExp,
+    /// `E_t = Exp2Frac[f_t]`, looked up in `Exp2Frac { frac_bits: 8, out_bits: 16 }`.
+    Exp2Val,
+    /// `q_t = (Y_t + ψ_t) · E_t`, the scaled selected numerator.
+    ScaledSelected,
+    /// `Z_j`, a committed low 16-bit limb of `Z_t` (`j < k_Z − 1`).
+    TotalLimb(u8),
+    /// `Q_j`, a committed low 16-bit limb of `q_t` (`j < k_Q − 1`).
+    ScaledLimb(u8),
+    /// `P_j`, one of the three committed low 16-bit limbs of `P_t` (`j ∈ 0..3`).
+    Pow2Limb(u8),
+    /// A committed normalization or subtraction entry of `BigIntCompare`, grouped by array per
+    /// RFC-0050.
+    Comparison {
+        /// Array kind in RFC-0050 order.
+        column: CompareColumn,
+        /// Limb index `0 .. m`.
+        limb: u32,
+    },
+}
+
+/// Derives the ordered [`Log2AdviceColumn`] schema and ordered [`TableKind`] lookup requests of
+/// `OneSidedLog2` (RFC-0017 'In-circuit scoring (mixture)') for `(vocab, sigma)`.
+///
+/// # Errors
+/// [`CompileError::Model`] if `vocab` (`1..=2^18`), `sigma` (`0..=32`), or comparison boxes leave
+/// RFC-0009's bounds.
+pub fn log2_columns_and_requests(
+    vocab: u32,
+    sigma: u8,
+) -> Result<(Vec<Log2AdviceColumn>, Vec<TableKind>), CompileError> {
+    let bad = || CompileError::Model {
+        rule: "OneSidedLog2 needs 1 ≤ vocab ≤ 2^18 and σ ≤ 32 within Goldilocks' centered range",
+    };
+    if !(1..=1 << 18).contains(&vocab) || sigma > 32 {
+        return Err(bad());
+    }
+    let total_width = (64 - (u64::from(vocab) << sigma).leading_zeros()) as u8;
+    let max_q = ((1u128 << sigma) + 1) * ((1u128 << 17) - 1);
+    let scaled_width = (128 - max_q.leading_zeros()) as u8;
+    let half_field = (Goldilocks::MODULUS - 1) / 2;
+    if 1u64 << total_width.max(scaled_width) >= half_field {
+        return Err(bad());
+    }
+
+    let k_z = total_width.div_ceil(16) as usize;
+    let k_q = scaled_width.div_ceil(16) as usize;
+    let top_z_bits = total_width - ((k_z as u8 - 1) * 16);
+    let top_q_bits = scaled_width - ((k_q as u8 - 1) * 16);
+    let full = (1u64 << 16) - 1;
+    let z_box = |h: usize| {
+        if h + 1 == k_z {
+            (1u64 << top_z_bits) - 1
+        } else if h < k_z {
+            full
+        } else {
+            0
+        }
+    };
+    let q_box = |a: usize| {
+        if a + 1 == k_q {
+            (1u64 << top_q_bits) - 1
+        } else if a < k_q {
+            full
+        } else {
+            0
+        }
+    };
+    let p_box = |b: usize| match b {
+        0..=2 => full,
+        3 => (1u64 << 15) - 1,
+        _ => 0,
+    };
+    let v_limbs = [u64::from(vocab) & 0xffff, u64::from(vocab) >> 16];
+    let max_left = (((1u128 << total_width) - 1) + u128::from(vocab)) << 16;
+    let max_right = ((1u128 << scaled_width) - 1) * ((1u128 << 63) - 1);
+    let total_bits = (128 - max_left.max(max_right).leading_zeros()) as usize;
+    let m = total_bits.div_ceil(16);
+
+    let left_bounds: Vec<u64> = (0..m)
+        .map(|j| {
+            if j == 0 {
+                0
+            } else {
+                let h = j - 1;
+                z_box(h) + v_limbs.get(h).copied().unwrap_or(0)
+            }
+        })
+        .collect();
+    let right_bounds: Vec<u64> = (0..m)
+        .map(|j| {
+            (0..k_q)
+                .flat_map(|a| (0..4).map(move |b| (a, b)))
+                .filter(|&(a, b)| a + b == j)
+                .map(|(a, b)| q_box(a) * p_box(b))
+                .sum()
+        })
+        .collect();
+
+    let carry_widths = |bounds: &[u64]| -> Result<Vec<u8>, CompileError> {
+        let base = 1u64 << 16;
+        let mut honest_carry = 0u64;
+        let mut previous_box = 0u64;
+        let mut equation_bound = 2 * base - 1;
+        let mut widths = Vec::with_capacity(bounds.len());
+        for &bound in bounds {
+            if bound >= 1 << 40 {
+                return Err(bad());
+            }
+            honest_carry = (bound + honest_carry) / base;
+            let w = (64 - honest_carry.leading_zeros()).max(1) as u8;
+            if w > 32 {
+                return Err(bad());
+            }
+            let carry_box = (1u64 << w) - 1;
+            equation_bound = equation_bound
+                .max(bound + previous_box)
+                .max(base - 1 + base * carry_box);
+            previous_box = carry_box;
+            widths.push(w);
+        }
+        if equation_bound >= 1 << 41 {
+            return Err(bad());
+        }
+        Ok(widths)
+    };
+    let left_carries = carry_widths(&left_bounds)?;
+    let right_carries = carry_widths(&right_bounds)?;
+
+    let mut columns = vec![
+        Log2AdviceColumn::MatchBit,
+        Log2AdviceColumn::IntExp,
+        Log2AdviceColumn::Pow2Val,
+        Log2AdviceColumn::FracExp,
+        Log2AdviceColumn::Exp2Val,
+        Log2AdviceColumn::ScaledSelected,
+    ];
+    for j in 0..(k_z - 1) as u8 {
+        columns.push(Log2AdviceColumn::TotalLimb(j));
+    }
+    for j in 0..(k_q - 1) as u8 {
+        columns.push(Log2AdviceColumn::ScaledLimb(j));
+    }
+    for j in 0..3u8 {
+        columns.push(Log2AdviceColumn::Pow2Limb(j));
+    }
+
+    let mut requests = vec![
+        TableKind::Pow2 { max_exp: 63 },
+        TableKind::Exp2Frac {
+            frac_bits: 8,
+            out_bits: 16,
+        },
+    ];
+    requests.extend(core::iter::repeat_n(TableKind::Range { bits: 16 }, k_z - 1));
+    requests.push(TableKind::Range { bits: top_z_bits });
+    requests.extend(core::iter::repeat_n(TableKind::Range { bits: 16 }, k_q - 1));
+    requests.push(TableKind::Range { bits: top_q_bits });
+    requests.extend(core::iter::repeat_n(TableKind::Range { bits: 16 }, 3));
+    requests.push(TableKind::Range { bits: 15 });
+
+    let m_u32 = m as u32;
+    for (column, widths) in [
+        (CompareColumn::LeftByte, vec![16u8; m]),
+        (CompareColumn::LeftCarry, left_carries),
+        (CompareColumn::RightByte, vec![16u8; m]),
+        (CompareColumn::RightCarry, right_carries),
+        (CompareColumn::Difference, vec![16u8; m]),
+        (CompareColumn::Borrow, vec![1u8; m]),
+    ] {
+        for limb in 0..m_u32 {
+            columns.push(Log2AdviceColumn::Comparison { column, limb });
+        }
+        requests.extend(widths.into_iter().map(|bits| TableKind::Range { bits }));
+    }
+
+    Ok((columns, requests))
+}
+
+/// Decoding rule under `PredictorSpec::Mixture` (RFC-0017 'Decoding and the sampler PRF').
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MixtureDecoding {
+    /// Greedy decoding (`ŷ_t` certified by bounded `Argmax`, `p̂_t` from `Exp_1` at `T = 1`).
+    Greedy,
+    /// Inverse-CDF temperature sampling at `T ∈ (0, 4]` (`ŷ_t` certified by bounded `InverseCdf`,
+    /// `p̂_t` from `Exp_T`).
+    Temperature(Rational),
+}
+
+impl MixtureDecoding {
+    /// Effective temperature `T` of the smoothed vocabulary distribution `p̂_t` (`1` for greedy).
+    pub const fn effective_temperature(self) -> Rational {
+        match self {
+            Self::Greedy => Rational::ONE,
+            Self::Temperature(t) => t,
+        }
+    }
+}
+
+/// Public request geometry for runtime mixture scoring (RFC-0017).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MixtureRequestSpec {
+    /// Positive prompt length; logit position `prompt − 1` predicts the first output.
+    pub prompt: u32,
+    /// Total sequence length `prompt + output_len ≤ max_context`.
+    pub positions: u32,
+    /// Decoding rule (`Greedy` or `Temperature(T)`).
+    pub decoding: MixtureDecoding,
+}
+
+/// Derived certificate metadata for one output-bearing mixture request.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MixtureCertificate {
+    /// Request index in the batch.
+    pub request_index: usize,
+    /// Gadget identity assigned after all model nodes.
+    pub gadget: GadgetId,
+    /// Request decoding rule.
+    pub decoding: MixtureDecoding,
+    /// Vocabulary `Exp_T` table id (`Exp_1` for `Greedy`, `Exp_T` for `Temperature(T)`).
+    pub exp_table: TableId,
+    /// Physical `Range` table id for bounded `Argmax` (`Some` iff `Greedy`).
+    pub argmax_range_table: Option<TableId>,
+    /// Physical `Range` bit width for bounded `Argmax` (`Some` iff `Greedy`).
+    pub argmax_range_bits: Option<u8>,
+    /// Ordered `Range` table ids for bounded `InverseCdf` (non-empty iff `Temperature`).
+    pub cdf_range_tables: Vec<TableId>,
+    /// Ordered committed `CdfAdviceColumn`s for bounded `InverseCdf` (non-empty iff `Temperature`).
+    pub cdf_columns: Vec<CdfAdviceColumn>,
+    /// Ordered lookup table ids (`Pow2`, `Exp2Frac`, and `Range`s) for `OneSidedLog2`.
+    pub log2_tables: Vec<TableId>,
+    /// Ordered committed `Log2AdviceColumn`s for `OneSidedLog2`.
+    pub log2_columns: Vec<Log2AdviceColumn>,
+    /// Prompt length.
+    pub prompt: u32,
+    /// Sequence length `prompt + outputs`.
+    pub positions: u32,
+    /// Unpadded vocabulary size.
+    pub vocab: u32,
+    /// Public inclusive logit interval.
+    pub logits: IntRange,
+}
+
+/// Runtime catalog and certificate layout for mixture scoring (`eps_log2 ∈ 0..=16`) with up to
+/// [`MAX_BATCH_TEMPERATURES`] distinct `Exp_T` tables, leaving `ClaimList`'s wire format untouched.
+#[derive(Clone, Debug)]
+pub struct MixturePlan {
+    selection: Selection,
+    eps_log2: u8,
+    temperatures: Vec<TemperatureTable>,
+    certificates: Vec<MixtureCertificate>,
+}
+
+impl MixturePlan {
+    /// Derive the runtime `Exp_T`, `Pow2`, `Exp2Frac`, and `Range` tables and bounded certificate
+    /// layouts for `requests` at mixture exponent `eps_log2 ∈ 0..=16`.
+    ///
+    /// # Errors
+    /// [`CompileError::Usage`] if `selection.tables != claims.tables`, `eps_log2 > 16`, any request
+    /// has invalid lengths or temperature outside `(0, 4]`, or the batch names more than
+    /// [`MAX_BATCH_TEMPERATURES`] distinct effective temperatures; [`CompileError::Model`] if
+    /// public logits exceed `|ℓ| < 2^28` or any required runtime table exceeds
+    /// `GadgetPolicy.max_log2_rows`.
+    pub fn derive(
+        lowering: &Lowering,
+        selection: &Selection,
+        claims: &ClaimList,
+        requests: &[MixtureRequestSpec],
+        eps_log2: u8,
+        first_ordinal: u32,
+    ) -> Result<Self, CompileError> {
+        const MIXTURE_REQUEST: &str =
+            "each mixture request names a positive prompt within the model context";
+        if selection.tables != claims.tables {
+            return Err(usage(METADATA));
+        }
+        if eps_log2 > 16 {
+            return Err(usage("Mixture eps_log2 lies in 0..=16 (RFC-0017)"));
+        }
+        let shape = &lowering
+            .graph
+            .tensors
+            .get(lowering.logits.0 as usize)
+            .ok_or_else(|| usage(MIXTURE_REQUEST))?
+            .shape;
+        let [_lowered_positions, vocab] = shape.as_slice() else {
+            return Err(usage(MIXTURE_REQUEST));
+        };
+        if *vocab != claims.arch.vocab {
+            return Err(usage(METADATA));
+        }
+        let logits = analyze(&lowering.graph, &lowering.tables)?
+            .of(lowering.logits)
+            .and_then(|r| r.bounded())
+            .filter(|r| -(1i128 << 28) < r.lo && r.hi < 1i128 << 28)
+            .ok_or(CompileError::Model { rule: VOCAB_RANGE })?;
+        let span = u32::try_from(logits.hi - logits.lo)
+            .map_err(|_| CompileError::Model { rule: VOCAB_RANGE })?;
+        let min_key_bits = (u32::BITS - span.leading_zeros()).max(1) as u8;
+        let max_log2_rows = claims.gadget_policy.max_log2_rows;
+        let max_key_bits = max_log2_rows.min(32);
+        let sigma = claims.quant.exp_sigma;
+
+        let mut distinct: Vec<Rational> = Vec::new();
+        for req in requests {
+            if req.prompt == 0
+                || req.prompt > req.positions
+                || req.positions > claims.arch.max_context
+            {
+                return Err(usage(MIXTURE_REQUEST));
+            }
+            let temp = req.decoding.effective_temperature();
+            let _ = vocab_exp_scale(claims.quant.logits_exponent, temp)?;
+            if !distinct.contains(&temp) {
+                distinct.push(temp);
+            }
+        }
+        if distinct.len() > MAX_BATCH_TEMPERATURES {
+            return Err(usage(BATCH_TEMPERATURES));
+        }
+
+        let mut selection = selection.clone();
+        let mut intern = |kind: TableKind| -> Result<TableId, CompileError> {
+            if let Some(existing) = selection.tables.iter().find(|t| t.kind == kind) {
+                if existing.log2_rows > max_log2_rows {
+                    return Err(CompileError::Model {
+                        rule: "runtime scoring tables fit GadgetPolicy.max_log2_rows",
+                    });
+                }
+                return Ok(existing.id);
+            }
+            let id = TableId(u32::try_from(selection.tables.len()).map_err(|_| usage(METADATA))?);
+            let generated = GeneratedTable::new(id, kind)
+                .map_err(|error| CompileError::ModelTable { table: id, error })?;
+            if generated.log2_rows() > max_log2_rows {
+                return Err(CompileError::Model {
+                    rule: "runtime scoring tables fit GadgetPolicy.max_log2_rows",
+                });
+            }
+            selection.tables.push(generated.spec().clone());
+            Ok(id)
+        };
+
+        let mut temperatures = Vec::new();
+        for temp in distinct {
+            let active_reqs: Vec<usize> = requests
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| {
+                    r.decoding.effective_temperature() == temp && r.prompt < r.positions
+                })
+                .map(|(idx, _)| idx)
+                .collect();
+            if active_reqs.is_empty() {
+                continue;
+            }
+            let scale = vocab_exp_scale(claims.quant.logits_exponent, temp)?;
+            let mut chosen: Option<(u8, TableKind)> = None;
+            for key_bits in min_key_bits..=max_key_bits {
+                let kind = TableKind::Exp {
+                    key_bits,
+                    sigma,
+                    scale,
+                };
+                let probe_id = TableId(0);
+                let generated = GeneratedTable::new(probe_id, kind.clone()).map_err(|error| {
+                    CompileError::ModelTable {
+                        table: probe_id,
+                        error,
+                    }
+                })?;
+                let last_is_zero = generated
+                    .row(generated.row_count() - 1)
+                    .is_some_and(|(_, value)| value == Goldilocks::ZERO);
+                if last_is_zero {
+                    chosen = Some((key_bits, kind));
+                    break;
+                }
+            }
+            let (key_bits, kind) = chosen.ok_or(CompileError::Model {
+                rule: "the vocabulary Exp_T table fits GadgetPolicy.max_log2_rows with Exp_T[K_0] = 0 (RFC-0030)",
+            })?;
+            let table = intern(kind)?;
+            let mut output_tokens = 0u32;
+            for &idx in &active_reqs {
+                output_tokens = output_tokens
+                    .checked_add(requests[idx].positions - requests[idx].prompt)
+                    .ok_or_else(|| usage(MIXTURE_REQUEST))?;
+            }
+            temperatures.push(TemperatureTable {
+                temperature: temp,
+                scale,
+                table,
+                key_bits,
+                sigma,
+                requests: active_reqs,
+                output_tokens,
+            });
+        }
+
+        let base_node = u32::try_from(lowering.graph.nodes.len())
+            .ok()
+            .and_then(|n| n.checked_add(first_ordinal))
+            .ok_or_else(|| usage(MIXTURE_REQUEST))?;
+        let mut certificates = Vec::new();
+        for (req_idx, req) in requests.iter().enumerate() {
+            if req.prompt == req.positions {
+                continue;
+            }
+            let ordinal = u32::try_from(certificates.len())
+                .ok()
+                .and_then(|o| base_node.checked_add(o))
+                .ok_or_else(|| usage(MIXTURE_REQUEST))?;
+            let temp = req.decoding.effective_temperature();
+            let exp_table = temperatures
+                .iter()
+                .find(|t| t.temperature == temp)
+                .map(|t| t.table)
+                .ok_or_else(|| usage(METADATA))?;
+
+            let (argmax_range_table, argmax_range_bits, cdf_range_tables, cdf_columns) = match req
+                .decoding
+            {
+                MixtureDecoding::Greedy => {
+                    if min_key_bits > max_log2_rows {
+                        return Err(CompileError::Model {
+                            rule: "the greedy physical Range width fits GadgetPolicy.max_log2_rows",
+                        });
+                    }
+                    let table = intern(TableKind::Range { bits: min_key_bits })?;
+                    (Some(table), Some(min_key_bits), Vec::new(), Vec::new())
+                }
+                MixtureDecoding::Temperature(_) => {
+                    let (cols, widths) = cdf_columns_and_requests(*vocab, sigma, true)?;
+                    let mut tables = Vec::with_capacity(widths.len());
+                    for bits in widths {
+                        tables.push(intern(TableKind::Range { bits })?);
+                    }
+                    (None, None, tables, cols)
+                }
+            };
+
+            let (log2_columns, log2_kinds) = log2_columns_and_requests(*vocab, sigma)?;
+            let mut log2_tables = Vec::with_capacity(log2_kinds.len());
+            for kind in log2_kinds {
+                log2_tables.push(intern(kind)?);
+            }
+
+            certificates.push(MixtureCertificate {
+                request_index: req_idx,
+                gadget: GadgetId(ordinal),
+                decoding: req.decoding,
+                exp_table,
+                argmax_range_table,
+                argmax_range_bits,
+                cdf_range_tables,
+                cdf_columns,
+                log2_tables,
+                log2_columns,
+                prompt: req.prompt,
+                positions: req.positions,
+                vocab: *vocab,
+                logits,
+            });
+        }
+
+        Ok(Self {
+            selection,
+            eps_log2,
+            temperatures,
+            certificates,
+        })
+    }
+
+    /// Complete runtime table catalog, preserving every model table id, kind and digest.
+    pub fn selection(&self) -> &Selection {
+        &self.selection
+    }
+
+    /// Mixture weight exponent `k = eps_log2` (`ε = 2^{−k}`).
+    pub const fn eps_log2(&self) -> u8 {
+        self.eps_log2
+    }
+
+    /// Distinct active `Exp_T` tables (`T = 1` for greedy, `T` for temperature) and their grouped
+    /// request indices.
+    pub fn temperatures(&self) -> &[TemperatureTable] {
+        &self.temperatures
+    }
+
+    /// Per-request certificate descriptions in batch order (omitting zero-output requests).
+    pub fn certificates(&self) -> &[MixtureCertificate] {
+        &self.certificates
+    }
+}
