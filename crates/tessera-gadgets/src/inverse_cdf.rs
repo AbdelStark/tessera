@@ -12,14 +12,15 @@
 use crate::choice::{OneHot, OneHotWitness, relation, suffix_table};
 use crate::compare::array_order;
 use crate::{
-    Affine, BigIntCompare, Committed, CompareColumn, GadgetError, Lookup, NonNeg, Side, Term,
+    Affine, BigIntCompare, Committed, CompareColumn, GadgetError, Lookup, Lookups, NonNeg, Side,
+    Term,
 };
 use core::{fmt, hint::select_unpredictable};
 use tessera_codec::{SecretBuf, Zeroize};
 use tessera_field::{Goldilocks, PrimeField};
-use tessera_poly::PolyField;
+use tessera_poly::{PolyField, eq_table};
 use tessera_sumcheck::{Elementwise, ElementwiseShape, Input};
-use tessera_tables::{GeneratedTable, Table, TableSpec};
+use tessera_tables::{GeneratedTable, Table, TableId, TableKind, TableSpec};
 
 /// The radix of every decomposition and comparison (RFC-0058).
 const LIMB_BITS: u8 = 16;
@@ -191,6 +192,29 @@ impl<B: PrimeField> InverseCdf<B> {
             sums,
             comparisons,
         })
+    }
+
+    /// Required [`TableKind::Range`] definitions in first-use order, deduplicated.
+    ///
+    /// # Errors
+    /// [`GadgetError::Shape`] if `vocab` or `sigma` is outside [`Self::new`]'s bounds.
+    pub fn range_kinds(vocab: usize, sigma: u8) -> Result<Vec<TableKind>, GadgetError> {
+        let probe: Vec<TableSpec> = (1..=32u8)
+            .map(|bits| {
+                GeneratedTable::new(TableId(u32::from(bits)), TableKind::Range { bits })
+                    .map(|t| t.spec().clone())
+                    .map_err(|error| GadgetError::Spec {
+                        table: TableId(u32::from(bits)),
+                        error,
+                    })
+            })
+            .collect::<Result<_, _>>()?;
+        let gadget = InverseCdf::<B>::new(vocab, sigma, &probe)?;
+        Ok(gadget
+            .tables()
+            .into_iter()
+            .map(|t| t.spec().kind.clone())
+            .collect())
     }
 
     /// `W`, the bits of the partition's box `vocab·2^σ`.
@@ -684,6 +708,384 @@ impl<B: PrimeField> InverseCdf<B> {
     pub fn suffix_weights<F: PolyField<Base = B>>(&self, rho: &[F]) -> Result<Vec<F>, GadgetError> {
         suffix_table(rho, self.domain.vars())
     }
+
+    /// Precompute the public vocabulary mask and row selector for a power-of-two batch of
+    /// `padded_rows` rows (`real_rows ≤ padded_rows`).
+    ///
+    /// # Errors
+    /// [`GadgetError::Shape`] unless `padded_rows` is a positive power of two with
+    /// `real_rows ≤ padded_rows`.
+    pub fn selector(
+        &self,
+        padded_rows: usize,
+        real_rows: usize,
+    ) -> Result<BatchedCdfSelector<B>, GadgetError> {
+        let padded_vocab = self.domain.padded_len();
+        let total = padded_rows
+            .checked_mul(padded_vocab)
+            .ok_or(GadgetError::Shape {
+                rule: "InverseCdf batch selector fits usize",
+            })?;
+        if !padded_rows.is_power_of_two() || real_rows > padded_rows {
+            return Err(GadgetError::Shape {
+                rule: "InverseCdf batch needs power-of-two padded_rows ≥ real_rows",
+            });
+        }
+        let mut valid = Vec::with_capacity(total);
+        let mut row_selector = Vec::with_capacity(padded_rows);
+        for row in 0..padded_rows {
+            valid.extend_from_slice(self.domain.valid());
+            row_selector.push(B::from_u64_reduced(u64::from(row < real_rows)));
+        }
+        let ones = vec![B::ONE; padded_rows];
+        Ok(BatchedCdfSelector {
+            padded_rows,
+            real_rows,
+            valid,
+            row_selector,
+            ones,
+        })
+    }
+
+    /// Evaluate `padded_rows` rows' strict suffixes `L(t, v)` and virtual sums `Z_t`, `B_t`, `S_t`
+    /// in the field, from flat row-major `weights` and `indicators`.
+    ///
+    /// # Errors
+    /// [`GadgetError::Shape`] unless `padded_rows` is a positive power of two and both slices have
+    /// `padded_rows · pad(vocab)` entries.
+    pub fn evaluate_batch(
+        &self,
+        weights: &[B],
+        indicators: &[B],
+        padded_rows: usize,
+    ) -> Result<BatchedCdfEvaluation<B>, GadgetError> {
+        let padded_vocab = self.domain.padded_len();
+        let total_entries = padded_rows
+            .checked_mul(padded_vocab)
+            .ok_or(GadgetError::Shape {
+                rule: "InverseCdf batch evaluation fits usize",
+            })?;
+        if !padded_rows.is_power_of_two()
+            || weights.len() != total_entries
+            || indicators.len() != total_entries
+        {
+            return Err(GadgetError::Shape {
+                rule: "InverseCdf batch slices have padded_rows · pad(vocab) entries",
+            });
+        }
+        let valid = self.domain.valid();
+        let mut suffix = SecretBuf::filled(B::ZERO, total_entries);
+        let mut totals = SecretBuf::with_capacity(padded_rows);
+        let mut belows = SecretBuf::with_capacity(padded_rows);
+        let mut selecteds = SecretBuf::with_capacity(padded_rows);
+        for row in 0..padded_rows {
+            let base = row * padded_vocab;
+            let mut after = B::ZERO;
+            for v in (0..padded_vocab).rev() {
+                suffix[base + v] = after;
+                after += indicators[base + v];
+            }
+            let (mut total, mut below, mut selected) = (B::ZERO, B::ZERO, B::ZERO);
+            for v in 0..padded_vocab {
+                let e = weights[base + v];
+                total += valid[v] * e;
+                below += e * suffix[base + v];
+                selected += indicators[base + v] * e;
+            }
+            totals.push(total);
+            belows.push(below);
+            selecteds.push(selected);
+        }
+        Ok(BatchedCdfEvaluation {
+            suffix,
+            totals,
+            belows,
+            selecteds,
+        })
+    }
+
+    /// Batched contractions over `padded_rows` rows (RFC-0058 'The vocabulary sums'):
+    /// `Z̃(r) = Σ_{t,v} eq(r, t)·C_v·e(t, v)`, `B̃(r) = Σ_{t,v} eq(r, t)·e(t, v)·L(t, v)`, and
+    /// `S̃(r) = Σ_{t,v} eq(r, t)·ĥ(t, v)·e(t, v)`. When `padded_rows > 1`, `eq(r, t)` raises each
+    /// contraction's degree to 3 over the combined row and vocabulary variables.
+    ///
+    /// # Errors
+    /// [`GadgetError::Shape`] for mismatched operand lengths or an unsupported engine shape.
+    pub fn batched_relations<'a, F: PolyField<Base = B>>(
+        &'a self,
+        selector: &'a BatchedCdfSelector<B>,
+        weights: &'a [B],
+        indicators: &'a [B],
+        evaluated: &'a BatchedCdfEvaluation<B>,
+    ) -> Result<CdfRelations<'a, F>, GadgetError> {
+        let total_entries = selector.valid.len();
+        if weights.len() != total_entries
+            || indicators.len() != total_entries
+            || evaluated.suffix.len() != total_entries
+        {
+            return Err(GadgetError::Shape {
+                rule: "InverseCdf batched operands match selector's shape",
+            });
+        }
+        let vocab_vars = self.domain.vars();
+        let row_vars = selector.padded_rows.trailing_zeros() as usize;
+        let contracted = ElementwiseShape {
+            vars: row_vars + vocab_vars,
+            summed_vars: vocab_vars,
+        };
+        let valid = Input::Public(&selector.valid);
+        let e = Input::Operand(weights);
+        Ok(CdfRelations {
+            total: Elementwise::new(
+                contracted,
+                vec![valid, e],
+                vec![tessera_sumcheck::Term::new(F::ONE, vec![0, 1])],
+            )
+            .map_err(relation)?,
+            below: Elementwise::new(
+                contracted,
+                vec![e, Input::Operand(&evaluated.suffix)],
+                vec![tessera_sumcheck::Term::new(F::ONE, vec![0, 1])],
+            )
+            .map_err(relation)?,
+            selected: Elementwise::new(
+                contracted,
+                vec![Input::Operand(indicators), e],
+                vec![tessera_sumcheck::Term::new(F::ONE, vec![0, 1])],
+            )
+            .map_err(relation)?,
+        })
+    }
+
+    /// Bounded mode's batched `OneHot` obligations (booleanity, vocabulary, and row count `ψ_t`)
+    /// on flat row-major sampled indicators `ĥ(t, v)` over `padded_rows` rows.
+    ///
+    /// # Errors
+    /// [`GadgetError::Shape`] for mismatched operand lengths or an unsupported engine shape.
+    pub fn batched_sampled_relations<'a, F: PolyField<Base = B>>(
+        &'a self,
+        selector: &'a BatchedCdfSelector<B>,
+        indicators: &'a [B],
+    ) -> Result<SampledRelations<'a, F>, GadgetError> {
+        if indicators.len() != selector.valid.len() {
+            return Err(GadgetError::Shape {
+                rule: "InverseCdf batched sampled indicators match selector's shape",
+            });
+        }
+        let vocab_vars = self.domain.vars();
+        let row_vars = selector.padded_rows.trailing_zeros() as usize;
+        let vars = row_vars + vocab_vars;
+        let h = Input::Operand(indicators);
+        Ok(SampledRelations {
+            booleanity: Elementwise::booleanity(h, vars).map_err(relation)?,
+            vocabulary: Elementwise::padding(h, &selector.valid, vars).map_err(relation)?,
+            count: Elementwise::new(
+                ElementwiseShape {
+                    vars,
+                    summed_vars: vocab_vars,
+                },
+                vec![h],
+                vec![tessera_sumcheck::Term::new(F::ONE, vec![0])],
+            )
+            .map_err(relation)?,
+        })
+    }
+
+    /// Public weights reducing a batched suffix claim `L̃(ρ_vocab, ρ_row)` to
+    /// `Σ_{t,v} W(t, v)·ĥ(t, v)`, where `W(t, v) = eq(ρ_row, t)·Σ_{i < v} eq(ρ_vocab, i)`.
+    ///
+    /// # Errors
+    /// [`GadgetError::Shape`] unless `rho` has `row_vars + log2(pad(vocab))` coordinates for a
+    /// power-of-two `padded_rows`.
+    pub fn batched_suffix_weights<F: PolyField<Base = B>>(
+        &self,
+        rho: &[F],
+        padded_rows: usize,
+    ) -> Result<Vec<F>, GadgetError> {
+        if !padded_rows.is_power_of_two() {
+            return Err(GadgetError::Shape {
+                rule: "InverseCdf batch has power-of-two padded_rows",
+            });
+        }
+        let vocab_vars = self.domain.vars();
+        let row_vars = padded_rows.trailing_zeros() as usize;
+        if rho.len() != vocab_vars + row_vars {
+            return Err(GadgetError::Shape {
+                rule: "a batched suffix claim has log2(pad(vocab)) + log2(padded_rows) coordinates",
+            });
+        }
+        let v_weights = suffix_table(&rho[..vocab_vars], vocab_vars)?;
+        let r_weights = eq_table(&rho[vocab_vars..]).map_err(|_| GadgetError::Shape {
+            rule: "the public row point fits the polynomial engine",
+        })?;
+        let mut out = Vec::with_capacity(padded_rows * v_weights.len());
+        for rw in r_weights {
+            for &vw in &v_weights {
+                out.push(rw * vw);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Evaluate all range lookups of [`CdfConstraints`] over `padded_rows` rows into LogUp columns
+    /// grouped by canonical table id.
+    ///
+    /// # Errors
+    /// [`GadgetError::Shape`] unless `selector`, `draws`, `evaluated`, and `columns` agree on
+    /// `padded_rows` and hold each committed [`CdfColumn`] once.
+    pub fn evaluate_lookups(
+        &self,
+        selector: &BatchedCdfSelector<B>,
+        draws: &[B],
+        evaluated: &BatchedCdfEvaluation<B>,
+        columns: &CdfBatchColumns<B>,
+    ) -> Result<Lookups<B>, GadgetError>
+    where
+        B: PolyField<Base = B>,
+    {
+        let constraints = self.constraints::<B>()?;
+        self.check_batch_columns(selector, draws, evaluated, columns, &constraints.committed)?;
+        let raw = constraints
+            .lookups
+            .iter()
+            .map(|lookup| {
+                let keys: SecretBuf<B> = (0..selector.padded_rows)
+                    .map(|row| {
+                        lookup.key.evaluate(|t| match t {
+                            CdfTerm::Draw => draws[row],
+                            CdfTerm::Total => evaluated.totals[row],
+                            CdfTerm::Below => evaluated.belows[row],
+                            CdfTerm::Selected => evaluated.selecteds[row],
+                            CdfTerm::RowSelector => selector.row_selector[row],
+                            CdfTerm::Column(col) => {
+                                columns.column(col).map_or(B::ZERO, |vals| vals[row])
+                            }
+                        })
+                    })
+                    .collect();
+                (lookup.table, keys, None)
+            })
+            .collect();
+        Lookups::from_columns(raw)
+    }
+
+    /// Build [`Elementwise`] sumcheck zero-checks over `row_vars` for every row equality of
+    /// [`CdfConstraints`]: lower comparison normalization/subtraction chains, upper comparison
+    /// chains, and the padding zero-check `(ψ − 1)·Z = 0`.
+    ///
+    /// # Errors
+    /// [`GadgetError::Shape`] unless `selector`, `draws`, `evaluated`, and `columns` agree on
+    /// `padded_rows` and hold each committed [`CdfColumn`] once.
+    pub fn equality_relations<'a, F: PolyField<Base = B>>(
+        &'a self,
+        selector: &'a BatchedCdfSelector<B>,
+        draws: &'a [B],
+        evaluated: &'a BatchedCdfEvaluation<B>,
+        columns: &'a CdfBatchColumns<B>,
+    ) -> Result<Vec<Elementwise<'a, F>>, GadgetError> {
+        let constraints = self.constraints::<B>()?;
+        self.check_batch_columns(selector, draws, evaluated, columns, &constraints.committed)?;
+        let row_vars = selector.padded_rows.trailing_zeros() as usize;
+        let shape = ElementwiseShape::elementwise(row_vars);
+        let mut inputs = vec![
+            Input::Public(&selector.ones),
+            Input::Public(&selector.row_selector),
+            Input::Operand(draws),
+            Input::Operand(&evaluated.totals),
+            Input::Operand(&evaluated.belows),
+            Input::Operand(&evaluated.selecteds),
+        ];
+        for &col in &constraints.committed {
+            let slice = columns.column(col).ok_or(GadgetError::Shape {
+                rule: "CdfBatchColumns holds every committed CdfColumn",
+            })?;
+            inputs.push(Input::Operand(slice));
+        }
+        let term_index = |t: CdfTerm| -> Result<usize, GadgetError> {
+            match t {
+                CdfTerm::RowSelector => Ok(1),
+                CdfTerm::Draw => Ok(2),
+                CdfTerm::Total => Ok(3),
+                CdfTerm::Below => Ok(4),
+                CdfTerm::Selected => Ok(5),
+                CdfTerm::Column(col) => constraints
+                    .committed
+                    .iter()
+                    .position(|&c| c == col)
+                    .map(|idx| 6 + idx)
+                    .ok_or(GadgetError::Shape {
+                        rule: "CdfRelation references a committed CdfColumn",
+                    }),
+            }
+        };
+
+        let mut out = Vec::with_capacity(constraints.equalities.len());
+        for eq in &constraints.equalities {
+            let mut combined: Vec<(Vec<usize>, B)> = Vec::new();
+            for &(coeff, ref factors) in &eq.terms {
+                let mut expanded: Vec<(B, Vec<usize>)> = vec![(coeff, Vec::new())];
+                for aff in factors {
+                    let mut next = Vec::new();
+                    for (w, mono) in expanded {
+                        if aff.constant != B::ZERO {
+                            next.push((w * aff.constant, mono.clone()));
+                        }
+                        for &(tc, term) in &aff.terms {
+                            if tc != B::ZERO {
+                                let idx = term_index(term)?;
+                                let mut m = mono.clone();
+                                m.push(idx);
+                                m.sort_unstable();
+                                next.push((w * tc, m));
+                            }
+                        }
+                    }
+                    expanded = next;
+                }
+                for (w, mono) in expanded {
+                    let key = if mono.is_empty() { vec![0] } else { mono };
+                    if let Some((_, acc)) = combined.iter_mut().find(|(k, _)| *k == key) {
+                        *acc += w;
+                    } else {
+                        combined.push((key, w));
+                    }
+                }
+            }
+            let terms: Vec<tessera_sumcheck::Term<F>> = combined
+                .into_iter()
+                .filter(|&(_, w)| w != B::ZERO)
+                .map(|(factors, w)| tessera_sumcheck::Term::new(F::from(w), factors))
+                .collect();
+            out.push(Elementwise::new(shape, inputs.clone(), terms).map_err(relation)?);
+        }
+        Ok(out)
+    }
+
+    fn check_batch_columns(
+        &self,
+        selector: &BatchedCdfSelector<B>,
+        draws: &[B],
+        evaluated: &BatchedCdfEvaluation<B>,
+        columns: &CdfBatchColumns<B>,
+        expected: &[CdfColumn],
+    ) -> Result<(), GadgetError> {
+        let rows = selector.padded_rows;
+        if draws.len() != rows
+            || evaluated.totals.len() != rows
+            || evaluated.belows.len() != rows
+            || evaluated.selecteds.len() != rows
+            || columns.columns.len() != expected.len()
+            || expected.iter().any(|&col| {
+                columns.columns.iter().filter(|(c, _)| *c == col).count() != 1
+                    || columns.column(col).is_none_or(|v| v.len() != rows)
+            })
+        {
+            return Err(GadgetError::Shape {
+                rule: "InverseCdf batch columns hold each committed CdfColumn once at padded_rows",
+            });
+        }
+        Ok(())
+    }
 }
 
 /// The integers of one row, in their boxes: derived values outside a buffer, cleared where they
@@ -761,6 +1163,89 @@ impl<B: Copy> fmt::Debug for CdfEvaluation<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CdfEvaluation")
             .field("len", &self.suffix.len())
+            .finish_non_exhaustive()
+    }
+}
+
+/// Public vocabulary selector and row selector over `padded_rows` rows for batched `InverseCdf`
+/// reductions and equalities.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BatchedCdfSelector<B> {
+    padded_rows: usize,
+    real_rows: usize,
+    valid: Vec<B>,
+    row_selector: Vec<B>,
+    ones: Vec<B>,
+}
+
+impl<B> BatchedCdfSelector<B> {
+    /// Padded row count `R = 2^{row_vars}`.
+    pub const fn padded_rows(&self) -> usize {
+        self.padded_rows
+    }
+
+    /// Active row count `real_rows ≤ padded_rows`.
+    pub const fn real_rows(&self) -> usize {
+        self.real_rows
+    }
+
+    /// Public row selector `ψ_t = [t < real_rows]`.
+    pub fn row_selector(&self) -> &[B] {
+        &self.row_selector
+    }
+}
+
+/// Column-major clearing storage of committed [`CdfColumn`]s across a power-of-two batch of rows.
+pub struct CdfBatchColumns<B: Copy> {
+    columns: Vec<(CdfColumn, SecretBuf<B>)>,
+}
+
+impl<B: Copy> CdfBatchColumns<B> {
+    /// Assemble from `(CdfColumn, SecretBuf<B>)` pairs in RFC-0058 order.
+    pub fn from_columns(columns: Vec<(CdfColumn, SecretBuf<B>)>) -> Self {
+        Self { columns }
+    }
+
+    /// Borrow one committed column's values across the batch; secret-class (OBS-1, OBS-6).
+    pub fn column(&self, column: CdfColumn) -> Option<&[B]> {
+        self.columns
+            .iter()
+            .find(|(c, _)| *c == column)
+            .map(|(_, vals)| &vals[..])
+    }
+
+    /// Ordered column tags held by this batch.
+    pub fn names(&self) -> impl Iterator<Item = CdfColumn> + '_ {
+        self.columns.iter().map(|&(c, _)| c)
+    }
+}
+
+impl<B: Copy> fmt::Debug for CdfBatchColumns<B> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map()
+            .entries(self.columns.iter().map(|(c, vals)| (c, vals.len())))
+            .finish()
+    }
+}
+
+/// Evaluated virtual suffixes and per-row sums `Z_t`, `B_t`, `S_t` for a batch of rows.
+#[must_use]
+pub struct BatchedCdfEvaluation<B: Copy> {
+    /// Flat row-major strict suffixes `L(t, v) = Σ_{w > v} ĥ(t, w)`.
+    pub suffix: SecretBuf<B>,
+    /// Per-row partitions `Z_t`.
+    pub totals: SecretBuf<B>,
+    /// Per-row prefixes `B_t`.
+    pub belows: SecretBuf<B>,
+    /// Per-row selected exponentials `S_t`.
+    pub selecteds: SecretBuf<B>,
+}
+
+impl<B: Copy> fmt::Debug for BatchedCdfEvaluation<B> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BatchedCdfEvaluation")
+            .field("rows", &self.totals.len())
+            .field("suffix", &self.suffix.len())
             .finish_non_exhaustive()
     }
 }

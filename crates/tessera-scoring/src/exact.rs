@@ -27,7 +27,7 @@ pub enum ScoringError {
     Gadget(GadgetError),
     /// The maximum certificate could not be allocated (`ERR-RES-MEMORY`).
     Memory,
-    /// The recorded token is not the lowest-index maximum.
+    /// The recorded token deviates from the exact predictor (`Argmax` or `InverseCdf`).
     ExactMismatch {
         /// The public request identifier.
         request: RequestId,

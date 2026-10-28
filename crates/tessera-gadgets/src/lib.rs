@@ -24,9 +24,11 @@
 //! - [`OneHot`] and [`Argmax`]: the token indicator and lowest-index greedy certificate
 //!   (RFC-0009 Lemmas 8–9), with sumcheck relations and a public suffix kernel. Argmax
 //!   borrows the next token's existing indicator (teacher forcing).
-//! - [`InverseCdf`]: the temperature-sampling certificate (RFC-0009 Lemma 10) in RFC-0058's
-//!   columns: three vocabulary contractions, the radix-`2^16` limbs of the draw, the partition
-//!   and the prefix, and two exact comparisons, with a branch-free honest sampler.
+//! - [`VocabMax`] and [`InverseCdf`]: the vocabulary maximum/exponential certificate (RFC-0009
+//!   Lemma 5 without reciprocal, RFC-0017, RFC-0030) and the temperature-sampling certificate
+//!   (RFC-0009 Lemma 10) in RFC-0058's columns: three degree-3 vocabulary contractions, the
+//!   radix-`2^16` limbs of the draw, the partition and the prefix, and two exact comparisons,
+//!   with a branch-free honest sampler.
 //!
 //! The scalar gadgets (`Requant` and `NonNeg`) give:
 //!
@@ -118,6 +120,7 @@ mod non_neg;
 mod requant;
 mod rsqrt;
 mod softmax;
+mod vocab;
 mod witness;
 
 pub use choice::{
@@ -128,8 +131,9 @@ pub use compare::{BigIntCompare, CompareColumn, CompareConstraints, CompareWitne
 pub use constraints::{Affine, Committed, Constraints, Lookup, Term, Virtual};
 pub use error::{Column, GadgetError};
 pub use inverse_cdf::{
-    CdfColumn, CdfConstraints, CdfEvaluation, CdfRelation, CdfRelations, CdfTerm, CdfWitness, Edge,
-    InverseCdf, SampledRelations,
+    BatchedCdfEvaluation, BatchedCdfSelector, CdfBatchColumns, CdfColumn, CdfConstraints,
+    CdfEvaluation, CdfRelation, CdfRelations, CdfTerm, CdfWitness, Edge, InverseCdf,
+    SampledRelations,
 };
 pub use lookups::{Group, Lookups, TableColumns};
 pub use non_neg::NonNeg;
@@ -140,5 +144,9 @@ pub use rsqrt::{
 pub use softmax::{
     Slack, SoftmaxColumn, SoftmaxConstraints, SoftmaxEvaluation, SoftmaxLookup, SoftmaxRelation,
     SoftmaxRow, SoftmaxTerm, SoftmaxValue, SoftmaxWitness,
+};
+pub use vocab::{
+    VocabColumn, VocabConstraints, VocabEvaluation, VocabMax, VocabRelation, VocabRelations,
+    VocabSelector, VocabTerm, VocabValue, VocabWitness,
 };
 pub use witness::Witness;

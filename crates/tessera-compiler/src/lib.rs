@@ -56,7 +56,11 @@ pub use report::{
     CommitmentReport, Growth, Holding, SCHEMA as REPORT_SCHEMA, StageTables, TableClass, TableUse,
     Tally, report, stage_count,
 };
-pub use runtime::{GreedyCertificate, RuntimePlan};
+pub use runtime::{
+    CdfAdviceColumn, GreedyCertificate, MAX_BATCH_TEMPERATURES, RuntimePlan,
+    TemperatureCertificate, TemperaturePlan, TemperatureRequestSpec, TemperatureTable,
+    cdf_columns_and_requests, vocab_exp_scale,
+};
 pub use schedule::{StageSchedule, derive_graph_schedule, derive_schedule};
 pub use select::{Gadget, Selection, select};
 

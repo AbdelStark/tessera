@@ -1066,13 +1066,21 @@ version = "0.1.0"
 dependencies = [
  "aes",
  "sha2",
+ "tessera-anchor",
  "tessera-codec",
  "tessera-compiler",
  "tessera-field",
  "tessera-gadgets",
+ "tessera-hash",
  "tessera-ir",
+ "tessera-logup",
  "tessera-poly",
+ "tessera-sumcheck",
  "tessera-tables",
+ "tessera-witness",
+ "tv-core",
+ "tv-field",
+ "tv-hash",
  "zeroize",
 ]
 
