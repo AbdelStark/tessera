@@ -216,7 +216,7 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
 }
 
 /// Proves a batch: reads the model, plan and weight state, then its request references
-/// and slotted tokens, and builds their `PublicStatement` with
+/// and concatenated tokens, and builds their `PublicStatement` with
 /// `manifest_digest`, proves it in the mode the flags give, and prints the `tessera.proof-run/1`
 /// receipt. `inputs` are the files besides those three that the output must not alias.
 ///

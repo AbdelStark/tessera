@@ -306,3 +306,28 @@ fn batched_runtime_registers_each_key_then_one_selected_union() {
         );
     }
 }
+
+#[test]
+fn outputless_one_token_requests_have_no_softmax_product_forest() {
+    let c = claims(8, 3);
+    let public = crate::validation::check_public(&c).unwrap();
+    let graph = crate::lowering::lower_batch(&public, &[1, 1]).unwrap();
+    let selected = crate::selection::derive(&graph, c.gadget_policy).unwrap();
+    let tables: Vec<_> = selected
+        .tables
+        .iter()
+        .map(|t| tv_tables::Table::generate(t.id, t.kind.clone()).unwrap())
+        .collect();
+    let runtime =
+        runtime::Plan::derive_batch(&graph, c.gadget_policy, &[(1, 0), (1, 0)], &tables).unwrap();
+    let plan = Plan::derive_runtime(&runtime).unwrap();
+    assert!(
+        plan.families
+            .iter()
+            .filter_map(|f| match f {
+                Family::Softmax { forest, .. } => Some(forest),
+                _ => None,
+            })
+            .all(Option::is_none)
+    );
+}

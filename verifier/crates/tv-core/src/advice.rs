@@ -125,6 +125,223 @@ impl Domain {
     }
 }
 
+// The allocation rule shared by the layout builder and its allocation-free preflight.
+fn group_extent(
+    previous: u64,
+    rows: u64,
+    columns: u32,
+    repeats: u64,
+    attention: bool,
+) -> Result<(u64, u64, u64), ClaimsError> {
+    let base = aligned(previous, rows)?;
+    let size = if attention {
+        add(rows, u64::from(columns.saturating_sub(1)))?
+    } else {
+        mul(rows, u64::from(columns))?
+    };
+    let stride = aligned(size, rows)?;
+    let end = add(add(base, mul(repeats.saturating_sub(1), stride)?)?, size)?;
+    if end > MAX_ROWS {
+        return Err(invalid());
+    }
+    Ok((base, stride, end))
+}
+
+#[derive(Debug)]
+struct RowGroup {
+    dims: [u64; 4],
+    rank: usize,
+    columns: u32,
+    attention: bool,
+}
+#[derive(Debug)]
+struct RowTable {
+    rows: u64,
+    used: bool,
+    greedy: bool,
+}
+
+/// Compact claim-validation metadata for RFC-0071's allocation-free batch row check.
+#[derive(Debug)]
+pub(crate) struct BatchRows {
+    groups: Vec<RowGroup>,
+    tables: Vec<RowTable>,
+    config: Config,
+    greedy_width: Option<u8>,
+    greedy_gadget: GadgetId,
+    max_context: u32,
+}
+impl BatchRows {
+    pub(crate) fn derive(
+        layout: &Layout<'_>,
+        max_context: u32,
+        max_log2_rows: u8,
+    ) -> Result<Self, ClaimsError> {
+        let selection = layout.selection;
+        let graph = layout.graph;
+        let mut groups = Vec::new();
+        groups
+            .try_reserve_exact(layout.groups.len())
+            .map_err(|_| ClaimsError::Memory)?;
+        for group in &layout.groups {
+            if matches!(group.key, TileKey::Table(_)) {
+                continue;
+            }
+            groups.push(RowGroup {
+                dims: group.domain.dims,
+                rank: usize::from(group.domain.rank),
+                columns: group.columns,
+                attention: group.query.is_some(),
+            });
+        }
+        let logits = *graph
+            .nodes()
+            .last()
+            .and_then(|n| n.outputs().first())
+            .ok_or(ClaimsError::Internal)?;
+        let greedy_width = selection
+            .ranges
+            .get(usize::try_from(logits.0).map_err(|_| ClaimsError::Internal)?)
+            .and_then(crate::ranges::Interval::bounds)
+            .and_then(|(lo, hi)| crate::gadgets::greedy::range_bits(lo, hi))
+            .filter(|&width| width <= max_log2_rows);
+        let mut tables = Vec::new();
+        tables
+            .try_reserve_exact(
+                selection
+                    .tables
+                    .len()
+                    .checked_add(1)
+                    .ok_or(ClaimsError::Memory)?,
+            )
+            .map_err(|_| ClaimsError::Memory)?;
+        let mut found = false;
+        for table in &selection.tables {
+            let greedy = greedy_width.is_some_and(|bits| table.kind == (TableKind::Range { bits }));
+            found |= greedy;
+            let rows = match &table.kind {
+                TableKind::Requant { b, r_by_class, .. }
+                | TableKind::Silu { b, r_by_class, .. } => mul(
+                    u64::try_from(r_by_class.len()).map_err(|_| ClaimsError::Internal)?,
+                    power(u32::from(*b))?,
+                )?,
+                _ => power(u32::from(table.log2_rows))?,
+            };
+            tables.push(RowTable {
+                rows,
+                greedy,
+                used: layout
+                    .groups
+                    .iter()
+                    .any(|g| g.key == TileKey::Table(table.id)),
+            });
+        }
+        if !found && let Some(width) = greedy_width {
+            tables.push(RowTable {
+                rows: power(u32::from(width))?,
+                used: false,
+                greedy: true,
+            });
+        }
+        Ok(Self {
+            groups,
+            tables,
+            config: layout.config,
+            greedy_width,
+            greedy_gadget: GadgetId(
+                u32::try_from(graph.nodes().len()).map_err(|_| ClaimsError::Internal)?,
+            ),
+            max_context,
+        })
+    }
+
+    pub(crate) fn count(
+        &self,
+        requests: &[crate::protocol::RequestRef],
+        protocol: crate::sumcheck::Protocol,
+    ) -> Result<u64, ClaimsError> {
+        if requests.is_empty() {
+            return Err(invalid());
+        }
+        let mut n_max = 0u32;
+        let mut has_outputs = false;
+        for request in requests {
+            let n = request
+                .prompt_len
+                .checked_add(request.output_len)
+                .ok_or_else(invalid)?;
+            if request.prompt_len == 0 || n > self.max_context {
+                return Err(invalid());
+            }
+            n_max = n_max.max(n);
+            has_outputs |= request.output_len > 0;
+        }
+        if has_outputs && self.greedy_width.is_none() {
+            return Err(ClaimsError::StatementMismatch {
+                field: StatementField::Gadget {
+                    gadget: self.greedy_gadget,
+                },
+            });
+        }
+        let mut slot_bits = log(u64::from(n_max));
+        if requests.len() >= 2 && protocol == crate::sumcheck::Protocol::Two {
+            slot_bits = slot_bits.max(2);
+        }
+        let slot_len = power(slot_bits)?;
+        let count = u64::try_from(requests.len()).map_err(|_| invalid())?;
+        let token_len = if requests.len() == 1 {
+            u64::from(n_max)
+        } else {
+            mul(count, slot_len)?
+        };
+        // Graph token axes are u32 and their padded cube is representable by u32 (RFC-0071).
+        let padded = power(log(token_len))?;
+        if token_len > u64::from(u32::MAX) || padded > u64::from(u32::MAX) {
+            return Err(invalid());
+        }
+        let query = slot_len.min(u64::from(self.config.query_block));
+        let blocks = padded.checked_div(query).ok_or_else(invalid)?;
+        let head_group = self
+            .config
+            .heads
+            .checked_div(self.config.kv_heads)
+            .ok_or_else(invalid)?;
+        let mut rows = 0;
+        for group in &self.groups {
+            let mut dims = group.dims;
+            let (domain, repeats) = if group.attention {
+                (
+                    Domain::new(&[u64::from(head_group), query, slot_len], self.config.log_k)?,
+                    mul(u64::from(self.config.kv_heads), blocks)?,
+                )
+            } else {
+                *dims.first_mut().ok_or(ClaimsError::Internal)? = token_len;
+                (
+                    Domain::new(
+                        dims.get(..group.rank).ok_or(ClaimsError::Internal)?,
+                        self.config.log_k,
+                    )?,
+                    1,
+                )
+            };
+            rows = group_extent(rows, domain.rows, group.columns, repeats, group.attention)?.2;
+        }
+        // Per-request keys are virtual lookup columns. Only one maximum and the physical
+        // Range multiplicity domain allocate advice rows (RFC-0053, RFC-0071).
+        if has_outputs {
+            let domain = Domain::new(&[token_len], self.config.log_k)?;
+            rows = group_extent(rows, domain.rows, 1, 1, false)?.2;
+        }
+        for table in &self.tables {
+            if table.used || (has_outputs && table.greedy) {
+                let domain = Domain::new(&[table.rows], self.config.log_k)?;
+                rows = group_extent(rows, domain.rows, 1, 1, false)?.2;
+            }
+        }
+        Ok(rows)
+    }
+}
+
 /// The two comparisons of RFC-0050's root bracket, in allocation order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Comparison {
@@ -703,17 +920,8 @@ impl<'a> Layout<'a> {
         } else {
             None
         };
-        let base = aligned(self.rows, domain.rows)?;
-        let size = if query.is_some() {
-            add(domain.rows, u64::from(columns.saturating_sub(1)))?
-        } else {
-            mul(domain.rows, u64::from(columns))?
-        };
-        let stride = aligned(size, domain.rows)?;
-        let end = add(add(base, mul(repeats.saturating_sub(1), stride)?)?, size)?;
-        if end > MAX_ROWS {
-            return Err(invalid());
-        }
+        let (base, stride, end) =
+            group_extent(self.rows, domain.rows, columns, repeats, query.is_some())?;
         self.groups.push(Group {
             key,
             segment,
@@ -1651,5 +1859,54 @@ mod tests {
             Err(invalid())
         );
         assert_eq!(layout.rows(), 0);
+    }
+}
+
+#[cfg(test)]
+mod batch_count_tests {
+    use super::*;
+    #[test]
+    fn batch_preflight_keeps_the_inclusive_allocated_row_ceiling() {
+        let template = BatchRows {
+            groups: vec![RowGroup {
+                dims: [1, MAX_ROWS / 2, 0, 0],
+                rank: 2,
+                columns: 1,
+                attention: false,
+            }],
+            tables: vec![],
+            config: Config {
+                log_k: 0,
+                segments: 1,
+                query_block: 1,
+                heads: 1,
+                kv_heads: 1,
+                limb_bits: 8,
+            },
+            greedy_width: Some(1),
+            greedy_gadget: GadgetId(0),
+            max_context: 4,
+        };
+        let mut request = crate::protocol::RequestRef {
+            request_id: 0,
+            session_id: [0; 16],
+            prompt_len: 2,
+            output_len: 0,
+        };
+        assert_eq!(
+            template.count(
+                core::slice::from_ref(&request),
+                crate::sumcheck::Protocol::One
+            ),
+            Ok(MAX_ROWS)
+        );
+        request.prompt_len = 3; // Rounding time to four doubles the allocation beyond the ceiling.
+        assert_eq!(
+            template.count(
+                core::slice::from_ref(&request),
+                crate::sumcheck::Protocol::One
+            ),
+            Err(invalid())
+        );
     }
 }

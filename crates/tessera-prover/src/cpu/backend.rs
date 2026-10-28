@@ -341,7 +341,7 @@ impl<'a> CpuBackend<'a> {
         let (unit, plan) = Self::unit(prepared, batch)?;
         plan.check(prepared.cfg.memory_budget)?;
         let engine = Engine::new(&unit.lowering)?.threads(prepared.threads);
-        let witness = engine.run(prepared.model, &batch.tokens)?;
+        let witness = engine.run_batch(prepared.model, &batch.tokens)?;
         let source = unit.source(&engine, prepared.model, &witness)?;
         let advice =
             ModelAdviceLayout::runtime(&unit.lowering, &unit.runtime, &prepared.plan.claims)?;
@@ -702,7 +702,7 @@ impl CpuBackend<'_> {
         let witness = {
             let _pass = span!(DEBUG, "witness_pass", layer_tile = tile).entered();
             let started = Instant::now();
-            let witness = engine.run(self.prepared.model, &batch.tokens)?;
+            let witness = engine.run_batch(self.prepared.model, &batch.tokens)?;
             metrics::phase(metrics::Phase::Witness, started.elapsed());
             event!(
                 DEBUG,

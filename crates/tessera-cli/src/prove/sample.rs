@@ -37,7 +37,7 @@ use super::{ProveArgs, usage};
 use crate::audit::{self, Logs};
 use crate::{Input, io_error};
 
-/// The sampled requests and their slotted tokens, ready to prove.
+/// The sampled requests and their concatenated real tokens, ready to prove.
 pub(super) struct Sampled {
     /// Requests in statement order.
     pub(super) requests: Vec<protocol::RequestRef>,
@@ -47,7 +47,7 @@ pub(super) struct Sampled {
     pub(super) manifest_digest: [u8; 32],
     /// The parameter set the sample's policy names.
     pub(super) params: tessera_hash::ParamSetId,
-    /// Per-request prompt/output tokens in RFC-0071 slots.
+    /// Real prompt/output tokens concatenated in request order (RFC-0071).
     pub(super) tokens: Secret<Vec<u32>>,
     /// Every file read, which the proof must not overwrite.
     pub(super) inputs: Vec<PathBuf>,

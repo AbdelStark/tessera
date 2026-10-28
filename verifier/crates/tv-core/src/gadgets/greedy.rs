@@ -104,7 +104,7 @@ fn copy(point: &[Fp2]) -> Result<Vec<Fp2>, GadgetError> {
     Ok(v)
 }
 
-fn range_bits(lo: i128, hi: i128) -> Option<u8> {
+pub(crate) fn range_bits(lo: i128, hi: i128) -> Option<u8> {
     if lo > hi || lo <= -(1i128 << 28) || hi >= 1i128 << 28 {
         return None;
     }

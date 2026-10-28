@@ -195,9 +195,9 @@ impl SessionTranscript {
     /// unit (RFC-0071 'The slots').
     ///
     /// With one request, returns its [`Self::request_tokens`] when non-empty. With two or more
-    /// requests, requires `slot_len` to be a power of two and copies request `r`'s `n_r` tokens
-    /// (`1 ≤ n_r ≤ slot_len`) into `r · slot_len .. r · slot_len + n_r` of one pre-sized zeroed
-    /// buffer, leaving `0` on every padded slot row (05 §3 OBS-6).
+    /// requests, requires a power-of-two `slot_len` bounding every request length, and
+    /// concatenates their real tokens in one pre-sized clearing buffer. The prover inserts
+    /// the slot gaps (RFC-0071 'The tokens', 05 §3 OBS-6).
     #[allow(clippy::disallowed_methods)]
     pub fn batch_tokens(
         previous: Option<&VerifiedLog>,
@@ -216,16 +216,27 @@ impl SessionTranscript {
             return None;
         }
         let s = slot_len as usize;
-        let total = requests.len().checked_mul(s)?;
+        let total = requests
+            .iter()
+            .try_fold(0usize, |total, &(transcript, id)| {
+                let seq = transcript.request_tokens(previous, current, id)?;
+                let len = seq.expose_secret().len();
+                if len == 0 || len > s {
+                    return None;
+                }
+                total.checked_add(len)
+            })?;
         let mut packed = Secret::new(vec![0u32; total]);
         let dst = packed.expose_secret_mut();
-        for (r, &(transcript, request_id)) in requests.iter().enumerate() {
+        let mut offset = 0;
+        for &(transcript, request_id) in requests {
             let seq = transcript.request_tokens(previous, current, request_id)?;
             let src = seq.expose_secret();
             if src.is_empty() || src.len() > s {
                 return None;
             }
-            dst[r * s..r * s + src.len()].copy_from_slice(src);
+            dst[offset..offset + src.len()].copy_from_slice(src);
+            offset += src.len();
         }
         Some(packed)
     }
@@ -446,7 +457,7 @@ mod tests {
             Some(Vec::new())
         );
 
-        // Multi-request batch_tokens places each request into its S-aligned slot with zero padding.
+        // Multi-request input concatenates real sequences; the prover inserts slot padding.
         assert_eq!(
             read(SessionTranscript::batch_tokens(
                 Some(&previous),
@@ -454,7 +465,7 @@ mod tests {
                 8,
                 &[(&transcript, 5), (&transcript, 6)],
             )),
-            Some(vec![1, 2, 2, 6, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0])
+            Some(vec![1, 2, 2, 6, 0, 9])
         );
         // Single-request batch_tokens matches request_tokens without slot padding, and refuses 0 tokens.
         assert_eq!(

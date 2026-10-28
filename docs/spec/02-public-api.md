@@ -108,16 +108,15 @@ Both commands refuse `LOGS` with `audit sample`'s codes. A sample of another per
 - **The output.** A table, or with `--json` the `tessera.audit-plan/1` report ([schema](../../spec/schemas/audit-plan-v1.schema.json)), which `--out` writes too. It gives the detection against a prover that pads violations into a later bucket, the detection if none leaves its bucket, the amortized overhead and each bucket's rate for `--target-overhead`.
 - **Refusals.** A profile that is not one well-formed entry per bucket, or that has no request, exits 64.
 
-The v0.3 CPU reference path implements exact-greedy batches of one or more requests from an existing
-`TokenFile` (one sequence per request in batch order, each prompt followed by its recorded continuation;
-repeat or comma-delimit `--prompt-len`, `--request-id` and `--request-session` for several requests):
+The v0.3 CPU reference-token path implements one exact-greedy request from an existing
+`TokenFile` (one prompt followed by its recorded continuation). The sampled path above supports batches:
 
 ```text
 tessera compile --model MODEL.d --params PARAMSET --out-dir DIR
                 [--max-log2-rows 32] [--query-block 512]
 tessera prove --plan plan.tep --model MODEL.d --weights WEIGHTS.twc
-              --reference-tokens TOKENS.ttk --prompt-len N[,...] --request-id N[,...]
-              --request-session HEX[,...] --manifest-digest HEX
+              --reference-tokens TOKENS.ttk --prompt-len N --request-id N
+              --request-session HEX --manifest-digest HEX
               (--live DIR | --out PROOF.tnp) [--memory-budget GIB] [--json]
               [--timeout-ms N]  # Live only
 ```
@@ -144,8 +143,9 @@ tessera-verify verify --claims claims.tcl --weights-root ROOT --weights WEIGHTS.
                       [--max-memory-bytes N] [--timeout-ms N] [--run-manifest PATH]
 tessera-verify live --claims claims.tcl --weights-root ROOT --weights WEIGHTS.twr
                     --statement-digest HEX --bound BITS --connect DIR
-                    --request-id N[,...] --request-session HEX[,...] --prompt-len N[,...]
-                    --output-len N[,...] --manifest-digest HEX [--out VERDICT.json] [--json]
+                    (--requests SESSION:ID:PROMPT:OUTPUT,... |
+                     --request-id N --request-session HEX --prompt-len N --output-len N)
+                    --manifest-digest HEX [--out VERDICT.json] [--json]
                     [--max-artifact-bytes N] [--max-memory-bytes N] [--timeout-ms N]
 tessera-verify tables --claims claims.tcl [--json] [--max-table-rows N]
 tessera-verify params --params PARAMSET [--lookups N] [--table-rows T] [--json]

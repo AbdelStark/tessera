@@ -96,11 +96,8 @@ fn opening_row_scratch_is_budgeted_before_a_live_reveal() {
             + protocol::encoded_len(&EMPTY_ROUND3).unwrap();
         let allowance = (1u64 << (u32::from(claims.layout.advice.log2_k) + 1)) * 64;
         let coarse = frame_bytes * 8 + u64::from(claims.arch.n_layers) * (1 << 20) + allowance;
-        cfg.limits.max_memory_bytes = coarse
-            + 1
-            + size_of::<([u8; 16], u64)>() as u64
-            + size_of::<u32>() as u64
-            + size_of::<(u32, u32)>() as u64;
+        let certificate = size_of::<gadgets::runtime::Certificate>() as u64;
+        cfg.limits.max_memory_bytes = coarse + 1 + (12 + certificate).max(36);
         let share = |id| protocol::ProverSeedShare {
             session_id: id,
             share: [17; 32],
@@ -180,7 +177,13 @@ fn opening_row_scratch_is_budgeted_before_a_live_reveal() {
             .max()
             .unwrap();
         assert_eq!(advice > weights, large_advice);
-        let required = coarse + advice.max(weights).saturating_sub(allowance);
+        let metadata = size_of::<u32>() as u64
+            + if expected.batch.requests[0].output_len > 0 {
+                certificate
+            } else {
+                0
+            };
+        let required = coarse + advice.max(weights).saturating_sub(allowance) + metadata;
         assert!(required > cfg.limits.max_memory_bytes);
         // RFC-0031 descriptor from public geometry, never a supplied row count.
         let mut h = tv_hash::DomainHasher::new(tv_hash::Domain::CommitmentId);

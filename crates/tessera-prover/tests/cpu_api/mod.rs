@@ -769,6 +769,12 @@ fn public_cpu_api_proves_three_outputless_slots() {
     check_slotted_batch(&[(1, 0), (2, 0), (3, 0)]);
 }
 
+#[test]
+fn public_cpu_api_proves_one_token_requests_without_a_key_forest() {
+    check_slotted_batch(&[(1, 0), (1, 0)]);
+    check_slotted_batch(&[(1, 0), (1, 0), (1, 0)]);
+}
+
 fn check_slotted_batch(requests: &[(u32, u32)]) {
     let model = bounded_model();
     let (plan, mut batch, weights) = fixture(&model, 3, 1);
@@ -800,15 +806,6 @@ fn check_slotted_batch(requests: &[(u32, u32)]) {
             tokens[t] = row.iter().position(|x| x == max).unwrap() as u32;
         }
     }
-    let mut bad_tokens = tokens.clone();
-    let changed = requests
-        .iter()
-        .enumerate()
-        .rfind(|(_, (_, outputs))| *outputs > 0)
-        .map(|(r, &(p, o))| r * slot + (p + o - 1) as usize);
-    if let Some(at) = changed {
-        bad_tokens[at] = (bad_tokens[at] + 1) % model.arch.vocab;
-    }
     let gap_tokens = lengths
         .iter()
         .enumerate()
@@ -818,6 +815,22 @@ fn check_slotted_batch(requests: &[(u32, u32)]) {
             bad[r * slot + n as usize] = 1;
             bad
         });
+    let tokens: Vec<_> = lengths
+        .iter()
+        .enumerate()
+        .flat_map(|(r, &n)| tokens[r * slot..r * slot + n as usize].iter().copied())
+        .collect();
+    let mut bad_tokens = tokens.clone();
+    let changed = requests
+        .iter()
+        .enumerate()
+        .rfind(|(_, (_, outputs))| *outputs > 0)
+        .map(|(r, &(p, o))| {
+            lengths[..r].iter().map(|&n| n as usize).sum::<usize>() + (p + o - 1) as usize
+        });
+    if let Some(at) = changed {
+        bad_tokens[at] = (bad_tokens[at] + 1) % model.arch.vocab;
+    }
     batch.tokens = Secret::new(tokens);
     let (claims, statement, vcfg) = independent(&plan, &batch, &weights);
     let mut state = WeightCommitmentState::new(weights).unwrap();

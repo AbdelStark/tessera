@@ -303,7 +303,15 @@ impl<'p> Plan<'p> {
                     push(&mut families, Family::Root(gadgets.root_stack(node)?))?
                 }
                 Op::SoftmaxRow { .. } => {
-                    let forest = if graph.length() > 1 {
+                    let scores = *graph
+                        .node(node)
+                        .and_then(|n| n.inputs().first())
+                        .ok_or_else(internal)?;
+                    let key_bits = graph.attention_key_bits(scores).unwrap_or_else(|| {
+                        u32::BITS
+                            .saturating_sub(graph.key_length().saturating_sub(1).leading_zeros())
+                    });
+                    let forest = if key_bits > 0 {
                         Some(forest_trees.next().ok_or_else(internal)?)
                     } else {
                         None

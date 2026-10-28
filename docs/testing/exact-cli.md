@@ -66,8 +66,8 @@ and request metadata **before** either proof is used. The producer's
 [`tessera.proof-run/1`](../../spec/schemas/proof-run-v1.schema.json) receipt is
 informational and cannot supply an independent trust pin.
 
-The reference path handles exact-greedy batches of one or more requests on CPU
-and is non-hiding protocol/1. It provides directory exchange; authenticated TLS (#181), anchors
+The reference-token path handles one exact-greedy request; the sampled path handles
+batches on CPU. Both use non-hiding protocol/1. It provides directory exchange; authenticated TLS (#181), anchors
 and ledger integration (#137/#163), complete resource hardening (#182), GPU
 and zero knowledge remain separate work.
 

@@ -830,6 +830,10 @@ fn verify_unit_tracked(
     if requests.is_empty() || (requests.len() >= 2 && !exact_greedy) {
         return Err(mismatch(F::Batch));
     }
+    validated.batch_advice_rows(requests).map_err(|e| match e {
+        validation::ClaimsError::StatementMismatch { field: F::Layout } => mismatch(F::Batch),
+        other => claims_error(other),
+    })?;
     // RFC-0071 / SP-8: bound metadata before reserving it; sort public keys instead of
     // scanning every earlier request. Slot order remains the statement's order.
     let metadata_bytes = requests
@@ -841,8 +845,23 @@ fn verify_unit_tracked(
         )
         .and_then(|n| u64::try_from(n).ok())
         .ok_or_else(memory)?;
+    let output_requests = requests.iter().filter(|r| r.output_len > 0).count();
+    let runtime_metadata_bytes = requests
+        .len()
+        .checked_mul(size_of::<u32>())
+        .and_then(|n| {
+            n.checked_add(output_requests.checked_mul(size_of::<gadgets::runtime::Certificate>())?)
+        })
+        .and_then(|n| u64::try_from(n).ok())
+        .ok_or_else(memory)?;
+    let runtime_build_metadata_bytes = requests
+        .len()
+        .checked_mul(size_of::<(u32, u32)>())
+        .and_then(|n| u64::try_from(n).ok())
+        .and_then(|n| n.checked_add(runtime_metadata_bytes))
+        .ok_or_else(memory)?;
     if memory_estimate
-        .checked_add(metadata_bytes)
+        .checked_add(metadata_bytes.max(runtime_build_metadata_bytes))
         .is_none_or(|n| n > cfg.limits.max_memory_bytes)
     {
         return Err(memory());
@@ -908,6 +927,7 @@ fn verify_unit_tracked(
         crate::lowering::LowerError::Length { .. } => mismatch(F::Batch),
         _ => internal(),
     })?;
+    drop(lengths); // The graph owns its slot lengths.
     let runtime = gadgets::runtime::Plan::derive_batch(
         &graph,
         claims.gadget_policy,
@@ -915,6 +935,7 @@ fn verify_unit_tracked(
         validated.tables(),
     )
     .map_err(claims_error)?;
+    drop(request_lengths); // Runtime retains certificates, not the input pairs.
     let layout = runtime
         .advice_layout(advice::Config::new(
             &claims.arch,
@@ -968,6 +989,7 @@ fn verify_unit_tracked(
         .saturating_sub(codeword_allowance);
     if memory_estimate
         .checked_add(extra)
+        .and_then(|n| n.checked_add(runtime_metadata_bytes))
         .is_none_or(|n| n > cfg.limits.max_memory_bytes)
     {
         return Err(memory());

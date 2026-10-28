@@ -179,11 +179,38 @@ impl<'a> Engine<'a> {
         model: &IntegerModel,
         tokens: &Secret<Vec<u32>>,
     ) -> Result<Witness, WitnessError> {
+        self.run_tokens(model, tokens, false)
+    }
+
+    /// Evaluate concatenated request sequences, inserting zero slot gaps inside the reader
+    /// (RFC-0071 'The tokens'). Singleton inputs match [`Self::run`].
+    ///
+    /// # Errors
+    /// As [`Self::run`], with `Usage` when the token count differs from the sum of real lengths.
+    pub fn run_batch(
+        &self,
+        model: &IntegerModel,
+        tokens: &Secret<Vec<u32>>,
+    ) -> Result<Witness, WitnessError> {
+        self.run_tokens(model, tokens, true)
+    }
+
+    fn run_tokens(
+        &self,
+        model: &IntegerModel,
+        tokens: &Secret<Vec<u32>>,
+        concatenated: bool,
+    ) -> Result<Witness, WitnessError> {
         let lowering = self.require_lowering()?;
         let mut values: Vec<Option<SecretBuf<i64>>> =
             (0..self.graph.tensors.len()).map(|_| None).collect();
         for tensor in graph_inputs(lowering) {
-            let buffer = match self.graph_input(lowering, model, tokens, tensor)? {
+            let input = if concatenated && tensor == lowering.tokens {
+                Input::Values(self.token_input(lowering, model, tokens, true)?)
+            } else {
+                self.graph_input(lowering, model, tokens, tensor)?
+            };
+            let buffer = match input {
                 Input::Values(buffer) => buffer,
                 // The witness holds every tensor, the weights as `i64` among them.
                 Input::Weight(entries) => {
@@ -328,10 +355,48 @@ impl<'a> Engine<'a> {
         model: &IntegerModel,
         tokens: &Secret<Vec<u32>>,
     ) -> Result<SecretBuf<i64>, WitnessError> {
+        self.token_input(lowering, model, tokens, false)
+    }
+
+    fn token_input(
+        &self,
+        lowering: &Lowering,
+        model: &IntegerModel,
+        tokens: &Secret<Vec<u32>>,
+        concatenated: bool,
+    ) -> Result<SecretBuf<i64>, WitnessError> {
         let n = elements(&lowering.graph.tensors[lowering.positions.0 as usize].shape);
         // The prompt is secret-class: read here, into the token tensor's buffer.
         #[allow(clippy::disallowed_methods)]
         let ids = tokens.expose_secret();
+        if concatenated && let Some(slots) = &lowering.graph.slots {
+            let real = slots
+                .lengths
+                .iter()
+                .try_fold(0usize, |sum, &len| sum.checked_add(len as usize))
+                .ok_or(WitnessError::Memory {
+                    tensor: lowering.tokens,
+                })?;
+            if ids.len() != real || ids.iter().any(|&t| t >= model.arch.vocab) {
+                return Err(WitnessError::Usage {
+                    rule: "concatenated batch tokens match real request lengths and vocabulary",
+                });
+            }
+            let mut values = zeros(lowering.tokens, n)?;
+            let mut start = 0;
+            for (r, &len) in slots.lengths.iter().enumerate() {
+                let len = len as usize;
+                for (dst, &token) in values
+                    [r * slots.slot_len as usize..r * slots.slot_len as usize + len]
+                    .iter_mut()
+                    .zip(&ids[start..start + len])
+                {
+                    *dst = i64::from(token);
+                }
+                start += len;
+            }
+            return Ok(values);
+        }
         if ids.len() != n {
             return Err(WitnessError::Usage {
                 rule: "the sequence has as many tokens as the lowering's positions",

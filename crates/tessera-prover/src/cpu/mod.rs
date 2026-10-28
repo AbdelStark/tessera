@@ -83,13 +83,12 @@ pub struct ProverConfig {
 
 /// One caller-owned exact-greedy batch. Tokens never enter Debug or errors.
 ///
-/// The tokens include each prompt and recorded continuation. Multiple requests occupy
-/// RFC-0071 slots of width `next_power_of_two(max(prompt_len + output_len))`,
-/// with zero tokens between each request end and the next slot.
+/// The tokens concatenate each prompt and recorded continuation in request order.
+/// The backend inserts RFC-0071's zero slot gaps; callers supply only real tokens.
 pub struct ProofBatch {
     /// Public expected statement, including the committed epoch and request lengths.
     pub statement: protocol::PublicStatement,
-    /// Prompt followed by the recorded continuation in each request slot, with zero gap rows.
+    /// Each prompt followed by its recorded continuation, concatenated in request order.
     pub tokens: Secret<Vec<u32>>,
 }
 impl core::fmt::Debug for ProofBatch {

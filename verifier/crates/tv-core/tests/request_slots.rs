@@ -140,3 +140,76 @@ fn request_window_refuses_an_ordinal_outside_the_request_cube() {
         None,
     );
 }
+
+#[cfg(feature = "test-params")]
+#[test]
+fn allocation_free_batch_count_matches_runtime_layout_for_oracle_and_seeded_batches() {
+    use tv_core::{gadgets::runtime, lowering, protocol::RequestRef, validation};
+    use tv_testkit::SplitMix64;
+    let vectors = read_vectors("request-slots/slots.json");
+    for model in ["tiny-2-minimal.d", "tiny-4-servable.d"] {
+        let claims = claim_support::claims_of(model);
+        let validated = validation::validate(&claims).unwrap();
+        let mut cases: Vec<Vec<u32>> = list(&vectors, "lowering")
+            .iter()
+            .filter(|case| {
+                text(case, "model") == model && number::<u16>(member(case, "protocol")) == 1
+            })
+            .map(|case| list(case, "lengths").iter().map(number).collect())
+            .collect();
+        let mut rng = SplitMix64::new(0x551);
+        for count in 1..=3 {
+            for _ in 0..12 {
+                cases.push(
+                    (0..count)
+                        .map(|_| {
+                            1 + (rng.next_u64() % u64::from(claims.arch.max_context.min(16))) as u32
+                        })
+                        .collect(),
+                );
+            }
+        }
+        for lengths in cases {
+            for outputless in [false, true] {
+                let requests: Vec<_> = lengths
+                    .iter()
+                    .enumerate()
+                    .map(|(r, &length)| RequestRef {
+                        request_id: r as u64,
+                        session_id: [0; 16],
+                        prompt_len: if outputless { length } else { 1 },
+                        output_len: if outputless { 0 } else { length - 1 },
+                    })
+                    .collect();
+                let count = validated.batch_advice_rows(&requests).unwrap();
+                let graph =
+                    lowering::lower_batch(&validation::check_public(&claims).unwrap(), &lengths)
+                        .unwrap();
+                let pairs: Vec<_> = requests
+                    .iter()
+                    .map(|r| (r.prompt_len, r.output_len))
+                    .collect();
+                let runtime = runtime::Plan::derive_batch(
+                    &graph,
+                    claims.gadget_policy,
+                    &pairs,
+                    validated.tables(),
+                )
+                .unwrap();
+                let layout = runtime
+                    .advice_layout(tv_core::advice::Config::new(
+                        &claims.arch,
+                        claims.gadget_policy,
+                        claims.layout.advice.log2_k,
+                        claims.layout.advice.segments,
+                    ))
+                    .unwrap();
+                assert_eq!(
+                    count,
+                    layout.rows(),
+                    "{model}, lengths={lengths:?}, outputless={outputless}"
+                );
+            }
+        }
+    }
+}
