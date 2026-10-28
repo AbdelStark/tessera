@@ -26,8 +26,8 @@ enum State {
     },
     Done,
 }
-/// Verifier-owned Live session. Only on_round3 can return Accept; every failure is terminal
-/// except an out-of-order call, which leaves the current state unchanged (RFC-0036).
+/// Verifier-owned Live session. Only on_round3 can return Accept; every failure is terminal,
+/// including an unexpected message or session id (RFC-0036).
 /// No Debug/Clone implementation exposes the unrevealed coin-toss share.
 #[must_use = "complete Round3; seed/query messages are not proof acceptance"]
 pub struct LiveVerifier {
@@ -80,7 +80,7 @@ impl LiveVerifier {
     }
     /// Decode the next prover message under this session's original deadline.
     /// Reports the input check and consumes the session on malformed input or work expiry.
-    /// An out-of-order message type leaves the current state unchanged.
+    /// An unexpected message type ends the session with ProtocolOrder (RFC-0036).
     ///
     /// # Errors
     /// Protocol order/idle timeout, malformed input, memory failure, or operational Time.
@@ -181,9 +181,7 @@ impl LiveVerifier {
     }
     fn finish<T>(&mut self, tracker: &mut Tracker<'_>, result: Check<T>) -> Check<T> {
         let result = conclude_with_deadline(tracker, result, self.started, self.cfg.limits);
-        if result.as_ref().is_err_and(|error| {
-            !matches!(error, Failure::Inconclusive(e) if e.code == ErrorCode::ProtocolOrder)
-        }) {
+        if result.is_err() {
             self.state = State::Done;
         }
         result
@@ -622,7 +620,15 @@ mod tests {
                 code: ErrorCode::ProtocolOrder
             })
         ));
-        assert!(matches!(session.state, State::Committed { .. }));
+        assert!(matches!(session.state, State::Done));
+        let mut session = LiveVerifier::at(
+            session.claims.clone(),
+            session.statement.clone(),
+            session.cfg.clone(),
+            Phase::Round1 {
+                session_id: [0; 16],
+            },
+        );
         let expired = session
             .open_message_observed::<TimeProbe<0x0510>>(&[], &DecodeLimits::MESSAGE, &mut ())
             .unwrap_err();
@@ -667,26 +673,28 @@ mod tests {
     #[cfg(feature = "test-params")]
     #[test]
     fn live_decode_accounts_for_retained_bytes_before_any_parser_runs() {
-        let (claims, proof, mut cfg) = super::super::tests::fixture();
-        cfg.limits.max_memory_bytes = 39;
-        let mut session = LiveVerifier::at(
-            claims,
-            proof.round1.statement.clone(),
-            cfg,
-            Phase::Round1 {
-                session_id: [0; 16],
-            },
-        );
-        let refused = session
-            .open_message_observed::<TimeProbe<0x0510>>(&[0], &DecodeLimits::MESSAGE, &mut ())
-            .unwrap_err();
-        assert!(matches!(
-            refused,
-            Verdict::Inconclusive(VerifierError {
-                code: ErrorCode::Memory
-            })
-        ));
-        assert!(matches!(session.state, State::Done));
+        let (claims, proof, cfg) = super::super::tests::fixture();
+        for (budget, expected) in [(39, ErrorCode::Memory), (40, ErrorCode::Time)] {
+            let mut cfg = cfg.clone();
+            cfg.limits.max_memory_bytes = budget;
+            let mut session = LiveVerifier::at(
+                claims.clone(),
+                proof.round1.statement.clone(),
+                cfg,
+                Phase::Round1 {
+                    session_id: [0; 16],
+                },
+            );
+            // The parser's Time sentinel proves an exact-fit budget reaches decoding.
+            let refused = session
+                .open_message_observed::<TimeProbe<0x0510>>(&[0], &DecodeLimits::MESSAGE, &mut ())
+                .unwrap_err();
+            assert!(matches!(
+                refused,
+                Verdict::Inconclusive(VerifierError { code }) if code == expected
+            ));
+            assert!(matches!(session.state, State::Done));
+        }
     }
 
     #[cfg(feature = "test-params")]

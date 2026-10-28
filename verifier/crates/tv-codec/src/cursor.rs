@@ -73,13 +73,17 @@ impl<'a> Cursor<'a> {
     }
 
     /// Use the reader's absolute cooperative deadline (RFC-0019, SP-8).
+    /// A nested reader may shorten an existing deadline, never extend it.
     /// Subsequent reads/sequence steps poll at most every 4,096 operations; finishing
     /// always checks again. Expiry is `ERR-RES-TIME`, never an input fault.
     ///
     /// # Errors
     /// `Time` at the current offset if the deadline has already expired.
     pub fn set_deadline(&mut self, deadline: Instant) -> Result<(), DecodeError> {
-        self.deadline = Some(deadline);
+        self.deadline = Some(
+            self.deadline
+                .map_or(deadline, |current| current.min(deadline)),
+        );
         self.work_left = 0;
         self.check_time()
     }
@@ -326,10 +330,13 @@ impl<'a> Cursor<'a> {
         })
     }
 
-    /// `Ascii`, borrowed from the input: `Bytes` whose bytes are all in `0x20..=0x7E`; the first
-    /// byte outside is `ERR-CODEC-NONCANONICAL` at that byte.
-    pub fn ascii(&mut self) -> Result<&'a str, DecodeError> {
+    /// `Ascii`, built into an owned string in bounded chunks: `Bytes` whose bytes
+    /// are all in `0x20..=0x7E`; the first byte outside is noncanonical there.
+    /// Reserving the string is fallible. Chunked UTF-8 conversion avoids a second
+    /// whole-input scan that could run beyond a cooperative deadline (SP-8).
+    pub fn ascii(&mut self) -> Result<String, DecodeError> {
         self.nested(|c| {
+            let at = c.offset;
             let len = c.sequence_len(size::U8)?;
             let start = c.offset;
             let text = c.take_slice(len)?;
@@ -342,9 +349,18 @@ impl<'a> Cursor<'a> {
                     return Err(DecodeError::new(ErrorCode::Noncanonical, at));
                 }
             }
-            // Printable ASCII is UTF-8, so this cannot fail.
-            let value = core::str::from_utf8(text)
-                .map_err(|_| DecodeError::new(ErrorCode::Noncanonical, start))?;
+            c.check_time()?;
+            let mut value = String::new();
+            value
+                .try_reserve_exact(text.len())
+                .map_err(|_| DecodeError::new(ErrorCode::Memory, at))?;
+            for chunk in text.chunks(4096) {
+                c.check_time()?;
+                // Printable ASCII is UTF-8; each validation and copy is at most 4 KiB.
+                let part = core::str::from_utf8(chunk)
+                    .map_err(|_| DecodeError::new(ErrorCode::Noncanonical, start))?;
+                value.push_str(part);
+            }
             c.check_time()?;
             Ok(value)
         })
@@ -627,6 +643,15 @@ mod deadline_tests {
         let mut c = timed(&bytes, 3);
         assert_eq!(c.ascii().unwrap_err().code(), ErrorCode::Time);
         assert_eq!(CALLS.load(Ordering::SeqCst), 3);
+        bytes[8 + 4096] = b'A';
+        let plain = decode(&bytes, &DecodeLimits::MESSAGE, Cursor::ascii).unwrap();
+        assert_eq!(plain.len(), 8192);
+        assert!(plain.bytes().all(|byte| byte == b'A'));
+        for stop in [5, 6, 7] {
+            let mut c = timed(&bytes, stop);
+            assert_eq!(c.ascii().unwrap_err().code(), ErrorCode::Time);
+            assert_eq!(CALLS.load(Ordering::SeqCst), stop);
+        }
         let mut bytes = (2u64).to_le_bytes().to_vec();
         for _ in 0..2 {
             bytes.extend(8192u64.to_le_bytes());
@@ -643,6 +668,14 @@ mod deadline_tests {
         let mut c = timed(&bytes, 3);
         assert_eq!(map(&mut c).unwrap_err().code(), ErrorCode::Time);
         assert_eq!(CALLS.load(Ordering::SeqCst), 3);
+    }
+    #[test]
+    fn a_nested_reader_cannot_extend_the_original_deadline() {
+        let _lock = LOCK.lock().unwrap();
+        let mut c = timed(&[1], 2);
+        let later = *BASE.get().unwrap() + Duration::from_secs(10);
+        assert_eq!(c.set_deadline(later), Ok(()));
+        assert_eq!(c.u8(), Err(DecodeError::new(ErrorCode::Time, 0)));
     }
     #[test]
     fn completion_checks_even_when_the_last_read_succeeded() {

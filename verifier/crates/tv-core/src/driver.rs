@@ -408,6 +408,9 @@ fn flat_rows(packet: &protocol::WeightCombinedRows) -> Check<Vec<opening::Combin
 /// input's fault is `Reject(Malformed)` under the message's own schema, any other the
 /// verifier's `Inconclusive`, as [`verify_non_interactive_bytes`] judges an `NiProof`.
 ///
+/// This stateless opener has no session work clock. Use
+/// [`LiveVerifier::open_message_observed`] to retain a Live session's deadline.
+///
 /// # Errors
 /// The verdict that ends the session.
 #[allow(
