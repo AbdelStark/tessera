@@ -296,7 +296,40 @@ impl Transcript {
     /// Absorbs a prover message, given as its TCE bytes `tce`, under `label`:
     /// `state = H("transcript-absorb", state ‖ Ascii(label) ‖ tce)`.
     pub fn absorb(&mut self, label: Ascii<'_>, tce: &[u8]) {
-        self.state = self.hash_with(Domain::TranscriptAbsorb, label, tce);
+        match self.absorb_with_cancel(label, tce, &mut || Ok::<(), core::convert::Infallible>(())) {
+            Ok(()) => {}
+            Err(never) => match never {},
+        }
+    }
+
+    /// Absorbs the same single message with cooperative cancellation (RFC-0019, SP-8).
+    /// Checks before work, before each 64 KiB label/message chunk and before committing
+    /// the new state. The counter is unchanged, including on cancellation (INV-FS-1..3).
+    ///
+    /// # Errors
+    /// Returns the callback's error unchanged. On error, state and counter are unchanged;
+    /// no challenge may depend on the unabsorbed message.
+    pub fn absorb_with_cancel<E>(
+        &mut self,
+        label: Ascii<'_>,
+        tce: &[u8],
+        check: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<(), E> {
+        check()?;
+        let mut hasher = DomainHasher::new(Domain::TranscriptAbsorb);
+        hasher.update(&self.state);
+        let length = u64::try_from(label.as_str().len()).unwrap_or(u64::MAX);
+        hasher.update(&length.to_le_bytes());
+        for bytes in [label.as_str().as_bytes(), tce] {
+            for block in bytes.chunks(65536) {
+                check()?;
+                hasher.update(block);
+            }
+        }
+        let state = hasher.finalize();
+        check()?;
+        self.state = state;
+        Ok(())
     }
 
     /// Squeezes 32 bytes under `label`:
@@ -443,6 +476,87 @@ mod tests {
             slot.copy_from_slice(&word.to_le_bytes());
         }
         out
+    }
+
+    fn started_transcript() -> Transcript {
+        let mut transcript = Transcript::new(&SessionContext {
+            protocol: Ascii::new("tessera-protocol/1").unwrap(),
+            mode: Mode::Live,
+            params: ParamSetId(Ascii::new("live-64/1").unwrap()),
+            statement_digest: [5; 32],
+            session_id: [7; 16],
+        });
+        transcript.squeeze(Ascii::new("before").unwrap());
+        transcript
+    }
+
+    #[test]
+    fn cancellable_absorption_preserves_framing_state_and_challenges() {
+        for label_len in [0usize, 1, 65535, 65536, 65537, 3 * 65536] {
+            let text = "x".repeat(label_len);
+            let label = Ascii::new(&text).unwrap();
+            for value_len in [0usize, 1, 65535, 65536, 65537, 3 * 65536] {
+                let value = vec![17; value_len];
+                let mut actual = started_transcript();
+                // The unchanged whole-input hash spells RFC-0004's framing independently
+                // of the chunked absorption method and its compatibility wrapper.
+                let mut expected = Transcript {
+                    state: actual.hash_with(Domain::TranscriptAbsorb, label, &value),
+                    counter: actual.counter,
+                };
+                let mut polls = 0;
+                actual
+                    .absorb_with_cancel(label, &value, &mut || {
+                        polls += 1;
+                        Ok::<(), u32>(())
+                    })
+                    .unwrap();
+                assert_eq!(
+                    polls,
+                    2 + label_len.div_ceil(65536) + value_len.div_ceil(65536)
+                );
+                assert_eq!(actual, expected);
+                let challenge = Ascii::new("after").unwrap();
+                assert_eq!(
+                    actual.challenge_fp2(challenge),
+                    expected.challenge_fp2(challenge)
+                );
+                assert_eq!(actual, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn absorption_cancellation_at_every_poll_is_atomic_and_preserves_the_error() {
+        for (label_len, value_len) in [(0usize, 0usize), (7, 3 * 65536), (3 * 65536, 7)] {
+            let text = "x".repeat(label_len);
+            let label = Ascii::new(&text).unwrap();
+            let value = vec![17; value_len];
+            let checks = 2 + label_len.div_ceil(65536) + value_len.div_ceil(65536);
+            for stop in 1..=checks {
+                let mut actual = started_transcript();
+                let before_state = actual.state;
+                let before_counter = actual.counter;
+                let mut polls = 0;
+                assert_eq!(
+                    actual.absorb_with_cancel(label, &value, &mut || {
+                        polls += 1;
+                        if polls == stop { Err(stop) } else { Ok(()) }
+                    }),
+                    Err(stop)
+                );
+                assert_eq!(polls, stop);
+                assert_eq!(actual.state, before_state);
+                assert_eq!(actual.counter, before_counter);
+
+                let expected = actual.hash_with(Domain::TranscriptAbsorb, label, &value);
+                actual
+                    .absorb_with_cancel(label, &value, &mut || Ok::<(), usize>(()))
+                    .unwrap();
+                assert_eq!(actual.state, expected);
+                assert_eq!(actual.counter, before_counter);
+            }
+        }
     }
 
     /// The selection rules on crafted squeezes: RFC-0004 'Testing Strategy' asks for words at or

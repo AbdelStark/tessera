@@ -313,14 +313,14 @@ impl LiveVerifier {
         };
         let round1_label = ascii("round1")?;
         let seed_label = ascii("seed")?;
-        // All fallible/header work is complete before declassifying the committed share.
+        // Fix the message and context before using the committed share to derive the toss.
         let mut h = DomainHasher::new(Domain::CoinToss);
         h.update(share.0.as_slice());
         h.update(&prover.share);
         let seed = h.finalize();
         let mut t = Transcript::new(&context);
-        t.absorb(round1_label, &first);
-        t.absorb(seed_label, &seed);
+        t.absorb_with_cancel(round1_label, &first, &mut || deadline(started, limits))?;
+        t.absorb_with_cancel(seed_label, &seed, &mut || deadline(started, limits))?;
         // The session budget also covers transcript work before the share is declassified.
         deadline(self.started.ok_or_else(internal)?, self.cfg.limits)?;
         let mut revealed = [0; 32];

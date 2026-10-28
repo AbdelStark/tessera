@@ -981,16 +981,19 @@ fn verify_unit_tracked(
         statement_digest,
         session_id: proof.round1.session_id,
     });
-    t.absorb(
+    t.absorb_with_cancel(
         ascii("round1")?,
         &protocol::encode_with_cancel(proof.round1, &mut cancel).map_err(codec)?,
-    );
+        &mut || deadline(started, cfg.limits),
+    )?;
     match session {
         Session::Ni { seed_nonce, .. } => {
             t = proof_of_work(t, &parameters, PowPhase::Seed, seed_nonce)?;
             let _seed = t.squeeze(ascii("seed")?);
         }
-        Session::Live { seed, .. } => t.absorb(ascii("seed")?, seed),
+        Session::Live { seed, .. } => {
+            t.absorb_with_cancel(ascii("seed")?, seed, &mut || deadline(started, cfg.limits))?
+        }
         Session::Initial => return Err(internal()),
     }
     let mut xi: [Vec<Fp2>; 10] = core::array::from_fn(|_| Vec::new());
@@ -1143,11 +1146,12 @@ fn verify_unit_tracked(
     let advice_evaluated = opening
         .check_evaluations(&proof.round2.advice_combined)
         .map_err(opening_error)?;
-    t.absorb(
+    t.absorb_with_cancel(
         ascii("pcs/advice/combined")?,
         &protocol::encode_with_cancel(proof.round2.advice_combined.as_slice(), &mut cancel)
             .map_err(codec)?,
-    );
+        &mut || deadline(started, cfg.limits),
+    )?;
     let mut rows: [Vec<opening::CombinedRow>; 10] = core::array::from_fn(|_| Vec::new());
     for packet in &proof.round2.weight_combined {
         let i = usize::from(packet.matrix);
@@ -1178,16 +1182,18 @@ fn verify_unit_tracked(
                 .find(|p| usize::from(p.matrix) == i)
                 .ok_or_else(internal)?;
             let label = weight_label(l.matrix(), "combined")?;
-            t.absorb(
+            t.absorb_with_cancel(
                 ascii(&label)?,
                 &protocol::encode_with_cancel(packet, &mut cancel).map_err(codec)?,
-            );
+                &mut || deadline(started, cfg.limits),
+            )?;
         }
     }
-    t.absorb(
+    t.absorb_with_cancel(
         ascii("scoring")?,
         &protocol::encode_with_cancel(&proof.round2.scoring, &mut cancel).map_err(codec)?,
-    );
+        &mut || deadline(started, cfg.limits),
+    )?;
     deadline(started, cfg.limits)?;
     tracker.enter(CheckKind::Queries);
     let generated = match session {
@@ -1244,10 +1250,11 @@ fn verify_unit_tracked(
         _ => generated.as_ref().ok_or_else(internal)?,
     };
     if mode == Mode::Live {
-        t.absorb(
+        t.absorb_with_cancel(
             ascii("queries")?,
             &protocol::encode_with_cancel(packet, &mut cancel).map_err(codec)?,
-        );
+            &mut || deadline(started, cfg.limits),
+        )?;
         if matches!(session, Session::Live { queries: None, .. }) {
             return Ok(Outcome::Queries(generated.ok_or_else(internal)?));
         }
