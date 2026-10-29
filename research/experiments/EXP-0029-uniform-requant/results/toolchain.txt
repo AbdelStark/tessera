@@ -1,0 +1,4 @@
+rustc 1.95.0 (59807616e 2026-04-14)
+ProductName:		macOS
+ProductVersion:		15.6.1
+BuildVersion:		24G90

@@ -1,0 +1,29 @@
+   Compiling tessera-codec-derive v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-codec-derive)
+   Compiling tessera-codec v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-codec)
+   Compiling tessera-field v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-field)
+   Compiling tessera-hash v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-hash)
+   Compiling tessera-poly v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-poly)
+   Compiling tessera-sumcheck v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-sumcheck)
+   Compiling tessera-tables v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-tables)
+   Compiling tessera-pcs v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-pcs)
+   Compiling tessera-ir v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-ir)
+   Compiling tessera-compiler v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-compiler)
+warning: missing documentation for a struct field
+   --> /var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-compiler/src/select.rs:141:5
+    |
+141 |     pub reads: BTreeMap<NodeId, Vec<TableId>>,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: requested on the command line with `-W missing-docs`
+
+   Compiling tessera-logup v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-logup)
+   Compiling tessera-protocol v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-protocol)
+   Compiling tessera-gadgets v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-gadgets)
+   Compiling tessera-witness v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-witness)
+   Compiling tessera-prover v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-prover)
+warning: `tessera-compiler` (lib) generated 1 warning
+   Compiling uniform-requant-layout-probe v0.0.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/research/experiments/EXP-0029-uniform-requant)
+    Finished `release` profile [optimized] target(s) in 2m 06s
+     Running `/Users/abdel/dev/tessera/target/release/uniform-requant-layout-probe tiny`
+mode=tiny B=32 baseline=exact-refusal candidate=layout-ok changed=2 split_values=1029
+E0 metadata adapter only; no witness, proof, verifier acceptance or canonical selection adoption

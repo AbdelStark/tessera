@@ -1,0 +1,43 @@
+{
+  "scope": "E0 scratch public metadata only; no production change or proof",
+  "base": "a407755bc2c03736466b0c1b45dae38c2fb2bcb5",
+  "scratch": "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl",
+  "leaf_source_sha256": {
+    "crates/tessera-prover/src/leaf/model.rs": "71567ce3858c8c2cb17fce538ec3974d0eddd3a413ab2399ecd0a2b8fcaef08c",
+    "crates/tessera-prover/src/leaf/layout.rs": "690ad2748ad9b994817492b755e8cdc6eeb8ba815a793a7253f1a02e318c5ff7"
+  },
+  "runs": [
+    {
+      "mode": "tiny",
+      "exit_code": 0,
+      "command": [
+        "cargo",
+        "run",
+        "--release",
+        "--offline",
+        "--locked",
+        "--manifest-path",
+        "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/research/experiments/EXP-0029-uniform-requant/Cargo.toml",
+        "--",
+        "tiny"
+      ]
+    },
+    {
+      "mode": "real",
+      "exit_code": 0,
+      "command": [
+        "cargo",
+        "run",
+        "--release",
+        "--offline",
+        "--locked",
+        "--manifest-path",
+        "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/research/experiments/EXP-0029-uniform-requant/Cargo.toml",
+        "--",
+        "real"
+      ]
+    }
+  ],
+  "leaf_sources_unchanged_after_execution": true,
+  "compiler_change": "visibility of Selection.reads only; no algorithm or check changed"
+}

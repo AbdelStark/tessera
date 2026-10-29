@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-mutants-3pfwmr91/run.py", line 348, in <module>
+    probes()
+    ~~~~~~^^
+  File "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-mutants-3pfwmr91/run.py", line 214, in probes
+    assert q is not None and valid(a, q), "middle-width"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: middle-width

@@ -1,0 +1,3 @@
+    Finished `release` profile [optimized] target(s) in 0.18s
+     Running `target/release/uniform-requant-layout-probe real`
+Error: Internal { rule: "model leaf sources and requests follow the canonical lowering and selection" }

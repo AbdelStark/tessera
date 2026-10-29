@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `planned` |
+| Status | `done: validated` |
 | Idea | [IDEA-0041](../../ideas/IDEA-0041-uniform-requant.md), issue #617 |
 | Evidence level | E0: exact public metadata, integer/field identities and finite cases |
 | Hardware | CPU execution; no timing threshold or GPU claim |
@@ -96,6 +96,10 @@ From repository root, after implementation:
 
 ```sh
 python3 -I research/experiments/EXP-0029-uniform-requant/run.py
+python3 -I research/experiments/EXP-0029-uniform-requant/run.py --mutations
+python3 -I research/experiments/EXP-0029-uniform-requant/audit.py
+python3 -I research/experiments/EXP-0029-uniform-requant/export_plans.py
+python3 -I research/experiments/EXP-0029-uniform-requant/probe.py
 python3 -I research/tools/check_kb.py
 cargo xtask lint
 ```
@@ -106,9 +110,56 @@ statistic and makes no GPU extrapolation.
 
 ## Results
 
-Not run. Planned; candidate code does not yet exist.
+All results here are **E0, primary, finite metadata/algebra observations** on
+Apple M1 Max, 64 GiB, macOS 15.6.1, Python 3.13.18 and rustc 1.95.0. No time or
+memory comparison is made.
+
+| Frozen gate | Observed result |
+|---|---|
+| Singleton profiles | 154,380; independent domain recount agrees |
+| Complete sites including random/explicit/real cases | 154,900 |
+| Admitted / refused | 109,568 / 45,332 |
+| Preserved already-uniform selections | 109,496 |
+| Distinct semantic plans checked | 41,919 |
+| Integer/Goldilocks field cases | 4,590,008 |
+| Independently perturbed committed auxiliaries rejected | 9,881,680 |
+| Meaningful physical source faults | 10/10 caught; control/restored pass with original source bytes |
+| Tiny canonical lowering baseline | exact original leaf-read refusal |
+| Tiny candidate, unchanged leaf guard | pass; two layers promoted, 1,029 split values |
+| Real public 1B lowering, B=30,31,32 baseline | exact original leaf-read refusal at each policy |
+| Real public 1B candidate, B=30,31,32 | pass at each policy; sixteen layers promoted, 6,895 split values |
+
+Raw records: [result.json](results/result.json), [audit.json](results/audit.json),
+[mutations.json](results/mutations.json), [layout receipt](results/layout-receipt.json),
+[tiny log](results/layout-tiny.log), [real log](results/layout-real.log) and
+[toolchain](results/toolchain.txt). The algebra digest is
+`faaaa77c59c2c7991b1c8ae0cc831cbf3da7164cdac2acaed4cef5a27edfe1c7`;
+it is identical across the initial, corrected-control and final formatted runs.
+
+The public claim fixture SHA-256 is
+`af7d31a9e853cde6fdf4e2a8a195e6d312ae3ae6fc2fdb2e8700cb963ab3d5aa`.
+No weights, tokens, activations or private calibration statistics are present.
+The original `LeafLayout::model` and `LeafLayout::new` source hashes agree before
+and after the scratch executions. Only read-cache visibility was changed in
+that scratch compiler; ordered ids were supplied alongside candidate gadgets.
+The initial scratch visibility change emitted a missing-doc warning; the
+reproduction script now documents that field, and a separate
+[release check](results/layout-warning-clean.log) passed without warnings.
+No production source changed.
+
+Initial implementation errors are retained: [control notes](results/initial-mutations/NOTES.md),
+[missing trait import](results/initial-probe-build.log), and the correct
+read-cache refusals in [tiny](results/initial-cache-tiny.log) and
+[real](results/initial-cache-real.log). These did not change a criterion or domain;
+the cache-method correction was committed at `2ff6ab9` before its implementation.
+The original registration was committed at `e56dda7` before candidate code.
 
 ## Analysis
+
+The candidate passes every frozen gate, including the unchanged full model leaf
+constructor at all required real public policies. The independent recount and
+source-restoration audit pass. This settles the frozen compatibility/finite
+integer experiment, not production soundness or a complete verifier.
 
 Only finite algebra/metadata coverage is reachable here. Full actual-model
 advice/weight layout, runtime budget, a soundness proof, independent verifier
@@ -116,7 +167,11 @@ implementation/review and certifying-parameter proof/verification remain owed.
 
 ## Verdict
 
-Pending: `planned`. No correctness or performance credit yet.
+`validated` within the frozen E0 scope. Common-family promotion resolves this
+public leaf-layout incompatibility without deleting its guard. IDEA-0041 is
+validated for the finite experiment; its security/count/integration obligations
+remain explicit and block automatic production or RFC acceptance. No complete
+proof, global G-4, formal hiding, runtime or GPU gain is credited.
 
 ## Follow-ups
 

@@ -1,0 +1,15 @@
+warning: missing documentation for a struct field
+   --> /var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-compiler/src/select.rs:141:5
+    |
+141 |     pub reads: BTreeMap<NodeId, Vec<TableId>>,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: requested on the command line with `-W missing-docs`
+
+warning: `tessera-compiler` (lib) generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `/Users/abdel/dev/tessera/target/release/uniform-requant-layout-probe real`
+mode=real B=30 baseline=exact-refusal candidate=layout-ok changed=16 split_values=6895
+mode=real B=31 baseline=exact-refusal candidate=layout-ok changed=16 split_values=6895
+mode=real B=32 baseline=exact-refusal candidate=layout-ok changed=16 split_values=6895
+E0 metadata adapter only; no witness, proof, verifier acceptance or canonical selection adoption

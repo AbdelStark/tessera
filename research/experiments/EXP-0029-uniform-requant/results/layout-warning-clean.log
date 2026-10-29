@@ -1,0 +1,20 @@
+    Checking libc v0.2.191
+    Checking blake3 v1.8.7
+    Checking getrandom v0.3.4
+    Checking getrandom v0.4.3
+    Checking tessera-codec v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-codec)
+    Checking tessera-field v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-field)
+    Checking tessera-hash v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-hash)
+    Checking tessera-poly v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-poly)
+    Checking tessera-tables v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-tables)
+    Checking tessera-sumcheck v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-sumcheck)
+    Checking tessera-pcs v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-pcs)
+    Checking tessera-logup v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-logup)
+    Checking tessera-ir v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-ir)
+    Checking tessera-compiler v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-compiler)
+    Checking tessera-protocol v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-protocol)
+    Checking tessera-gadgets v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-gadgets)
+    Checking tessera-witness v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-witness)
+    Checking tessera-prover v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/crates/tessera-prover)
+    Checking uniform-requant-layout-probe v0.0.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-layout-overlay-a8nc1jkl/research/experiments/EXP-0029-uniform-requant)
+    Finished `release` profile [optimized] target(s) in 20.70s

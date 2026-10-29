@@ -1,0 +1,479 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+"""Finite public-only experiment. Not a prover, verifier or accepted selection rule."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import itertools
+import json
+import platform
+import random
+import subprocess
+import sys
+import tempfile
+from dataclasses import asdict, dataclass
+from functools import cache
+from pathlib import Path
+
+P = (1 << 64) - (1 << 32) + 1
+FAULT = ""
+ROOT = Path(__file__).resolve().parent
+
+
+@dataclass(frozen=True)
+class Profile:
+    b: int
+    shifts: tuple[int, ...]
+    lo: int
+    hi: int
+    limit: int
+
+
+@dataclass(frozen=True)
+class Plan:
+    kind: str
+    b: int
+    s: int = 0
+    t: int = 0
+
+
+def limit(p):
+    return 32 if FAULT == "table-bound" else p.limit
+
+
+def split(p):
+    b = max(2, p.b)
+    c = (len(p.shifts) - 1).bit_length()
+    low = max(1, b + c - limit(p))
+    high = min(min(p.shifts) - (0 if FAULT == "rounding-bit" else 1), limit(p), b - 1)
+    if b > 62 or low > high:
+        return None
+    if FAULT != "packed-bound" and len(p.shifts) * (1 << b) >= P:
+        return None
+    return Plan("Split", b, min(max((b + c + 1) // 2, low), high))
+
+
+def wide(p, zero_low=False):
+    s = 0 if zero_low else min(min(p.shifts) - 1, limit(p))
+    t = max(p.shifts) - s + (max(abs(p.lo), abs(p.hi), 1) - 1).bit_length()
+    if FAULT == "middle-width":
+        t -= 1
+    b = max(p.b, s + t + 1)
+    if (b > 62 and FAULT != "key-bound") or t < 1:
+        return None
+    if t + 2 + (len(p.shifts) - 1).bit_length() > limit(p) or b - s - t + 1 > limit(p):
+        return None
+    return Plan("Wide", b, s, t)
+
+
+def baseline(p):
+    c = (len(p.shifts) - 1).bit_length()
+    if p.b + c <= p.limit:
+        return Plan("One", p.b)
+    got = split(p)
+    if got is not None:
+        return got
+    got = wide(p)
+    # The current rule never widens a key merely to give Wide a positive top.
+    return got if got is not None and got.b == p.b else None
+
+
+def signature(p, q):
+    return q.kind, q.s > 0 if q.kind == "Wide" else False, len(p.shifts) > 1
+
+
+def promote(ps):
+    if not ps:
+        return None
+    for p in ps:
+        if not (
+            1 <= p.b <= 62
+            and 1 <= p.limit <= 32
+            and 1 <= len(p.shifts) <= 4
+            and len(set(p.shifts)) == len(p.shifts)
+            and all(1 <= r <= 63 for r in p.shifts)
+            and -(1 << 31) <= p.lo < 0 <= p.hi < (1 << 31)
+        ):
+            return None
+    if len({len(p.shifts) > 1 for p in ps}) > 1 and FAULT != "class-presence":
+        return None
+    old = [baseline(p) for p in ps]
+    if FAULT == "per-layer":
+        return old if all(q is not None for q in old) else None
+    if (
+        all(q is not None for q in old)
+        and len({signature(p, q) for p, q in zip(ps, old)}) == 1
+    ):
+        return old
+    out = [split(p) for p in ps]
+    if all(q is not None for q in out):
+        return out
+    force_zero = any(min(p.shifts) == 1 for p in ps) and FAULT != "low-presence"
+    out = [wide(p, force_zero) for p in ps]
+    return out if all(q is not None for q in out) else None
+
+
+def valid(p, q):
+    """Independent public precondition audit; does not call the planner."""
+    if q is None or not p.b <= q.b <= 62:
+        return False
+    classes = len(p.shifts)
+    if q.kind == "One":
+        return classes * (1 << q.b) <= 1 << p.limit
+    if q.kind == "Split":
+        return (
+            0 < q.s < q.b
+            and q.s <= p.limit
+            and q.s < min(p.shifts)
+            and classes * (1 << q.b) < P
+            and classes * (1 << (q.b - q.s)) <= 1 << p.limit
+        )
+    if q.kind != "Wide":
+        return False
+    k = q.b - q.s - q.t
+    magnitude = max(-p.lo, p.hi, 1)
+    return (
+        0 <= q.s < min(p.shifts)
+        and 1 <= q.t
+        and 1 <= k
+        and q.s <= p.limit
+        and k + 1 <= p.limit
+        and classes * (1 << (q.t + 2)) <= 1 << p.limit
+        and q.t == max(p.shifts) - q.s + (magnitude - 1).bit_length()
+    )
+
+
+def oracle(z, r, lo, hi):
+    """Integer quotient/remainder rounding, independent of lookup key arithmetic."""
+    quotient, remainder = divmod(z, 2**r)
+    rounded = quotient + int(2 * remainder >= 2**r)
+    return min(hi, max(lo, rounded))
+
+
+def lookup(key, bits, shifts, lo, hi):
+    if not 0 <= key < len(shifts) * (1 << bits):
+        return None
+    c, offset = divmod(key, 1 << bits)
+    r = shifts[c]
+    return min(hi, max(lo, (offset - (1 << (bits - 1)) + (1 << (r - 1))) // (1 << r)))
+
+
+@cache
+def inv2(bits):
+    return pow(1 << bits, -1, P)
+
+
+def witness(p, q, z, c):
+    offset = z + (1 << (q.b - 1))
+    y = oracle(z, p.shifts[c], p.lo, p.hi)
+    if q.kind == "One":
+        return (y,)
+    low = offset % (1 << q.s)
+    if q.kind == "Split":
+        return low, y
+    mid = (offset >> q.s) % (1 << q.t)
+    h1 = (offset >> (q.s + q.t)) - (1 << (q.b - q.s - q.t - 1))
+    g = min(1, max(-2, h1))
+    return low, mid, g, y
+
+
+def accepts(p, q, z, c, aux):
+    """Literal modular lookup identities. Range predicates are separate lookups."""
+    offset = z + (1 << (q.b - 1)) + int(FAULT == "signed-offset")
+    if q.kind == "One":
+        return (
+            lookup((offset + (1 << q.b) * c) % P, q.b, p.shifts, p.lo, p.hi) == aux[0]
+        )
+    low = aux[0]
+    if FAULT != "low-range" and not 0 <= low < 1 << q.s:
+        return False
+    if q.kind == "Split":
+        key = ((offset - low) * inv2(q.s) + (1 << (q.b - q.s)) * c) % P
+        return (
+            lookup(key, q.b - q.s, tuple(r - q.s for r in p.shifts), p.lo, p.hi)
+            == aux[-1]
+        )
+    mid, g, y = aux[1:]
+    if not 0 <= mid < 1 << q.t:
+        return False
+    k = q.b - q.s - q.t
+    # z_off/2^(s+t)-mid/2^t, no centered decoding of a virtual field value.
+    top = ((offset - low) * inv2(q.s + q.t) - mid * inv2(q.t)) % P
+    if not 0 <= top < 1 << k:
+        return False
+    if lookup(2 * top % P, k + 1, (1,), -2, 1) != g:
+        return False
+    key = (mid + (1 << q.t) * g + (1 << (q.t + 1)) + (1 << (q.t + 2)) * c) % P
+    return lookup(key, q.t + 2, tuple(r - q.s for r in p.shifts), p.lo, p.hi) == y
+
+
+def probes():
+    a = Profile(39, (2,), -524288, 524287, 32)
+    b = Profile(39, (12,), -524288, 524287, 32)
+    got = promote([a, b])
+    assert (
+        got is not None and len({signature(p, q) for p, q in zip([a, b], got)}) == 1
+    ), "per-layer"
+    a = Profile(38, (1,), -128, 127, 32)
+    b = Profile(38, (12,), -128, 127, 32)
+    got = promote([a, b])
+    assert (
+        got is not None and len({signature(p, q) for p, q in zip([a, b], got)}) == 1
+    ), "low-presence"
+    a = Profile(62, (33, 34, 35, 36), -128, 127, 32)
+    assert split(a) is None, "packed-bound"
+    bad = Plan("Split", 62, 32)
+    # RFC-0009 Lemma 2's actual false-acceptance control, not just metadata.
+    assert accepts(a, bad, -(1 << 61), 0, (1, 127)), (
+        "known wrap attack must pass unchecked relations"
+    )
+    assert oracle(-(1 << 61), 33, -128, 127) == -128 and not valid(a, bad)
+    assert split(Profile(38, (6,), -128, 127, 32)) is None, "rounding-bit"
+    a = Profile(38, (20,), -128, 127, 32)
+    q = split(a)
+    assert q is not None
+    honest = witness(a, q, 0, 0)
+    assert not accepts(a, q, 0, 0, (1 << q.s, honest[-1])), "low-range"
+    assert accepts(a, q, 0, 0, honest), "signed-offset"
+    assert wide(Profile(63, (32,), -128, 127, 32)) is None, "key-bound"
+    a = Profile(38, (2,), -128, 127, 32)
+    q = wide(a)
+    assert q is not None and valid(a, q), "middle-width"
+    assert wide(Profile(38, (2,), -128, 127, 8)) is None, "table-bound"
+    assert (
+        promote([Profile(20, (8,), -128, 127, 32), Profile(20, (8, 9), -128, 127, 32)])
+        is None
+    ), "class-presence"
+
+
+def profiles():
+    for b, r, n, B, bounds in itertools.product(
+        range(1, 63),
+        range(1, 64),
+        range(1, 5),
+        (8, 16, 30, 31, 32),
+        ((-128, 127), (-1048575, 1048575)),
+    ):
+        if r + n - 1 <= 63:
+            yield Profile(b, tuple(range(r, r + n)), *bounds, B)
+    for b, rs, B, bounds in itertools.product(
+        range(1, 63),
+        ((1, 63), (1, 2, 62), (1, 2, 62, 63)),
+        (8, 16, 30, 31, 32),
+        ((-128, 127), (-1048575, 1048575)),
+    ):
+        yield Profile(b, rs, *bounds, B)
+
+
+def keys(p, q, rng):
+    lower, upper = -(1 << (p.b - 1)), (1 << (p.b - 1)) - 1
+    if p.b <= 8:
+        return range(lower, upper + 1)
+    values = {lower, upper, -1, 0, 1}
+    for width in (q.s, q.s + q.t):
+        if width:
+            values.update(
+                (
+                    -(1 << width) - 1,
+                    -(1 << width),
+                    -(1 << width) + 1,
+                    (1 << width) - 1,
+                    1 << width,
+                    (1 << width) + 1,
+                )
+            )
+    for r in p.shifts:
+        for y in (p.lo - 1, p.lo, -1, 0, 1, p.hi, p.hi + 1):
+            tie = y * (1 << r) - (1 << (r - 1))
+            values.update((tie - 1, tie, tie + 1))
+    values.update(rng.randrange(lower, upper + 1) for _ in range(8))
+    return sorted(z for z in values if lower <= z <= upper)
+
+
+def run():
+    probes()
+    rng = random.Random(617)
+    pool = list(profiles())
+    cases = [[p] for p in pool]
+    for _ in range(512):
+        p = rng.choice(pool)
+        compatible = [
+            Profile(x.b, x.shifts, p.lo, p.hi, p.limit)
+            for x in rng.sample(pool, rng.randrange(1, 5))
+        ]
+        cases.append([p, *compatible])
+    cases += [
+        [Profile(20, (8,), -128, 127, 32), Profile(38, (20,), -128, 127, 32)],
+        [Profile(20, (8,), -128, 127, 32), Profile(38, (1,), -128, 127, 32)],
+        [Profile(38, (1,), -128, 127, 32), Profile(38, (12,), -128, 127, 32)],
+        [
+            Profile(39, (2,), -524288, 524287, 32),
+            Profile(39, (12,), -524288, 524287, 32),
+        ],
+        [Profile(38, (1, 2), -128, 127, 32), Profile(38, (1, 2, 3), -128, 127, 32)],
+    ]
+    data = json.loads((ROOT / "real-1b-public-requants.json").read_text())
+    real = [x for x in data["rows"] if x["position"] == 56]
+    required = []
+    for B in (30, 31, 32):
+        ps = [Profile(x["b"], tuple(x["shifts"]), x["lo"], x["hi"], B) for x in real]
+        assert len({signature(p, baseline(p)) for p in ps}) > 1
+        qs = promote(ps)
+        assert qs is not None
+        required.append(
+            {
+                "limit": B,
+                "profiles": [asdict(p) for p in ps],
+                "plans": [asdict(q) for q in qs],
+            }
+        )
+        cases.append(ps)
+    bads = [
+        Profile(0, (8,), -128, 127, 32),
+        Profile(63, (8,), -128, 127, 32),
+        Profile(20, (0,), -128, 127, 32),
+        Profile(20, (64,), -128, 127, 32),
+        Profile(20, (), -128, 127, 32),
+        Profile(20, (8, 8), -128, 127, 32),
+        Profile(20, (8,), 1, 127, 32),
+        Profile(20, (8,), -128, 127, 33),
+    ]
+    for p in bads:
+        assert promote([p]) is None
+    totals = {
+        "singleton_profiles": len(pool),
+        "sites": len(cases),
+        "refused": 0,
+        "admitted": 0,
+        "unchanged": 0,
+        "checked_plans": 0,
+        "integer_field_cases": 0,
+        "auxiliary_attacks": 0,
+    }
+    seen = set()
+    digest = hashlib.sha256()
+    for ps in cases:
+        qs = promote(ps)
+        if qs is None:
+            totals["refused"] += 1
+            continue
+        totals["admitted"] += 1
+        assert all(valid(p, q) for p, q in zip(ps, qs)), (ps, qs)
+        assert len({signature(p, q) for p, q in zip(ps, qs)}) == 1, (ps, qs)
+        olds = [baseline(p) for p in ps]
+        if (
+            all(q is not None for q in olds)
+            and len({signature(p, q) for p, q in zip(ps, olds)}) == 1
+        ):
+            assert qs == olds
+            totals["unchanged"] += 1
+        for p, q in zip(ps, qs):
+            key = (p.b, p.shifts, p.lo, p.hi, q)
+            if key in seen:
+                continue
+            seen.add(key)
+            totals["checked_plans"] += 1
+            for z in keys(p, q, rng):
+                for c, r in enumerate(p.shifts):
+                    aux = witness(p, q, z, c)
+                    assert aux[-1] == oracle(z, r, p.lo, p.hi)
+                    assert accepts(p, q, z, c, aux), (p, q, z, c, aux)
+                    totals["integer_field_cases"] += 1
+                    digest.update(repr((p, q, z, c, aux)).encode())
+                    # Each committed auxiliary independently perturbed, including the output.
+                    for i in range(len(aux)):
+                        if q.kind == "Wide" and q.s == 0 and i == 0:
+                            continue  # no committed low column when s=0
+                        attack = list(aux)
+                        attack[i] += 1
+                        assert not accepts(p, q, z, c, attack), (
+                            p,
+                            q,
+                            z,
+                            c,
+                            aux,
+                            attack,
+                        )
+                        totals["auxiliary_attacks"] += 1
+    return {
+        "scope": "E0 finite algebra/metadata only; no proof or production adoption",
+        "environment": {"python": sys.version, "platform": platform.platform()},
+        "totals": totals,
+        "digest": digest.hexdigest(),
+        "required_real_sites": required,
+    }
+
+
+def mutations(out):
+    source = Path(__file__).read_text()
+    faults = (
+        "per-layer",
+        "low-presence",
+        "packed-bound",
+        "rounding-bit",
+        "low-range",
+        "signed-offset",
+        "key-bound",
+        "middle-width",
+        "table-bound",
+        "class-presence",
+    )
+    results = []
+    with tempfile.TemporaryDirectory(prefix="tessera-617-mutants-") as scratch:
+        for fault in ("", *faults, ""):
+            path = Path(scratch) / "run.py"
+            path.write_text(
+                source.replace('FAULT = ""', f"FAULT = {fault!r}", 1)
+                if fault
+                else source
+            )
+            result = subprocess.run(
+                [sys.executable, "-I", str(path), "--control"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            label = fault or ("restored" if results else "control")
+            (out / f"mutation-{label}.log").write_text(result.stdout + result.stderr)
+            if fault:
+                assert result.returncode != 0 and "AssertionError" in result.stderr, (
+                    fault,
+                    result,
+                )
+            else:
+                assert result.returncode == 0, result.stderr
+            results.append(
+                {
+                    "fault": label,
+                    "exit_code": result.returncode,
+                    "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                }
+            )
+    return results
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--control", action="store_true")
+    parser.add_argument("--mutations", action="store_true")
+    args = parser.parse_args()
+    if args.control:
+        probes()
+        print("public fault controls pass")
+    elif args.mutations:
+        output = ROOT / "results"
+        output.mkdir(exist_ok=True)
+        records = mutations(output)
+        (output / "mutations.json").write_text(json.dumps(records, indent=2) + "\n")
+        print("10/10 physical source faults caught; control/restored pass")
+    else:
+        result = run()
+        (ROOT / "results/result.json").write_text(json.dumps(result, indent=2) + "\n")
+        print(
+            json.dumps(
+                {k: v for k, v in result.items() if k != "required_real_sites"},
+                indent=2,
+            )
+        )

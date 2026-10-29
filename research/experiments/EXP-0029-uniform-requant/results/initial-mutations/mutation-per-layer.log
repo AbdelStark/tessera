@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-mutants-3pfwmr91/run.py", line 348, in <module>
+    probes()
+    ~~~~~~^^
+  File "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-mutants-3pfwmr91/run.py", line 193, in probes
+    assert got is not None and len({signature(p, q) for p, q in zip([a, b], got)}) == 1, "per-layer"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: per-layer

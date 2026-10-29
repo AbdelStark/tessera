@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `triaged` |
+| Status | `validated` |
 | Origin | [#617](https://github.com/AbdelStark/tessera/issues/617): real 1B public geometry and a two-layer synthetic reproduction |
 | Lever | Correctness/coverage of stacked leaf reads; `C_lin`, `K_lin`, table rows may increase |
 | Spec surfaces | RFC-0006 selection; RFC-0045 same reads; RFC-0050 auxiliary layout. Canonical table/advice changes require a superseding RFC before adoption. |
@@ -132,3 +132,14 @@ full proof resources and independent review remain separate.
 
 Self-triaged for a bounded experiment, not a sweep or independent review.
 Experiment: EXP-0029. Issue: #617. Ledger updated 2026-10-29.
+
+## Experiment result (2026-10-29)
+
+EXP-0029 is `done: validated` in its frozen E0 domain: 4,590,008 integer/field
+cases, 9,881,680 rejected auxiliary perturbations and ten physical faults caught
+with byte-identical no-op/restored sources. The unchanged production leaf code
+passes the candidate's tiny and all three real-public-1B policy cases after
+complete diagnostic metadata substitution. No production adoption or full
+proof follows. Security gate unknowns remain: next write/review the exact
+mechanism and complete count/budget obligations before RFC promotion, then
+independently implement only an accepted rule.

@@ -1,0 +1,41 @@
+     Locking 46 packages to latest Rust 1.95.0 compatible versions
+   Compiling find-msvc-tools v0.1.15
+   Compiling libc v0.2.191
+   Compiling cc v1.10.0
+   Compiling getrandom v0.3.4
+   Compiling getrandom v0.4.3
+   Compiling blake3 v1.8.7
+   Compiling tessera-codec v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-codec)
+   Compiling tessera-field v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-field)
+   Compiling tessera-hash v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-hash)
+   Compiling tessera-poly v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-poly)
+   Compiling tessera-tables v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-tables)
+   Compiling tessera-sumcheck v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-sumcheck)
+   Compiling tessera-pcs v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-pcs)
+   Compiling tessera-ir v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-ir)
+   Compiling tessera-compiler v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-compiler)
+   Compiling tessera-logup v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-logup)
+   Compiling tessera-protocol v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-protocol)
+   Compiling tessera-gadgets v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-gadgets)
+   Compiling tessera-witness v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-witness)
+   Compiling tessera-prover v0.1.0 (/Users/abdel/dev/tessera/crates/tessera-prover)
+   Compiling uniform-requant-layout-probe v0.0.0 (/Users/abdel/dev/tessera/research/experiments/EXP-0029-uniform-requant)
+error[E0599]: no method named `spec` found for struct `GeneratedTable` in the current scope
+  --> layout_probe.rs:25:27
+   |
+25 |     tables.push(generated.spec().clone());
+   |                           ^^^^ private field, not a method
+   |
+  ::: /Users/abdel/dev/tessera/crates/tessera-tables/src/table.rs:31:8
+   |
+31 |     fn spec(&self) -> &TableSpec;
+   |        ---- the method is available for `GeneratedTable` here
+   |
+   = help: items from traits can only be used if the trait is in scope
+help: trait `Table` which provides `spec` is implemented but not in scope; perhaps you want to import it
+   |
+ 5 + use tessera_tables::Table;
+   |
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `uniform-requant-layout-probe` (bin "uniform-requant-layout-probe") due to 1 previous error
