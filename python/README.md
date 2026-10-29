@@ -76,6 +76,10 @@ Servable logits use bounded CPU INT8 matmul tiles with INT32 partials widened be
 accumulation. The full trace, wide activations and unavailable kernels use the scalar route.
 See the [integer-tile measurements](../docs/perf/v0.2/reference-int8-tiles.md) for equivalence,
 memory bounds and the real-model proof attempt's current failure.
+Narrow attention score products also use bounded exact integer tiles, indexing strided and
+broadcast head tensors without materializing a converted batch. Full-trace scores and wide
+probability/value products retain int64 matmul. See the
+[attention measurements](../docs/perf/v0.2/attention-int8-tiles.md) for differential evidence and limits.
 
 On Metal-capable macOS hosts, the Python API accepts `device="mps"` for the BF16 reference
 and calibration. Statistics and reference logits copy to CPU in their source dtype before
