@@ -54,6 +54,38 @@ INDEX: dict[str, Any] = json.loads((MODELS / "models.json").read_text(encoding="
 TRACES: dict[str, Any] = json.loads((MODELS / "traces.json").read_text(encoding="utf-8"))
 
 
+@pytest.mark.parametrize("name", ["tiny-2-servable", "tiny-2-minimal"])
+def test_score_fallback_keeps_the_full_trace_and_probability_products(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    entry = next(e for e in INDEX["models"] if e["name"] == name)
+    model = load(entry)
+    sequence = tokens([i % model.arch.vocab for i in range(4)])
+
+    def forbidden(*args: Any) -> Any:
+        pytest.fail("the full trace must retain the int64 score oracle")
+
+    monkeypatch.setattr(reference_module, "try_bmm", forbidden)
+    expected = trace(model, sequence).logits.numpy().copy()
+    calls = 0
+
+    def unavailable(left: torch.Tensor, right: torch.Tensor) -> None:
+        nonlocal calls
+        calls += 1
+        assert left.shape[-1] == right.shape[-2] == model.arch.d_head
+        assert int(left.min()) >= -128
+        assert int(left.max()) <= 127
+        assert int(right.min()) >= -128
+        assert int(right.max()) <= 127
+        return None
+
+    monkeypatch.setattr(reference_module, "try_bmm", unavailable)
+    found = run_reference(model, sequence)
+    assert found.shape == expected.shape
+    assert found.tobytes() == expected.tobytes()
+    assert calls == model.arch.n_layers  # Only scores: wide Exp/value products stay unchanged.
+
+
 def test_logits_only_releases_each_attention_matrix_before_the_next_layer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
