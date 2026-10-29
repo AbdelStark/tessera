@@ -85,3 +85,12 @@ through `tessera recorder ref`, draws and batches its sample, proves the batch
 in NI and directory Live mode and checks `tessera-verify`'s verdicts, then the
 refusals of 02 §2.2. It reads `TESSERA_VERIFY_BIN` too, or builds the verifier
 into the same directory.
+
+## CPU API acceptance build
+
+`cargo test -p tessera-prover --features test-params --test model_leaf public_cpu_api_ --locked`
+enables the independent verifier dev-dependency's non-certifying test parameters.
+The required CI CPU API job runs this build, including complete one-layer NI/Live
+proofs. Ordinary builds retain the verifier's refusal of `test-small/1`; their
+conditional API checks alone are not acceptance evidence. The prover's `test-params`
+feature is forbidden in release builds (OBS-4, RFC-0001).

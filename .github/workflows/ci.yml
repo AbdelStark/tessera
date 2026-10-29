@@ -314,9 +314,31 @@ jobs:
       - name: Identical runs write identical manifests; every manifest follows its schema
         run: cargo test --locked -p tessera-cli --features test-rng --test run_manifest
 
+  cpu-api:
+    name: CPU API acceptance
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --component clippy --no-self-update
+          echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: cpu-api-test-params
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Check the independent verifier acceptance build
+        run: cargo clippy -p tessera-prover --features test-params --test model_leaf --locked -- -D warnings
+      - name: Accept complete NI and Live CPU proofs with non-certifying parameters
+        run: cargo test -p tessera-prover --features test-params --test model_leaf public_cpu_api_ --locked -- --test-threads=2
+
   test:
     name: test
-    needs: [scope, rust, fuzz, tamper, manifest]
+    needs: [scope, rust, fuzz, tamper, manifest, cpu-api]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 1
@@ -329,6 +351,7 @@ jobs:
           FUZZ: ${{ needs.fuzz.result }}
           TAMPER: ${{ needs.tamper.result }}
           MANIFEST: ${{ needs.manifest.result }}
+          CPU_API: ${{ needs.cpu-api.result }}
         run: |
           test "$SCOPE_RESULT" = success
           if [ "$CODE" = true ]; then
@@ -336,12 +359,14 @@ jobs:
             test "$FUZZ" = success
             test "$TAMPER" = success
             test "$MANIFEST" = success
+            test "$CPU_API" = success
           else
             test "$CODE" = false
             test "$RESULT" = skipped
             test "$FUZZ" = skipped
             test "$TAMPER" = skipped
             test "$MANIFEST" = skipped
+            test "$CPU_API" = skipped
           fi
 
   python:

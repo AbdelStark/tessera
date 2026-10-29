@@ -6,6 +6,9 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- An explicit test-only CPU API acceptance build and required CI job enable the independent verifier dev-dependency's non-certifying parameters; complete one-layer NI/Live proofs are checked without conditional skips (#598, OBS-4).
+
+- Preserve stacked weight, class and multiplier inputs for one-layer models with zero layer variables, so exported one-layer integer models compile and their reduction-stage claims agree with the independent verifier; retain shared-input and partial-sharing refusals (RFC-0037, [#598](https://github.com/AbdelStark/tessera/issues/598)).
 - Structured score rounds retain the slot-aware literal path for multi-request batches; the computed single-request representation does not establish batch memory savings (RFC-0056, RFC-0071, #461).
 
 - RFC-0056 native Softmax key and forest sumchecks from INT8 queries, folded key blocks and causal prefix sums, with clearing row tables after the key rounds; the literal prover remains an equivalence oracle. Batched sumchecks share identical relations and borrowed operand tables, including repeated norm sums and root coefficient products, while preserving every transcript message and original opening claim ([#461](https://github.com/AbdelStark/tessera/issues/461)).

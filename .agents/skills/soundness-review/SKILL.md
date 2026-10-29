@@ -33,6 +33,8 @@ Read the change twice: as a malicious prover (ADV-P) with a large grinding budge
 ## Schedule (RFC-0037, RFC-0072)
 - Every classification the schedule makes from the graph must be a total function of public data. That covers a scalar or per-channel constant, a public or committed tensor, a real or padded position, which tensor a check reads, and which lookups are non-zero at padding.
   - Each must hold at degenerate shapes, an axis of length 1 or `M = 1`, as the specification states.
+    At `L = 1`, zero layer coordinates do not erase a weight/class/multiplier input's layer
+    ownership; test shared public inputs and genuinely shared multi-layer inputs separately (#598).
   - Two readings that both fit give different instances, so the workspaces reject each other's honest proofs. A one-value constant read as per channel on a last axis of length 1 takes SHA-256's key commitment from 3,431 instances to 76,074 (RFC-0072 read 9).
 - A refusal is decidable from the graph alone, such as reachability from named inputs. It never rests on a derivation that another component can refuse: RFC-0054's token axis refuses `Bitwise`.
 - Two claims merge only when they read one sent value through one map. Merging equal claims across a stage leaves one of them unchecked (RFC-0072 read 2).

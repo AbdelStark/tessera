@@ -74,6 +74,13 @@ The lowering's checkpoints `c_0, …, c_L` are the residual stream after the emb
   - The outputs at position `p` form one stacked kind, `X_κ[ℓ, …]`.
   - The layer input `X_in[ℓ] = c_ℓ` is a stacked kind.
   - A weight type is stacked over its layers.
+    This also holds at `L = 1`: a graph input committed under the weight commitment (a
+    weight, class vector or multiplier vector) read by the template is its layer's parameter,
+    with zero layer variables. One distinct tensor id does not make that parameter shared.
+    Public inputs such as positions stay shared, and an input common to every layer when
+    `L > 1` stays shared; neither becomes a per-layer parameter by this one-layer rule.
+    A graph-input family that is neither shared by every layer nor distinct in every layer
+    is refused.
   - Prologue and epilogue tensors are kinds without a layer index.
   - **The last checkpoint.** A node outside the layers reads `c_L` as the last position's output at layer `L − 1`: that kind with the layer weights `[ℓ = L − 1]`, `Layers::One(L − 1)`. Every other tensor it reads is a kind without a layer index. So no other read outside the layers has the weights of one layer ([RFC-0069](RFC-0069-one-layer-claims.md)). The leaf stage's per-layer claims, `Layers::Each`, are the layers' own, which stage 1 stacks ('The layer point'; RFC-0068 in `tessera-protocol/2`).
 - **Layer variables.**
