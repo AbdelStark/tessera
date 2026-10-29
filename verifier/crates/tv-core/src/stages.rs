@@ -1197,9 +1197,23 @@ fn final_value(
             Relation::Rotate {
                 positions,
                 middle_vars,
+                slots,
             },
             &[x],
-        ) => Some(rotate_kernel(rope, *positions, *middle_vars, r, own)? * layer_factor * x),
+        ) => {
+            let kernel = match slots {
+                Some(s) => crate::selectors::rotate_kernel_slots(
+                    rope,
+                    usize::try_from(s.slot_bits()).ok()?,
+                    s.lengths(),
+                    *middle_vars,
+                    r,
+                    own,
+                )?,
+                None => rotate_kernel(rope, *positions, *middle_vars, r, own)?,
+            };
+            Some(kernel * layer_factor * x)
+        }
         (Relation::Booleanity, &[h]) => {
             Some(sumcheck::eq(&resolved.zero, point)? * h * (Fp2::ONE - h))
         }
@@ -1212,6 +1226,7 @@ fn final_value(
             Relation::OneHotCount {
                 vocab_vars,
                 positions,
+                slots,
             },
             &[h],
         ) => {
@@ -1222,10 +1237,15 @@ fn final_value(
                     .pow(u64::try_from(*vocab_vars).ok()?)
                     .inverse()?,
             );
-            Some(
-                sumcheck::eq(zero_rows, rows)?
-                    * (h - crate::selectors::lt(rows, u64::from(*positions))? * scale),
-            )
+            let psi = match slots {
+                Some(s) => crate::selectors::slot_selector(
+                    rows,
+                    usize::try_from(s.slot_bits()).ok()?,
+                    s.lengths(),
+                )?,
+                None => crate::selectors::lt(rows, u64::from(*positions))?,
+            };
+            Some(sumcheck::eq(zero_rows, rows)? * (h - psi * scale))
         }
         (Relation::OneHotIndex { vocab_vars }, &[h, token]) => {
             let rows = point.get(*vocab_vars..)?;
@@ -1455,7 +1475,7 @@ mod tests {
             // The split values are absorbed as TCE Vec<Fp2>.
             assert_eq!(
                 stub.ops[0],
-                Op::Absorb("stage/0/split".into(), tce(&leaf_splits))
+                Op::Absorb("stage/0/split".into(), tce(&leaf_splits).unwrap())
             );
         }
     }

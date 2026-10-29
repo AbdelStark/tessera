@@ -284,18 +284,6 @@ fn live_reveals_only_bound_round1_and_never_queries_invalid_round2() {
     let (c, s, mut p, cfg) = live_fixture();
     let mut live = tv_core::LiveVerifier::new(c, s, cfg);
     let commit = live.start().unwrap();
-    assert!(matches!(
-        live.start(),
-        Err(Verdict::Inconclusive(VerifierError {
-            code: ErrorCode::ProtocolOrder
-        }))
-    ));
-    assert!(matches!(
-        live.on_round2(&p.round2),
-        Err(Verdict::Inconclusive(VerifierError {
-            code: ErrorCode::ProtocolOrder
-        }))
-    ));
     p.round1.session_id = commit.session_id;
     let share = ProverSeedShare {
         session_id: commit.session_id,
@@ -304,18 +292,6 @@ fn live_reveals_only_bound_round1_and_never_queries_invalid_round2() {
     let reveal = live.on_round1(&p.round1, &share).unwrap();
     assert_eq!(reveal.session_id, commit.session_id);
     assert_eq!(hash(Domain::CoinCommit, &reveal.share), commit.commitment);
-    assert!(matches!(
-        live.on_round1(&p.round1, &share),
-        Err(Verdict::Inconclusive(VerifierError {
-            code: ErrorCode::ProtocolOrder
-        }))
-    ));
-    assert!(matches!(
-        live.on_round3(&p.round3),
-        Verdict::Inconclusive(VerifierError {
-            code: ErrorCode::ProtocolOrder
-        })
-    ));
     rejected(
         live.on_round2(&p.round2).unwrap_err(),
         R::Malformed {
@@ -330,6 +306,47 @@ fn live_reveals_only_bound_round1_and_never_queries_invalid_round2() {
         }))
     ));
 }
+#[cfg(unix)]
+#[test]
+fn unexpected_live_calls_terminate_before_a_later_valid_round_can_reveal() {
+    for bad in 0..4 {
+        let (c, s, mut proof, cfg) = live_fixture();
+        let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+        let commit = live.start().unwrap();
+        proof.round1.session_id = commit.session_id;
+        let share = ProverSeedShare {
+            session_id: commit.session_id,
+            share: [17; 32],
+        };
+        if bad == 3 {
+            live.on_round1(&proof.round1, &share).unwrap();
+        }
+        let error = match bad {
+            3 => live.on_round1(&proof.round1, &share).unwrap_err(),
+            0 => live.start().unwrap_err(),
+            1 => live.on_round2(&proof.round2).unwrap_err(),
+            _ => live.on_round3(&proof.round3),
+        };
+        inconclusive(error, ErrorCode::ProtocolOrder);
+        if bad == 3 {
+            inconclusive(
+                live.on_round2(&proof.round2).unwrap_err(),
+                ErrorCode::ProtocolOrder,
+            );
+            continue;
+        }
+        proof.round1.session_id = commit.session_id;
+        let share = ProverSeedShare {
+            session_id: commit.session_id,
+            share: [17; 32],
+        };
+        inconclusive(
+            live.on_round1(&proof.round1, &share).unwrap_err(),
+            ErrorCode::ProtocolOrder,
+        );
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn live_invalid_round1_is_terminal_and_timeout_reveals_nothing() {
@@ -783,7 +800,7 @@ fn observed_live_rounds_run_their_checks_per_message() {
     let (c, s, mut p, cfg) = live_fixture();
     let mut live = tv_core::LiveVerifier::new(c, s, cfg);
     let mut events = Vec::new();
-    let commit = live.start_observed(&mut events).unwrap();
+    live.start_observed(&mut events).unwrap();
     assert_eq!(
         events
             .iter()
@@ -791,13 +808,16 @@ fn observed_live_rounds_run_their_checks_per_message() {
             .collect::<Vec<_>>(),
         [(CheckKind::Params, CheckOutcome::Pass)]
     );
-    // Out of order: the session's state is step 1's, and the call changes nothing.
+    // RFC-0036: an unexpected message terminates at the input check.
     let mut events = Vec::new();
     inconclusive(
         live.on_round2_observed(&p.round2, &mut events).unwrap_err(),
         ErrorCode::ProtocolOrder,
     );
     assert_steps(&events, 1, CheckOutcome::Inconclusive);
+    let (c, s, _, cfg) = live_fixture();
+    let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+    let commit = live.start().unwrap();
     p.round1.session_id = commit.session_id;
     let share = ProverSeedShare {
         session_id: commit.session_id,

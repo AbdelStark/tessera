@@ -41,12 +41,14 @@ pub fn node(left: &Digest, right: &Digest) -> Digest {
 /// [`verify_multiproof`].
 ///
 /// `MissingSiblings`, `ExtraSiblings` and `RootMismatch` judge the proof: `Reject(MerklePath)` in
-/// RFC-0004 'Failure modes'. The others judge what the verifier passes in, the tree size from
+/// RFC-0004 'Failure modes'. Apart from `Cancelled`, the others judge the verifier's tree size from
 /// public data and the indices from the transcript, sorted and deduplicated: from a correct
 /// verifier they never come, and they mean a fault of the verifier (`ERR-INTERNAL`), not of the
-/// proof.
+/// proof. `Cancelled` is an operational deadline error (`ERR-RES-TIME`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MultiproofError {
+    /// Cooperative deadline expired (`ERR-RES-TIME`), not a proof rejection.
+    Cancelled,
     /// The number of leaves `n` is not a power of two; zero is not.
     TreeSize,
     /// No leaf is opened.
@@ -84,6 +86,7 @@ pub enum MultiproofError {
 impl fmt::Display for MultiproofError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            MultiproofError::Cancelled => f.write_str("multiproof verification cancelled"),
             MultiproofError::TreeSize => f.write_str("the tree size is not a power of two"),
             MultiproofError::NoLeaves => f.write_str("the multiproof opens no leaf"),
             MultiproofError::Unordered { position } => write!(
@@ -137,6 +140,29 @@ pub fn verify_multiproof(
     leaves: &[(u64, Digest)],
     siblings: &[Digest],
 ) -> Result<(), MultiproofError> {
+    verify_multiproof_with_cancel(root, n, leaves, siblings, || false)
+}
+
+/// [`verify_multiproof`] with a cooperative deadline (RFC-0019, SP-8).
+///
+/// Checks before work, at most every 4,096 validation/counting/climb steps, and
+/// before returning success. No allocation or partial authentication result escapes.
+///
+/// # Errors
+/// [`MultiproofError::Cancelled`] when `cancel` returns true; all other checks and
+/// their order are those of [`verify_multiproof`] when cancellation is disabled.
+pub fn verify_multiproof_with_cancel(
+    root: &Digest,
+    n: u64,
+    leaves: &[(u64, Digest)],
+    siblings: &[Digest],
+    mut cancel: impl FnMut() -> bool,
+) -> Result<(), MultiproofError> {
+    let mut work = Work {
+        remaining: 0,
+        cancel: &mut cancel,
+    };
+    work.check()?;
     // 1.
     if !n.is_power_of_two() {
         return Err(MultiproofError::TreeSize);
@@ -149,6 +175,7 @@ pub fn verify_multiproof(
     // 3.
     let mut previous: Option<u64> = None;
     for (position, (index, _)) in leaves.iter().enumerate() {
+        work.step()?;
         if previous.is_some_and(|previous| *index <= previous) {
             return Err(MultiproofError::Unordered { position });
         }
@@ -158,7 +185,7 @@ pub fn verify_multiproof(
         previous = Some(*index);
     }
     // 4.
-    let layout = Layout::of(leaves, levels);
+    let layout = Layout::of(leaves, levels, &mut work)?;
     let found = siblings.len();
     if found < layout.total {
         return Err(MultiproofError::MissingSiblings {
@@ -173,9 +200,33 @@ pub fn verify_multiproof(
         });
     }
     // 5.
-    match climb(leaves, levels, siblings, &layout) {
-        Some(computed) if computed == *root => Ok(()),
-        _ => Err(MultiproofError::RootMismatch),
+    let computed = climb(leaves, levels, siblings, &layout, &mut work)?;
+    work.check()?;
+    if computed == *root {
+        Ok(())
+    } else {
+        Err(MultiproofError::RootMismatch)
+    }
+}
+
+struct Work<'a> {
+    remaining: u32,
+    cancel: &'a mut dyn FnMut() -> bool,
+}
+impl Work<'_> {
+    fn check(&mut self) -> Result<(), MultiproofError> {
+        if (self.cancel)() {
+            return Err(MultiproofError::Cancelled);
+        }
+        self.remaining = 4096;
+        Ok(())
+    }
+    fn step(&mut self) -> Result<(), MultiproofError> {
+        if self.remaining == 0 {
+            self.check()?;
+        }
+        self.remaining = self.remaining.saturating_sub(1);
+        Ok(())
     }
 }
 
@@ -191,7 +242,11 @@ struct Layout {
 
 impl Layout {
     /// The layout for `leaves`, whose indices are strictly increasing and below `2^levels`.
-    fn of(leaves: &[(u64, Digest)], levels: u32) -> Self {
+    fn of(
+        leaves: &[(u64, Digest)],
+        levels: u32,
+        work: &mut Work<'_>,
+    ) -> Result<Self, MultiproofError> {
         let mut layout = Self {
             start: [0; MAX_LEVELS],
             end: [0; MAX_LEVELS],
@@ -203,17 +258,21 @@ impl Layout {
                 break;
             }
             *start = layout.total;
-            layout.total = layout.total.saturating_add(unpaired(leaves, level));
+            layout.total = layout.total.saturating_add(unpaired(leaves, level, work)?);
             *end = layout.total;
             level = level.saturating_add(1);
         }
-        layout
+        Ok(layout)
     }
 }
 
 /// How many of the nodes at `level` above the leaves have their sibling above no leaf: the
 /// siblings a canonical multiproof holds for that level.
-fn unpaired(leaves: &[(u64, Digest)], level: u32) -> usize {
+fn unpaired(
+    leaves: &[(u64, Digest)],
+    level: u32,
+    work: &mut Work<'_>,
+) -> Result<usize, MultiproofError> {
     let mut count: usize = 0;
     let mut last: Option<u64> = None;
     // A left child seen last, whose right sibling may be the next node.
@@ -221,6 +280,7 @@ fn unpaired(leaves: &[(u64, Digest)], level: u32) -> usize {
     // The leaves are sorted, so their ancestors at `level` come in order, repeated when several
     // leaves share one.
     for node in leaves.iter().map(|(index, _)| ancestor(*index, level)) {
+        work.step()?;
         if last == Some(node) {
             continue;
         }
@@ -242,7 +302,7 @@ fn unpaired(leaves: &[(u64, Digest)], level: u32) -> usize {
     if waiting.is_some() {
         count = count.saturating_add(1);
     }
-    count
+    Ok(count)
 }
 
 /// The ancestor of leaf `index` at `level` above the leaves.
@@ -267,7 +327,8 @@ fn climb(
     levels: u32,
     siblings: &[Digest],
     layout: &Layout,
-) -> Option<Digest> {
+    work: &mut Work<'_>,
+) -> Result<Digest, MultiproofError> {
     let mut waiting = [Waiting {
         level: 0,
         index: 0,
@@ -285,6 +346,7 @@ fn climb(
         let mut index = *leaf;
         let mut digest = *digest;
         loop {
+            work.step()?;
             if level == levels {
                 root = Some(digest);
                 break;
@@ -293,16 +355,21 @@ fn climb(
                 let right = index | 1;
                 if following.is_some_and(|after| ancestor(after, level) == right) {
                     // The right sibling is above the next leaf: its climb will come back here.
-                    let slot = waiting.get_mut(waiting_len)?;
+                    let slot = waiting
+                        .get_mut(waiting_len)
+                        .ok_or(MultiproofError::RootMismatch)?;
                     *slot = Waiting {
                         level,
                         index,
                         digest,
                     };
-                    waiting_len = waiting_len.checked_add(1)?;
+                    waiting_len = waiting_len
+                        .checked_add(1)
+                        .ok_or(MultiproofError::RootMismatch)?;
                     break;
                 }
-                let sibling = take(siblings, layout, &mut next, level)?;
+                let sibling = take(siblings, layout, &mut next, level)
+                    .ok_or(MultiproofError::RootMismatch)?;
                 digest = node(&digest, sibling);
             } else {
                 let top = waiting_len
@@ -311,26 +378,29 @@ fn climb(
                     .filter(|top| top.level == level && top.index == index ^ 1);
                 if let Some(left) = top {
                     digest = node(&left.digest, &digest);
-                    waiting_len = waiting_len.checked_sub(1)?;
+                    waiting_len = waiting_len
+                        .checked_sub(1)
+                        .ok_or(MultiproofError::RootMismatch)?;
                 } else {
-                    let sibling = take(siblings, layout, &mut next, level)?;
+                    let sibling = take(siblings, layout, &mut next, level)
+                        .ok_or(MultiproofError::RootMismatch)?;
                     digest = node(sibling, &digest);
                 }
             }
             index >>= 1;
-            level = level.checked_add(1)?;
+            level = level.checked_add(1).ok_or(MultiproofError::RootMismatch)?;
         }
     }
     // Every waiting node was met by its right sibling, and every digest of the proof was used.
     let used_all = next
         .iter()
         .zip(&layout.end)
-        .take(usize::try_from(levels).ok()?)
+        .take(usize::try_from(levels).map_err(|_| MultiproofError::RootMismatch)?)
         .all(|(next, end)| next == end);
     if waiting_len != 0 || !used_all {
-        return None;
+        return Err(MultiproofError::RootMismatch);
     }
-    root
+    root.ok_or(MultiproofError::RootMismatch)
 }
 
 /// The next sibling of `level`, if the level has one left.
@@ -348,4 +418,95 @@ fn take<'a>(
     let sibling = siblings.get(*position)?;
     *position = position.checked_add(1)?;
     Some(sibling)
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+
+    #[test]
+    fn entry_and_completion_cannot_release_a_single_leaf_after_expiry() {
+        let root = [7; 32];
+        assert_eq!(
+            verify_multiproof_with_cancel(&root, 0, &[], &[], || true),
+            Err(MultiproofError::Cancelled)
+        );
+        for stop in [1, 2] {
+            let mut polls = 0;
+            assert_eq!(
+                verify_multiproof_with_cancel(&root, 1, &[(0, root)], &[], || {
+                    polls += 1;
+                    polls == stop
+                }),
+                Err(MultiproofError::Cancelled)
+            );
+            assert_eq!(polls, stop);
+        }
+    }
+
+    #[test]
+    fn validation_polls_before_a_late_duplicate() {
+        let mut leaves: Vec<_> = (0..8192).map(|i| (i, [0; 32])).collect();
+        leaves[4096].0 = 4095;
+        assert_eq!(
+            verify_multiproof(&[0; 32], 8192, &leaves, &[]),
+            Err(MultiproofError::Unordered { position: 4096 })
+        );
+        let mut polls = 0;
+        assert_eq!(
+            verify_multiproof_with_cancel(&[0; 32], 8192, &leaves, &[], || {
+                polls += 1;
+                polls == 2
+            }),
+            Err(MultiproofError::Cancelled)
+        );
+        assert_eq!(polls, 2);
+    }
+
+    #[test]
+    fn sibling_counting_and_climbing_poll_after_progress() {
+        let leaves: Vec<_> = (0..8192).map(|i| (i, [0; 32])).collect();
+        let mut active = || false;
+        let layout = Layout::of(
+            &leaves,
+            13,
+            &mut Work {
+                remaining: 0,
+                cancel: &mut active,
+            },
+        )
+        .unwrap();
+        assert_eq!(layout.total, 0);
+        assert!(
+            climb(
+                &leaves,
+                13,
+                &[],
+                &layout,
+                &mut Work {
+                    remaining: 0,
+                    cancel: &mut active
+                }
+            )
+            .is_ok()
+        );
+        for counting in [true, false] {
+            let mut polls = 0;
+            let mut cancel = || {
+                polls += 1;
+                polls == 2
+            };
+            let mut work = Work {
+                remaining: 0,
+                cancel: &mut cancel,
+            };
+            let error = if counting {
+                Layout::of(&leaves, 13, &mut work).err()
+            } else {
+                climb(&leaves, 13, &[], &layout, &mut work).err()
+            };
+            assert_eq!(error, Some(MultiproofError::Cancelled));
+            assert_eq!(polls, 2);
+        }
+    }
 }

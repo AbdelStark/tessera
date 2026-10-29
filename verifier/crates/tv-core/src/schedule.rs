@@ -560,6 +560,8 @@ pub enum Relation {
         positions: u32,
         /// The variables of the axes between the positions and the last.
         middle_vars: usize,
+        /// Multi-request slot geometry when `R ≥ 2` (RFC-0071 'The public selectors').
+        slots: Option<crate::lowering::Slots>,
     },
     /// The original OneHot zero-check: `0 = Σ_x eq(z,x)·H(x)·(1-H(x))`.
     Booleanity,
@@ -574,8 +576,10 @@ pub enum Relation {
     OneHotCount {
         /// Lowest coordinates, the padded vocabulary axis.
         vocab_vars: usize,
-        /// Real token rows.
+        /// Real token rows (`N`).
         positions: u32,
+        /// Multi-request slot geometry when `R ≥ 2` (RFC-0071 'The public selectors').
+        slots: Option<crate::lowering::Slots>,
     },
     /// Row index zero-check against the original token source.
     OneHotIndex {
@@ -1463,12 +1467,19 @@ impl Deriving<'_, '_> {
                         return Err(ScheduleError::Internal);
                     }
                 }
+                let slots = slotted(self.graph)?;
+                if let Some(ref s) = slots
+                    && positions != s.token_len()
+                {
+                    return Err(ScheduleError::Internal);
+                }
                 for relation in [
                     Relation::Booleanity,
                     Relation::Vocabulary { vocab, vocab_vars },
                     Relation::OneHotCount {
                         vocab_vars,
                         positions,
+                        slots,
                     },
                     Relation::OneHotIndex { vocab_vars },
                 ] {
@@ -1743,28 +1754,73 @@ impl Deriving<'_, '_> {
                     2,
                 ))
             }
-            (Op::MatMulAct { transpose_rhs }, &[a, _]) => {
+            (Op::MatMulAct { transpose_rhs }, &[a, b]) => {
                 let a_dims = dims(self.graph, a)?;
+                let b_dims = dims(self.graph, b)?;
                 let rank = a_dims.len();
                 let lead = rank.checked_sub(2).ok_or(unsupported)?;
-                let lead_vars = sum_vars(a_dims.get(..lead).ok_or(unsupported)?)?;
                 let m = *a_dims.get(lead).ok_or(unsupported)?;
                 let k = *a_dims.get(lead.saturating_add(1)).ok_or(unsupported)?;
                 let n = *out_dims.last().ok_or(unsupported)?;
-                let k_vars = axis_vars(k)?;
-                Ok((
-                    Relation::MatMulAct {
-                        transpose_rhs: *transpose_rhs,
-                        k_vars,
-                        m_vars: axis_vars(m)?,
-                        n_vars: axis_vars(n)?,
-                        lead_vars,
-                    },
-                    k_vars
-                        .checked_add(lead_vars)
-                        .ok_or(ScheduleError::Internal)?,
-                    2,
-                ))
+                if let Some(s) = self.graph.slots().filter(|s| s.lengths().len() >= 2) {
+                    let b_lead_ok = b_dims.len() == rank
+                        && b_dims.get(..lead) == a_dims.get(..lead)
+                        && out_dims.len() == rank
+                        && out_dims.get(..lead) == a_dims.get(..lead)
+                        && out_dims.get(lead) == Some(&s.token_len());
+                    let shape_ok = if *transpose_rhs {
+                        m == s.token_len()
+                            && n == s.n_max()
+                            && b_dims.get(lead) == Some(&s.token_len())
+                            && b_dims.get(lead.saturating_add(1)) == Some(&k)
+                    } else {
+                        m == s.token_len()
+                            && k == s.n_max()
+                            && b_dims.get(lead) == Some(&s.token_len())
+                            && b_dims.get(lead.saturating_add(1)) == Some(&n)
+                    };
+                    if !b_lead_ok || !shape_ok {
+                        return Err(unsupported);
+                    }
+                    let slot_vars = index(s.slot_bits())?;
+                    let lead_vars = index(s.request_bits())?
+                        .checked_add(sum_vars(a_dims.get(..lead).ok_or(unsupported)?)?)
+                        .ok_or(ScheduleError::Internal)?;
+                    let (k_vars, n_vars) = if *transpose_rhs {
+                        (axis_vars(k)?, slot_vars)
+                    } else {
+                        (slot_vars, axis_vars(n)?)
+                    };
+                    Ok((
+                        Relation::MatMulAct {
+                            transpose_rhs: *transpose_rhs,
+                            k_vars,
+                            m_vars: slot_vars,
+                            n_vars,
+                            lead_vars,
+                        },
+                        k_vars
+                            .checked_add(lead_vars)
+                            .ok_or(ScheduleError::Internal)?,
+                        2,
+                    ))
+                } else {
+                    let lead_vars = sum_vars(a_dims.get(..lead).ok_or(unsupported)?)?;
+                    let k_vars = axis_vars(k)?;
+                    Ok((
+                        Relation::MatMulAct {
+                            transpose_rhs: *transpose_rhs,
+                            k_vars,
+                            m_vars: axis_vars(m)?,
+                            n_vars: axis_vars(n)?,
+                            lead_vars,
+                        },
+                        k_vars
+                            .checked_add(lead_vars)
+                            .ok_or(ScheduleError::Internal)?,
+                        2,
+                    ))
+                }
             }
             (Op::Mul { broadcast }, &[a, b]) => {
                 let a_dims = dims(self.graph, a)?;
@@ -1826,10 +1882,17 @@ impl Deriving<'_, '_> {
                 let middle = x_dims
                     .get(1..x_dims.len().saturating_sub(1))
                     .ok_or(unsupported)?;
+                let slots = slotted(self.graph)?;
+                if let Some(ref s) = slots
+                    && positions != s.token_len()
+                {
+                    return Err(unsupported);
+                }
                 Ok((
                     Relation::Rotate {
                         positions,
                         middle_vars: sum_vars(middle)?,
+                        slots,
                     },
                     sum_vars(&x_dims)?,
                     2,
@@ -2306,7 +2369,13 @@ impl Deriving<'_, '_> {
             TensorRef::LayerInput => self.layout.first_checkpoint,
             TensorRef::Stacked(t) | TensorRef::Single(t) => t,
         };
-        sum_vars(&dims(self.graph, id)?)
+        let d = dims(self.graph, id)?;
+        match (self.graph.attention_key_bits(id), d.split_last()) {
+            (Some(kb), Some((_, prefix))) => sum_vars(prefix)?
+                .checked_add(index(kb)?)
+                .ok_or(ScheduleError::Internal),
+            _ => sum_vars(&d),
+        }
     }
 
     /// Constant `c` of the graph, of one value, in the field. 'Operations' refuses a constant
@@ -2488,6 +2557,16 @@ fn signed(v: i64) -> Fp {
 
 fn node_of(graph: &Graph, id: NodeId) -> Result<&Node, ScheduleError> {
     graph.node(id).ok_or(ScheduleError::Internal)
+}
+
+fn slotted(graph: &Graph) -> Result<Option<crate::lowering::Slots>, ScheduleError> {
+    match graph.slots().filter(|s| s.lengths().len() >= 2) {
+        Some(s) => s.try_clone().map(Some).map_err(|e| match e {
+            crate::lowering::LowerError::Memory => ScheduleError::Memory,
+            _ => ScheduleError::Internal,
+        }),
+        None => Ok(None),
+    }
 }
 
 fn tensor_of(graph: &Graph, id: TensorId) -> Result<&crate::lowering::Tensor, ScheduleError> {

@@ -57,13 +57,27 @@ pub enum Kind {
     Tokens,
 }
 
+/// One request's active output-producing window `[prompt − 1, prompt + outputs − 2]` in slot
+/// `ordinal` (RFC-0071 'The greedy certificate and scoring').
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Window {
+    /// Request index `r < R` in batch order (`0` for a single request).
+    pub ordinal: u32,
+    /// Prompt token count `prompt_len_r ≥ 1`.
+    pub prompt: u32,
+    /// Output token count `output_len_r`.
+    pub outputs: u32,
+}
+
 /// Complete public source identities and dimensions for one nonempty output request.
 #[derive(Clone, Copy, Debug)]
 pub struct Boundary {
     gadget: GadgetId,
-    n: u32,
+    ordinal: u32,
     vocab: u32,
     prompt: u32,
+    outputs: u32,
+    slot_bits: usize,
     nv: usize,
     nt: usize,
     no: usize,
@@ -79,6 +93,7 @@ pub struct Check<'a> {
     kind: Kind,
     target: &'a [Fp2],
     claim: Fp2,
+    windows: Option<&'a [Window]>,
 }
 
 fn copy(point: &[Fp2]) -> Result<Vec<Fp2>, GadgetError> {
@@ -89,7 +104,7 @@ fn copy(point: &[Fp2]) -> Result<Vec<Fp2>, GadgetError> {
     Ok(v)
 }
 
-fn range_bits(lo: i128, hi: i128) -> Option<u8> {
+pub(crate) fn range_bits(lo: i128, hi: i128) -> Option<u8> {
     if lo > hi || lo <= -(1i128 << 28) || hi >= 1i128 << 28 {
         return None;
     }
@@ -104,7 +119,30 @@ impl Plan<'_> {
     /// # Errors
     /// `Internal` for an invalid own request/graph or logits outside RFC-0009's strict box.
     pub fn greedy_boundary(&self, gadget: GadgetId, prompt: u32) -> Result<Boundary, GadgetError> {
-        let outputs = self.argmax_outputs(gadget, prompt)?;
+        if self.graph.slots().is_some_and(|s| s.lengths().len() >= 2) {
+            return Err(GadgetError::Internal);
+        }
+        let n = self.graph.length();
+        if prompt == 0 || prompt >= n {
+            return Err(GadgetError::Internal);
+        }
+        let outputs = n.checked_sub(prompt).ok_or(GadgetError::Internal)?;
+        self.greedy_boundary_in_slot(gadget, 0, prompt, outputs)
+    }
+
+    /// Derive request `ordinal`'s greedy boundary in a slotted batch (RFC-0071).
+    /// Reduces to [`Self::greedy_boundary`] when `R = 1`.
+    ///
+    /// # Errors
+    /// `Internal` for an invalid own request/slot/graph or logits outside RFC-0009's strict box.
+    pub fn greedy_boundary_in_slot(
+        &self,
+        gadget: GadgetId,
+        ordinal: u32,
+        prompt: u32,
+        outputs: u32,
+    ) -> Result<Boundary, GadgetError> {
+        let out_views = self.argmax_outputs_in_slot(gadget, ordinal, prompt, outputs)?;
         let first = self.graph.nodes().first().ok_or(GadgetError::Internal)?;
         let last = self.graph.nodes().last().ok_or(GadgetError::Internal)?;
         let onehot = *first.outputs().first().ok_or(GadgetError::Internal)?;
@@ -117,29 +155,77 @@ impl Plan<'_> {
             .get(index)
             .and_then(|r| r.bounds())
             .ok_or(GadgetError::Internal)?;
-        let n = self.graph.length();
+        let graph_n = self.graph.length();
+        let nt =
+            usize::try_from(u32::BITS.saturating_sub(graph_n.saturating_sub(1).leading_zeros()))
+                .map_err(|_| GadgetError::Internal)?;
+        let slot_bits = match self.graph.slots().filter(|s| s.lengths().len() >= 2) {
+            Some(s) => usize::try_from(s.slot_bits()).map_err(|_| GadgetError::Internal)?,
+            None => nt,
+        };
         Ok(Boundary {
             gadget,
-            n,
+            ordinal,
             prompt,
+            outputs,
+            slot_bits,
             logits,
             onehot,
             tokens,
-            vocab: outputs.argmax().vocab(),
-            nv: outputs
+            vocab: out_views.argmax().vocab(),
+            nv: out_views
                 .argmax()
                 .variables()
-                .checked_sub(outputs.argmax().row_variables())
+                .checked_sub(out_views.argmax().row_variables())
                 .ok_or(GadgetError::Internal)?,
-            nt: usize::try_from(u32::BITS.saturating_sub(n.saturating_sub(1).leading_zeros()))
-                .map_err(|_| GadgetError::Internal)?,
-            no: outputs.argmax().row_variables(),
+            nt,
+            no: out_views.argmax().row_variables(),
             range_bits: range_bits(lo, hi).ok_or(GadgetError::Internal)?,
         })
     }
 }
 
 impl Boundary {
+    /// Request ordinal `r < R` in batch order (`0` for a single request).
+    pub const fn ordinal(self) -> u32 {
+        self.ordinal
+    }
+    /// Prompt token count `prompt_len_r ≥ 1`.
+    pub const fn prompt(self) -> u32 {
+        self.prompt
+    }
+    /// Output token count `output_len_r ≥ 1`.
+    pub const fn outputs(self) -> u32 {
+        self.outputs
+    }
+    /// Intra-slot position variable count `b = slot_bits`.
+    pub const fn slot_bits(self) -> usize {
+        self.slot_bits
+    }
+    /// Active output-producing window of this request.
+    pub const fn window(self) -> Window {
+        Window {
+            ordinal: self.ordinal,
+            prompt: self.prompt,
+            outputs: self.outputs,
+        }
+    }
+    /// Evaluates `Σ_{u < output_len_r} eq(target_o, u) · eq(time, (prompt_len_r − 1 + u, r))`
+    /// (RFC-0071 'The greedy certificate and scoring').
+    pub fn key_time_coeff(self, target_o: &[Fp2], time: &[Fp2]) -> Option<Fp2> {
+        if target_o.len() != self.no || time.len() != self.nt {
+            return None;
+        }
+        let (r_p, r_beta) = time.split_at_checked(self.slot_bits)?;
+        let in_slot = super::argmax_outputs::kernel(
+            target_o,
+            r_p,
+            self.prompt.checked_sub(1)?,
+            self.outputs,
+        )?;
+        let slot_eq = crate::selectors::eq_index(r_beta, u64::from(self.ordinal));
+        Some(in_slot * slot_eq)
+    }
     /// Model vocabulary-plus-time variables, not a duplicated tensor-product domain.
     pub const fn variables(self) -> usize {
         self.nv.saturating_add(self.nt)
@@ -176,6 +262,7 @@ impl Boundary {
             kind: Kind::Key,
             target: point,
             claim,
+            windows: None,
         })
     }
     /// Fix the stage's earlier zero point (its time coordinates) for selected/token binding.
@@ -191,8 +278,91 @@ impl Boundary {
             kind,
             target: point,
             claim: Fp2::ZERO,
+            windows: None,
         })
     }
+    /// Fix the stage's zero point for `Selected` across all output-bearing `windows` of a batch
+    /// (RFC-0071 'The greedy certificate and scoring').
+    ///
+    /// # Errors
+    /// `Internal` for empty or out-of-order `windows` or invalid point/window geometry.
+    pub fn selected_zero<'a>(
+        self,
+        windows: &'a [Window],
+        point: &'a [Fp2],
+    ) -> Result<Check<'a>, GadgetError> {
+        let internal = GadgetError::Internal;
+        if windows.is_empty() || point.len() != self.nt || self.slot_bits > self.nt {
+            return Err(internal);
+        }
+        let slot_domain = 1u64
+            .checked_shl(u32::try_from(self.slot_bits).map_err(|_| internal)?)
+            .ok_or(internal)?;
+        let req_bits = self.nt.checked_sub(self.slot_bits).ok_or(internal)?;
+        let req_domain = 1u64
+            .checked_shl(u32::try_from(req_bits).map_err(|_| internal)?)
+            .ok_or(internal)?;
+        for (i, w) in windows.iter().enumerate() {
+            if w.prompt == 0 || w.outputs == 0 || u64::from(w.ordinal) >= req_domain {
+                return Err(internal);
+            }
+            let n_r = w.prompt.checked_add(w.outputs).ok_or(internal)?;
+            if u64::from(n_r) > slot_domain {
+                return Err(internal);
+            }
+            if let Some(prev) = i.checked_sub(1).and_then(|p| windows.get(p))
+                && prev.ordinal >= w.ordinal
+            {
+                return Err(internal);
+            }
+        }
+        Ok(Check {
+            boundary: self,
+            kind: Kind::Selected,
+            target: point,
+            claim: Fp2::ZERO,
+            windows: Some(windows),
+        })
+    }
+}
+
+/// Evaluates the multilinear extension of request `window`'s active-row indicator
+/// `[x_β == ordinal] · [prompt − 1 ≤ x_p < prompt + outputs − 1]` at `time = (r_p, r_β)`
+/// (RFC-0071 'The greedy certificate and scoring').
+pub fn window_mle(window: Window, slot_bits: usize, time: &[Fp2]) -> Option<Fp2> {
+    if window.prompt == 0 {
+        return None;
+    }
+    let (r_p, r_beta) = time.split_at_checked(slot_bits)?;
+    if window
+        .ordinal
+        .checked_shr(u32::try_from(r_beta.len()).ok()?)
+        .unwrap_or(0)
+        != 0
+    {
+        return None;
+    }
+    let n_r = window.prompt.checked_add(window.outputs)?;
+    let slot_eq = crate::selectors::eq_index(r_beta, u64::from(window.ordinal));
+    if window.outputs == 0 {
+        let _ = lt(r_p, u64::from(n_r))?;
+        return Some(Fp2::ZERO);
+    }
+    let upper = lt(r_p, u64::from(n_r.checked_sub(1)?))?;
+    let lower = lt(r_p, u64::from(window.prompt.checked_sub(1)?))?;
+    Some(slot_eq * (upper - lower))
+}
+
+/// Evaluates the multilinear extension of `Selected`'s batch-wide `active(τ)` indicator over
+/// `windows` at `time = (r_p, r_β)` (RFC-0071 'The greedy certificate and scoring').
+pub fn selected_active_mle(windows: &[Window], slot_bits: usize, time: &[Fp2]) -> Option<Fp2> {
+    let (r_p, _) = time.split_at_checked(slot_bits)?;
+    let _ = u32::try_from(r_p.len()).ok()?;
+    let mut sum = Fp2::ZERO;
+    for &w in windows {
+        sum += window_mle(w, slot_bits, time)?;
+    }
+    Some(sum)
 }
 
 // LSB recurrence for a truncated product of equality weights; constant memory.
@@ -380,13 +550,9 @@ impl Check<'_> {
             Kind::Key => {
                 let target_v = self.target.get(..b.nv).ok_or(GadgetError::Internal)?;
                 let target_o = self.target.get(b.nv..).ok_or(GadgetError::Internal)?;
-                let row = super::argmax_outputs::kernel(
-                    target_o,
-                    time,
-                    b.prompt.checked_sub(1).ok_or(GadgetError::Internal)?,
-                    b.n.checked_sub(b.prompt).ok_or(GadgetError::Internal)?,
-                )
-                .ok_or(GadgetError::Internal)?;
+                let row = b
+                    .key_time_coeff(target_o, time)
+                    .ok_or(GadgetError::Internal)?;
                 row * (lt(target_v, u64::from(b.vocab)).ok_or(GadgetError::Internal)?
                     * delta
                     * right
@@ -394,18 +560,34 @@ impl Check<'_> {
                     - bounded_suffix(target_v, v, b.vocab).ok_or(GadgetError::Internal)? * shifted)
             }
             Kind::Selected => {
-                let active = prefix_eq(
-                    self.target,
-                    time,
-                    b.n.checked_sub(1).ok_or(GadgetError::Internal)?,
-                )
-                .ok_or(GadgetError::Internal)?
-                    - prefix_eq(
-                        self.target,
-                        time,
-                        b.prompt.checked_sub(1).ok_or(GadgetError::Internal)?,
-                    )
+                let single = [b.window()];
+                let windows = self.windows.unwrap_or(&single);
+                let (z_p, z_beta) = self
+                    .target
+                    .split_at_checked(b.slot_bits)
                     .ok_or(GadgetError::Internal)?;
+                let (r_p, r_beta) = time
+                    .split_at_checked(b.slot_bits)
+                    .ok_or(GadgetError::Internal)?;
+                let mut active = Fp2::ZERO;
+                for w in windows {
+                    let n_r = w
+                        .prompt
+                        .checked_add(w.outputs)
+                        .ok_or(GadgetError::Internal)?;
+                    let slot_eq = crate::selectors::eq_index(z_beta, u64::from(w.ordinal))
+                        * crate::selectors::eq_index(r_beta, u64::from(w.ordinal));
+                    let win_eq =
+                        prefix_eq(z_p, r_p, n_r.checked_sub(1).ok_or(GadgetError::Internal)?)
+                            .ok_or(GadgetError::Internal)?
+                            - prefix_eq(
+                                z_p,
+                                r_p,
+                                w.prompt.checked_sub(1).ok_or(GadgetError::Internal)?,
+                            )
+                            .ok_or(GadgetError::Internal)?;
+                    active += slot_eq * win_eq;
+                }
                 active * lt(v, u64::from(b.vocab)).ok_or(GadgetError::Internal)? * shifted * left
                     - eq(self.target, time).ok_or(GadgetError::Internal)? * delta * right
             }

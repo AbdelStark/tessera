@@ -240,7 +240,7 @@ v0.4: frames, log, manifest, signatures, circuits, reference recorder, prover pr
 
 ## Open Questions
 
-- **OQ-0015-1.** In deployments where external clients reach the cluster through TLS, where exactly does the token-level recorder sit, and who terminates TLS? Owner: @AbdelStark. Resolve before the first bilateral pilot, with the parties' network architecture; the outcome is an integration guide, not a protocol change.
+- **OQ-0015-1.** In deployments where external clients reach the cluster through TLS, where exactly does the token-level recorder sit, and who terminates TLS? Owner: @AbdelStark. Resolve before the first bilateral pilot, with the parties' network architecture; the outcome is an integration guide, not a protocol change. The [integration guide](../integration.md#tls-placement-oq-0015-1) describes the placement choices and runnable reference checks; the concrete bilateral topology still needs the independent engineering review required by #180.
 
 ## References
 

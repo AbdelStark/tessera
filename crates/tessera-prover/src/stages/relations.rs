@@ -3,7 +3,6 @@
 //! Each instance's relation over its stage's tables (RFC-0010 'Relations', RFC-0037 'Rotate',
 //! RFC-0072 'The bit zero-checks'), and the claims its evaluations leave.
 
-use tessera_codec::SecretBuf;
 use tessera_compiler::schedule::{Instance as Planned, Kind, Layers, NodeRef, Relation, Stage};
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
 use tessera_ir::{BoolFn, Broadcast, Node, Op};
@@ -15,27 +14,28 @@ use tessera_sumcheck::{
 };
 use tessera_tables::RopeTable;
 
-use super::public::{
-    bit_slots, channel_table, const_add, constant_and_shape, public_table, public_zeros, selector,
-};
+use super::columns::Column;
+use super::public::{channel_table, const_add, constant_and_shape, public_table, public_zeros};
 use super::tables::{axis_vars, pad, zeros};
 use super::{StageError, StageProver, WitnessSource};
 
 /// A stage's tables: the witness's, secret, and public ones such as RoPE's constants.
 #[derive(Default)]
 pub(super) struct Arena {
-    pub(super) secret: Vec<SecretBuf<Goldilocks>>,
-    pub(super) public: Vec<Vec<Goldilocks>>,
+    pub(super) secret: Vec<Column>,
+    pub(super) public: Vec<Column>,
+    pub(super) streaming: bool,
+    pub(super) geometry_only: bool,
 }
 
 impl Arena {
-    fn secret(&mut self, table: SecretBuf<Goldilocks>) -> usize {
-        self.secret.push(table);
+    fn secret(&mut self, table: impl Into<Column>) -> usize {
+        self.secret.push(table.into());
         self.secret.len() - 1
     }
 
-    fn public(&mut self, table: Vec<Goldilocks>) -> usize {
-        self.public.push(table);
+    fn public(&mut self, table: impl Into<Column>) -> usize {
+        self.public.push(table.into());
         self.public.len() - 1
     }
 }
@@ -56,8 +56,8 @@ pub(super) enum Read {
 /// An input of a relation's node: public, read as `Public` from its table over its own variables,
 /// or the table of the instance's claim on it (RFC-0072 'Public tensors' 'As an operand').
 enum Operand {
-    Public(Vec<Goldilocks>),
-    Claimed(SecretBuf<Goldilocks>),
+    Public(Column),
+    Claimed(Column),
 }
 
 /// An instance's relation, its tables named in the arena.
@@ -187,7 +187,11 @@ pub(super) fn build<'a>(
     for (plan, point) in plans.iter().zip(points) {
         let tables = match plan {
             Plan::MatMulWeight { w, x, shape } => {
-                let relation = MatMulWeight::new(&arena.secret[*w], &arena.secret[*x], *shape)?;
+                let relation = MatMulWeight::new(
+                    arena.secret[*w].resident()?,
+                    arena.secret[*x].resident()?,
+                    *shape,
+                )?;
                 degree = degree.max(relation.degree());
                 Built::MatMulWeight(relation.tables(point)?)
             }
@@ -197,8 +201,12 @@ pub(super) fn build<'a>(
                 layout,
                 shape,
             } => {
-                let relation =
-                    MatMulAct::new(&arena.secret[*a], &arena.secret[*b], *layout, *shape)?;
+                let relation = MatMulAct::new(
+                    arena.secret[*a].resident()?,
+                    arena.secret[*b].resident()?,
+                    *layout,
+                    *shape,
+                )?;
                 degree = degree.max(relation.degree());
                 Built::MatMulAct(relation.tables(point)?)
             }
@@ -213,15 +221,19 @@ pub(super) fn build<'a>(
                 })?;
                 let inputs = inputs
                     .iter()
-                    .map(|read| match *read {
-                        Read::Operand(t) | Read::Spread(t) => Input::Operand(&arena.secret[t][..]),
-                        Read::Broadcast { table, low_vars } => Input::Broadcast {
-                            operand: &arena.secret[table][..],
-                            low_vars,
-                        },
-                        Read::Public(t) => Input::Public(&arena.public[t][..]),
+                    .map(|read| {
+                        Ok(match *read {
+                            Read::Operand(t) | Read::Spread(t) => {
+                                Input::Operand(arena.secret[t].resident()?)
+                            }
+                            Read::Broadcast { table, low_vars } => Input::Broadcast {
+                                operand: arena.secret[table].resident()?,
+                                low_vars,
+                            },
+                            Read::Public(t) => Input::Public(arena.public[t].resident()?),
+                        })
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>, StageError>>()?;
                 let relation = Elementwise::new(*shape, inputs, terms.clone())?;
                 degree = degree.max(relation.degree());
                 Built::Elementwise(relation.tables(point)?)
@@ -234,9 +246,9 @@ pub(super) fn build<'a>(
                 vars,
             } => {
                 let relation = Rotate::new(
-                    &arena.secret[*x],
-                    &arena.public[*cos],
-                    &arena.public[*sin],
+                    arena.secret[*x].resident()?,
+                    arena.public[*cos].resident()?,
+                    arena.public[*sin].resident()?,
                     *bit,
                     *vars,
                 )?;
@@ -253,7 +265,7 @@ pub(super) fn build<'a>(
                 rows,
                 members,
             } => {
-                let relation = Selection::new(&arena.secret[*x], *low, *axis, *high)?;
+                let relation = Selection::new(arena.secret[*x].resident()?, *low, *axis, *high)?;
                 degree = degree.max(relation.degree());
                 let kernel: Vec<Selected<'_, GoldilocksExt2>> = members
                     .iter()
@@ -274,16 +286,16 @@ pub(super) fn build<'a>(
                 point_from,
             } => {
                 let x = match *x {
-                    Read::Operand(t) => Input::Operand(&arena.secret[t][..]),
-                    Read::Public(t) => Input::Public(&arena.public[t][..]),
+                    Read::Operand(t) => Input::Operand(arena.secret[t].resident()?),
+                    Read::Public(t) => Input::Public(arena.public[t].resident()?),
                     Read::Spread(_) | Read::Broadcast { .. } => {
                         return internal("a recomposition reads its integer whole");
                     }
                 };
                 let relation = Recomposition::new(
                     x,
-                    &arena.secret[*b],
-                    h.map(|t| &arena.secret[t][..]),
+                    arena.secret[*b].resident()?,
+                    h.map(|t| arena.secret[t].resident()).transpose()?,
                     *low,
                     *high,
                     *rows,
@@ -313,11 +325,12 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         let stacked = matches!(instance.layers, Layers::Eq(_));
         let lambda = if stacked { layers.vars as usize } else { 0 };
         let claims = &stage.claims[instance.claims.clone()];
-        let operand = |i: usize| -> Result<SecretBuf<Goldilocks>, StageError> {
+        let streaming = arena.streaming;
+        let operand = |i: usize| -> Result<Column, StageError> {
             let claim = claims.get(i).ok_or(StageError::Internal {
                 rule: "an instance's evaluations name its operands",
             })?;
-            self.operand(claim.kind, &claim.layers)
+            self.column(claim.kind, &claim.layers, streaming)
         };
         let shape = |t: usize| self.graph.tensors[t].shape.as_slice();
         let input_shape = |i: usize| shape(node.inputs[i].0 as usize);
@@ -351,10 +364,19 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                 let (&[heads, rows, inner], &[_, _, columns]) = (input_shape(0), output) else {
                     return internal("a MatMulAct multiplies [heads, a, j] matrices");
                 };
+                let slots = self.graph.slots.as_ref().filter(|slots| {
+                    rows == slots.token_len() && input_shape(1).get(1) == Some(&slots.token_len())
+                });
                 let shape = MatMulActShape {
-                    stack_vars: axis_vars(heads) as usize + lambda,
-                    row_vars: axis_vars(rows) as usize,
-                    inner_vars: axis_vars(inner) as usize,
+                    stack_vars: axis_vars(heads) as usize
+                        + lambda
+                        + slots.map_or(0, |s| s.request_bits() as usize),
+                    row_vars: slots.map_or(axis_vars(rows), |s| s.slot_bits()) as usize,
+                    inner_vars: if !transposed {
+                        slots.map_or(axis_vars(inner), |s| s.slot_bits())
+                    } else {
+                        axis_vars(inner)
+                    } as usize,
                     col_vars: axis_vars(columns) as usize,
                 };
                 let layout = if transposed {
@@ -373,13 +395,13 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             // variables, and leaves no claim (RFC-0072 'Public tensors' 'As an operand').
             Relation::Mul(broadcast) => {
                 let mut next = 0;
-                let a = match self.input(instance, node, 0, &operand, &mut next)? {
+                let a = match self.input(instance, node, 0, &operand, &mut next, arena.streaming)? {
                     Operand::Public(table) => Read::Public(arena.public(table)),
                     Operand::Claimed(table) => Read::Operand(arena.secret(table)),
                 };
                 let b = self.mul_operand(
                     arena,
-                    self.input(instance, node, 1, &operand, &mut next)?,
+                    self.input(instance, node, 1, &operand, &mut next, arena.streaming)?,
                     input_shape(0),
                     input_shape(1),
                     broadcast,
@@ -407,7 +429,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             }
             Relation::Rotate => {
                 let x = input_shape(0);
-                let (cos, sin) = self.rope(node, x, stacked)?;
+                let (cos, sin) = self.rope(node, x, stacked, arena.streaming)?;
                 let bit = x.last().map_or(0, |&len| axis_vars(len) as usize) - 1;
                 Plan::Rotate {
                     x: arena.secret(operand(0)?),
@@ -425,7 +447,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                     return internal("a ConstMul by a constant per channel is outside the layers");
                 }
                 let x = Read::Operand(arena.secret(operand(0)?));
-                let c = Read::Public(arena.public(self.channels(node)?));
+                let c = Read::Public(arena.public(self.channels(node, arena.streaming)?));
                 Plan::Elementwise {
                     point_from: 0,
                     inputs: vec![x, c],
@@ -445,10 +467,12 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                 let mut next = 0;
                 let mut inputs = Vec::with_capacity(node.inputs.len());
                 for i in 0..node.inputs.len() {
-                    inputs.push(match self.input(instance, node, i, &operand, &mut next)? {
-                        Operand::Public(table) => Read::Public(arena.public(table)),
-                        Operand::Claimed(table) => Read::Operand(arena.secret(table)),
-                    });
+                    inputs.push(
+                        match self.input(instance, node, i, &operand, &mut next, arena.streaming)? {
+                            Operand::Public(table) => Read::Public(arena.public(table)),
+                            Operand::Claimed(table) => Read::Operand(arena.secret(table)),
+                        },
+                    );
                 }
                 if inputs.len() != f.arity() {
                     return internal("a BitFn has its function's inputs");
@@ -489,15 +513,13 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                         })?;
                 match instance.relation {
                     Relation::OneHotVocabulary => {
-                        let outside = (0..length)
-                            .map(|i| {
-                                if i % width >= vocab as usize {
-                                    Goldilocks::ONE
-                                } else {
-                                    Goldilocks::ZERO
-                                }
+                        let outside = Column::generated(arena.streaming, length, move |i| {
+                            Ok(if i % width >= vocab as usize {
+                                Goldilocks::ONE
+                            } else {
+                                Goldilocks::ZERO
                             })
-                            .collect();
+                        })?;
                         Plan::Elementwise {
                             inputs: vec![h, Read::Public(arena.public(outside))],
                             terms: vec![Term::new(one, vec![0, 1])],
@@ -506,15 +528,21 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                         }
                     }
                     Relation::OneHotCount => {
-                        let selector = (0..length)
-                            .map(|i| {
-                                if i / width < positions as usize {
+                        let slots = self.graph.slots.clone();
+                        let selector = Column::generated(arena.streaming, length, move |i| {
+                            Ok(
+                                if slots
+                                    .as_ref()
+                                    .map_or(i / width < positions as usize, |slots| {
+                                        slots.is_real_row(i / width)
+                                    })
+                                {
                                     Goldilocks::ONE
                                 } else {
                                     Goldilocks::ZERO
-                                }
-                            })
-                            .collect();
+                                },
+                            )
+                        })?;
                         Plan::Elementwise {
                             inputs: vec![h, Read::Public(arena.public(selector))],
                             terms: vec![
@@ -533,9 +561,9 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                             table: arena.secret(operand(1)?),
                             low_vars: vocab_vars,
                         };
-                        let index = (0..length)
-                            .map(|i| Goldilocks::from_u64_reduced((i % width) as u64))
-                            .collect();
+                        let index = Column::generated(arena.streaming, length, move |i| {
+                            Ok(Goldilocks::from_u64_reduced((i % width) as u64))
+                        })?;
                         Plan::Elementwise {
                             inputs: vec![h, token, Read::Public(arena.public(index))],
                             terms: vec![
@@ -565,6 +593,36 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         })
     }
 
+    fn column(&self, kind: Kind, layers: &Layers, streaming: bool) -> Result<Column, StageError> {
+        if !streaming {
+            return Ok(self.operand(kind, layers)?.into());
+        }
+        let shape = self.shape(kind)?.to_vec();
+        let block = 1usize
+            .checked_shl(Self::vars_of(&shape))
+            .ok_or(StageError::Memory)?;
+        let (tensors, len) = match layers {
+            Layers::Eq(_) => (
+                (0..self.schedule.layers.count)
+                    .map(|l| self.tensor(kind, l))
+                    .collect::<Result<Vec<_>, _>>()?,
+                block
+                    .checked_shl(self.schedule.layers.vars)
+                    .ok_or(StageError::Memory)?,
+            ),
+            Layers::One(layer) => (vec![self.tensor(kind, *layer)?], block),
+            Layers::None => (vec![self.tensor(kind, 0)?], block),
+            Layers::Each => return internal("an instance's operand has a fixed layer placement"),
+        };
+        Ok(Column::Tensor {
+            tensors,
+            shape,
+            block,
+            len,
+            padded: true,
+        })
+    }
+
     /// RFC-0066's zero-checks of a `BitDecompose` or an `AssertEqual` (RFC-0072 'The bit
     /// zero-checks'), each at its coordinates of the zero-check point:
     ///
@@ -581,7 +639,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         instance: &Planned,
         node: &Node,
         claims: &[tessera_compiler::schedule::Claim],
-        operand: &dyn Fn(usize) -> Result<SecretBuf<Goldilocks>, StageError>,
+        operand: &dyn Fn(usize) -> Result<Column, StageError>,
     ) -> Result<Plan, StageError> {
         let one = GoldilocksExt2::ONE;
         let shape = ElementwiseShape::elementwise(instance.vars as usize);
@@ -599,7 +657,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                     point_from: 0,
                     inputs: vec![
                         Read::Operand(arena.secret(operand(0)?)),
-                        Read::Public(arena.public(selector(&u, true)?)),
+                        Read::Public(arena.public(Column::selector(&u, true, arena.streaming)?)),
                     ],
                     terms: vec![Term::new(one, vec![0, 1])],
                     shape,
@@ -621,7 +679,11 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                     point_from: 0,
                     inputs: vec![
                         Read::Operand(arena.secret(operand(0)?)),
-                        Read::Public(arena.public(bit_slots(&output, bits)?)),
+                        Read::Public(arena.public(Column::bit_slots(
+                            &output,
+                            bits,
+                            arena.streaming,
+                        )?)),
                     ],
                     terms: vec![Term::new(one, vec![0, 1])],
                     shape,
@@ -632,7 +694,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                     return internal("a recomposition is a BitDecompose's");
                 };
                 let mut next = 0;
-                let x = match self.input(instance, node, 0, operand, &mut next)? {
+                let x = match self.input(instance, node, 0, operand, &mut next, arena.streaming)? {
                     Operand::Public(table) => Read::Public(arena.public(table)),
                     Operand::Claimed(table) => Read::Operand(arena.secret(table)),
                 };
@@ -656,15 +718,18 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             Relation::AssertEqual => {
                 let mut next = 0;
                 let mut read = |arena: &mut Arena, i: usize| -> Result<Read, StageError> {
-                    Ok(match self.input(instance, node, i, operand, &mut next)? {
-                        Operand::Public(table) => Read::Public(arena.public(table)),
-                        Operand::Claimed(table) => Read::Operand(arena.secret(table)),
-                    })
+                    Ok(
+                        match self.input(instance, node, i, operand, &mut next, arena.streaming)? {
+                            Operand::Public(table) => Read::Public(arena.public(table)),
+                            Operand::Claimed(table) => Read::Operand(arena.secret(table)),
+                        },
+                    )
                 };
                 let a = read(arena, 0)?;
                 let b = read(arena, 1)?;
                 let tensors = &self.graph.tensors[node.inputs[0].0 as usize].shape;
-                let psi = Read::Public(arena.public(selector(tensors, false)?));
+                let psi =
+                    Read::Public(arena.public(Column::selector(tensors, false, arena.streaming)?));
                 Plan::Elementwise {
                     point_from: 0,
                     inputs: vec![a, b, psi],
@@ -690,7 +755,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         instance: &Planned,
         node: &Node,
         arena: &mut Arena,
-        operand: &dyn Fn(usize) -> Result<SecretBuf<Goldilocks>, StageError>,
+        operand: &dyn Fn(usize) -> Result<Column, StageError>,
     ) -> Result<Plan, StageError> {
         let (axis, _) = selected(self.graph, node)?;
         let x = &self.graph.tensors[node.inputs[0].0 as usize].shape;
@@ -717,7 +782,14 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             if member_axis != axis || producer.inputs[0] != node.inputs[0] {
                 return internal("a combined selection's members select one axis of one tensor");
             }
-            members.push((self.coefficient(&member.coefficient, 0)?, index));
+            members.push((
+                if arena.geometry_only {
+                    GoldilocksExt2::ZERO
+                } else {
+                    self.coefficient(&member.coefficient, 0)?
+                },
+                index,
+            ));
         }
         Ok(Plan::Selection {
             x: arena.secret(operand(0)?),
@@ -747,15 +819,23 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         instance: &Planned,
         node: &Node,
         i: usize,
-        operand: &dyn Fn(usize) -> Result<SecretBuf<Goldilocks>, StageError>,
+        operand: &dyn Fn(usize) -> Result<Column, StageError>,
         next: &mut usize,
+        streaming: bool,
     ) -> Result<Operand, StageError> {
         let tensor = *node.inputs.get(i).ok_or(StageError::Internal {
             rule: "a relation's node has its inputs",
         })?;
         if matches!(instance.node, NodeRef::Node(_)) && self.public.contains(tensor) {
+            if streaming {
+                let mut column = self.column(Kind::Tensor(tensor), &Layers::None, true)?;
+                if let Column::Tensor { padded, .. } = &mut column {
+                    *padded = false;
+                }
+                return Ok(Operand::Public(column));
+            }
             let table = public_table(self.graph, &self.public, self.witness, tensor)?;
-            return Ok(Operand::Public(table));
+            return Ok(Operand::Public(table.into()));
         }
         let table = operand(*next)?;
         *next += 1;
@@ -788,6 +868,14 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             })?,
             Broadcast::Leading => 0,
         };
+        if arena.streaming {
+            return Ok(Read::Public(arena.public(Column::Broadcast {
+                input: Box::new(table),
+                low: low as usize,
+                len: 1usize << a_vars,
+            })));
+        }
+        let table = table.resident()?;
         let mask = (1usize << b_vars) - 1;
         let mut full = public_zeros(1usize << a_vars)?;
         for (i, slot) in full.iter_mut().enumerate() {
@@ -796,9 +884,53 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         Ok(Read::Public(arena.public(full)))
     }
 
+    fn channels(&self, node: &Node, streaming: bool) -> Result<Column, StageError> {
+        if !streaming {
+            return Ok(self.dense_channels(node)?.into());
+        }
+        let Op::ConstMul { c } = node.op else {
+            return internal("a channel constant is a ConstMul's");
+        };
+        let (constant, shape) = constant_and_shape(self.graph, node, c)?;
+        let constants = constant.to_vec();
+        let width = 1usize << shape.last().map_or(0, |&n| axis_vars(n));
+        Column::generated(true, 1usize << Self::vars_of(shape), move |i| {
+            Ok(constants
+                .get(i % width)
+                .copied()
+                .map_or(Goldilocks::ZERO, Goldilocks::from_i64))
+        })
+    }
+
+    fn shifted(&self, node: &Node, streaming: bool) -> Result<Column, StageError> {
+        if !streaming {
+            return Ok(self.dense_shifted(node)?.into());
+        }
+        let (constant, shape) = const_add(self.graph, node.id)?;
+        let constants = constant.to_vec();
+        let shape = shape.to_vec();
+        Column::generated(true, 1usize << Self::vars_of(&shape), move |i| {
+            let mut rest = i;
+            let channel_bits = shape.last().map_or(0, |&n| axis_vars(n));
+            let channel = i & ((1usize << channel_bits) - 1);
+            for &n in shape.iter().rev() {
+                let bits = axis_vars(n);
+                if (rest & ((1usize << bits) - 1)) >= n as usize {
+                    return Ok(Goldilocks::ZERO);
+                }
+                rest >>= bits;
+            }
+            Ok(Goldilocks::from_i64(if constants.len() == 1 {
+                constants[0]
+            } else {
+                constants[channel]
+            }))
+        })
+    }
+
     /// The constant per channel of the `ConstMul` `node`, broadcast over the other axes of its
     /// output, 0 at padded channels: `c̃(x_c)` as a public table of every variable.
-    fn channels(&self, node: &Node) -> Result<Vec<Goldilocks>, StageError> {
+    fn dense_channels(&self, node: &Node) -> Result<Vec<Goldilocks>, StageError> {
         let Op::ConstMul { c } = node.op else {
             return internal("a constant per channel is a ConstMul's");
         };
@@ -814,7 +946,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
 
     /// The table of `ψ·c` of the `ConstAdd` `node`: its constant at each real position of its
     /// output, 0 at padded ones (RFC-0072 'Padded positions'), whose extension is the shift `ĉ`.
-    fn shifted(&self, node: &Node) -> Result<Vec<Goldilocks>, StageError> {
+    fn dense_shifted(&self, node: &Node) -> Result<Vec<Goldilocks>, StageError> {
         let (constant, shape) = const_add(self.graph, node.id)?;
         let count: usize = shape.iter().map(|&len| len as usize).product();
         let channels = shape.last().map_or(1, |&len| len as usize).max(1);
@@ -834,7 +966,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
     fn broadcast(
         &self,
         arena: &mut Arena,
-        b: SecretBuf<Goldilocks>,
+        b: Column,
         a_shape: &[u32],
         b_shape: &[u32],
         broadcast: Broadcast,
@@ -856,6 +988,15 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             Broadcast::Leading => {
                 let layers = 1usize << self.schedule.layers.vars;
                 let (block, rows) = (1usize << b_vars, 1usize << (a_vars - b_vars));
+                if arena.streaming {
+                    return Ok(Read::Spread(arena.secret(Column::Spread {
+                        input: Box::new(b),
+                        block,
+                        rows,
+                        len: layers * rows * block,
+                    })));
+                }
+                let b = b.resident()?;
                 let mut full = zeros(layers * rows * block)?;
                 for layer in 0..layers {
                     let channels = &b[layer * block..(layer + 1) * block];
@@ -878,7 +1019,8 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         node: &Node,
         x: &[u32],
         stacked: bool,
-    ) -> Result<(Vec<Goldilocks>, Vec<Goldilocks>), StageError> {
+        streaming: bool,
+    ) -> Result<(Column, Column), StageError> {
         let Op::Rotate { rope } = node.op else {
             return internal("a Rotate names its RoPE table");
         };
@@ -892,12 +1034,6 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         let table = RopeTable::from_spec(spec).map_err(|_| StageError::Internal {
             rule: "a Rotate's table regenerates",
         })?;
-        let positions = self
-            .witness
-            .values(node.inputs[1])
-            .ok_or(StageError::Internal {
-                rule: "the witness holds the positions",
-            })?;
         let [rows, heads, dim] = *x else {
             return internal("a Rotate turns [n, heads, d_head]");
         };
@@ -912,11 +1048,42 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             0
         };
         let len = 1usize << (bit + head_vars + row_vars + layer_vars);
+        if streaming {
+            if !self.public.contains(node.inputs[1]) {
+                return internal("a streamed Rotate uses public positions");
+            }
+            let table = std::sync::Arc::new(table);
+            let slots = self.graph.slots.clone().map(std::sync::Arc::new);
+            let column = |sine| Column::Rope {
+                table: table.clone(),
+                positions: node.inputs[1],
+                slots: slots.clone(),
+                bit,
+                head_vars,
+                row_vars,
+                rows: rows as usize,
+                sine,
+                len,
+            };
+            return Ok((column(false), column(true)));
+        }
+        let positions = self
+            .witness
+            .values(node.inputs[1])
+            .ok_or(StageError::Internal {
+                rule: "the witness holds the positions",
+            })?;
         let (mut cos, mut sin) = (vec![Goldilocks::ZERO; len], vec![Goldilocks::ZERO; len]);
         for k in 0..len {
             let frequency = k & ((1 << bit) - 1);
             let row = (k >> (bit + head_vars)) & ((1 << row_vars) - 1);
-            if row >= rows as usize {
+            if row >= rows as usize
+                || self
+                    .graph
+                    .slots
+                    .as_ref()
+                    .is_some_and(|slots| !slots.is_real_row(row))
+            {
                 continue;
             }
             let position = u32::try_from(positions[row]).map_err(|_| StageError::Internal {
@@ -932,7 +1099,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             cos[k] = Goldilocks::from_i64(c);
             sin[k] = Goldilocks::from_i64(s);
         }
-        Ok((cos, sin))
+        Ok((cos.into(), sin.into()))
     }
 
     /// The equality zero-check `0 = Σ_x eq(z, x)·(Ỹ(x) − f(x))` of `node`'s committed output
@@ -945,7 +1112,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         arena: &mut Arena,
         instance: &Planned,
         node: &Node,
-        operand: &dyn Fn(usize) -> Result<SecretBuf<Goldilocks>, StageError>,
+        operand: &dyn Fn(usize) -> Result<Column, StageError>,
         stacked: bool,
     ) -> Result<Plan, StageError> {
         let layers = &self.schedule.layers;
@@ -957,10 +1124,12 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         // `f`'s claimed inputs take the instance's claims after `Y`'s, in `f`'s order.
         let mut next = 1;
         let mut read = |arena: &mut Arena, i: usize| -> Result<Read, StageError> {
-            Ok(match self.input(instance, node, i, operand, &mut next)? {
-                Operand::Public(table) => Read::Public(arena.public(table)),
-                Operand::Claimed(table) => Read::Operand(arena.secret(table)),
-            })
+            Ok(
+                match self.input(instance, node, i, operand, &mut next, arena.streaming)? {
+                    Operand::Public(table) => Read::Public(arena.public(table)),
+                    Operand::Claimed(table) => Read::Operand(arena.secret(table)),
+                },
+            )
         };
         let (inputs, terms) = match node.op {
             Op::ConstMul { c } => {
@@ -972,7 +1141,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                             "a ConstMul by a constant per channel is outside the layers",
                         );
                     }
-                    let c = Read::Public(arena.public(self.channels(node)?));
+                    let c = Read::Public(arena.public(self.channels(node, arena.streaming)?));
                     (
                         vec![y, x, c],
                         vec![Term::new(one, vec![0]), Term::new(-one, vec![2, 1])],
@@ -986,7 +1155,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                     return internal("a ConstAdd is outside the layers");
                 }
                 let x = read(arena, 0)?;
-                let shift = Read::Public(arena.public(self.shifted(node)?));
+                let shift = Read::Public(arena.public(self.shifted(node, arena.streaming)?));
                 (
                     vec![y, x, shift],
                     vec![
@@ -1013,7 +1182,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                 let a_shape = &self.graph.tensors[node.inputs[0].0 as usize].shape;
                 let b_shape = &self.graph.tensors[node.inputs[1].0 as usize].shape;
                 let a = read(arena, 0)?;
-                let b = self.input(instance, node, 1, operand, &mut next)?;
+                let b = self.input(instance, node, 1, operand, &mut next, arena.streaming)?;
                 let b = self.mul_operand(arena, b, a_shape, b_shape, broadcast, stacked)?;
                 (
                     vec![y, a, b],
@@ -1079,12 +1248,12 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
             ));
         }
         let block = 1usize << Self::vars_of(output);
-        let mut table = vec![Goldilocks::ZERO; block << layers.vars];
-        for layer in 0..layers.count {
-            let value = Goldilocks::from_i64(constant(layer)?);
-            let at = layer as usize * block;
-            table[at..at + block].fill(value);
-        }
+        let values = (0..layers.count)
+            .map(|l| constant(l).map(Goldilocks::from_i64))
+            .collect::<Result<Vec<_>, _>>()?;
+        let table = Column::generated(arena.streaming, block << layers.vars, move |i| {
+            Ok(values.get(i / block).copied().unwrap_or(Goldilocks::ZERO))
+        })?;
         let c = Read::Public(arena.public(table));
         Ok((
             vec![y, x, c],
@@ -1175,4 +1344,77 @@ fn bit_terms(f: BoolFn) -> Vec<Term<GoldilocksExt2>> {
 
 fn internal<T>(rule: &'static str) -> Result<T, StageError> {
     Err(StageError::Internal { rule })
+}
+
+#[cfg(test)]
+mod slot_tests {
+    use super::*;
+    use tessera_codec::{DecodeLimits, envelope, schema};
+    use tessera_compiler::{PublicModel, derive_schedule, lower_batch, positions_values};
+    use tessera_ir::{IntegerModel, TensorId};
+
+    struct Positions {
+        tensor: TensorId,
+        values: Vec<i64>,
+    }
+    impl WitnessSource for Positions {
+        fn values(&self, tensor: TensorId) -> Option<&[i64]> {
+            (tensor == self.tensor).then_some(&self.values)
+        }
+    }
+
+    #[test]
+    fn rope_public_tables_are_zero_on_inter_slot_and_axis_padding() {
+        let model: IntegerModel = envelope::open(
+            include_bytes!("../../../../spec/vectors/models/tiny-2-minimal.d"),
+            &schema::INTEGER_MODEL,
+            DecodeLimits::INTEGER_MODEL,
+        )
+        .unwrap();
+        let lowering = lower_batch(PublicModel::of(&model), &[2, 3, 1]).unwrap();
+        let schedule = derive_schedule(&lowering).unwrap();
+        let node = lowering
+            .graph
+            .nodes
+            .iter()
+            .find(|n| matches!(n.op, Op::Rotate { .. }))
+            .unwrap();
+        let positions = Positions {
+            tensor: node.inputs[1],
+            values: positions_values(&lowering),
+        };
+        let prover = StageProver::new(&lowering, &schedule, &positions);
+        let shape = &lowering.graph.tensors[node.inputs[0].0 as usize].shape;
+        let mut resident = None;
+        for streaming in [false, true] {
+            let (cos, sin) = prover.rope(node, shape, false, streaming).unwrap();
+            let read = |column: &Column| {
+                (0..column.len())
+                    .map(|i| column.value(&positions, i).unwrap())
+                    .collect::<Vec<_>>()
+            };
+            let (cos, sin) = (read(&cos), read(&sin));
+            if let Some((ref a, ref b)) = resident {
+                assert_eq!((&cos, &sin), (a, b));
+            } else {
+                resident = Some((cos.clone(), sin.clone()));
+            }
+            let rows = shape[0].next_power_of_two() as usize;
+            let per_row = cos.len() / rows;
+            assert!(cos[..per_row].iter().any(|&c| c != Goldilocks::ZERO));
+            // Real rows are 0,1; 4,5,6; and 8. Every other row must have a zero kernel.
+            for row in [2, 3, 7, 9, 10, 11, 12, 13, 14, 15] {
+                assert!(
+                    cos[row * per_row..(row + 1) * per_row]
+                        .iter()
+                        .all(|&c| c == Goldilocks::ZERO)
+                );
+                assert!(
+                    sin[row * per_row..(row + 1) * per_row]
+                        .iter()
+                        .all(|&c| c == Goldilocks::ZERO)
+                );
+            }
+        }
+    }
 }

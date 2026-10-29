@@ -1,0 +1,42 @@
+{
+  "budget_bytes": 228578876,
+  "independent_verifier_accepts": true,
+  "measured_peak_bytes": 121874712,
+  "model": "tiny-2-servable",
+  "p3b": 1,
+  "resident_plan_bytes": 228580528,
+  "schema_version": 1,
+  "stages": [
+    {
+      "cut": 0,
+      "fold_passes": 0,
+      "stage": 0,
+      "working_bytes": 0
+    },
+    {
+      "cut": 2,
+      "fold_passes": 1,
+      "stage": 1,
+      "working_bytes": 208656
+    },
+    {
+      "cut": 0,
+      "fold_passes": 0,
+      "stage": 2,
+      "working_bytes": 99552
+    }
+  ],
+  "tokens": 3,
+  "windowed_plan_bytes": 228577680,
+  "hardware": {
+    "cpu": "Apple M1 Max",
+    "ram_gib": 64,
+    "backend": "scalar CPU, one thread"
+  },
+  "validation": {
+    "command": "cargo test -p tessera-prover --test model_leaf public_cpu_api_selects_real_stage_windows_under_budget --features test-rng,tv-core/test-params --locked",
+    "ni_and_fresh_live": "Accept",
+    "same_seed_resident_bytes": "identical",
+    "scope": "whole prover allocation peak, excluding verifier; resident witness floor retained; P3/P3b run Engine::regenerate"
+  }
+}

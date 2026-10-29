@@ -171,15 +171,29 @@ fn verify_elementwise_check(
     Ok(())
 }
 
+// Keep lazy table descriptions separate from the dense columns used by this proof.
+fn lookup_tables(lookups: &Lookups<Fp>, specs: &[TableSpec]) -> Vec<GeneratedTable> {
+    specs
+        .iter()
+        .filter(|s| lookups.groups().iter().any(|g| g.table() == s.id))
+        .map(|s| {
+            let table = GeneratedTable::from_spec(s).expect("regen");
+            // shortcut: this dense test helper stops at 2^20 rows; use a streamed proof for larger fixtures.
+            assert!(
+                table.row_count() <= 1 << 20,
+                "dense test table exceeds 2^20 rows"
+            );
+            table
+        })
+        .collect()
+}
+
 fn check_lookups(
     rng: &mut SplitMix64,
     lookups: &Lookups<Fp>,
     specs: &[TableSpec],
 ) -> Result<(), &'static str> {
-    let owned: Vec<GeneratedTable> = specs
-        .iter()
-        .map(|s| GeneratedTable::from_spec(s).expect("regen"))
-        .collect();
+    let owned = lookup_tables(lookups, specs);
     let refs: Vec<&GeneratedTable> = owned.iter().collect();
     let cols = table_columns(&refs);
     let mults = lookups.multiplicities(&cols).map_err(|_| "out_of_table")?;
@@ -865,6 +879,67 @@ impl BatchFixture {
         check_lookups(rng, &lookups, &self.specs).map_err(|_| "logup")?;
         Ok(())
     }
+}
+
+#[test]
+fn lookup_columns_materialize_only_tables_the_batch_reads() {
+    let fixture = BatchFixture::new(6);
+    let selector = fixture
+        .gadget
+        .selector(fixture.padded_rows, fixture.real_rows)
+        .unwrap();
+    let columns = fixture.batch_columns();
+    let eval = fixture
+        .gadget
+        .evaluate_batch(&fixture.weights, &fixture.recorded, &columns, &selector)
+        .unwrap();
+    let lookups = fixture
+        .gadget
+        .evaluate_lookups(&selector, &eval, &columns)
+        .unwrap();
+    let actual = lookup_tables(&lookups, &fixture.specs);
+    assert!(
+        fixture
+            .specs
+            .iter()
+            .any(|s| matches!(s.kind, TableKind::Range { bits: 32 })),
+        "boundary specifications retain Range(32)"
+    );
+    assert!(
+        actual.iter().all(|t| t.row_count() <= 1 << 20),
+        "the small fixture must not allocate unused wide Range tables"
+    );
+    let mut expected: Vec<_> = lookups.groups().iter().map(|g| g.table()).collect();
+    expected.sort();
+    expected.dedup();
+    let mut found: Vec<_> = actual.iter().map(|t| t.spec().id).collect();
+    found.sort();
+    assert_eq!(
+        found, expected,
+        "retain every referenced table, exactly once"
+    );
+}
+
+#[test]
+#[should_panic(expected = "dense test table exceeds 2^20 rows")]
+fn a_referenced_oversized_table_fails_before_dense_allocation() {
+    let fixture = BatchFixture::new(6);
+    let selector = fixture
+        .gadget
+        .selector(fixture.padded_rows, fixture.real_rows)
+        .unwrap();
+    let columns = fixture.batch_columns();
+    let eval = fixture
+        .gadget
+        .evaluate_batch(&fixture.weights, &fixture.recorded, &columns, &selector)
+        .unwrap();
+    let lookups = fixture
+        .gadget
+        .evaluate_lookups(&selector, &eval, &columns)
+        .unwrap();
+    let id = lookups.groups()[0].table();
+    let oversized = GeneratedTable::new(id, TableKind::Range { bits: 32 }).unwrap();
+    lookup_tables(&lookups, &[oversized.spec().clone()]);
 }
 
 #[test]
