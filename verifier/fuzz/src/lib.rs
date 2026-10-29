@@ -16,6 +16,10 @@
 use tv_codec::{Cursor, DecodeError, size};
 
 pub mod audit;
+#[cfg(feature = "test-params")]
+pub mod claims;
+#[cfg(feature = "test-params")]
+pub mod driver;
 pub mod gadgets;
 pub mod proofs;
 pub mod protocol;

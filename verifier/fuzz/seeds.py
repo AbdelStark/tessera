@@ -354,7 +354,35 @@ def main():
         for limits in range(2):
             write("audit", bytes([selector, limits]) + data)
 
-    for target in ("decode", "envelope", "protocol", "multiproof", "inclusion", "sumcheck", "audit"):
+    # Complete claim validation: raw payload/envelope, both protocol selections,
+    # and exact semantic refusal controls. Only public fixture bytes are used.
+    claims = json.loads((HERE.parent.parent / "spec/vectors/claims/claim-lists.json").read_text())
+    for case in claims["cases"]:
+        envelope = bytes.fromhex(case["hex"])
+        payload = envelope[20:-32]
+        write("claims", bytes([0]) + payload)
+        write("claims", bytes([1]) + envelope)
+        write("claims", bytes([8]) + (2).to_bytes(2, "little") + payload[2:])
+    for mode in range(2, 8):
+        write("claims", bytes([mode]))
+
+    # Two complete NI contexts, each with immutable original caller pins. Tamper
+    # edits stay bound to the tamper base rather than the other recorded proof.
+    recorded = HERE.parent / "crates/tv-core/tests/fixtures/driver"
+    tamper = HERE.parent.parent / "spec/vectors/tamper"
+    for context, path in [(0, recorded / "ni.tnp"), (64, tamper / "ni.tnp")]:
+        proof = path.read_bytes()
+        write("verify", bytes([context | 0x30]) + proof)
+        write("verify", bytes([context | 1]) + proof[20:-32])
+        for mode in range(2, 9):
+            write("verify", bytes([context | mode]))
+    corpus = json.loads((tamper / "protocol-1.json").read_text())
+    for index, case in enumerate(corpus["mutations"]):
+        edits = case.get("edits", [])
+        if edits and all(e["target"] == "ni.tnp" for e in edits):
+            write("verify", bytes([0x49]) + index.to_bytes(2, "little"))
+
+    for target in ("decode", "envelope", "protocol", "multiproof", "inclusion", "sumcheck", "audit", "claims", "verify"):
         print(f"{target}: {sum(1 for _ in (out / target).iterdir())} seeds")
 
 

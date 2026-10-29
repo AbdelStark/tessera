@@ -25,12 +25,11 @@ tv-core = { path = "../crates/tv-core" }
 tv-field = { path = "../crates/tv-field" }
 tv-hash = { path = "../crates/tv-hash" }
 tv-testkit = { path = "../crates/tv-testkit" }
+# Process-wide caps for the bounded fuzz binaries and isolated allocation tests.
+cap = { version = "0.1.2", features = ["stats"] }
 
 [dev-dependencies]
 tv-tables = { path = "../crates/tv-tables" }
-# A global allocator that counts and caps allocations, for tests/allocation.rs and the other
-# tests/*_allocation.rs.
-cap = { version = "0.1.2", features = ["stats"] }
 
 # The allocation tests cap the process-wide allocator, so each runs alone on the main thread
 # (#501): libtest's harness thread would allocate inside their capped windows.
@@ -90,6 +89,22 @@ members = ["."]
 [[bin]]
 name = "decode"
 path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "claims"
+path = "fuzz_targets/claims.rs"
+required-features = ["test-params"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "verify"
+path = "fuzz_targets/verify.rs"
+required-features = ["test-params"]
 test = false
 doc = false
 bench = false
