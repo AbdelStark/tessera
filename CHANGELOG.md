@@ -1707,6 +1707,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- Use bounded INT8 tiles and widened integer partials for logits-only servable reference matmuls; preserve the scalar trace and wide/unsupported fallbacks, signed extremes, tails and encoded D artifacts (RFC-0005, SC-7, [#615](https://github.com/AbdelStark/tessera/issues/615)).
+
 - Evaluate only distinct requested SiLU keys in the logits-only integer reference, using the same fixed-point formula and parameter/key checks as full table generation; retain complete cores and digests for trace/conformance consumers (RFC-0008, SC-7, [#613](https://github.com/AbdelStark/tessera/issues/613)).
 
 - Stream quantization's held-out KL scoring by window and retain only per-position divergences; the integer logits-only reference releases layer traces while preserving full-trace conformance consumers, exact rounding and alpha selection (RFC-0005, SC-7, [#611](https://github.com/AbdelStark/tessera/issues/611)).
