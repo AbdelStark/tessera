@@ -6,6 +6,7 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Tag-triggered draft release workflow and dry runs, with two clean container builds per Linux verifier architecture, byte comparisons, SHA-256 release notes and a scripted second-builder procedure ([#178](https://github.com/AbdelStark/tessera/issues/178), 09 §9).
 - `audit batch --plan` and sampled proving split oversized runtime advice layouts with the same slot-class packing rule; a request that cannot fit alone is refused (RFC-0071, #551).
 
 - Conformance vectors and differential prover-to-verifier adapter tests for temperature and mixture scoring checks ([#160](https://github.com/AbdelStark/tessera/issues/160), RFC-0017, RFC-0019, RFC-0030, RFC-0035, RFC-0043, RFC-0050, RFC-0058, RFC-0061):
