@@ -530,17 +530,22 @@ impl<'a> Keys<'a> {
             // Its evaluations are `W`'s, then `X`'s: the node's inputs 1 and 0.
             Relation::MatMulWeight => (R::MatMulWeight, self.inputs(at, node, &[1, 0])?),
             Relation::MatMulAct { .. } => {
-                // Operands whose leading axes, before their last two, hold two heads or more.
-                let heads: u64 = node
+                // Operands whose leading axes, before their last two, hold two heads or more, or
+                // a slotted batch whose `MatMulAct` stacks over the `R ≥ 2` request slots.
+                let first = node
                     .inputs
                     .first()
-                    .and_then(|t| self.graph.tensors.get(t.0 as usize))
+                    .and_then(|t| self.graph.tensors.get(t.0 as usize));
+                let heads: u64 = first
                     .map(|t| {
                         let lead = t.shape.len().saturating_sub(2);
                         t.shape[..lead].iter().map(|&n| u64::from(n)).product()
                     })
                     .unwrap_or(1);
-                stacked |= heads >= 2;
+                let slotted = self.graph.slots.as_ref().is_some_and(|slots| {
+                    first.is_some_and(|t| t.shape.len() == 3 && t.shape[1] == slots.token_len())
+                });
+                stacked |= heads >= 2 || slotted;
                 (R::MatMulAct, self.inputs(at, node, &[0, 1])?)
             }
             Relation::Mul(_) => (R::Mul, self.inputs(at, node, &[0, 1])?),

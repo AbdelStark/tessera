@@ -508,6 +508,42 @@ pub fn check_uhat_bound(
     Ok(FixedBits(total))
 }
 
+/// Sums the per-token fixed-point bounds over request `ordinal`'s active window
+/// `ordinal · slot_len + (prompt_len − 1) .. ordinal · slot_len + prompt_len + output_len − 1`
+/// (RFC-0071 'The greedy certificate and scoring'). Returns `Some(FixedBits(0))` when
+/// `output_len == 0`, or `None` on invalid geometry or `u64` overflow.
+pub fn window_uhat_sum(
+    row_bounds: &[u64],
+    slot_len: u32,
+    ordinal: u32,
+    prompt_len: u32,
+    output_len: u32,
+) -> Option<FixedBits> {
+    if prompt_len == 0 {
+        return None;
+    }
+    let n_r = prompt_len.checked_add(output_len)?;
+    if n_r > slot_len {
+        return None;
+    }
+    let base = u64::from(ordinal).checked_mul(u64::from(slot_len))?;
+    let slot_end = usize::try_from(base.checked_add(u64::from(n_r))?).ok()?;
+    if slot_end > row_bounds.len() {
+        return None;
+    }
+    if output_len == 0 {
+        return Some(FixedBits(0));
+    }
+    let win_start =
+        usize::try_from(base.checked_add(u64::from(prompt_len.checked_sub(1)?))?).ok()?;
+    let win_end = win_start.checked_add(usize::try_from(output_len).ok()?)?;
+    let mut sum = 0u64;
+    for &b in row_bounds.get(win_start..win_end)? {
+        sum = sum.checked_add(b)?;
+    }
+    Some(FixedBits(sum))
+}
+
 // --- FIPS-197 AES-128 internals ---
 
 /// `xtime(a) = a • {02}` modulo `x^8 + x^4 + x^3 + x + 1` (FIPS-197 §4.2.1).

@@ -19,6 +19,7 @@ use tv_tables::{TableId, TableKind};
 #[derive(Debug)]
 pub struct Root<'p> {
     choice: &'p Choice,
+    pub(super) slots: Option<&'p crate::lowering::Slots>,
     gadget: GadgetId,
     products: Products,
     comparisons: [Comparison; 2],
@@ -251,6 +252,7 @@ impl<'p> Root<'p> {
                 .map_err(|_| internal)?;
         Ok(Self {
             choice,
+            slots: plan.graph.slots(),
             gadget,
             products,
             comparisons,
@@ -268,6 +270,18 @@ impl<'p> Root<'p> {
             dim,
             residual_vars: variables.checked_add(features).ok_or(internal)?,
         })
+    }
+
+    pub(super) fn row_psi(&self, point: &[Fp2]) -> Result<Fp2, GadgetError> {
+        match self.slots {
+            Some(s) if s.lengths().len() >= 2 => crate::selectors::slot_selector(
+                point,
+                usize::try_from(s.slot_bits()).map_err(|_| GadgetError::Internal)?,
+                s.lengths(),
+            )
+            .ok_or(GadgetError::Internal),
+            _ => crate::selectors::lt(point, u64::from(self.n)).ok_or(GadgetError::Internal),
+        }
     }
 
     /// The canonical rejection payload.
@@ -343,7 +357,7 @@ impl<'p> Root<'p> {
                 return Err(reject);
             }
         }
-        let psi = crate::selectors::lt(point, u64::from(self.n)).ok_or(internal)?;
+        let psi = self.row_psi(point)?;
         let u = sources.first().copied().ok_or(internal)? + self.epsilon * psi;
         if recompose(keys.get(1..5).ok_or(internal)?, 16)? != u
             || recompose(
@@ -461,7 +475,7 @@ impl<'p> Root<'p> {
             });
         }
         let rho = values.first().copied().ok_or(GadgetError::Internal)?;
-        let psi = crate::selectors::lt(point, u64::from(self.n)).ok_or(GadgetError::Internal)?;
+        let psi = self.row_psi(point)?;
         Ok(Padding {
             value: eq(zero, point).ok_or(GadgetError::Internal)? * (Fp2::ONE - psi) * rho,
             claim: Claim {
@@ -507,7 +521,7 @@ impl<'p> Root<'p> {
         let value = values.first().copied().ok_or(internal)?;
         let (feature, row) = point.split_at_checked(self.features).ok_or(internal)?;
         let psi = crate::selectors::lt(feature, u64::from(self.dim)).ok_or(internal)?
-            * crate::selectors::lt(row, u64::from(self.n)).ok_or(internal)?;
+            * self.row_psi(row)?;
         Ok(Padding {
             value: eq(zero, point).ok_or(internal)? * (Fp2::ONE - psi) * value,
             claim: Claim {
@@ -607,7 +621,7 @@ impl<'r> Product<'r> {
         let (root_digits, input_digits) = values
             .split_at_checked(self.root.products.root_limbs())
             .ok_or(internal)?;
-        let psi = crate::selectors::lt(point, u64::from(self.root.n)).ok_or(internal)?;
+        let psi = self.root.row_psi(point)?;
         Ok(Final {
             root: self.root,
             point,

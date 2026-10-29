@@ -280,11 +280,7 @@ impl Opening<'_> {
         for tile in self.commitment.layout.tiles() {
             for column in 0..tile.columns() {
                 let location = tile.location(column).ok_or(OpeningError::Internal)?;
-                let end = location
-                    .base
-                    .checked_add(location.zero_at)
-                    .ok_or(OpeningError::Internal)?;
-                for row in location.base..end {
+                let ok = location.for_each_committed_row(|row| {
                     if out.len() >= self.commitment.sizes.rows {
                         return Err(OpeningError::Internal);
                     }
@@ -300,6 +296,10 @@ impl Opening<'_> {
                         value
                     };
                     out.push(value);
+                    Ok(())
+                })?;
+                if ok.is_none() {
+                    return Err(OpeningError::Internal);
                 }
             }
         }
