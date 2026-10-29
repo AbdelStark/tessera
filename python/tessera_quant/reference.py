@@ -5,10 +5,11 @@ This is an independent implementation of `D`'s 'Integer semantics' as RFC-0022 (
 residual) and RFC-0023 (`kappa`) amend them. The CPU engine of `tessera-witness` is checked
 against it bit for bit (SC-7, 07 §5), and the fidelity harness runs it.
 
-- **Exact.** Every value is a true integer in int64. Before each product, its bound is computed
-  from its operands' largest magnitudes in Python's integers, and a product that could reach
-  `2^63` is refused, so nothing wraps silently. The norm's root, whose `d * 2^(2 kappa)` reaches
-  `2^94`, is computed in Python's integers, row by row.
+- **Exact.** Semantic values are true integers in int64. Scalar products check bounds from
+  their operands' largest magnitudes. Logits-only servable matmuls use bounded INT8 tiles and
+  widen INT32 partials before accumulation; wide or unsupported operands use the scalar route.
+  A sum that could reach `2^63` is refused, so nothing wraps silently. The norm's root, whose
+  `d * 2^(2 kappa)` reaches `2^94`, is computed in Python's integers, row by row.
 - **Tables.** `Exp`, `Silu` and RoPE's constants come from `tessera_quant.tables`, whose
   generators equal the Rust ones (RFC-0008), with the parameters the lowering gives them
   (RFC-0006 'Llama lowering'). The last few tables generated are kept for the next sequence.
@@ -30,6 +31,7 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
+from tessera_quant._integer_matmul import try_matmul
 from tessera_quant.errors import TesseraQuantError, UsageError
 from tessera_quant.integer_model import (
     EmbedPoint,
@@ -188,6 +190,11 @@ class _Forward:
 
     def matmul(self, x: torch.Tensor, ty: WeightType, layer: int) -> torch.Tensor:
         """`x W^T` for the weight `(ty, layer)`: refused if a sum could reach `2^63`."""
+        if not self.record and self.model.profile is Profile.Servable:
+            weight = self.weights[ty, layer]
+            result = try_matmul(x, weight.data.reshape(weight.rows, weight.cols))
+            if result is not None:
+                return result
         w = self.weight(ty, layer)
         _bounded(_largest(x) * _largest(w) * w.shape[1], f"{ty.name}'s product")
         return x @ w.T

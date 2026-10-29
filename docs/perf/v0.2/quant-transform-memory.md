@@ -72,6 +72,8 @@ checkpoint loader used by `test_capture`; the supported-version run is the valid
 
 This does not establish the full fidelity gates of [#93](https://github.com/AbdelStark/tessera/issues/93),
 the full engine differential of [#312](https://github.com/AbdelStark/tessera/issues/312), or a
-billion-parameter proof. The current CPU prover retains encoded weight commitments and
-budgets 256 bytes per padded weight entry; streaming those commitments/openings and the
-large lookup working sets remain necessary for this host. Protocol/1 remains non-hiding.
+billion-parameter proof. This measurement preceded the
+[regenerated weight commitment](../v0.3/weight-regeneration.md), which replaced encoded-weight
+residency. The witness and large lookup working sets remain separate costs; the
+[later real-model attempt](reference-int8-tiles.md#actual-1b-candidate-and-proof-status) records
+the exported candidate, actual commitment and proof-planning failure. Protocol/1 remains non-hiding.

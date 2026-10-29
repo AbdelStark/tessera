@@ -84,6 +84,8 @@ billion-parameter proof or a production memory bound. The CPU witness still mate
 weights as `i64`, `PassPlan` charges resident graph tensors conservatively, and dense lookup
 working sets remain large. The real-model ramp must qualify those paths and produce an
 independently verified proof with certifying parameters. Small diagnostic calibrations of
-the real 1B and 8B checkpoints also refused unsupported rescale shifts; full C4 calibration
-and the fidelity requirements of [#93](https://github.com/AbdelStark/tessera/issues/93)
-remain separate work. Protocol/1 is non-hiding.
+the real 1B and 8B checkpoints initially refused unsupported rescale shifts. The
+[subsequent real-model ramp](../v0.2/reference-int8-tiles.md#actual-1b-candidate-and-proof-status)
+completed full 1B C4 calibration, exported an affine candidate and committed its actual weights;
+its proof attempt failed during leaf planning. Full fidelity requirements of
+[#93](https://github.com/AbdelStark/tessera/issues/93) remain separate work. Protocol/1 is non-hiding.

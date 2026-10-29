@@ -72,6 +72,10 @@ See the [held-out memory measurement](../docs/perf/v0.2/heldout-memory.md) for c
 The logits-only route also evaluates SiLU at distinct requested shifted keys instead of building
 its entire public core. [SiLU measurements](../docs/perf/v0.2/requested-silu.md) record exactness,
 work bounds, synthetic timings and the provisional 1B forward; this does not shrink proof tables.
+Servable logits use bounded CPU INT8 matmul tiles with INT32 partials widened before int64
+accumulation. The full trace, wide activations and unavailable kernels use the scalar route.
+See the [integer-tile measurements](../docs/perf/v0.2/reference-int8-tiles.md) for equivalence,
+memory bounds and the real-model proof attempt's current failure.
 
 On Metal-capable macOS hosts, the Python API accepts `device="mps"` for the BF16 reference
 and calibration. Statistics and reference logits copy to CPU in their source dtype before
