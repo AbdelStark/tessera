@@ -6,9 +6,9 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 
 | Kind | Next identifier |
 |---|---|
-| Survey | SUR-0016 |
+| Survey | SUR-0017 |
 | Idea | IDEA-0041 |
-| Experiment | EXP-0028 |
+| Experiment | EXP-0029 |
 
 ## Queue
 
@@ -30,6 +30,7 @@ Upstream on 2026-10-19 (`gh issue list`): every issue the loop fed upstream is c
 
 | # | Action | Mode | Why | Feasible here |
 |---|---|---|---|---|
+| 0 | Review draft [RFC-0075](../docs/rfcs/RFC-0075-weight-mask-cost.md), #568's full-support regeneration/accounting decision from EXP-0028, preserving #394/#145 prerequisites | review | EXP-0028 validates the finite accounting domain. The draft selects bounded regeneration, complete W and separate core/total gates; no blinder-exclusion credit, GPU rate or baseline ZK approval | maintainer decision; E2 needs #38 |
 | 1 | RFC-0070 drafts the RFC #489 asks for, from [IDEA-0040](ideas/IDEA-0040-batched-mask-opening.md) and [EXP-0027](experiments/EXP-0027-batched-mask-opening/README.md): `M`'s layout, `S` over `Fp2` on it, the order and labels, one group, `G(r)` under `…/evals`, the calculator's sizes, Lemma 4a and R11 | promoted | It settles both gaps the independent reading raised and counts its two soundness terms. Owed: implementation (#148, #149, #159) and #162's negative controls. Follow-ups: OQ-0070-1 (a smaller pad, L3 with a rank lemma) and OQ-0070-2 (the column and fold masks' groups) | yes |
 | 2 | Draft RFC-0021 revised against current main in [PR #390](https://github.com/AbdelStark/tessera/pull/390) | review | Fresh pinned-source review and independent exact oracle reconcile RFC-0047/0049 allocation, virtual rows and empty matrices. OQ-0021-4/6/7 remain open; [#394](https://github.com/AbdelStark/tessera/issues/394) tracks the joint masking/invariant conflict. No complete soundness or ZK approval | PR Draft; independent review and decisions pending |
 | 9 | Production-port proposal for IDEA-0026/0030: [#391](https://github.com/AbdelStark/tessera/issues/391) | handed off | E1 CPU validation promoted with explicit accumulator-bound, SecretBuf, branchlessness, equivalence, mutation and independent-acceptance criteria; no production implementation or E2 claim | issue filed; implementation separate |
@@ -83,6 +84,7 @@ Upstream on 2026-10-19 (`gh issue list`): every issue the loop fed upstream is c
 
 | ID | Topic | Status | Date | Ideas seeded |
 |---|---|---|---|---|
+| [SUR-0016](surveys/SUR-0016-weight-mask-draw-cost.md) | `hash`: complete weight-mask draws and the missing XOF rate (#568) | `current (2026-10-29)` | 2026-10-29 | full-support bounded regeneration; matched secret-store comparison; separately gated support exclusion |
 | [SUR-0015](surveys/SUR-0015-witness-multiplicity-storage.md) | `passes`: bounded complete witness multiplicities for #112 | `current (2026-10-20)` | 2026-10-20 | bounded dense/sorted/windowed counters |
 | [SUR-0014](surveys/SUR-0014-gadget-column-contract.md) | `compiler`: exact gadget column/lookup contract for #106/#407 | `current (2026-10-19)` | 2026-10-19 | IDEA-0036 |
 | [SUR-0001](surveys/SUR-0001-proximity.md) | `proximity`: proximity gaps, `τ` and proof size | `current (2026-10-16)` | 2026-10-16 | 7 |
@@ -165,6 +167,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | ID | Title | Idea | Status | Verdict | Evidence |
 |---|---|---|---|---|---|
+| [EXP-0028](experiments/EXP-0028-weight-mask-draws/README.md) | Complete weight-mask draw accounting | #568 | `done: validated` | validated | E0: 3,671 cases, 25,576 accounting judgments, 28,500 independent replay checks, ten faults caught; no timing/security claim |
 | [EXP-0027](experiments/EXP-0027-batched-mask-opening/README.md) | Batched mask opening: rank, distinguisher, soundness, 405B count | IDEA-0040 | `done: validated` | validated | E0. 13,500 rank draws, generic rank `2m` on every draw. Candidate distinguishable on 0 of 300 draws, four controls on 100%. 366 and 421 accepted cheats against 381.4 and 427.2 predicted. The 405B count from the compiler. Seeding amendment disclosed |
 | [EXP-0025](experiments/EXP-0025-greedy-boundary/README.md) | Original-source greedy boundary | IDEA-0038 | `done: validated` | validated | E0: 324 domains, 129,885 integer cases, 18 experiment faults; no full protocol credit |
 | [EXP-0026](experiments/EXP-0026-causal-score-rounds/README.md) | Causal score rounds without the score tensor | IDEA-0039 | `done: validated` | validated | E0: 336 runs exactly equal in Fp2, 9/9 faults detected, key-bit-round multiplications 0.027 of the literal prover's at n = 2^10 and falling as d·log n/n |
@@ -296,3 +299,11 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-10-23 | #458 native relations (RFC-0056) | RFC-0056 accepted from EXP-0026: the report and the model count the prover's native relations, from a compiler mirror of `ModelNativePlan` held equal by the prover's tests; score instances proven without the score tensor (45 GB of residents at 16K tokens, 60 GB at 128K context, not 8.8 to 141 TB); identical instances share their tables (30 duplicate SumSquares per root in stage 2); a request's greedy relations counted (1.17 TB of stage 1). An independent review found the first draft's gaps: keys spanning `max(T, S)`, the request relations, per-root product sharing, and a ten-variable window that a second window beats at every estimate. Rule adopted: one window per 8 own variables (E0 count and E1 extrapolation agree that a second window wins only beyond 8 at 405B). 405B: `minimal` stays at 8 regenerations (13.8, 29.1), windows of 8 and 7 own variables, `c_w` 6 to 17 ps; `servable` windows stage 2 too and splits stage 1 (9 regenerations; 15.7, 31.0), `c_w` 1 to 3.5 ps. Finding: `servable` is cheaper at 2,048 tokens (14.3, 29.5) than at the scenario's 16K, so the batch is a planner choice (OQ-0056-2, #357). OQ-0056-1 (the cap) joins OQ-0055-1 for v0.5's measurement. |
 
 | 2026-10-25 | `autoresearch ideate` + `experiment IDEA-0040` (#489) | **The unit.** IDEA-0040 was triaged, and EXP-0027 pre-registered (SHA-256 79c531f7, frozen 19:19:41Z). The frozen plan is not committed, since this unit makes no git writes, and its digests stand in. The plan was amended once, for overlapping worker streams (cefd62a0). The judged run is `done: validated` (E0). **Findings.** The batching's revealed functionals reach rank `2m`, not the pre-registered `2m + 1`: the last round brings one. Sub-cube supports lose `j`, or `2j` under `S` on `C`'s support. Coverage of `M`'s layout, not full rank, decides zero knowledge (Lemma B). The bare batching leaks on a protocol-like layout. **At 405B.** 2,667 mask claims, one group of 64 MiB in place of 612 (38.25 GiB), an `S` of 0.163% of the advice rows, and soundness `+2^-116.6`. **Review.** An independent reading of Lemma B found no break, two specification gaps and two missing soundness terms; they are recorded in the report. **Next.** The RFC for #489. |
+
+| 2026-10-29 | `autoresearch survey hash` (#568) | [SUR-0016](surveys/SUR-0016-weight-mask-draw-cost.md) reconciles conditional draw sets: 654.109 GB full support, 216.735 GB selected-only, 242.463 GB all masks plus selected values (E0). RFC-0004's 530 GB/s is an implied column-hash budget, not a measured XOF rate. No design promotion, security claim, GPU result or cost-model credit. Next bounded unit: pre-register a complete per-matrix/support/consumer audit before choosing #568's storage/budget amendment. |
+
+| 2026-10-29 | `autoresearch experiment` (#568, registration) | [EXP-0028](experiments/EXP-0028-weight-mask-draws/README.md) frozen before code: five model and eight opening geometries, synthetic supports/widths/reservations, two 405B channel cases, pass/epoch accounting and ten negative controls. E0 only; no masked-layout implementation, throughput or security claim. |
+
+| 2026-10-29 | `autoresearch experiment` (#568, result) | [EXP-0028](experiments/EXP-0028-weight-mask-draws/README.md) `done: validated` in its frozen E0 domain: 3,671 cases, 25,576 accounting judgments and 28,500 independent saved-record checks; ten accounting faults and eleven reader corruptions caught with passing controls. Tight 405B full support is 653,675,986,944 accepted bytes versus historical 654,109,048,832. No throughput, complete Protocol Two implementation or security validation. |
+
+| 2026-10-29 | `#568 cost decision draft` | [RFC-0075](../docs/rfcs/RFC-0075-weight-mask-cost.md) proposes bounded full-support GPU regeneration with stored P5 columns, complete W and separate core/total gates. The 530e9 B/s effective-rate scenario is explicitly unmeasured; historical envelope gives projected target 1.474 and re-plan above 1.734 GPU-s, with the original 0.24/0.5 core gate retained. Accepted documents carry conditional draft marks only. No implementation, performance qualification or joint hiding approval. |

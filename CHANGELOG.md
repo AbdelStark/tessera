@@ -6,6 +6,7 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Draft RFC-0075 for bounded full-support weight-mask regeneration and complete core/draw/total cost accounting, backed by SUR-0016 and frozen E0 audit EXP-0028; no GPU measurement or zero-knowledge capability is claimed ([#568](https://github.com/AbdelStark/tessera/issues/568)).
 - Proposed separate Lean verifier blueprint, with three surfaces of theorem statements, provisional predicate correspondences, negative-case evidence and open refinement/composition obligations; no mechanized proof or changed acceptance semantics ([#392](https://github.com/AbdelStark/tessera/issues/392), RFC-0019 OQ-0019-1, SP-6).
 - Windowed CPU proving uses the resident native representation charged by its plan; ordinary resident proving retains computed score rounds. Generated OneHot/RoPE factors preserve inter-slot padding, with NI/Live budget-window batch coverage (RFC-0055, RFC-0056, RFC-0071, #459).
 
