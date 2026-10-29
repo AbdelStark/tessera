@@ -69,6 +69,31 @@ source and lookup obligation; they are not treated as complete proof acceptance.
 `seeds.py` adds valid, malformed and nonzero-operand gadget cases to the existing
 sumcheck corpus; unprefixed sumcheck/tree scripts keep their format.
 
+## Complete-entry-point targets (#185)
+
+`claims` and `verify` require `--features test-params`; these are fuzz-only builds with
+debug assertions, never deployed verifier releases. `claims` accepts raw ClaimList
+payloads/envelopes and exercises semantic validation for both protocol selections,
+with exact protocol/architecture/layout/parameter refusal controls. `verify` runs the
+complete NI byte/typed APIs against immutable public caller inputs from two contexts,
+including every declared NI tamper case and exact layout/lookup/stage/opening/resource
+controls. Arbitrary raw acceptance is not automatically a forgery; another nonce may
+be valid. Accepted reports must retain the pinned public inputs and zero exact bound.
+The source fixtures are recorded public integration data, not new independent
+mathematical oracles. Both binaries cap additional Rust allocations at 64 MiB;
+`tests/complete_oracles.rs` replays acceptance, refusals and the tamper cases directly.
+
+The [campaign plan](../../docs/testing/fuzz-campaign-2026-10-29/README.md) fixes actual
+CPU-time accounting and per-target budgets. `campaign.py` records binary/seed identities
+and `wait4` CPU usage, stops on failures, and cannot certify the gate from wall time.
+No campaign result is claimed until its report is committed.
+
+```sh
+cargo test --features test-params --test complete_oracles --locked
+cargo fuzz run --features test-params claims corpus/claims seeds/claims -- -max_total_time=600
+cargo fuzz run --features test-params verify corpus/verify seeds/verify -- -max_total_time=600
+```
+
 ## Running
 
 From this directory, where `rust-toolchain.toml` pins the nightly toolchain CI uses, with `cargo-fuzz` 0.13.2:

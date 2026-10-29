@@ -69,8 +69,8 @@ jobs:
         run: cargo test --locked
       - name: Complete recorded driver under allocation and deadline limits
         run: |
-          cargo clippy --features test-params --test driver_work_allocation --test driver_deadline_allocation --locked -- -D warnings
-          cargo test --features test-params --test driver_work_allocation --test driver_deadline_allocation --locked
+          cargo clippy --features test-params --all-targets --locked -- -D warnings
+          cargo test --features test-params --test complete_oracles --test driver_work_allocation --test driver_deadline_allocation --locked
       - name: List the targets, one per fuzz_targets/<name>.rs
         id: targets
         run: |
@@ -111,7 +111,7 @@ jobs:
       - name: Seed corpora from spec/vectors/
         run: python3 seeds.py "$RUNNER_TEMP/seeds"
       - name: Build under AddressSanitizer
-        run: cargo fuzz build "$TARGET"
+        run: cargo fuzz build --features test-params "$TARGET"
         env:
           TARGET: ${{ matrix.target }}
       - name: Fuzz
@@ -125,7 +125,7 @@ jobs:
           fi
           # seeds.py seeds the targets it knows; another starts from an empty directory.
           mkdir -p "corpus/$TARGET" "$RUNNER_TEMP/seeds/$TARGET"
-          cargo fuzz run "$TARGET" "corpus/$TARGET" "$RUNNER_TEMP/seeds/$TARGET" -- \
+          cargo fuzz run --features test-params "$TARGET" "corpus/$TARGET" "$RUNNER_TEMP/seeds/$TARGET" -- \
             -max_total_time="$SECONDS_PER_TARGET" -timeout=10 -print_final_stats=1
       - name: Keep the failing input
         if: failure()

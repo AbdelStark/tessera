@@ -4,6 +4,10 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ## [Unreleased]
 
+### Added
+
+- Claim-list validation and complete NI-driver fuzz targets, exact tamper-case oracles, and an actual-CPU-time campaign runner ([#185](https://github.com/AbdelStark/tessera/issues/185), RFC-0019, SP-8). The 24 CPU-hour campaign and release qualification remain pending.
+
 ### Fixed
 
 - Refine the driver's memory preflight with the derived row coefficients, codeword and NTT twiddles that must coexist for each advice or weight opening ([#182](https://github.com/AbdelStark/tessera/issues/182), SP-8). Use the largest sequential opening, retaining the existing coarse allowance when larger. Checked size overflow and insufficient budget return `ERR-RES-MEMORY` before a Live reveal or opening-buffer reservation. Boundary tests first validate large advice and weight geometries; this remains a partial allocation estimate.

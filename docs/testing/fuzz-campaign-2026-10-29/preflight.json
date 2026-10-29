@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "records": [
+    {
+      "name": "protocol-version",
+      "caught": true,
+      "control_passed": true
+    },
+    {
+      "name": "zero-lookup-denominator",
+      "caught": true,
+      "control_passed": true
+    },
+    {
+      "name": "terminal-relation",
+      "caught": true,
+      "control_passed": true
+    },
+    {
+      "name": "advice-evaluation",
+      "caught": true,
+      "control_passed": true
+    }
+  ],
+  "scope": "Four production-check omissions compiled and failed the new oracle assertions; each restored control passed. No campaign CPU-hour credit.",
+  "ni_tamper_cases": 201,
+  "controller_failed_worker": {
+    "injected_exit_code": 7,
+    "observed_state": "finding-or-worker-failure",
+    "runner_exit_code": 1,
+    "clean_cpu_hours": 0
+  }
+}
