@@ -1707,6 +1707,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- CPU protocol/1 weight commitments retain public Merkle metadata and regenerate column answers in bounded clearing buffers, preserving roots and proof bytes while charging blocks, folds and answers in the host budget (RFC-0012/0040, [#607](https://github.com/AbdelStark/tessera/issues/607)).
+
 - Quantization transforms checkpoint weights one layer at a time instead of retaining whole-model float64 copies; both profiles and scale modes preserve the integer artifact bytes (RFC-0005, [#605](https://github.com/AbdelStark/tessera/issues/605)).
 
 - `tessera_compiler::anchor::sha256` assembles each committed block's message bits as its own `[512, M]` tensor rather than one `[512·N, M]` tensor across the whole message, closing RFC-0072 OQ-0072-2 ([#563](https://github.com/AbdelStark/tessera/issues/563)):

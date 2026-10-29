@@ -24,9 +24,9 @@ use tessera_codec::{Secret, decode, encode};
 use tessera_field::{Field, Goldilocks, PrimeField};
 use tessera_pcs::{
     ChannelParamsRef, ChannelValues, CommitmentDescriptor, CommitmentParams, MatrixKind,
-    ModelWeights, PcsError, ReferenceCommitment, RowEncoder, RowLayout, WeightCommitment,
-    WeightCommitmentPublic, WeightLayout, WeightLayoutParams, WeightMatrix, WeightShape,
-    WeightShapes, WeightTensorRef,
+    ModelWeights, PcsError, ReferenceCommitment, RegeneratedWeightCommitment, RowEncoder,
+    RowLayout, WeightCommitment, WeightCommitmentPublic, WeightLayout, WeightLayoutParams,
+    WeightMatrix, WeightShape, WeightShapes, WeightTensorRef,
 };
 
 type Fp = Goldilocks;
@@ -408,6 +408,117 @@ fn committed(seed: u64) -> (Model, WeightLayout, WeightCommitment) {
 
 fn block(b: u32) -> NonZeroU32 {
     NonZeroU32::new(b).expect("non-zero")
+}
+
+#[test]
+fn regenerated_weight_roots_columns_and_multiproofs_equal_the_resident_reference() {
+    use WeightMatrix::*;
+    let mut rng = SplitMix64::new(0x6070_0001);
+    for (layers, width, channels) in [
+        (1, 0, vec![]),
+        (3, 3, vec![(Q, 2, true), (Down, 1, false)]),
+        (5, 6, vec![(Embed, 0, false), (LmHead, 0, true)]),
+    ] {
+        let model = Model::new(&mut rng, layers, [(7, 11); 9], &channels);
+        let layout = WeightLayout::new(params(width), model.shapes.clone()).unwrap();
+        for row_block in [1, 3, 32] {
+            for epoch in [0, 9] {
+                let reference =
+                    WeightCommitment::commit(&layout, block(row_block), epoch, &model.weights())
+                        .unwrap();
+                let streamed = RegeneratedWeightCommitment::commit(
+                    &layout,
+                    block(row_block),
+                    epoch,
+                    &model.weights(),
+                )
+                .unwrap();
+                assert_eq!(streamed.public(), reference.public());
+                assert_eq!(streamed.weights_root(), reference.weights_root());
+                for matrix in WeightMatrix::ALL {
+                    let n = reference.matrix(matrix).codeword_len() as u64;
+                    let queries = [n - 1, 0, n / 2, n - 1, 1];
+                    let expected = reference.matrix(matrix).answer(&queries).unwrap();
+                    let found = streamed.answer(matrix, &model.weights(), &queries).unwrap();
+                    assert_eq!(
+                        found, expected,
+                        "{matrix:?}, width={width}, B={row_block}, epoch={epoch}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn regenerated_weights_refuse_changed_values_and_invalid_queries() {
+    let (mut model, layout, _) = committed(0x6070_0002);
+    let streamed =
+        RegeneratedWeightCommitment::commit(&layout, block(4), 0, &model.weights()).unwrap();
+    assert_eq!(
+        streamed.answer(WeightMatrix::Embed, &model.weights(), &[]),
+        Err(PcsError::NoQueries)
+    );
+    assert_eq!(
+        streamed.answer(WeightMatrix::Embed, &model.weights(), &[128, 129]),
+        Err(PcsError::QueryRange {
+            position: 0,
+            query: 128,
+            columns: 128
+        })
+    );
+    model.tensors[0].2[0] ^= 1;
+    assert_eq!(
+        streamed.answer(WeightMatrix::Embed, &model.weights(), &[0, 1, 127]),
+        Err(PcsError::LayoutData {
+            rule: "regenerated weights match the committed matrix root"
+        })
+    );
+    // No root mismatch may release the candidate columns as protocol data.
+    let mut bad = model.weights();
+    bad.tensors.pop();
+    assert!(matches!(
+        RegeneratedWeightCommitment::commit(&layout, block(4), 0, &bad),
+        Err(PcsError::WeightMissing { .. })
+    ));
+}
+
+#[test]
+fn regenerated_commitment_heap_does_not_grow_with_weight_rows() {
+    use allocation_counter::measure;
+    let mut peaks = Vec::new();
+    let mut retained = Vec::new();
+    for layers in [1, 16] {
+        let mut rng = SplitMix64::new(0x6070_0003);
+        let model = Model::new(&mut rng, layers, [(32, 32); 9], &[]);
+        // k_CP stays 16 even at one layer; increasing L must not widen its public tree.
+        let layout = WeightLayout::new(params(4), model.shapes.clone()).unwrap();
+        let weights = model.weights();
+        // Initialize public hash/metrics state outside the component allocation measurement.
+        drop(RegeneratedWeightCommitment::commit(&layout, block(3), 0, &weights).unwrap());
+        let mut streamed = None;
+        let memory = measure(|| {
+            streamed =
+                Some(RegeneratedWeightCommitment::commit(&layout, block(3), 0, &weights).unwrap())
+        });
+        peaks.push(memory.bytes_max);
+        retained.push(memory.bytes_current);
+        let mut resident = None;
+        let reference = measure(|| {
+            resident = Some(WeightCommitment::commit(&layout, block(3), 0, &weights).unwrap())
+        });
+        if layers == 16 {
+            assert!(reference.bytes_max > memory.bytes_max * 4);
+            assert!(reference.bytes_current > memory.bytes_current * 4);
+        }
+        assert_eq!(
+            streamed.as_ref().unwrap().public(),
+            resident.as_ref().unwrap().public()
+        );
+    }
+    // Only checked weight-reference metadata grows; encoded field rows/codewords do not.
+    assert!(peaks[1] < peaks[0] * 2, "{peaks:?}");
+    assert_eq!(retained[0], retained[1]);
 }
 
 /// INV-WC-3: changing one weight or one channel parameter changes its matrix's root, no other

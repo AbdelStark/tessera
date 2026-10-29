@@ -125,9 +125,10 @@ fn reserve(budget: MemoryBudget, bytes: Option<u64>) -> Result<(), ProverError> 
     Ok(())
 }
 
-/// The weight commitment's bytes must fit before it is computed: a conservative 256 bytes per
-/// padded weight entry, for its encoding, Merkle levels and folding scratch. The proof's own
-/// plan adds them to its resident bytes ([`PassPlan`]).
+/// Conservative protocol/1 regenerated-weight working set, excluding the caller's INT8
+/// model. This covers all retained public trees, one codeword block/encoder, two copies of
+/// every possible queried column, and the folding pass's field buffers. The proof's resident
+/// graph/native cells remain separately charged by `PassPlan`; no witness guard is removed.
 pub(super) fn check_weight_memory(c: &ClaimList, budget: MemoryBudget) -> Result<(), ProverError> {
     reserve(budget, Some(weight_memory(c)?))
 }
@@ -136,31 +137,75 @@ fn weight_memory(c: &ClaimList) -> Result<u64, ProverError> {
         .arch
         .weight_shapes()
         .map_err(|_| usage("invalid weight shapes"))?;
-    let mut entries = 0u64;
-    let mut channels = 1;
-    for (i, shape) in shapes.iter().enumerate() {
-        channels = channels.max(power(u64::from(shape.out))?);
-        let layers = if i == 0 || i == 8 {
+    let params =
+        ParamSet::defined(&c.params).ok_or_else(|| usage("defined parameters required"))?;
+    let k_w = 1u64
+        .checked_shl(u32::from(c.layout.weights.log2_k))
+        .ok_or_else(memory)?;
+    let rate = 1u64
+        .checked_shl(u32::from(c.layout.weights.log2_inv_rate))
+        .ok_or_else(memory)?;
+    let mut columns = 0u64;
+    let mut max_columns = 0u64;
+    let mut rows = 0u64;
+    let mut folds = 0u64;
+    let mut channels = 1u64;
+    for (index, shape) in shapes.iter().enumerate() {
+        let inputs = power(u64::from(shape.inputs))?;
+        let outputs = power(u64::from(shape.out))?;
+        channels = channels.max(outputs);
+        let cells = inputs.checked_mul(outputs).ok_or_else(memory)?;
+        let k = inputs.max(k_w.min(cells));
+        let n = k.checked_mul(rate).ok_or_else(memory)?;
+        let layers = if index == 0 || index == 8 {
             1
         } else {
             u64::from(c.arch.n_layers)
         };
-        let cells = power(u64::from(shape.inputs))?
-            .checked_mul(power(u64::from(shape.out))?)
-            .and_then(|n| n.checked_mul(power(layers).ok()?))
+        let packed = k / inputs;
+        let count = u64::from(shape.out)
+            .div_ceil(packed)
+            .checked_mul(layers)
             .ok_or_else(memory)?;
-        entries = entries.checked_add(cells).ok_or_else(memory)?;
+        rows = rows.checked_add(count).ok_or_else(memory)?;
+        columns = columns.checked_add(n).ok_or_else(memory)?;
+        max_columns = max_columns.max(n);
+        folds = folds
+            .checked_add(k.checked_mul(power(layers)?).ok_or_else(memory)?)
+            .ok_or_else(memory)?;
     }
-    entries = entries
-        .checked_add(
-            16u64
-                .checked_mul(power(u64::from(c.arch.n_layers))?)
-                .and_then(|n| n.checked_mul(channels))
-                .ok_or_else(memory)?,
-        )
+    // All possible ChannelParams positions, even when the actual model commits fewer.
+    let cp_cells = 16u64
+        .checked_mul(power(u64::from(c.arch.n_layers))?)
+        .and_then(|n| n.checked_mul(channels))
         .ok_or_else(memory)?;
-    // Encoded weights, Merkle levels, folding scratch and allocation slack.
-    entries.checked_mul(256).ok_or_else(memory)
+    let cp_k = k_w.min(cp_cells);
+    let cp_n = cp_k.checked_mul(rate).ok_or_else(memory)?;
+    columns = columns.checked_add(cp_n).ok_or_else(memory)?;
+    max_columns = max_columns.max(cp_n);
+    rows = rows.checked_add(cp_cells / cp_k).ok_or_else(memory)?;
+    folds = folds.checked_add(cp_k).ok_or_else(memory)?;
+    let trees = columns.checked_mul(64).ok_or_else(memory)?;
+    let block = u64::from(c.layout.advice.row_block)
+        .checked_mul(8)
+        .and_then(|n| n.checked_add(192))
+        .and_then(|n| n.checked_mul(max_columns))
+        .ok_or_else(memory)?;
+    let answers = rows
+        .checked_mul(u64::from(params.weight_queries))
+        .and_then(|n| n.checked_mul(16))
+        .ok_or_else(memory)?;
+    let folds = folds.checked_mul(64).ok_or_else(memory)?;
+    let metadata = u64::from(c.arch.n_layers)
+        .checked_mul(4096)
+        .and_then(|n| n.checked_add(1 << 16))
+        .ok_or_else(memory)?;
+    trees
+        .checked_add(block)
+        .and_then(|n| n.checked_add(answers))
+        .and_then(|n| n.checked_add(folds))
+        .and_then(|n| n.checked_add(metadata))
+        .ok_or_else(memory)
 }
 
 pub(super) fn model_weights<'a>(
@@ -904,7 +949,8 @@ impl ProverEngine for CpuBackend<'_> {
                 .get(q.matrix as usize)
                 .ok_or_else(|| internal("checked query matrix"))?;
             let indices = q.indices.iter().map(|&i| u64::from(i)).collect::<Vec<_>>();
-            let a = p.weights.matrix(*m).answer(&indices)?;
+            let source = model_weights(p.model, &u.lowering)?;
+            let a = p.weights.answer(*m, &source, &indices)?;
             weight_columns.push(protocol::MatrixColumns {
                 matrix: q.matrix,
                 columns: a.columns,

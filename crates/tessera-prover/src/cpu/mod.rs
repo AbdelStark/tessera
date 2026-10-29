@@ -106,7 +106,7 @@ struct Prepared<'a> {
     cfg: ProverConfig,
     threads: NonZeroUsize,
     layout: pcs::WeightLayout,
-    weights: pcs::WeightCommitment,
+    weights: pcs::RegeneratedWeightCommitment,
 }
 
 /// A one-shot CPU proof session. Live refusals use the existing RFC-0036 state machine.
@@ -196,7 +196,7 @@ impl<'a> Prover<'a> {
                     .collect(),
             },
         )?;
-        let actual = pcs::WeightCommitment::commit(
+        let actual = pcs::RegeneratedWeightCommitment::commit(
             &layout,
             NonZeroU32::new(plan.claims.layout.advice.row_block)
                 .ok_or_else(|| usage("zero commitment row block"))?,
