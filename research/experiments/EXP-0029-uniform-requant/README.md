@@ -124,3 +124,23 @@ If the frozen experiment validates, write a superseding RFC draft with exact
 canonical rules, migration and full count/review obligations. Do not adopt the
 candidate in production before the RFC decision. If refuted, retain the failing
 case and consider a distinct registered rule; do not weaken the success gate.
+
+## Method amendment: complete diagnostic selection metadata (2026-10-29)
+
+The initial adapter changed public gadgets/tables but retained Selection's private
+ordered lookup cache. LeafLayout::model correctly rejected the inconsistent cache
+before reaching read agreement. The initial Method's statement that the adapter
+was not a selection.reads rebuilder omitted this required part of metadata
+substitution. No mathematical counterexample or criterion change is inferred.
+
+Keep the original cases and success criteria, and still call unmodified
+LeafLayout::model with every production guard intact. For this diagnostic only,
+create a scratch source snapshot of main a407755bc2c03736466b0c1b45dae38c2fb2bcb5,
+changing the visibility of Selection.reads from private to public. Change no
+algorithm, leaf code or check. Supply the exact ordered candidate lookup ids
+with the substituted gadgets/tables; leave all other cached reads unchanged.
+The accessor change and adapter exist only in the scratch experiment build,
+never in production source or a proof. Compare leaf source bytes against the
+original git object before and after execution. Preserve initial refused-probe
+logs. This method correction must be frozen and committed before implementing
+the scratch overlay/accessor or read-cache substitution.

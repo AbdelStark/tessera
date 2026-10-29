@@ -1,0 +1,3 @@
+SHA-256 1bdda422eb09f27d60c1d01fa8caca58a55185f1ffcb28a456353b058cb3692d
+UTC 2026-10-29T21:21:51.581281+00:00
+Method correction only: frozen original criteria/cases unchanged; no modified production leaf check.
