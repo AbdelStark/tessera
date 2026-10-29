@@ -297,10 +297,11 @@ fn leaf_error(
             if e.is_rejection() {
                 return malformed(artifact);
             }
-            if let crate::logup::LookupError::Transcript(e) = e {
-                return transcript(e);
+            match e {
+                crate::logup::LookupError::Memory => memory(),
+                crate::logup::LookupError::Transcript(e) => transcript(e),
+                _ => internal(),
             }
-            internal()
         }
         leaf::Error::Level { level, error } => match error.rejected_round() {
             Some(round) => reject(RejectReason::TreeLevel {
@@ -412,6 +413,9 @@ fn flat_rows(packet: &protocol::WeightCombinedRows) -> Check<Vec<opening::Combin
 /// input's fault is `Reject(Malformed)` under the message's own schema, any other the
 /// verifier's `Inconclusive`, as [`verify_non_interactive_bytes`] judges an `NiProof`.
 ///
+/// This stateless opener has no session work clock. Use
+/// [`LiveVerifier::open_message_observed`] to retain a Live session's deadline.
+///
 /// # Errors
 /// The verdict that ends the session.
 #[allow(
@@ -440,17 +444,29 @@ pub fn open_live_observed<T: protocol::ProverMessage>(
 ) -> Result<T, Verdict> {
     let mut tracker = Tracker::new(observer);
     tracker.enter(CheckKind::Input);
-    let opened = T::open_sealed(bytes, limits).map_err(|e| {
-        if e.code().is_input_fault() {
-            reject(RejectReason::Malformed {
-                artifact: ArtifactKind(T::SCHEMA.schema_id),
-                code: e.code().into(),
-            })
-        } else {
-            codec(e.code())
-        }
-    });
+    let opened = open_message::<T>(bytes, limits, None);
     conclude(&mut tracker, opened).map_err(Into::into)
+}
+fn open_message<T: protocol::ProverMessage>(
+    bytes: &[u8],
+    limits: &DecodeLimits,
+    deadline: Option<Instant>,
+) -> Check<T> {
+    let decoded = match deadline {
+        Some(_) => T::open_sealed_with_deadline(bytes, limits, deadline),
+        None => T::open_sealed(bytes, limits),
+    };
+    decoded.map_err(|e| decode_error(e, ArtifactKind(T::SCHEMA.schema_id)))
+}
+fn decode_error(error: tv_codec::DecodeError, artifact: ArtifactKind) -> Failure {
+    if error.code().is_input_fault() {
+        reject(RejectReason::Malformed {
+            artifact,
+            code: error.code().into(),
+        })
+    } else {
+        codec(error.code())
+    }
 }
 /// Verify a canonical NI envelope under the caller's limits, then every semantic predicate.
 /// Decoding a prover artifact fails as Malformed; reader failures remain Inconclusive.
@@ -515,16 +531,12 @@ fn verify_ni_bytes(
         return Err(memory());
     }
     deadline(started, cfg.limits)?;
-    let proof = match NiProof::open(bytes, &limits) {
-        Ok(proof) => proof,
-        Err(e) if e.code().is_input_fault() => {
-            return Err(reject(RejectReason::Malformed {
-                artifact: ArtifactKind(0x0520),
-                code: e.code().into(),
-            }));
-        }
-        Err(e) => return Err(codec(e.code())),
-    };
+    let proof = NiProof::open_with_deadline(
+        bytes,
+        &limits,
+        started.checked_add(cfg.limits.max_wall_time),
+    )
+    .map_err(|e| decode_error(e, ArtifactKind(0x0520)))?;
     deadline(started, cfg.limits)?;
     verify_ni(claims, statement, &proof, cfg, tracker, started)
 }
@@ -714,9 +726,13 @@ fn verify_unit_tracked(
     tracker.enter(CheckKind::Input);
     let artifact = session.artifact();
     let mode = session.mode();
-    let first_bytes = protocol::encoded_len(proof.round1).map_err(codec)?;
-    let second_bytes = protocol::encoded_len(proof.round2).map_err(codec)?;
-    let third_bytes = protocol::encoded_len(proof.round3).map_err(codec)?;
+    let mut cancel = || started.elapsed() >= cfg.limits.max_wall_time;
+    let first_bytes =
+        protocol::encoded_len_with_cancel(proof.round1, &mut cancel).map_err(codec)?;
+    let second_bytes =
+        protocol::encoded_len_with_cancel(proof.round2, &mut cancel).map_err(codec)?;
+    let third_bytes =
+        protocol::encoded_len_with_cancel(proof.round3, &mut cancel).map_err(codec)?;
     let total = first_bytes
         .checked_add(second_bytes)
         .and_then(|n| n.checked_add(third_bytes))
@@ -947,7 +963,7 @@ fn verify_unit_tracked(
             validation::ClaimsError::StatementMismatch { field: F::Layout } => mismatch(F::Batch),
             other => claims_error(other),
         })?;
-    let statement_digest = expected.digest();
+    let statement_digest = expected.digest_with_cancel(&mut cancel).map_err(codec)?;
     let commitment = advice::opening::Commitment::bind(
         &layout,
         claims.layout.advice,
@@ -1049,13 +1065,19 @@ fn verify_unit_tracked(
         statement_digest,
         session_id: proof.round1.session_id,
     });
-    t.absorb(ascii("round1")?, &proof.round1.to_tce().map_err(codec)?);
+    t.absorb_with_cancel(
+        ascii("round1")?,
+        &protocol::encode_with_cancel(proof.round1, &mut cancel).map_err(codec)?,
+        &mut || deadline(started, cfg.limits),
+    )?;
     match session {
         Session::Ni { seed_nonce, .. } => {
             t = proof_of_work(t, &parameters, PowPhase::Seed, seed_nonce)?;
             let _seed = t.squeeze(ascii("seed")?);
         }
-        Session::Live { seed, .. } => t.absorb(ascii("seed")?, seed),
+        Session::Live { seed, .. } => {
+            t.absorb_with_cancel(ascii("seed")?, seed, &mut || deadline(started, cfg.limits))?
+        }
         Session::Initial => return Err(internal()),
     }
     let mut xi: [Vec<Fp2>; 10] = core::array::from_fn(|_| Vec::new());
@@ -1208,10 +1230,12 @@ fn verify_unit_tracked(
     let advice_evaluated = opening
         .check_evaluations(&proof.round2.advice_combined)
         .map_err(opening_error)?;
-    t.absorb(
+    t.absorb_with_cancel(
         ascii("pcs/advice/combined")?,
-        &protocol::encode(proof.round2.advice_combined.as_slice()).map_err(codec)?,
-    );
+        &protocol::encode_with_cancel(proof.round2.advice_combined.as_slice(), &mut cancel)
+            .map_err(codec)?,
+        &mut || deadline(started, cfg.limits),
+    )?;
     let mut rows: [Vec<opening::CombinedRow>; 10] = core::array::from_fn(|_| Vec::new());
     for packet in &proof.round2.weight_combined {
         let i = usize::from(packet.matrix);
@@ -1242,13 +1266,18 @@ fn verify_unit_tracked(
                 .find(|p| usize::from(p.matrix) == i)
                 .ok_or_else(internal)?;
             let label = weight_label(l.matrix(), "combined")?;
-            t.absorb(ascii(&label)?, &protocol::encode(packet).map_err(codec)?);
+            t.absorb_with_cancel(
+                ascii(&label)?,
+                &protocol::encode_with_cancel(packet, &mut cancel).map_err(codec)?,
+                &mut || deadline(started, cfg.limits),
+            )?;
         }
     }
-    t.absorb(
+    t.absorb_with_cancel(
         ascii("scoring")?,
-        &protocol::encode(&proof.round2.scoring).map_err(codec)?,
-    );
+        &protocol::encode_with_cancel(&proof.round2.scoring, &mut cancel).map_err(codec)?,
+        &mut || deadline(started, cfg.limits),
+    )?;
     deadline(started, cfg.limits)?;
     tracker.enter(CheckKind::Queries);
     let generated = match session {
@@ -1305,7 +1334,11 @@ fn verify_unit_tracked(
         _ => generated.as_ref().ok_or_else(internal)?,
     };
     if mode == Mode::Live {
-        t.absorb(ascii("queries")?, &protocol::encode(packet).map_err(codec)?);
+        t.absorb_with_cancel(
+            ascii("queries")?,
+            &protocol::encode_with_cancel(packet, &mut cancel).map_err(codec)?,
+            &mut || deadline(started, cfg.limits),
+        )?;
         if matches!(session, Session::Live { queries: None, .. }) {
             return Ok(Outcome::Queries(generated.ok_or_else(internal)?));
         }
@@ -1338,7 +1371,6 @@ fn verify_unit_tracked(
     {
         return Err(malformed(artifact));
     }
-    let mut cancel = || started.elapsed() >= cfg.limits.max_wall_time;
     advice_evaluated
         .check_columns_with_cancel(
             &advice_queries,

@@ -19,6 +19,7 @@ use tv_hash::rfc6962::{InclusionError, leaf_hash, verify_inclusion};
 fn multiproof_kind(outcome: &Result<(), MultiproofError>) -> &'static str {
     match outcome {
         Ok(()) => "Ok",
+        Err(MultiproofError::Cancelled) => "Cancelled",
         Err(MultiproofError::TreeSize) => "TreeSize",
         Err(MultiproofError::NoLeaves) => "NoLeaves",
         Err(MultiproofError::Unordered { .. }) => "Unordered",

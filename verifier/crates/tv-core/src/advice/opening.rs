@@ -265,7 +265,12 @@ impl Opening<'_> {
         })
     }
 
-    fn coefficients(&self, index: usize, out: &mut Vec<Fp2>) -> Result<(), OpeningError> {
+    fn coefficients(
+        &self,
+        index: usize,
+        out: &mut Vec<Fp2>,
+        cancel: &mut dyn FnMut() -> bool,
+    ) -> Result<(), OpeningError> {
         out.clear();
         let proximity = if index == self.groups.len() {
             Some(EqTables::new(self.xi, Fp2::ONE)?)
@@ -281,6 +286,7 @@ impl Opening<'_> {
             for column in 0..tile.columns() {
                 let location = tile.location(column).ok_or(OpeningError::Internal)?;
                 let ok = location.for_each_committed_row(|row| {
+                    crate::opening::poll(cancel, out.len())?;
                     if out.len() >= self.commitment.sizes.rows {
                         return Err(OpeningError::Internal);
                     }
@@ -289,7 +295,8 @@ impl Opening<'_> {
                     } else {
                         let group = group.ok_or(OpeningError::Internal)?;
                         let mut value = Fp2::ZERO;
-                        for piece in &group.pieces {
+                        for (index, piece) in group.pieces.iter().enumerate() {
+                            crate::opening::poll(cancel, index)?;
                             value += piece.weight
                                 * piece.images.row_coefficient(row).map_err(point_error)?;
                         }
@@ -348,7 +355,7 @@ impl Evaluated<'_> {
             queries,
             columns,
             siblings,
-            |j, symbols| {
+            |j, symbols, cancel| {
                 merged_leaf(
                     &context.params.commitment_id,
                     context.sizes.block,
@@ -361,9 +368,10 @@ impl Evaluated<'_> {
                             .map_err(|_| OpeningError::Internal)?;
                         usize::try_from(rows).map_err(|_| OpeningError::Internal)
                     }),
+                    cancel,
                 )
             },
-            |index, out| self.opening.coefficients(index, out),
+            |index, out, cancel| self.opening.coefficients(index, out, cancel),
             cancel,
         )
     }
@@ -410,6 +418,7 @@ mod cancellation_tests {
                                 .unwrap(),
                         )
                     }),
+                    &mut || false,
                 )
                 .unwrap()
             })
@@ -440,6 +449,79 @@ mod cancellation_tests {
                 .check_columns(&queries, &columns, &[]),
             Ok(())
         );
+        let mut coefficients = Vec::with_capacity(sizes.rows);
+        assert_eq!(
+            opening.coefficients(0, &mut coefficients, &mut || false),
+            Ok(())
+        );
+        assert_eq!(coefficients.len(), sizes.rows);
+        assert_eq!(
+            opening.coefficients(0, &mut coefficients, &mut || true),
+            Err(OpeningError::Time)
+        );
+        let tokens = layout
+            .graph
+            .inputs()
+            .iter()
+            .find(|input| input.role == crate::lowering::Role::Tokens)
+            .unwrap()
+            .tensor;
+        let pieces = vec![
+            Piece {
+                source: Source::Tensor(tokens),
+                coefficient: Fp2::ONE
+            };
+            4097
+        ];
+        let claim = Claim {
+            point: &[],
+            pieces: &pieces,
+            value: Fp2::ZERO,
+        };
+        let grouped = commitment.prepare(&[claim], Fp2::ONE, &xi).unwrap();
+        assert_eq!(grouped.groups.len(), 1);
+        let mut coefficients = Vec::with_capacity(sizes.rows);
+        let mut polls = 0;
+        assert_eq!(
+            grouped.coefficients(0, &mut coefficients, &mut || {
+                polls += 1;
+                polls == 3
+            }),
+            Err(OpeningError::Time)
+        );
+        assert!(
+            coefficients.is_empty(),
+            "cancel within the first row's 4097 pieces"
+        );
+        assert_eq!(polls, 3);
+        assert_eq!(
+            grouped.coefficients(0, &mut coefficients, &mut || false),
+            Ok(())
+        );
+        let wrong = Commitment {
+            root: [1; 32],
+            ..commitment
+        };
+        let wrong_opening = wrong.prepare(&[], Fp2::ONE, &xi).unwrap();
+        assert_eq!(
+            wrong_opening
+                .check_evaluations(&combined)
+                .unwrap()
+                .check_columns(&queries, &columns, &[]),
+            Err(OpeningError::MerklePath { column: 0 })
+        );
+        let mut polls = 0;
+        assert_eq!(
+            wrong_opening
+                .check_evaluations(&combined)
+                .unwrap()
+                .check_columns_with_cancel(&queries, &columns, &[], &mut || {
+                    polls += 1;
+                    polls == 3
+                }),
+            Err(OpeningError::Time)
+        );
+        assert_eq!(polls, 3);
         for stop in [1, 4] {
             let mut polls = 0;
             assert_eq!(

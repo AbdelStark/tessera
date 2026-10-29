@@ -91,9 +91,9 @@ fn recorded_live_and_ni_reports_are_identical_on_100_complete_replays() {
 fn opening_row_scratch_is_budgeted_before_a_live_reveal() {
     for large_advice in [true, false] {
         let (mut claims, mut proof, mut cfg) = fixture();
-        let frame_bytes = protocol::encoded_len(&proof.round1).unwrap()
-            + protocol::encoded_len(&EMPTY_ROUND2).unwrap()
-            + protocol::encoded_len(&EMPTY_ROUND3).unwrap();
+        let frame_bytes = protocol::encoded_len_with_cancel(&proof.round1, &mut || false).unwrap()
+            + protocol::encoded_len_with_cancel(&EMPTY_ROUND2, &mut || false).unwrap()
+            + protocol::encoded_len_with_cancel(&EMPTY_ROUND3, &mut || false).unwrap();
         let allowance = (1u64 << (u32::from(claims.layout.advice.log2_k) + 1)) * 64;
         let coarse = frame_bytes * 8 + u64::from(claims.arch.n_layers) * (1 << 20) + allowance;
         let certificate = size_of::<gadgets::runtime::Certificate>() as u64;
@@ -498,6 +498,19 @@ fn live_replay_reaches_step_twelve_uhat_bound_and_enforces_exact_zero_bound() {
             (CheckKind::ExactBound, CheckOutcome::Reject),
         ]
     );
+}
+
+#[test]
+fn lookup_claim_memory_is_operational_before_table_mapping() {
+    let error = crate::logup::LookupError::Memory;
+    assert!(!error.is_rejection());
+    assert_eq!(error.rejected_instance(), None);
+    assert!(matches!(
+        leaf_error(leaf::Error::Lookup(error), &[], ArtifactKind(0x0511)),
+        Failure::Inconclusive(VerifierError {
+            code: ErrorCode::Memory
+        })
+    ));
 }
 
 #[test]

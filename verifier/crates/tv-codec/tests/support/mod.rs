@@ -240,7 +240,7 @@ pub fn decode_value(c: &mut Cursor<'_>, ty: &Ty) -> Result<Json, DecodeError> {
         }
         Ty::Bytes => Json::Array(c.bytes()?.iter().map(int).collect()),
         Ty::Digest => Json::Array(c.digest()?.iter().map(int).collect()),
-        Ty::Ascii => Json::String(c.ascii()?.to_owned()),
+        Ty::Ascii => Json::String(c.ascii()?),
         Ty::Rational => {
             let r = c.rational()?;
             object([("num", int(r.num())), ("den", int(r.den()))])
@@ -279,7 +279,7 @@ fn sample(c: &mut Cursor<'_>) -> Result<Json, DecodeError> {
         let small = int(c.u8()?);
         let list = Json::Array(c.vec(2, |c| c.u16().map(int))?);
         let maybe = some(c.option(|c| c.i32().map(int))?);
-        let name = Json::String(c.ascii()?.to_owned());
+        let name = Json::String(c.ascii()?);
         let digest = Json::Array(c.digest()?.iter().map(int).collect());
         Ok(object([
             ("flag", flag),

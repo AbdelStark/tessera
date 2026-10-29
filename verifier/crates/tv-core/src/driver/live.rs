@@ -26,8 +26,8 @@ enum State {
     },
     Done,
 }
-/// Verifier-owned Live session. Only on_round3 can return Accept; every failure is terminal
-/// except an out-of-order call, which leaves the current state unchanged (RFC-0036).
+/// Verifier-owned Live session. Only on_round3 can return Accept; every failure is terminal,
+/// including an unexpected message or session id (RFC-0036).
 /// No Debug/Clone implementation exposes the unrevealed coin-toss share.
 #[must_use = "complete Round3; seed/query messages are not proof acceptance"]
 pub struct LiveVerifier {
@@ -52,14 +52,19 @@ fn fill(file: &mut impl Read, bytes: &mut [u8]) -> Check<()> {
 }
 fn own_decode<T>(
     bytes: &[u8],
+    deadline: Option<Instant>,
     decode: impl FnOnce(&mut tv_codec::Cursor<'_>) -> Result<T, tv_codec::DecodeError>,
 ) -> Check<T> {
-    tv_codec::decode(bytes, &DecodeLimits::MESSAGE, decode).map_err(|e| {
-        if e.code() == tv_codec::ErrorCode::Memory {
-            memory()
-        } else {
-            internal()
+    tv_codec::decode(bytes, &DecodeLimits::MESSAGE, |c| {
+        if let Some(deadline) = deadline {
+            c.set_deadline(deadline)?;
         }
+        decode(c)
+    })
+    .map_err(|e| match e.code() {
+        tv_codec::ErrorCode::Memory => memory(),
+        tv_codec::ErrorCode::Time => fail(ErrorCode::Time),
+        _ => internal(),
     })
 }
 impl LiveVerifier {
@@ -73,6 +78,75 @@ impl LiveVerifier {
             started: None,
         }
     }
+    /// Decode the next prover message under this session's original deadline.
+    /// Reports the input check and consumes the session on malformed input or work expiry.
+    /// An unexpected message type ends the session with ProtocolOrder (RFC-0036).
+    ///
+    /// # Errors
+    /// Protocol order/idle timeout, malformed input, memory failure, or operational Time.
+    #[allow(
+        clippy::result_large_err,
+        reason = "the specified Live API returns Verdict by value"
+    )]
+    pub fn open_message_observed<T: protocol::ProverMessage>(
+        &mut self,
+        bytes: &[u8],
+        limits: &DecodeLimits,
+        observer: &mut dyn Observer,
+    ) -> Result<T, Verdict> {
+        let permitted = match &self.state {
+            State::Committed { .. } => matches!(T::SCHEMA.schema_id, 0x0510 | 0x0502),
+            State::Round2 { .. } => T::SCHEMA.schema_id == 0x0511,
+            State::Round3 { .. } => T::SCHEMA.schema_id == 0x0513,
+            _ => false,
+        };
+        let admission = if permitted {
+            self.timed_out()
+        } else {
+            Err(fail(ErrorCode::ProtocolOrder))
+        };
+        let mut tracker = Tracker::new(observer);
+        tracker.enter(CheckKind::Input);
+        let result = admission.and_then(|()| {
+            let len = u64::try_from(bytes.len()).map_err(|_| memory())?;
+            let held = match &self.state {
+                State::Committed { .. } => [32, 0, 0, 0],
+                State::Round2 { first, .. } => [32, first.len(), 0, 0],
+                State::Round3 {
+                    first,
+                    second,
+                    queries,
+                    ..
+                } => [32, first.len(), second.len(), queries.len()],
+                _ => [0; 4],
+            };
+            let planned = held.into_iter().try_fold(
+                len.checked_mul(8).ok_or_else(memory)?,
+                |total, bytes| {
+                    total
+                        .checked_add(u64::try_from(bytes).map_err(|_| memory())?)
+                        .ok_or_else(memory)
+                },
+            )?;
+            if planned > self.cfg.limits.max_memory_bytes {
+                return Err(memory());
+            }
+            let limits = DecodeLimits {
+                max_total_bytes: limits
+                    .max_total_bytes
+                    .min(self.cfg.limits.max_artifact_bytes),
+                ..*limits
+            };
+            open_message::<T>(
+                bytes,
+                &limits,
+                self.started
+                    .and_then(|start| start.checked_add(self.cfg.limits.max_wall_time)),
+            )
+        });
+        self.finish(&mut tracker, result).map_err(Into::into)
+    }
+
     /// Commit to a fresh OS-random share and a fresh session id.
     ///
     /// # Errors
@@ -107,9 +181,7 @@ impl LiveVerifier {
     }
     fn finish<T>(&mut self, tracker: &mut Tracker<'_>, result: Check<T>) -> Check<T> {
         let result = conclude_with_deadline(tracker, result, self.started, self.cfg.limits);
-        if result.as_ref().is_err_and(|error| {
-            !matches!(error, Failure::Inconclusive(e) if e.code == ErrorCode::ProtocolOrder)
-        }) {
+        if result.is_err() {
             self.state = State::Done;
         }
         result
@@ -225,24 +297,30 @@ impl LiveVerifier {
         // Step 5 reserves nothing in `tessera-protocol/1`; step 6 binds Round1 and the seed.
         tracker.not_applicable(CheckKind::WeightReservation);
         tracker.enter(CheckKind::Transcript);
-        let first = message.to_tce().map_err(codec)?;
+        let started = self.started.ok_or_else(internal)?;
+        let limits = self.cfg.limits;
+        let mut cancel = || started.elapsed() >= limits.max_wall_time;
+        let first = protocol::encode_with_cancel(message, &mut cancel).map_err(codec)?;
         let context = SessionContext {
             protocol: ascii("tessera-protocol/1")?,
             mode: Mode::Live,
             params: tv_hash::transcript::ParamSetId(ascii(self.cfg.params.name())?),
-            statement_digest: self.statement.digest(),
+            statement_digest: self
+                .statement
+                .digest_with_cancel(&mut cancel)
+                .map_err(codec)?,
             session_id: id,
         };
         let round1_label = ascii("round1")?;
         let seed_label = ascii("seed")?;
-        // All fallible/header work is complete before declassifying the committed share.
+        // Fix the message and context before using the committed share to derive the toss.
         let mut h = DomainHasher::new(Domain::CoinToss);
         h.update(share.0.as_slice());
         h.update(&prover.share);
         let seed = h.finalize();
         let mut t = Transcript::new(&context);
-        t.absorb(round1_label, &first);
-        t.absorb(seed_label, &seed);
+        t.absorb_with_cancel(round1_label, &first, &mut || deadline(started, limits))?;
+        t.absorb_with_cancel(seed_label, &seed, &mut || deadline(started, limits))?;
         // The session budget also covers transcript work before the share is declassified.
         deadline(self.started.ok_or_else(internal)?, self.cfg.limits)?;
         let mut revealed = [0; 32];
@@ -299,7 +377,12 @@ impl LiveVerifier {
         let State::Round2 { first, seed } = std::mem::replace(&mut self.state, State::Done) else {
             return Err(internal());
         };
-        let round1 = own_decode(&first, protocol::Round1::decode)?;
+        let round1 = own_decode(
+            &first,
+            self.started
+                .and_then(|start| start.checked_add(self.cfg.limits.max_wall_time)),
+            protocol::Round1::decode,
+        )?;
         let result = verify_unit_tracked(
             &self.claims,
             &self.statement,
@@ -319,8 +402,11 @@ impl LiveVerifier {
         let Outcome::Queries(queries) = result else {
             return Err(internal());
         };
-        let second = message.to_tce().map_err(codec)?;
-        let encoded_queries = queries.to_tce().map_err(codec)?;
+        let started = self.started.ok_or_else(internal)?;
+        let limits = self.cfg.limits;
+        let mut cancel = || started.elapsed() >= limits.max_wall_time;
+        let second = protocol::encode_with_cancel(message, &mut cancel).map_err(codec)?;
+        let encoded_queries = protocol::encode_with_cancel(&queries, &mut cancel).map_err(codec)?;
         deadline(self.started.ok_or_else(internal)?, self.cfg.limits)?;
         self.state = State::Round3 {
             first,
@@ -366,9 +452,24 @@ impl LiveVerifier {
         else {
             return Err(internal());
         };
-        let round1 = own_decode(&first, protocol::Round1::decode)?;
-        let round2 = own_decode(&second, protocol::Round2Response::decode)?;
-        let queries = own_decode(&queries, protocol::ColumnQueries::decode)?;
+        let round1 = own_decode(
+            &first,
+            self.started
+                .and_then(|start| start.checked_add(self.cfg.limits.max_wall_time)),
+            protocol::Round1::decode,
+        )?;
+        let round2 = own_decode(
+            &second,
+            self.started
+                .and_then(|start| start.checked_add(self.cfg.limits.max_wall_time)),
+            protocol::Round2Response::decode,
+        )?;
+        let queries = own_decode(
+            &queries,
+            self.started
+                .and_then(|start| start.checked_add(self.cfg.limits.max_wall_time)),
+            protocol::ColumnQueries::decode,
+        )?;
         // shortcut: replay immutable Round2 to reconstruct borrowed PCS state; retain an owned
         // verified column plan when optimizing Live verification latency after the MVP.
         match verify_unit_tracked(
@@ -482,6 +583,168 @@ pub(super) fn queries(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "test-params")]
+    #[derive(Debug)]
+    struct TimeProbe<const SCHEMA: u16>;
+    #[cfg(feature = "test-params")]
+    impl<const SCHEMA: u16> protocol::ProverMessage for TimeProbe<SCHEMA> {
+        const SCHEMA: tv_codec::Expected = tv_codec::Expected {
+            schema_id: SCHEMA,
+            version: 1,
+        };
+        fn open_sealed(_: &[u8], _: &DecodeLimits) -> Result<Self, tv_codec::DecodeError> {
+            Err(tv_codec::DecodeError::new(tv_codec::ErrorCode::Internal, 0))
+        }
+        fn open_sealed_with_deadline(
+            _: &[u8],
+            _: &DecodeLimits,
+            deadline: Option<Instant>,
+        ) -> Result<Self, tv_codec::DecodeError> {
+            assert!(
+                deadline.is_some(),
+                "the finite session deadline reaches decoding"
+            );
+            Err(tv_codec::DecodeError::new(tv_codec::ErrorCode::Time, 9))
+        }
+    }
+
+    #[cfg(feature = "test-params")]
+    #[test]
+    fn live_message_decoding_uses_the_original_deadline_and_consumes_work_failure() {
+        let (claims, proof, cfg) = super::super::tests::fixture();
+        let mut session = LiveVerifier::at(
+            claims,
+            proof.round1.statement.clone(),
+            cfg,
+            Phase::Round1 {
+                session_id: [0; 16],
+            },
+        );
+        let wrong = session
+            .open_message_observed::<TimeProbe<0x0513>>(&[], &DecodeLimits::MESSAGE, &mut ())
+            .unwrap_err();
+        assert!(matches!(
+            wrong,
+            Verdict::Inconclusive(VerifierError {
+                code: ErrorCode::ProtocolOrder
+            })
+        ));
+        assert!(matches!(session.state, State::Done));
+        let mut session = LiveVerifier::at(
+            session.claims.clone(),
+            session.statement.clone(),
+            session.cfg.clone(),
+            Phase::Round1 {
+                session_id: [0; 16],
+            },
+        );
+        let expired = session
+            .open_message_observed::<TimeProbe<0x0510>>(&[], &DecodeLimits::MESSAGE, &mut ())
+            .unwrap_err();
+        assert!(matches!(
+            expired,
+            Verdict::Inconclusive(VerifierError {
+                code: ErrorCode::Time
+            })
+        ));
+        assert!(matches!(session.state, State::Done));
+        let next = session
+            .open_message_observed::<TimeProbe<0x0510>>(&[], &DecodeLimits::MESSAGE, &mut ())
+            .unwrap_err();
+        assert!(matches!(
+            next,
+            Verdict::Inconclusive(VerifierError {
+                code: ErrorCode::ProtocolOrder
+            })
+        ));
+        assert!(matches!(
+            own_decode(&[], Some(Instant::now()), |_| Ok(())),
+            Err(Failure::Inconclusive(VerifierError {
+                code: ErrorCode::Time
+            }))
+        ));
+        for artifact in [ArtifactKind(0x0520), ArtifactKind(0x0510)] {
+            assert!(matches!(
+                decode_error(
+                    tv_codec::DecodeError::new(tv_codec::ErrorCode::Time, 7),
+                    artifact
+                ),
+                Failure::Inconclusive(VerifierError {
+                    code: ErrorCode::Time
+                })
+            ));
+            assert!(
+                matches!(decode_error(tv_codec::DecodeError::new(tv_codec::ErrorCode::Noncanonical, 7), artifact), Failure::Rejected(RejectReason::Malformed { artifact: found, code: ErrorCode::CodecNoncanonical }) if found == artifact)
+            );
+        }
+    }
+
+    #[cfg(feature = "test-params")]
+    #[test]
+    fn live_decode_accounts_for_retained_bytes_before_any_parser_runs() {
+        let (claims, proof, cfg) = super::super::tests::fixture();
+        for (budget, expected) in [(39, ErrorCode::Memory), (40, ErrorCode::Time)] {
+            let mut cfg = cfg.clone();
+            cfg.limits.max_memory_bytes = budget;
+            let mut session = LiveVerifier::at(
+                claims.clone(),
+                proof.round1.statement.clone(),
+                cfg,
+                Phase::Round1 {
+                    session_id: [0; 16],
+                },
+            );
+            // The parser's Time sentinel proves an exact-fit budget reaches decoding.
+            let refused = session
+                .open_message_observed::<TimeProbe<0x0510>>(&[0], &DecodeLimits::MESSAGE, &mut ())
+                .unwrap_err();
+            assert!(matches!(
+                refused,
+                Verdict::Inconclusive(VerifierError { code }) if code == expected
+            ));
+            assert!(matches!(session.state, State::Done));
+        }
+    }
+
+    #[cfg(feature = "test-params")]
+    #[test]
+    fn healthy_live_decode_and_idle_expiry_keep_their_distinct_outcomes() {
+        let (claims, proof, cfg) = super::super::tests::fixture();
+        let mut session = LiveVerifier::at(
+            claims,
+            proof.round1.statement.clone(),
+            cfg,
+            Phase::Round1 {
+                session_id: [0; 16],
+            },
+        );
+        let payload = proof.round1.to_tce().unwrap();
+        let mut bytes = b"TSRA".to_vec();
+        for field in [1u16, 0x0510, 1, 0] {
+            bytes.extend(field.to_le_bytes());
+        }
+        bytes.extend((payload.len() as u64).to_le_bytes());
+        bytes.extend(payload);
+        let digest = hash(Domain::Envelope, &bytes);
+        bytes.extend(digest);
+        let decoded = session
+            .open_message_observed::<protocol::Round1>(&bytes, &DecodeLimits::MESSAGE, &mut ())
+            .unwrap_or_else(|_| panic!("valid recorded Round1 decodes"));
+        assert!(decoded == proof.round1);
+        assert!(matches!(session.state, State::Committed { .. }));
+        session.cfg.limits.max_wall_time = Duration::ZERO;
+        let idle = session
+            .open_message_observed::<TimeProbe<0x0510>>(&[], &DecodeLimits::MESSAGE, &mut ())
+            .unwrap_err();
+        assert!(matches!(
+            idle,
+            Verdict::Inconclusive(VerifierError {
+                code: ErrorCode::ProtocolTimeout
+            })
+        ));
+        assert!(matches!(session.state, State::Done));
+    }
+
     #[test]
     fn query_sampler_uses_all_low_bits_with_replacement_and_fails_closed_on_entropy_loss() {
         for bits in [0, 1, 4, 31] {

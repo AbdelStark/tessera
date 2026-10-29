@@ -566,7 +566,7 @@ mod tests {
             );
             assert_eq!(
                 stub.ops[2],
-                Op::Absorb("tree/4/evals".into(), tce(&final_evals))
+                Op::Absorb("tree/4/evals".into(), tce(&final_evals).unwrap())
             );
             assert_eq!(level.gamma, stub_challenge(0));
             assert_eq!(level.lambda, Some(stub_challenge(1)));

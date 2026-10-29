@@ -21,7 +21,6 @@ use std::{
 use tv_core::{
     LiveVerifier, ResourceLimits, VerifierConfig,
     observe::{CheckKind, CheckOutcome},
-    open_live_observed,
     params::ParamSet,
     protocol::*,
     verdict::{ErrorCode, RejectReason, Verdict},
@@ -330,15 +329,22 @@ pub(crate) fn run(args: &[String], flags: Flags) -> CommandOutput {
                     &commit.to_tce().map_err(ErrorCode::from)?,
                 )?;
                 // A prover's message that fails to decode is Malformed (RFC-0043).
-                let first = match open_live_observed::<Round1>(&d.receive(1)?, &decode, trail) {
+                let first = match verifier.open_message_observed::<Round1>(
+                    &d.receive(1)?,
+                    &decode,
+                    trail,
+                ) {
                     Ok(m) => m,
                     Err(v) => return Ok(v),
                 };
-                let share =
-                    match open_live_observed::<ProverSeedShare>(&d.receive(2)?, &decode, trail) {
-                        Ok(m) => m,
-                        Err(v) => return Ok(v),
-                    };
+                let share = match verifier.open_message_observed::<ProverSeedShare>(
+                    &d.receive(2)?,
+                    &decode,
+                    trail,
+                ) {
+                    Ok(m) => m,
+                    Err(v) => return Ok(v),
+                };
                 let reveal = match verifier.on_round1_observed(&first, &share, trail) {
                     Ok(r) => r,
                     Err(v) => return Ok(v),
@@ -348,11 +354,14 @@ pub(crate) fn run(args: &[String], flags: Flags) -> CommandOutput {
                     SeedReveal::SCHEMA,
                     &reveal.to_tce().map_err(ErrorCode::from)?,
                 )?;
-                let second =
-                    match open_live_observed::<Round2Response>(&d.receive(4)?, &decode, trail) {
-                        Ok(m) => m,
-                        Err(v) => return Ok(v),
-                    };
+                let second = match verifier.open_message_observed::<Round2Response>(
+                    &d.receive(4)?,
+                    &decode,
+                    trail,
+                ) {
+                    Ok(m) => m,
+                    Err(v) => return Ok(v),
+                };
                 let queries = match verifier.on_round2_observed(&second, trail) {
                     Ok(q) => q,
                     Err(v) => return Ok(v),
@@ -362,11 +371,14 @@ pub(crate) fn run(args: &[String], flags: Flags) -> CommandOutput {
                     ColumnQueries::SCHEMA,
                     &queries.to_tce().map_err(ErrorCode::from)?,
                 )?;
-                let third =
-                    match open_live_observed::<Round3Response>(&d.receive(6)?, &decode, trail) {
-                        Ok(m) => m,
-                        Err(v) => return Ok(v),
-                    };
+                let third = match verifier.open_message_observed::<Round3Response>(
+                    &d.receive(6)?,
+                    &decode,
+                    trail,
+                ) {
+                    Ok(m) => m,
+                    Err(v) => return Ok(v),
+                };
                 Ok(verifier.on_round3_observed(&third, trail))
             })();
             exchange.unwrap_or_else(verify::inconclusive)

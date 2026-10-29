@@ -1475,7 +1475,7 @@ mod tests {
             // The split values are absorbed as TCE Vec<Fp2>.
             assert_eq!(
                 stub.ops[0],
-                Op::Absorb("stage/0/split".into(), tce(&leaf_splits))
+                Op::Absorb("stage/0/split".into(), tce(&leaf_splits).unwrap())
             );
         }
     }
