@@ -338,6 +338,7 @@ pub struct Validated {
     graph: Graph,
     selection: crate::selection::Selection,
     advice: crate::advice::Config,
+    batch_rows: crate::advice::BatchRows,
 }
 
 impl Validated {
@@ -364,6 +365,19 @@ impl Validated {
     /// The derived graph, for a sequence of `max_context` tokens.
     pub fn graph(&self) -> &Graph {
         &self.graph
+    }
+
+    /// Counts the complete runtime advice allocation for an exact-greedy batch without
+    /// allocating, from metadata retained during claim validation (RFC-0071).
+    ///
+    /// # Errors
+    /// `StatementMismatch(Layout)` for invalid lengths/geometry or more than `2^32` rows;
+    /// `StatementMismatch(Gadget)` for a model outside the greedy certificate's public range.
+    pub fn batch_advice_rows(
+        &self,
+        requests: &[crate::protocol::RequestRef],
+    ) -> Result<u64, ClaimsError> {
+        self.batch_rows.count(requests, self.protocol)
     }
 
     /// The canonical advice layout for a request of `n` prompt plus output tokens.
@@ -451,7 +465,13 @@ pub fn validate_in(claims: &ClaimList, protocol: Protocol) -> Result<Validated, 
         claims.layout.advice.segments,
     );
     // RFC-0047: count the complete allocation at the longest admitted sequence.
-    crate::advice::Layout::derive(&graph, &selection, advice, claims.arch.max_context)?;
+    let layout =
+        crate::advice::Layout::derive(&graph, &selection, advice, claims.arch.max_context)?;
+    let batch_rows = crate::advice::BatchRows::derive(
+        &layout,
+        claims.arch.max_context,
+        claims.gadget_policy.max_log2_rows,
+    )?;
     if !weight_layout_holds(claims, &public, claims.layout.weights, protocol)? {
         return Err(mismatch(StatementField::Layout));
     }
@@ -464,6 +484,7 @@ pub fn validate_in(claims: &ClaimList, protocol: Protocol) -> Result<Validated, 
         graph,
         selection,
         advice,
+        batch_rows,
     })
 }
 

@@ -163,9 +163,9 @@ impl Batch {
 /// proof: `Reject(Sumcheck { stage, round })` in 04 §2 for a reduction stage, and
 /// `Reject(TreeLevel { group, level, round })` for a tree level (RFC-0033, RFC-0054), with `round` from
 /// [`rejected_round`](Self::rejected_round). The others judge what the verifier passes in, the
-/// schedule's degree, instances and relations, or the verifier itself: from a correct verifier
-/// they never come, and they mean a fault of the verifier (`Inconclusive(ERR-INTERNAL)`), not of
-/// the proof.
+/// schedule's degree, instances and relations, or the verifier itself:
+/// `Inconclusive(ERR-INTERNAL)`, except `Transcript(TranscriptError::Memory)`,
+/// which is exhausted reader memory (`Inconclusive(ERR-RES-MEMORY)`), never a rejection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SumcheckError {
     /// The proof stops before round `round`: it has `round` rounds, and the sumcheck more.
@@ -221,7 +221,7 @@ pub enum SumcheckError {
     },
     /// A label built here is not printable ASCII.
     Label(NotAscii),
-    /// A challenge found no value in the squeezes RFC-0004 allows ('Failure modes').
+    /// A challenge failed, or message encoding could not reserve memory (RFC-0004, SP-8).
     Transcript(TranscriptError),
 }
 
@@ -688,13 +688,16 @@ mod tests {
         );
         assert_eq!(
             stub.ops[1],
-            Op::Absorb("stage/4/round/0".into(), tce(&rounds[0]))
+            Op::Absorb("stage/4/round/0".into(), tce(&rounds[0]).unwrap())
         );
         assert_eq!(
             stub.ops[3],
-            Op::Absorb("stage/4/round/1".into(), tce(&rounds[1]))
+            Op::Absorb("stage/4/round/1".into(), tce(&rounds[1]).unwrap())
         );
-        assert_eq!(stub.ops[5], Op::Absorb("stage/4/evals".into(), tce(&evals)));
+        assert_eq!(
+            stub.ops[5],
+            Op::Absorb("stage/4/evals".into(), tce(&evals).unwrap())
+        );
     }
 
     /// A wrong number of final evaluations is rejected before they are encoded or absorbed, so
@@ -744,13 +747,13 @@ mod tests {
 
     #[test]
     fn tce_is_the_length_then_c0_and_c1_of_each_element() {
-        let bytes = tce(&[fp2(1, 2), fp2(Fp::MODULUS - 1, 0)]);
+        let bytes = tce(&[fp2(1, 2), fp2(Fp::MODULUS - 1, 0)]).unwrap();
         let mut expected = 2u64.to_le_bytes().to_vec();
         for word in [1, 2, Fp::MODULUS - 1, 0u64] {
             expected.extend_from_slice(&word.to_le_bytes());
         }
         assert_eq!(bytes, expected);
-        assert_eq!(tce(&[]), 0u64.to_le_bytes());
+        assert_eq!(tce(&[]).unwrap(), 0u64.to_le_bytes());
     }
 
     /// RFC-0004 'Failure modes': a challenge that exhausts its squeezes stops the check with

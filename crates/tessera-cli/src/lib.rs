@@ -15,7 +15,7 @@
 //! tessera audit sample    --manifest MANIFEST.tlm --log LOG.tdl
 //!                         [--previous-manifest MANIFEST.tlm --previous-log LOG.tdl] [--between MANIFEST.tlm]...
 //!                         --state DIR --verifier-share HEX --out SAMPLE.tas
-//! tessera audit batch     --sample SAMPLE.tas LOGS --out-dir DIR
+//! tessera audit batch     --sample SAMPLE.tas LOGS [--plan PLAN.tep] --out-dir DIR
 //! tessera audit plan      --policy POLICY.json --traffic PROFILE.json (--plan plan.tep | --source-defaults)
 //!                         [--eta η] [--target-overhead O] [--out PLAN.json]
 //! tessera params check    --params PARAMSET [--lookups N] [--table-rows T]
@@ -61,6 +61,9 @@ mod compile;
 mod inspect;
 mod log;
 mod manifest;
+mod metrics;
+#[cfg(feature = "otel")]
+mod otel;
 mod params;
 mod prove;
 mod recorder;
@@ -109,6 +112,13 @@ struct Cli {
     /// (05 §6), instead of their output's directory.
     #[arg(long, global = true, value_name = "PATH")]
     run_manifest: Option<PathBuf>,
+    /// Expose the private metrics registry at this explicit HTTP socket (05 §4).
+    #[arg(long, global = true, value_name = "IP:PORT")]
+    metrics_addr: Option<SocketAddr>,
+    /// Export traces to the collector's full HTTP(S) /v1/traces URL (05 §5).
+    #[cfg(feature = "otel")]
+    #[arg(long, global = true, value_name = "URL")]
+    otlp_endpoint: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
@@ -256,6 +266,9 @@ struct SampleArgs {
 /// `tessera audit batch`.
 #[derive(Debug, Args)]
 struct BatchArgs {
+    /// The proving plan: split batches that exceed its maximum advice layout.
+    #[arg(long, value_name = "PLAN.tep")]
+    plan: Option<PathBuf>,
     /// The sample, whose policy holds the batch bounds.
     #[arg(long, value_name = "SAMPLE.tas")]
     sample: PathBuf,
@@ -399,8 +412,36 @@ where
             );
         }
     };
-    log::install(cli.log_format, cli.log_level);
+    #[cfg(feature = "otel")]
+    let endpoint = cli.otlp_endpoint.as_deref();
+    #[cfg(not(feature = "otel"))]
+    let endpoint = None;
+    let _logging = match log::install(cli.log_format, cli.log_level, endpoint) {
+        Ok(guard) => guard,
+        Err(error) => {
+            let _fallback = log::install(cli.log_format, cli.log_level, None);
+            return fail(
+                None,
+                cli.json,
+                &error,
+                "cannot initialize trace export",
+                true,
+            );
+        }
+    };
     tessera_codec::metrics::reset();
+    let _metrics = match cli.metrics_addr.map(metrics::Server::start).transpose() {
+        Ok(server) => server,
+        Err(_) => {
+            return fail(
+                None,
+                cli.json,
+                &TesseraError::new(ErrorCode::ResIo),
+                "cannot start metrics listener",
+                true,
+            );
+        }
+    };
     let started = (std::time::SystemTime::now(), std::time::Instant::now());
     let (name, mut outcome) = dispatch(&cli);
     // 05 §6: the commands that write a run manifest, at their one exit point.
@@ -523,6 +564,7 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
             audit::batch(
                 &audit::BatchOptions {
                     sample: &a.sample,
+                    plan: a.plan.as_deref(),
                     logs: a.logs.logs(),
                     out_dir: &a.out_dir,
                 },

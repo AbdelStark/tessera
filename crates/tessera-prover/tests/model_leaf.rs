@@ -21,6 +21,7 @@ use tessera_witness::{Engine, Resident, WitnessSource};
 use tv_core::leaf::{self as tv, split};
 use tv_field::{Fp as V, Fp2 as E};
 
+mod batch_leaf;
 mod cpu_api;
 mod model_groups;
 mod model_openings;
@@ -101,6 +102,7 @@ fn role(c: ModelColumn) -> split::Column {
     match c {
         ModelColumn::Input(i) => split::Column::Input(i),
         ModelColumn::GreedyKey => split::Column::GreedyKey,
+        ModelColumn::GreedyKeyOrdinal(r) => split::Column::greedy_key(r),
         ModelColumn::Output(i) => split::Column::Output(i),
         ModelColumn::RootInput => split::Column::RootInput,
         ModelColumn::ExpKey => split::Column::SoftmaxKey,
@@ -695,6 +697,7 @@ fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Opt
 
         model_stages::prove_stages(
             &p,
+            model,
             &graph,
             &layout,
             &bound,
@@ -1015,7 +1018,7 @@ fn source_truth(
                     } else {
                         let index = flat(&domain, &coordinate);
                         match read.term {
-                            ModelColumn::GreedyKey => {
+                            ModelColumn::GreedyKey | ModelColumn::GreedyKeyOrdinal(_) => {
                                 panic!("model-only witness has no runtime key")
                             }
                             ModelColumn::Input(i) | ModelColumn::Output(i) => {

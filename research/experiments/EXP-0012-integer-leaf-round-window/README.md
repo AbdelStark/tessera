@@ -126,3 +126,61 @@ python3 -I research/tools/cost_model.py --profile counted --set leaf_ps=38.46
 ```
 
 [results/preregistration-audit.json](results/preregistration-audit.json) verifies the primary frozen text against commit `afc1b14`, the unchanged hypothesis/criterion/method/reproduction, the preserved fraction amendment (commit `2d61eed`), and the recorded digests.
+
+
+## Production stage-grid measurement, 2026-10-28 (#459)
+
+This records RFC-0055's field-valued reduction-stage grid separately from the frozen integer
+leaf experiment above. The source is the production `PreparedWindow` engine; neither runtime
+workspace imports research code. The Criterion harness lives under
+[`crates/tessera-sumcheck/benches/windowed`](../../../crates/tessera-sumcheck/benches/windowed/Cargo.toml).
+Run it with:
+
+```sh
+cargo bench --manifest-path crates/tessera-sumcheck/benches/windowed/Cargo.toml --bench windowed -- --save-baseline before
+cargo bench --manifest-path crates/tessera-sumcheck/benches/windowed/Cargo.toml --bench windowed -- --baseline before
+```
+
+One scalar CPU thread on Apple M1 Max, 64 GiB, macOS ARM64; two 65,536-entry synthetic `Fp2`
+inputs, relation `eq · X · Y`, degree 3. Each timed iteration includes preparation, every round,
+P3b contraction, final evaluations and clearing. Regeneration is a no-op over resident synthetic
+inputs: this measures arithmetic and allocations, excluding witness/GEMM regeneration. Ten
+samples, one second warmup, two second requested measurement per arm; Criterion increases the
+collection time for longer arms. The initial grid used per-entry source calls and recomputed
+public EQ products; the optimized grid uses chunked prefix reads and split public EQ weights.
+
+| Own variables in first window | Initial grid (ms) | Optimized grid (ms) | Resident rounds (ms) |
+|---|---:|---:|---:|
+| 3 | 20.916 | 13.428 | 4.074 |
+| 4 | 21.784 | 16.857 | 4.074 |
+| 5 | 26.853 | 23.203 | 4.074 |
+| 6 | 36.094 | 32.940 | 4.074 |
+| 7 | 50.488 | 48.434 | 4.074 |
+| 8 | 75.275 | 70.862 | 4.074 |
+
+These are Criterion mean estimates. The initial resident measurement was 4.011 ms. Raw mean,
+median and confidence estimates are in
+[`results/windowed-cpu-2026-10-28.json`](results/windowed-cpu-2026-10-28.json).
+The grid costs 3.3 to 17.4 times resident rounds in this full-extension fixture; it buys bounded
+working storage, not a throughput improvement. The counting-allocator regression at 65,536
+entries requires the windowed engine peak to be less than half the literal engine peak and
+checks proof/transcript identity. A separate mixed-batch test checks the public allocation
+model against every cut, including grid construction scratch and consecutive P3b passes.
+
+A resident `Fp2` bind reads 32 bytes and writes 16 per pair, 24 bytes per original entry. The
+M1 Max's [advertised 400 GB/s](https://support.apple.com/en-ie/111901) full-chip shared bandwidth gives a 0.06 ns/entry bandwidth floor,
+not a one-core expectation. The grid instead performs `(3/2)^v` products and EQ scalings per
+input entry, plus multilinear extension and contraction: its growth is dominated by arithmetic.
+The arithmetic benchmark supplies no integer-grid, masked-protocol, GPU or GEMM timing result.
+
+
+The separate [whole CPU budget fixture](results/windowed-cpu-budget-2026-10-28.json) uses the
+bounded `tiny-2-servable` conformance model at three tokens. Its resident plan is 228,580,528
+bytes. At a budget of 228,578,876 bytes, stage 1 takes a two-round window and one P3b pass;
+its planned stage working set is 208,656 bytes. The measured whole-prover peak is 121,874,712
+bytes. Both NI and a fresh Live session return independent-verifier `Accept`, and the seeded
+NI proof bytes equal the resident proof's. An isolated child process checks that the manifest's
+P3b counter equals the pass plan. `Engine::regenerate` reruns every graph node at P3 and P3b.
+This checks the conservative CPU budget policy and regeneration path; leaf tables and the
+cached witness dominate this small fixture, so it is not a whole-proof peak-memory speedup or
+an out-of-core model qualification. The CPU planner retains its 64-byte-per-cell resident floor.

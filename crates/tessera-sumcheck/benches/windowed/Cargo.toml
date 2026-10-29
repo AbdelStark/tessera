@@ -1,0 +1,22 @@
+[package]
+name = "tessera-window-bench"
+version = "0.1.0"
+license = "Apache-2.0 OR MIT"
+edition = "2024"
+publish = false
+autobins = false
+
+# Keep a benchmark-only statistics framework out of the prover/verifier dependency graphs.
+[workspace]
+
+[dependencies]
+criterion = { version = "=0.5.1", default-features = false }
+tessera-codec = { path = "../../../tessera-codec" }
+tessera-field = { path = "../../../tessera-field" }
+tessera-hash = { path = "../../../tessera-hash" }
+tessera-sumcheck = { path = "../.." }
+
+[[bench]]
+name = "windowed"
+path = "src/main.rs"
+harness = false

@@ -69,5 +69,8 @@ pub use eq::{eq, eq_table};
 pub use error::PolyError;
 pub use field::PolyField;
 pub use multilinear::{bind_lowest, bind_lowest_in_place, evaluate, evaluate_base, num_vars};
-pub use predicates::{causal_selector, less_than, less_than_points};
+pub use predicates::{
+    batch_causal_selector, causal_selector, causal_selector_bounded, less_than, less_than_points,
+    slot_selector,
+};
 pub use round::{MAX_DEGREE, RoundPoly};

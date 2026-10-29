@@ -451,7 +451,7 @@ fn instance_vars(
     }
     let lambda = u32::try_from(stacked(layers, derivation.layers.vars)).unwrap_or(u32::MAX);
     let shape = |t: TensorId| derivation.graph.tensors[t.0 as usize].shape.as_slice();
-    let vars = |t| blocks(shape(t)).iter().sum::<u32>();
+    let vars = |t| super::tensor_vars(derivation.graph, t);
     let own = match relation {
         Relation::Native { .. } => {
             return refuse(Some(node.id), "native geometry comes from its descriptor");
@@ -465,8 +465,22 @@ fn instance_vars(
                 );
             }
         },
-        Relation::MatMulAct { .. } => match shape(node.inputs[0]) {
-            [heads, _, inner] => axis_vars(*inner) + axis_vars(*heads),
+        Relation::MatMulAct { transposed } => match shape(node.inputs[0]) {
+            [heads, rows, inner] => {
+                if let Some(slots) = &derivation.graph.slots
+                    && *rows == slots.token_len()
+                    && shape(node.inputs[1]).get(1) == Some(&slots.token_len())
+                {
+                    let inner_vars = if transposed {
+                        axis_vars(*inner)
+                    } else {
+                        slots.slot_bits()
+                    };
+                    inner_vars + slots.request_bits() + axis_vars(*heads)
+                } else {
+                    axis_vars(*inner) + axis_vars(*heads)
+                }
+            }
             _ => {
                 return refuse(
                     Some(node.id),
@@ -576,20 +590,34 @@ fn evaluations(
             vec![at(1, [own, r_o].concat())?, at(0, [own, r_t].concat())?]
         }
         Relation::MatMulAct { transposed } => {
-            // Z [h, a, c] at r_c ‖ r_a ‖ r_h; the instance's point r'_j ‖ r'_h ‖ ρ'.
+            // Z [h, a, c] at r_c ‖ r_a ‖ r_h (or r_c ‖ r_p ‖ r_β ‖ r_h in a slotted batch);
+            // the instance's point r'_j ‖ r'_h ‖ ρ' (or r'_j ‖ r'_β ‖ r'_h ‖ ρ', RFC-0071).
             let [_, rows, inner] = shape(0) else {
                 return refuse(id, "a MatMulAct multiplies [heads, a, j] matrices");
             };
-            let (r_j, r_h) = own.split_at(axis_vars(*inner) as usize);
-            let columns = target.len() - axis_vars(*rows) as usize - r_h.len();
-            let (r_c, rest) = target.split_at(columns);
-            let r_a = &rest[..axis_vars(*rows) as usize];
-            let right = if transposed {
-                [r_j, r_c, r_h].concat()
+            let (inner_vars, row_vars) = if let Some(slots) = &derivation.graph.slots
+                && *rows == slots.token_len()
+                && shape(1).get(1) == Some(&slots.token_len())
+            {
+                let inner_vars = if transposed {
+                    axis_vars(*inner)
+                } else {
+                    slots.slot_bits()
+                };
+                (inner_vars, slots.slot_bits())
             } else {
-                [r_c, r_j, r_h].concat()
+                (axis_vars(*inner), axis_vars(*rows))
             };
-            vec![at(0, [r_j, r_a, r_h].concat())?, at(1, right)?]
+            let (r_j, r_stack) = own.split_at(inner_vars as usize);
+            let columns = target.len() - row_vars as usize - r_stack.len();
+            let (r_c, rest) = target.split_at(columns);
+            let r_a = &rest[..row_vars as usize];
+            let right = if transposed {
+                [r_j, r_c, r_stack].concat()
+            } else {
+                [r_c, r_j, r_stack].concat()
+            };
+            vec![at(0, [r_j, r_a, r_stack].concat())?, at(1, right)?]
         }
         Relation::Mul(broadcast) => {
             let b = broadcast_point(shape(0), shape(1), broadcast, own, id)?;

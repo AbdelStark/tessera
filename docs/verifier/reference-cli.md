@@ -1,6 +1,6 @@
 # Protocol/1 verifier CLI
 
-The v0.3 reference CLI verifies one exact-greedy request in NI or directory Live mode through
+The v0.3 reference CLI verifies exact-greedy batches of one or more requests in NI or directory Live mode through
 the independent verifier. It regenerates table catalogs and retains the existing
 parameter calculator. Protocol/1 does not hide weights or tokens. Test-small
 parameters certify nothing and are accepted only by an explicit test build.
@@ -55,7 +55,26 @@ allowance and 300 seconds of cooperative verification time. Override with
 an input/decoded-object allowance of one eighth of the memory policy, checks
 lengths before allocation and detects input growth while reading. These are
 conservative allowances and phase deadlines, not hard peak-RSS or blocking-I/O
-guarantees; full hardening remains [#182](https://github.com/AbdelStark/tessera/issues/182).
+guarantees. Advice and weight openings carry the same deadline through NTTs,
+column-chain hashing (between blocks and each 128-symbol piece of a long block),
+coefficient construction and consistency folds (at most 4,096 entries per check).
+Codeword copying, zero initialization and mask application also poll it.
+Merkle multiproofs check before work, at most every 4,096 validation/counting/tree
+steps and before releasing successful authentication. These
+checks return `ERR-RES-TIME`. NI and Live artifact hashing polls each 64 KiB block;
+payload reads and sequence decoding poll at most every 4,096 operations, with
+additional checks through long ASCII/map comparisons and before releasing a value.
+Protocol size counting, encoding and public-statement hashing also check entry,
+at most every 4,096 primitive writes and completion, stopping nested traversal on expiry.
+LogUp result vectors and claim-point copies also reserve fallibly; shortages return
+`ERR-RES-MEMORY` after the same transcript steps and validation checks as before.
+Arithmetic `Vec<Fp2>` transcript messages reserve their encoding buffers fallibly;
+allocation failure returns an operational memory error before absorption.
+Direct NI/Live transcript absorption polls at each 64 KiB label/message chunk
+and before committing the transcript state. Cancellation leaves state and counter unchanged.
+Live message decoding and cached replay retain the session's original deadline;
+idle expiry remains `ERR-PROTO-TIMEOUT`. Other verification loops and blocking I/O still need
+hardening. Full hardening remains [#182](https://github.com/AbdelStark/tessera/issues/182).
 
 `--json` prints one result. `--out` always writes a
 [`tessera.verdict/1`](../../spec/schemas/verdict-v1.schema.json) object. Existing
@@ -142,6 +161,13 @@ target/debug/tessera-verify live \
   --prompt-len 2 --output-len 3 --manifest-digest "$MANIFEST_HEX" \
   --out verdict.json --json
 ```
+
+For a batch, replace the four request flags with
+`--requests SESSION_HEX:ID:PROMPT:OUTPUT,SESSION_HEX:ID:PROMPT:OUTPUT`.
+Entries stay in the caller's slot order; each session is 16 bytes of hex, each
+prompt has at least one token, and an output length of zero is allowed. Request
+keys `(session, id)` must be distinct. The batch flag and singleton flags are
+mutually exclusive. The whole-statement pin covers the entire ordered batch.
 
 The application supplies every expected request field before the verifier emits
 `SeedCommit`. The independently constructed statement must match the external
