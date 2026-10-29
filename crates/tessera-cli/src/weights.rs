@@ -18,7 +18,7 @@ use tessera_codec::error::{ErrorCode, TesseraError};
 use tessera_codec::{Public, schema};
 use tessera_compiler::{ExecutionPlan, PublicModel, check_plan, validate};
 use tessera_ir::IntegerModel;
-use tessera_pcs::{WeightCommitment, WeightCommitmentState, WeightLayout, WeightMatrix};
+use tessera_pcs::{RegeneratedWeightCommitment, WeightCommitmentState, WeightLayout, WeightMatrix};
 use tessera_protocol::ParamSet;
 
 use crate::{Input, io_error};
@@ -98,7 +98,7 @@ pub(crate) fn commit_weights(args: &CommitWeightsArgs, json: bool) -> Result<(),
         epoch = epoch;
         "tessera commit-weights: committing {matrices} weight matrices at epoch {epoch}"
     );
-    let commitment = WeightCommitment::commit(&layout, row_block, epoch, &weights)
+    let commitment = RegeneratedWeightCommitment::commit(&layout, row_block, epoch, &weights)
         .map_err(|error| TesseraError::new(ErrorCode::Internal).with_source(error))?;
 
     let public = *commitment.public();

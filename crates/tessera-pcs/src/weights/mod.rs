@@ -19,6 +19,7 @@ mod commit;
 pub(crate) mod layout;
 mod opening;
 mod public;
+mod regenerated;
 mod state;
 
 pub use commit::WeightCommitment;
@@ -28,4 +29,5 @@ pub use layout::{
 };
 pub use opening::{MatrixRows, WeightCombinedRows, WeightFold};
 pub use public::WeightCommitmentPublic;
+pub use regenerated::RegeneratedWeightCommitment;
 pub use state::{OpenedColumns, TypeBudget, WeightCommitmentState};

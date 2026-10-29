@@ -41,5 +41,9 @@ harness = false
 name = "commitment"
 harness = false
 
+[[bench]]
+name = "weights_regenerated"
+harness = false
+
 [lints]
 workspace = true
