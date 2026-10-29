@@ -1748,6 +1748,67 @@ fn a_graph_without_layers_proves_and_verifies() {
     );
 }
 
+/// RFC-0056: the stage driver must share the original operand and equality construction,
+/// before the sumcheck engine shares its folded tables. Five row-wise squares leave 32
+/// distinct claims on one norm. Zero ranges keep that synthetic circuit inside true integers.
+#[test]
+fn repeated_sum_squares_claims_allocate_one_stage_table_set() {
+    let measure = |depth: u32| {
+        let mut builder = GraphBuilder::new();
+        let mut input = decl(&[2, 1 << 15], ADVICE);
+        input.range = IntRange { lo: 0, hi: 0 };
+        let x = builder.input(input).unwrap();
+        let mut y = one(
+            &mut builder,
+            Op::SumSquares { axis: 1 },
+            &[x],
+            decl(&[2], NodeKind::Virtual),
+        );
+        for _ in 0..depth {
+            y = one(
+                &mut builder,
+                Op::Mul {
+                    broadcast: tessera_ir::Broadcast::Trailing,
+                },
+                &[y, y],
+                decl(&[2], NodeKind::Virtual),
+            );
+        }
+        requant(&mut builder, y, &[2], 1);
+        let graph = builder.finish();
+        let schedule = derive_graph_schedule(&graph, &[], &[], None).unwrap();
+        let count = schedule
+            .stages
+            .iter()
+            .flat_map(|s| &s.instances)
+            .filter(|i| i.relation == Relation::SumSquares)
+            .count();
+        assert_eq!(count, 1 << depth, "claims remain separate");
+        let witness = Engine::for_graph(&graph, &[])
+            .unwrap()
+            .evaluate(random_inputs(&graph, &[x], 0x461))
+            .unwrap();
+        let points = leaf_points(&schedule, 0x461);
+        let mut proof = None;
+        let info = allocation_counter::measure(|| {
+            proof = Some(prove_graph(&graph, &[], &schedule, &witness, &points).0);
+        });
+        verify_graph(&graph, &[], &schedule, &proof.unwrap(), &points)
+            .unwrap_or_else(|error| panic!("depth {depth}: {error:?}"));
+        info
+    };
+    let single = measure(0);
+    let repeated = measure(5);
+    assert!(
+        repeated.bytes_max < single.bytes_max + 256 * 1024,
+        "single={single:?} repeated={repeated:?}"
+    );
+    assert!(
+        repeated.bytes_total < single.bytes_total + 512 * 1024,
+        "single={single:?} repeated={repeated:?}"
+    );
+}
+
 /// RFC-0072 'Gadgets and leaf sites': the leaf layout gives `BitDecompose` and `AssertEqual` no
 /// site, as the schedule gives none (`has_leaf_site`, which both call), and every other gadget,
 /// `OneHot` among them, its own.

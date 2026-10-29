@@ -1878,6 +1878,7 @@ name = "tessera-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "getrandom 0.3.4",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
@@ -1893,6 +1894,7 @@ dependencies = [
  "tessera-pcs",
  "tessera-protocol",
  "tessera-prover",
+ "tessera-scoring",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
@@ -2156,6 +2158,7 @@ dependencies = [
 name = "tessera-sumcheck"
 version = "0.1.0"
 dependencies = [
+ "allocation-counter",
  "serde_json",
  "tessera-codec",
  "tessera-field",

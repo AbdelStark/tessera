@@ -465,10 +465,32 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
         let mut plans = Vec::new();
         let mut points = Vec::new();
         let mut graph_indices = Vec::with_capacity(stage.instances.len());
+        let mut shared_squares = HashMap::new();
         for instance in &stage.instances {
             if matches!(instance.relation, Relation::Native { .. }) {
                 graph_indices.push(None);
                 continue;
+            }
+            // RFC-0056: root coefficient products leave many claims on the same norm.
+            // Share their witness and eq tables by public schedule identity only. Sources
+            // and output claim ranges remain distinct; no claim or message is merged.
+            let shared_key = (
+                instance.node,
+                instance.kind,
+                instance.point.clone(),
+                instance.layers.clone(),
+                instance.vars,
+                stage.claims[instance.claims.clone()]
+                    .iter()
+                    .map(|c| (c.kind, c.layers.clone()))
+                    .collect::<Vec<_>>(),
+            );
+            if instance.relation == Relation::SumSquares {
+                if let Some(&index) = shared_squares.get(&shared_key) {
+                    graph_indices.push(Some(index));
+                    continue;
+                }
+                shared_squares.insert(shared_key, plans.len());
             }
             graph_indices.push(Some(plans.len()));
             plans.push(self.plan(stage, instance, &mut arena)?);
@@ -498,7 +520,10 @@ impl<'a, W: WitnessSource + ?Sized> StageProver<'a, W> {
                     .checked_shl(instance.vars)
                     .ok_or(StageError::Memory)?;
                 if own.tables().iter().any(|t| t.len() != width)
-                    || own.tables().iter().filter(|t| !t.is_public()).count() != evaluations
+                    || own
+                        .computed_vars()
+                        .is_some_and(|n| n != instance.vars as usize)
+                    || own.evaluations() != evaluations
                 {
                     return internal("native raw tables fit the compiled instance");
                 }

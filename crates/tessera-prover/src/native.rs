@@ -2,6 +2,9 @@
 
 //! CPU native model relations in the graph's single stage batch (RFC-0037/0050).
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use tessera_codec::SecretBuf;
 use tessera_compiler::schedule::{
     LayerMap, Native, NativeKind, NativeOutput, NodeRef, StageSchedule,
@@ -10,7 +13,7 @@ use tessera_compiler::{AuxColumn, CompareColumn, Lowering, RuntimePlan, Selectio
 use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField};
 use tessera_gadgets::{RsqrtRow, Slack};
 use tessera_ir::{ClaimList, NodeId, Op, TensorId};
-use tessera_poly::{eq_table, evaluate_base, less_than};
+use tessera_poly::{PolyField, eq_table, evaluate_base, less_than};
 use tessera_sumcheck::{Claim, Instance, Table, Term};
 
 use crate::leaf::{LeafClaims, LeafLayout, ModelColumn, ModelWitness, token, tokens};
@@ -18,6 +21,7 @@ use crate::stages::{NativeContext, NativeProver, StageError, WitnessSource};
 
 mod openings;
 mod runtime;
+mod score;
 use runtime::Runtime;
 
 fn bad() -> StageError {
@@ -30,6 +34,28 @@ fn vars(shape: &[u32]) -> u32 {
         .iter()
         .map(|n| n.next_power_of_two().trailing_zeros())
         .sum()
+}
+
+/// Evaluate a borrowed integer column without converting it to a full field table. The two
+/// public equality halves use O(sqrt(entries)) storage even for score-sized leaf columns.
+fn evaluate_integers(values: &[i64], point: &[F]) -> Result<F, StageError> {
+    let variables = u32::try_from(point.len()).map_err(|_| bad())?;
+    if 1usize.checked_shl(variables) != Some(values.len()) {
+        return Err(bad());
+    }
+    let split = point.len() / 2;
+    let low = eq_table(&point[..split]).map_err(|_| bad())?;
+    let high = eq_table(&point[split..]).map_err(|_| bad())?;
+    Ok(values
+        .chunks_exact(low.len())
+        .zip(high)
+        .fold(F::ZERO, |sum, (chunk, weight)| {
+            let inner = chunk
+                .iter()
+                .zip(&low)
+                .fold(F::ZERO, |sum, (&v, &w)| sum + w.mul_by_base(G::from_i64(v)));
+            sum + weight * inner
+        }))
 }
 fn zeros(n: usize) -> Result<SecretBuf<G>, StageError> {
     let mut v = SecretBuf::try_with_capacity(n).map_err(|_| StageError::Memory)?;
@@ -380,13 +406,14 @@ fn product_terms(digits: usize, j: usize, upper: bool) -> Vec<Term<F>> {
 }
 
 struct Data {
+    score: Option<score::Score>,
     raw: Vec<usize>,
     mask: Option<Vec<G>>,
     terms: Vec<Term<F>>,
     fixed: Vec<F>,
     point: Vec<F>,
     full_point: bool,
-    equality: Vec<F>,
+    equality: Arc<Vec<F>>,
     target: F,
     public: Vec<Vec<F>>,
 }
@@ -396,6 +423,7 @@ pub struct ModelNativeProver<'a> {
     plan: &'a ModelNativePlan,
     tables: Vec<SecretBuf<G>>,
     data: Vec<Data>,
+    literal_scores: bool,
 }
 impl<'a> ModelNativeProver<'a> {
     /// Build native tables from the same original witness and canonical leaf proof.
@@ -403,6 +431,10 @@ impl<'a> ModelNativeProver<'a> {
     /// family's targets lie where the leaf stage left its tensors' claims ([`LeafClaims`]):
     /// prefixes of its point, or the merged points of a grouped stage (RFC-0054 'The stage's
     /// outputs').
+    ///
+    /// Single-request score relations use computed RFC-0056 rounds. Multi-request
+    /// RFC-0071 slots retain the slot-aware literal path; no computed working-set
+    /// reduction is claimed for those batches.
     ///
     /// # Errors
     /// `Internal` for inconsistent own sources/points, `Memory` for failed reservations.
@@ -413,10 +445,37 @@ impl<'a> ModelNativeProver<'a> {
         graph: &impl WitnessSource,
         leaf: &dyn LeafClaims,
     ) -> Result<Self, StageError> {
+        Self::build(plan, lowering, witness, graph, leaf, false)
+    }
+
+    /// Literal RFC-0010 oracle: materialize the score, broadcast maximum, equality and mask
+    /// tensors. This sends the same messages as [`Self::new`] but uses quadratic memory.
+    ///
+    /// # Errors
+    /// The same source/geometry and reservation failures as [`Self::new`].
+    pub fn new_literal(
+        plan: &'a ModelNativePlan,
+        lowering: &Lowering,
+        witness: &ModelWitness,
+        graph: &impl WitnessSource,
+        leaf: &dyn LeafClaims,
+    ) -> Result<Self, StageError> {
+        Self::build(plan, lowering, witness, graph, leaf, true)
+    }
+
+    fn build(
+        plan: &'a ModelNativePlan,
+        lowering: &Lowering,
+        witness: &ModelWitness,
+        graph: &impl WitnessSource,
+        leaf: &dyn LeafClaims,
+        literal_scores: bool,
+    ) -> Result<Self, StageError> {
         let mut out = Self {
             plan,
             tables: Vec::new(),
             data: Vec::new(),
+            literal_scores,
         };
         // A claim's point reads its tensor's token axis only in token groups (RFC-0054 'The
         // stage's outputs'), whose axes RFC-0054 derives; an ungrouped stage needs none, and a
@@ -436,6 +495,119 @@ impl<'a> ModelNativeProver<'a> {
     fn table(&mut self, v: SecretBuf<G>) -> usize {
         self.tables.push(v);
         self.tables.len() - 1
+    }
+    fn score_inputs(
+        &self,
+        f: &Family,
+        lowering: &Lowering,
+        graph: &impl WitnessSource,
+        maximum: usize,
+    ) -> Result<score::Inputs, StageError> {
+        let mut queries = SecretBuf::new();
+        let mut keys = SecretBuf::new();
+        let mut geometry = None;
+        for &id in &f.nodes {
+            let input = lowering.graph.nodes[id.0 as usize].inputs[0];
+            let product = lowering.graph.producer(input).ok_or_else(bad)?;
+            let product = &lowering.graph.nodes[product.0 as usize];
+            if !matches!(
+                product.op,
+                Op::MatMulAct {
+                    transpose_rhs: true
+                }
+            ) {
+                return Err(bad());
+            }
+            let q = product.inputs[0];
+            let mut k = product.inputs[1];
+            // The canonical GQA layout is Reshape(Expand(K, group)). Read K before
+            // repetition so its INT8 resident grows with key heads (RFC-0037/0056).
+            if let Some(r) = lowering.graph.producer(k) {
+                let r = &lowering.graph.nodes[r.0 as usize];
+                if matches!(r.op, Op::Reshape)
+                    && let Some(e) = lowering.graph.producer(r.inputs[0])
+                {
+                    let e = &lowering.graph.nodes[e.0 as usize];
+                    if matches!(e.op, Op::Expand { axis: 1, .. }) {
+                        k = e.inputs[0];
+                    }
+                }
+            }
+            let qt = &lowering.graph.tensors[q.0 as usize];
+            let kt = &lowering.graph.tensors[k.0 as usize];
+            let (&[h, n, d], &[kh, kn, kd]) = (qt.shape.as_slice(), kt.shape.as_slice()) else {
+                return Err(bad());
+            };
+            if kh == 0
+                || h % kh != 0
+                || n != kn
+                || d != kd
+                || qt.range.lo < -128
+                || qt.range.hi > 127
+                || kt.range.lo < -128
+                || kt.range.hi > 127
+            {
+                return Err(bad());
+            }
+            let current = (h as usize, kh as usize, n as usize, d as usize);
+            if geometry.is_some_and(|g| g != current) {
+                return Err(bad());
+            }
+            geometry = Some(current);
+            for (id, out, size) in [
+                (q, &mut queries, h as usize * n as usize * d as usize),
+                (k, &mut keys, kh as usize * n as usize * d as usize),
+            ] {
+                let values = graph.values(id).ok_or_else(bad)?;
+                if values.len() != size {
+                    return Err(bad());
+                }
+                // Range analysis above guarantees INT8. No secret-dependent conversion
+                // branch: a nonconforming supplied witness still owes its graph proof.
+                out.extend(values.iter().map(|&x| x as i8));
+            }
+        }
+        let (heads, key_heads, positions, dim) = geometry.ok_or_else(bad)?;
+        let layers = 1usize.checked_shl(f.lambda).ok_or(StageError::Memory)?;
+        let np = positions.next_power_of_two();
+        let padded =
+            |source: &SecretBuf<i8>, h: usize, hp: usize| -> Result<SecretBuf<i8>, StageError> {
+                let len = layers
+                    .checked_mul(hp)
+                    .and_then(|v| v.checked_mul(np))
+                    .and_then(|v| v.checked_mul(dim))
+                    .ok_or(StageError::Memory)?;
+                let mut out = SecretBuf::try_with_capacity(len).map_err(|_| StageError::Memory)?;
+                out.resize(len, 0);
+                for l in 0..f.nodes.len() {
+                    for head in 0..h {
+                        for q in 0..positions {
+                            let from = ((l * h + head) * positions + q) * dim;
+                            let to = ((l * hp + head) * np + q) * dim;
+                            out[to..to + dim].copy_from_slice(&source[from..from + dim]);
+                        }
+                    }
+                }
+                Ok(out)
+            };
+        let queries = padded(&queries, heads, heads.next_power_of_two())?;
+        let keys = padded(&keys, key_heads, key_heads)?;
+        if self.tables[maximum].len() != layers * heads.next_power_of_two() * np {
+            return Err(bad());
+        }
+        let mut maxima = zeros(self.tables[maximum].len())?;
+        maxima.copy_from_slice(&self.tables[maximum]);
+        Ok(score::Inputs {
+            layers: f.nodes.len(),
+            heads,
+            key_heads,
+            positions,
+            dim,
+            layer_vars: f.lambda as usize,
+            queries,
+            keys,
+            maxima,
+        })
     }
     fn source(
         &mut self,
@@ -466,10 +638,7 @@ impl<'a> ModelNativeProver<'a> {
         (0..f.nodes.len())
             .map(|l| {
                 let values = witness.values(f.site, l, column).ok_or_else(bad)?;
-                let mut buffer =
-                    SecretBuf::try_with_capacity(values.len()).map_err(|_| StageError::Memory)?;
-                buffer.extend(values.iter().map(|&v| G::from_i64(v)));
-                evaluate(&buffer, point)
+                evaluate_integers(values, point)
             })
             .collect()
     }
@@ -483,13 +652,14 @@ impl<'a> ModelNativeProver<'a> {
         full_point: bool,
     ) {
         self.data.push(Data {
+            score: None,
             raw,
             mask,
             terms,
             fixed,
             point,
             full_point,
-            equality: Vec::new(),
+            equality: Arc::default(),
             target: F::ZERO,
             public: Vec::new(),
         });
@@ -657,90 +827,153 @@ impl<'a> ModelNativeProver<'a> {
                 let qp = n.next_power_of_two() as usize;
                 let rows = heads.next_power_of_two() as usize * qp;
                 let max = self.source(f, witness, ModelColumn::Auxiliary(AuxColumn::Maximum))?;
-                let mut broadcast = zeros(self.tables[max].len() * np)?;
-                for (r, &v) in self.tables[max].iter().enumerate() {
-                    broadcast[r * np..(r + 1) * np].fill(v);
-                }
-                let maximum = self.table(broadcast);
-                let mut scores = zeros(self.tables[maximum].len())?;
-                let block = rows * np;
-                for (l, &id) in f.nodes.iter().enumerate() {
-                    let input = lowering.graph.nodes[id.0 as usize].inputs[0];
-                    pad(
-                        graph.values(input).ok_or_else(bad)?,
-                        &f.shape,
-                        &mut scores[l * block..(l + 1) * block],
-                    )?;
-                }
-                let score = self.table(scores);
-                let mask: Vec<_> = (0..self.tables[score].len())
-                    .map(|i| {
-                        let (l, h, q, k) = (i / block, i % block / (np * qp), i / np % qp, i % np);
-                        let (real, position) = match &lowering.graph.slots {
-                            Some(slots) => (slots.is_real_row(q), q % slots.slot_len as usize),
-                            None => (q < n as usize, q),
+                // RFC-0071 batches have a slot-local key axis and causal mask.
+                // RFC-0056's computed input geometry below is single-request only.
+                // Preserve the independently checked batch path until a slot-aware
+                // computed algorithm has its own equivalence and memory evidence.
+                if self.literal_scores || lowering.graph.slots.is_some() {
+                    let mut broadcast = zeros(self.tables[max].len() * np)?;
+                    for (r, &v) in self.tables[max].iter().enumerate() {
+                        broadcast[r * np..(r + 1) * np].fill(v);
+                    }
+                    let maximum = self.table(broadcast);
+                    let mut scores = zeros(self.tables[maximum].len())?;
+                    let block = rows * np;
+                    for (l, &id) in f.nodes.iter().enumerate() {
+                        let input = lowering.graph.nodes[id.0 as usize].inputs[0];
+                        pad(
+                            graph.values(input).ok_or_else(bad)?,
+                            &f.shape,
+                            &mut scores[l * block..(l + 1) * block],
+                        )?;
+                    }
+                    let score = self.table(scores);
+                    let mask: Vec<_> = (0..self.tables[score].len())
+                        .map(|i| {
+                            let (l, h, q, k) =
+                                (i / block, i % block / (np * qp), i / np % qp, i % np);
+                            let (real, position) = match &lowering.graph.slots {
+                                Some(slots) => (slots.is_real_row(q), q % slots.slot_len as usize),
+                                None => (q < n as usize, q),
+                            };
+                            if l < f.nodes.len() && h < heads as usize && real && k <= position {
+                                G::ONE
+                            } else {
+                                G::ZERO
+                            }
+                        })
+                        .collect();
+                    let mut fixed = self.fixed(f, witness, ModelColumn::ExpKey, p)?;
+                    let causal = evaluate(&mask[..block], p)?;
+                    for (v, &id) in fixed.iter_mut().zip(&f.nodes) {
+                        let Op::SoftmaxRow { exp_table, .. } =
+                            lowering.graph.nodes[id.0 as usize].op
+                        else {
+                            return Err(bad());
                         };
-                        if l < f.nodes.len() && h < heads as usize && real && k <= position {
-                            G::ONE
-                        } else {
-                            G::ZERO
-                        }
-                    })
-                    .collect();
-                let mut fixed = self.fixed(f, witness, ModelColumn::ExpKey, p)?;
-                let causal = evaluate(&mask[..block], p)?;
-                for (v, &id) in fixed.iter_mut().zip(&f.nodes) {
-                    let Op::SoftmaxRow { exp_table, .. } = lowering.graph.nodes[id.0 as usize].op
-                    else {
-                        return Err(bad());
+                        let spec = lowering
+                            .tables
+                            .iter()
+                            .find(|t| t.id == exp_table)
+                            .ok_or_else(bad)?;
+                        *v -= fp((1u64 << spec.log2_rows) - 1) * (F::ONE - causal);
+                    }
+                    let terms = vec![
+                        Term::new(F::ONE, vec![0, 2, 3]),
+                        Term::new(-F::ONE, vec![1, 2, 3]),
+                    ];
+                    self.add(
+                        vec![maximum, score],
+                        Some(mask.clone()),
+                        terms.clone(),
+                        fixed,
+                        p.to_vec(),
+                        false,
+                    );
+                    let (point, target) = if let Some(k) = forest {
+                        let c = leaf.forest_claim(k).ok_or_else(bad)?;
+                        (
+                            c.point.clone(),
+                            c.value - F::ONE + evaluate(&mask, &c.point)?,
+                        )
+                    } else {
+                        (p.to_vec(), F::ZERO)
                     };
-                    let spec = lowering
-                        .tables
-                        .iter()
-                        .find(|t| t.id == exp_table)
-                        .ok_or_else(bad)?;
-                    *v -= fp((1u64 << spec.log2_rows) - 1) * (F::ONE - causal);
-                }
-                let terms = vec![
-                    Term::new(F::ONE, vec![0, 2, 3]),
-                    Term::new(-F::ONE, vec![1, 2, 3]),
-                ];
-                self.add(
-                    vec![maximum, score],
-                    Some(mask.clone()),
-                    terms.clone(),
-                    fixed,
-                    p.to_vec(),
-                    false,
-                );
-                let (point, target) = if let Some(k) = forest {
-                    let c = leaf.forest_claim(k).ok_or_else(bad)?;
-                    (
-                        c.point.clone(),
-                        c.value - F::ONE + evaluate(&mask, &c.point)?,
-                    )
+                    self.add(
+                        vec![maximum, score],
+                        Some(mask),
+                        terms,
+                        vec![target],
+                        point,
+                        forest.is_some(),
+                    );
                 } else {
-                    (p.to_vec(), F::ZERO)
-                };
-                self.add(
-                    vec![maximum, score],
-                    Some(mask),
-                    terms,
-                    vec![target],
-                    point,
-                    forest.is_some(),
-                );
+                    let inputs = Arc::new(self.score_inputs(f, lowering, graph, max)?);
+                    let mut fixed = self.fixed(f, witness, ModelColumn::ExpKey, p)?;
+                    let causal = score::mask(p, heads as usize, n as usize, 1);
+                    for (v, &id) in fixed.iter_mut().zip(&f.nodes) {
+                        let Op::SoftmaxRow { exp_table, .. } =
+                            lowering.graph.nodes[id.0 as usize].op
+                        else {
+                            return Err(bad());
+                        };
+                        let spec = lowering
+                            .tables
+                            .iter()
+                            .find(|t| t.id == exp_table)
+                            .ok_or_else(bad)?;
+                        *v -= fp((1u64 << spec.log2_rows) - 1) * (F::ONE - causal);
+                    }
+                    self.add(Vec::new(), None, Vec::new(), fixed, p.to_vec(), false);
+                    self.data.last_mut().ok_or_else(bad)?.score = Some(score::Score {
+                        inputs: Arc::clone(&inputs),
+                        point: Vec::new(),
+                    });
+                    let (point, target) = if let Some(k) = forest {
+                        let c = leaf.forest_claim(k).ok_or_else(bad)?;
+                        (
+                            c.point.clone(),
+                            c.value - F::ONE
+                                + score::mask(&c.point, heads as usize, n as usize, f.nodes.len()),
+                        )
+                    } else {
+                        (p.to_vec(), F::ZERO)
+                    };
+                    self.add(
+                        Vec::new(),
+                        None,
+                        Vec::new(),
+                        vec![target],
+                        point,
+                        forest.is_some(),
+                    );
+                    self.data.last_mut().ok_or_else(bad)?.score = Some(score::Score {
+                        inputs,
+                        point: Vec::new(),
+                    });
+                }
                 let row_shape = &lowering.graph.tensors[node.outputs[1].0 as usize].shape;
                 let rows = leaf
                     .tensor_point(row_shape, token(axes, node.outputs[1]))
                     .ok_or_else(bad)?;
                 let rowp = rows.as_slice();
                 let reciprocal = self.source(f, witness, ModelColumn::Output(1))?;
-                let exp = self.source(f, witness, ModelColumn::Output(0))?;
                 let mut average = zeros(self.tables[reciprocal].len())?;
                 let inverse = G::from_u64_reduced(np as u64).inverse().ok_or_else(bad)?;
-                for (v, chunk) in average.iter_mut().zip(self.tables[exp].chunks_exact(np)) {
-                    *v = chunk.iter().copied().fold(G::ZERO, |a, x| a + x) * inverse;
+                let rows = average.len() >> f.lambda;
+                for l in 0..f.nodes.len() {
+                    let exp = witness
+                        .values(f.site, l, ModelColumn::Output(0))
+                        .ok_or_else(bad)?;
+                    if exp.len() != rows * np {
+                        return Err(bad());
+                    }
+                    for (v, chunk) in average[l * rows..(l + 1) * rows]
+                        .iter_mut()
+                        .zip(exp.chunks_exact(np))
+                    {
+                        *v = chunk.iter().fold(G::ZERO, |sum, &x| sum + G::from_i64(x)) * inverse;
+                    }
                 }
                 let average = self.table(average);
                 let psi = match &lowering.graph.slots {
@@ -815,6 +1048,7 @@ impl NativeProver for ModelNativeProver<'_> {
         {
             return Err(bad());
         }
+        let mut equalities = HashMap::new();
         for ((data, meta), slot) in self
             .data
             .iter_mut()
@@ -851,7 +1085,17 @@ impl NativeProver for ModelNativeProver<'_> {
             if target.len() != meta.vars as usize {
                 return Err(bad());
             }
-            data.equality = eq_table(&target).map_err(|_| bad())?;
+            if let Some(score) = &mut data.score {
+                score.point = target;
+            } else {
+                if let Some(equality) = equalities.get(&target) {
+                    data.equality = Arc::clone(equality);
+                } else {
+                    let equality = Arc::new(eq_table(&target).map_err(|_| bad())?);
+                    equalities.insert(target, Arc::clone(&equality));
+                    data.equality = equality;
+                }
+            }
             data.target = if meta.zero {
                 F::ZERO
             } else if data.full_point {
@@ -878,6 +1122,9 @@ impl NativeProver for ModelNativeProver<'_> {
             .data
             .get(tag.checked_sub(1).ok_or_else(bad)? as usize)
             .ok_or_else(bad)?;
+        if let Some(score) = &d.score {
+            return Ok(Instance::computed(score));
+        }
         let mut tables: Vec<_> = d
             .raw
             .iter()
@@ -964,6 +1211,30 @@ impl NativeProver for ModelNativeProver<'_> {
 mod tests {
     use super::*;
     use tessera_field::QuadraticExtension;
+    #[test]
+    fn borrowed_integer_columns_use_bounded_storage_and_the_original_extension() {
+        for variables in [0, 1, 2, 3, 8, 9, 18] {
+            let values: Vec<i64> = (0..1i64 << variables).map(|x| -x * x + 3 * x - 7).collect();
+            let point: Vec<_> = (0..variables)
+                .map(|j| F::new(G::from_u64_reduced(3 + j), G::from_u64_reduced(5 + j)))
+                .collect();
+            let mut sum = F::ZERO;
+            let mut diagonal = F::ZERO;
+            for (j, &r) in point.iter().enumerate() {
+                let a = fp(1 << j);
+                sum += a * r;
+                diagonal += a * a * r * (F::ONE - r);
+            }
+            // On Boolean x, x^2 = Σ a_j^2 x_j + 2Σ_{j<k} a_j a_k x_j x_k.
+            // Multilinearizing replaces x_j^2 by x_j, giving this closed form.
+            let expected = -(sum * sum + diagonal) + fp(3) * sum - fp(7);
+            let info = allocation_counter::measure(|| {
+                assert_eq!(evaluate_integers(&values, &point).unwrap(), expected);
+            });
+            assert!(info.bytes_max <= 32 * 1024, "{variables}: {info:?}");
+        }
+        assert!(evaluate_integers(&[1, 2, 3], &[F::ONE]).is_err());
+    }
     #[test]
     fn every_quartic_coefficient_matches_the_frozen_integer_oracle() {
         let document: serde_json::Value = serde_json::from_str(include_str!(
