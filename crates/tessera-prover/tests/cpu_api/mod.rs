@@ -1127,3 +1127,53 @@ fn check_slotted_batch_with_windows(requests: &[(u32, u32)], windows: bool) {
         tessera_codec::error::ErrorCode::WitnessExactMismatch
     );
 }
+
+/// #598: layer ownership at lambda=0 must survive the complete CPU/PCS route.
+#[cfg(feature = "test-params")]
+#[test]
+fn public_cpu_api_proves_one_layer_models_in_ni_and_live() {
+    for name in ["tiny-2-minimal", "tiny-2-servable", "tiny-2-affine"] {
+        let mut model = bounded_model_named(name);
+        model.arch.n_layers = 1;
+        model.weights.retain(|w| w.layer == 0);
+        model.quant.channels.retain(|c| c.layer == 0);
+        let keep = |p: tessera_ir::QuantPoint| {
+            !matches!(p,
+            tessera_ir::QuantPoint::Layer { layer, .. } if layer != 0)
+        };
+        model.quant.public.act_exponents.retain(|(p, _)| keep(*p));
+        model
+            .quant
+            .public
+            .shift_class_sets
+            .retain(|(p, _)| keep(*p));
+        model.quant.public.affine_sites.retain(|(p, _)| keep(*p));
+        model.quant.public.score_scales.retain(|(l, _)| *l == 0);
+        model.quant.silu_in_exponents.retain(|(l, _)| *l == 0);
+        let (plan, batch, weights) = fixture(&model, 3, 1);
+        let (claims, statement, config) = independent(&plan, &batch, &weights);
+        let mut state = WeightCommitmentState::new(weights).unwrap();
+        let proof = Prover::new(&plan, &model, &mut state, cfg(Mode::NonInteractive))
+            .unwrap()
+            .prove_non_interactive(&batch)
+            .unwrap();
+        let proof = tv_codec::decode(
+            &tessera_codec::encode(&proof),
+            &tv_codec::DecodeLimits::MESSAGE,
+            tv_core::protocol::NiProof::decode,
+        )
+        .unwrap();
+        let verdict = tv_core::verify_non_interactive(&claims, &statement, &proof, &config);
+        assert!(
+            matches!(verdict, tv_core::Verdict::Accept(_)),
+            "{name}: {verdict:?}"
+        );
+        let verifier = tv_core::LiveVerifier::new(claims, statement, config);
+        let mut prover = Prover::new(&plan, &model, &mut state, cfg(Mode::Live)).unwrap();
+        let verdict = live_verdict(&mut prover, &batch, verifier, protocol::LeafGroups::NONE);
+        assert!(
+            matches!(verdict, tv_core::Verdict::Accept(_)),
+            "{name}: {verdict:?}"
+        );
+    }
+}

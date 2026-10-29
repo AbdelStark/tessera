@@ -60,6 +60,8 @@
 //!
 //! # Features
 //!
+//! - `test-params` enables non-certifying parameters in the independent verifier dev-dependency.
+//!   Tests only: a release build with it fails to compile.
 //! - `test-rng` seeds masking randomness so that tests are reproducible. Tests only: a release
 //!   build with it fails to compile.
 //! - `unsafe-debug-dump` dumps secret tensors for debugging (OBS-4). Tests only: a release build
@@ -89,6 +91,10 @@ pub use stages::{
 };
 
 // Test-only features cannot reach a release build (RFC-0001 'Cargo features').
+#[cfg(all(feature = "test-params", not(debug_assertions)))]
+compile_error!(
+    "the `test-params` feature enables non-certifying verifier test parameters; it must not be enabled in a release build (RFC-0001 'Cargo features')"
+);
 #[cfg(all(feature = "test-rng", not(debug_assertions)))]
 compile_error!(
     "the `test-rng` feature pins masking randomness to a seed; it must not be enabled in a release build (RFC-0001 'Cargo features')"
