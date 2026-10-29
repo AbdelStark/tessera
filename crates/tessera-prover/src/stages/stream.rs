@@ -734,6 +734,9 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
     /// Prove a stage with RFC-0055 windows and prepare the following stage's grid before this
     /// stage's splits. `cut` and `next_cut` are public global-round cuts from the memory plan;
     /// zero keeps that stage's resident oracle. Regeneration is required at every P3/P3b.
+    /// Native instances must supply resident tables, as charged by the memory projection;
+    /// computed round states are not supported by this engine. The CPU driver selects
+    /// `ModelNativeProver::new_literal` for its windowed route.
     ///
     /// # Errors
     /// The ordinary stage errors, or a regenerated witness/column that does not fit its public

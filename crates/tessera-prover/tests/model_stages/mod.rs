@@ -95,6 +95,49 @@ struct Broken<'a> {
     table: SecretBuf<G>,
     fault: u8,
 }
+
+/// Every conformance model/length exercises the fast native rounds against the preserved
+/// literal oracle before its complete mixed stage is checked by the independent verifier.
+struct Compared<'a> {
+    fast: ModelNativeProver<'a>,
+    literal: ModelNativeProver<'a>,
+}
+impl NativeProver for Compared<'_> {
+    fn prepare(&mut self, ctx: NativeContext<'_>) -> Result<(), StageError> {
+        self.literal.prepare(NativeContext {
+            stage: ctx.stage,
+            layer: ctx.layer,
+            zero: ctx.zero,
+        })?;
+        self.fast.prepare(ctx)
+    }
+    fn claim(&self, tag: u32) -> Result<F, StageError> {
+        self.fast.claim(tag)
+    }
+    fn instance(&self, tag: u32) -> Result<Instance<'_, F>, StageError> {
+        let fast = self.fast.instance(tag)?;
+        let literal = self.literal.instance(tag)?;
+        if fast.computed_vars().is_some() {
+            use tessera_sumcheck::{Prefix, Protocol, prove_batch};
+            let prove = |i| {
+                prove_batch(
+                    &mut transcript(Mode::NonInteractive),
+                    Protocol::One,
+                    Prefix::Stage(1),
+                    7,
+                    &[i],
+                )
+                .unwrap()
+                .into_proof()
+            };
+            assert_eq!(prove(fast.clone()), prove(literal), "native tag {tag}");
+        }
+        Ok(fast)
+    }
+    fn claims(&self, tag: u32, point: &[F], values: &[F]) -> Result<Vec<Claim<F>>, StageError> {
+        self.fast.claims(tag, point, values)
+    }
+}
 impl NativeProver for Broken<'_> {
     fn prepare(&mut self, ctx: NativeContext<'_>) -> Result<(), StageError> {
         self.native.prepare(ctx)
@@ -196,8 +239,11 @@ pub fn prove_stages(
     }
     .unwrap();
     assert_eq!(prepared.leaf(), leaf);
-    let mut native =
-        ModelNativeProver::new(native_plan, &p.lowering, actual, witness, proof).unwrap();
+    let mut native = Compared {
+        fast: ModelNativeProver::new(native_plan, &p.lowering, actual, witness, proof).unwrap(),
+        literal: ModelNativeProver::new_literal(native_plan, &p.lowering, actual, witness, proof)
+            .unwrap(),
+    };
     // Exercise transformations with distinct raw values even when a CPU fixture has equal operands.
     for meta in native_plan.native() {
         let point: Vec<_> = (0..meta.vars)
@@ -242,7 +288,7 @@ pub fn prove_stages(
     let _leaf = windowed.leaf(points).unwrap();
     windowed.leaf_split_values().unwrap();
     let mut native_window =
-        ModelNativeProver::new(native_plan, &p.lowering, actual, witness, proof).unwrap();
+        ModelNativeProver::new_literal(native_plan, &p.lowering, actual, witness, proof).unwrap();
     let mut replay = Replay {
         events: recorded.events.into_iter(),
     };

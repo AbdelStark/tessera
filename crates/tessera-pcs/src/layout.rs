@@ -95,6 +95,8 @@ const ROWS_TOO_SHORT: &str =
     "a row holds one key against a tile's queries and heads: g·min(Q, N_max) ≤ k (RFC-0046)";
 const POSITIONS: &str = "a sequence has 1 to max_context positions";
 const PADDED: &str = "a sequence pads to at most 2^31 positions";
+const SLOT_LEN: &str = "a batch's slot length is a power of two at least max_r n_r";
+const SLOT_AXIS: &str = "a slotted axis matches the batch's R · S length";
 const LAYER_WITHOUT_TILE: &str = "every layer has a tile";
 const EMPTY_TILE: &str = "a tile holds at least one committed value (RFC-0041 'Tiles')";
 const LAYER_PAST: &str = "a tile's layer is below n_layers";
@@ -146,6 +148,23 @@ impl AdviceLayoutCounter {
     pub fn new(params: LayoutParams, positions: u32) -> Result<Self, PcsError> {
         Ok(Self {
             attention: params.attention(positions)?,
+            log2_k: params.log2_k,
+            allocated: 0,
+        })
+    }
+
+    /// A counter for a batch of requests in slots of `slot_len` (RFC-0071 'The plan and the
+    /// layout').
+    ///
+    /// # Errors
+    /// Those of [`LayoutParams::batch_attention`].
+    pub fn new_batch(
+        params: LayoutParams,
+        slot_len: u32,
+        lengths: &[u32],
+    ) -> Result<Self, PcsError> {
+        Ok(Self {
+            attention: params.batch_attention(slot_len, lengths)?,
             log2_k: params.log2_k,
             allocated: 0,
         })
@@ -295,41 +314,138 @@ impl LayoutParams {
             blocks: padded / queries,
             heads: self.group,
             key_bits: padded.trailing_zeros().min(free),
+            slot_lengths: None,
+        })
+    }
+
+    /// The attention tiles' geometry for a batch of `lengths.len() ≥ 1` requests in slots of
+    /// `slot_len = S = 2^b` positions (RFC-0071 'The plan and the layout').
+    ///
+    /// With one request and `slot_len = 2^{⌈log2 lengths[0]⌉}` this reduces to
+    /// [`attention`](Self::attention). For `R ≥ 2`, each slot spans `S` positions, `Q' = min(Q, S)`
+    /// divides `S`, and the batch's padded token axis `2^{b + ⌈log2 R⌉}` expands into
+    /// `2^{b + ⌈log2 R⌉} / Q'` query blocks.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`check`](Self::check), [`PcsError::LayoutData`] for no request, a request outside
+    /// `1..=max_context`, a `slot_len` that is not a power of two at least `max_r n_r` or above
+    /// `2^31`, and [`PcsError::Layout`] when the padded token axis or query-block count exceeds the
+    /// `2^32`-row layout bound (RFC-0047, RFC-0071).
+    pub fn batch_attention(&self, slot_len: u32, lengths: &[u32]) -> Result<Attention, PcsError> {
+        self.check()?;
+        if lengths.is_empty() || lengths.iter().any(|&n| n == 0 || n > self.max_context) {
+            return data(POSITIONS);
+        }
+        let n_max = lengths.iter().copied().max().unwrap_or(0);
+        let Some(min_slot) = n_max.checked_next_power_of_two() else {
+            return data(PADDED);
+        };
+        if !slot_len.is_power_of_two() || slot_len < min_slot {
+            return data(SLOT_LEN);
+        }
+        if lengths.len() == 1 {
+            let queries = self.query_block.min(slot_len);
+            let free = self.log2_k - queries.trailing_zeros() - self.group.trailing_zeros();
+            return Ok(Attention {
+                positions: lengths[0],
+                padded: slot_len,
+                queries,
+                blocks: slot_len / queries,
+                heads: self.group,
+                key_bits: slot_len.trailing_zeros().min(free),
+                slot_lengths: None,
+            });
+        }
+        let r = u64::try_from(lengths.len()).map_err(|_| PcsError::Layout { rule: ROWS })?;
+        let r_padded = r
+            .checked_next_power_of_two()
+            .ok_or(PcsError::Layout { rule: ROWS })?;
+        let padded_tokens = u64::from(slot_len)
+            .checked_mul(r_padded)
+            .filter(|&p| p <= MAX_AXIS_LEN)
+            .ok_or(PcsError::Layout { rule: ROWS })?;
+        let positions = u64::from(slot_len)
+            .checked_mul(r)
+            .and_then(|n| u32::try_from(n).ok())
+            .ok_or(PcsError::Layout { rule: ROWS })?;
+        let queries = self.query_block.min(slot_len);
+        let blocks = u32::try_from(padded_tokens / u64::from(queries))
+            .map_err(|_| PcsError::Layout { rule: ROWS })?;
+        let free = self.log2_k - queries.trailing_zeros() - self.group.trailing_zeros();
+        Ok(Attention {
+            positions,
+            padded: slot_len,
+            queries,
+            blocks,
+            heads: self.group,
+            key_bits: slot_len.trailing_zeros().min(free),
+            slot_lengths: Some(lengths.to_vec()),
         })
     }
 }
 
-/// The attention tiles' geometry for one sequence (RFC-0034 'Causal layout', RFC-0041 'Tiles',
-/// RFC-0046 'Short query blocks'): the tile of a KV head and block `b` holds `e[h, q, i]` for its
-/// `g` query heads, the `Q'` queries `b·Q'` to `(b + 1)·Q' − 1` and the `N` keys, each of its
-/// rows `2^w` keys against all its queries and heads.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// The attention tiles' geometry for one proof unit (RFC-0034 'Causal layout', RFC-0041 'Tiles',
+/// RFC-0046 'Short query blocks', RFC-0071 'The plan and the layout'): the tile of a KV head and
+/// block `b` holds `e[h, q, i]` for its `g` query heads, the `Q'` queries `b·Q'` to
+/// `(b + 1)·Q' − 1` and its slot's `S` keys, each of its rows `2^w` keys against all its queries
+/// and heads.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Attention {
-    /// `n`, the sequence's positions.
+    /// `n` for one request, or `N = R · S` for a multi-request batch: the unpadded token axis.
     pub positions: u32,
-    /// `N = 2^{⌈log2 n⌉}`, the padded sequence.
+    /// `S = 2^b`: the padded sequence for one request (`2^{⌈log2 n⌉}`), or the slot length for a
+    /// batch (RFC-0071 'The plan and the layout').
     pub padded: u32,
-    /// `Q' = min(Q, N)`, the queries of a block.
+    /// `Q' = min(Q, S)`, the queries of a block.
     pub queries: u32,
-    /// `N / Q'`, the blocks of an attention node's KV head.
+    /// `2^{b + ⌈log2 R⌉} / Q'`, the blocks of an attention node's KV head across the padded token
+    /// axis.
     pub blocks: u32,
     /// `g`, the query heads of a tile.
     pub heads: u32,
-    /// `w = min(log2 N, log2 k − log2 Q' − log2 g)`: a row of a score tile holds `2^w` keys. A
-    /// tile of `g·Q'·N ≤ k` entries has `w = log2 N` and takes one row.
+    /// `w = min(b, log2 k − log2 Q' − log2 g)`: a row of a score tile holds `2^w` keys. A tile of
+    /// `g·Q'·S ≤ k` entries has `w = b` and takes one row.
     pub key_bits: u32,
+    slot_lengths: Option<Vec<u32>>,
 }
 
 impl Attention {
+    /// Per-request real lengths when this geometry spans `R ≥ 2` request slots, or `None` for a
+    /// single sequence.
+    pub fn slot_lengths(&self) -> Option<&[u32]> {
+        self.slot_lengths.as_deref()
+    }
+
+    /// The number of real queries held by query block `block` (`0..=queries`).
+    pub fn held_queries(&self, block: u32) -> u32 {
+        match &self.slot_lengths {
+            None => {
+                let first = block.saturating_mul(self.queries);
+                self.positions.saturating_sub(first).min(self.queries)
+            }
+            Some(lengths) => {
+                let first = u64::from(block) * u64::from(self.queries);
+                let slot = u64::from(self.padded);
+                let r = first / slot;
+                let q0 = (first % slot) as u32;
+                usize::try_from(r)
+                    .ok()
+                    .and_then(|r| lengths.get(r))
+                    .map_or(0, |&n_r| n_r.saturating_sub(q0).min(self.queries))
+            }
+        }
+    }
+
     /// The shape of a tensor an attention tile holds one value of per query row, at `block`: its
     /// reciprocals `R[h, q]`, its maxima `c[h, q]` and its bracket limbs (RFC-0041 'Tiles').
     ///
     /// It is the tile's share, allocated as a tensor of its own (RFC-0011 rule 2): `[g, Q']`, the
-    /// queries at or past `n` its padding, and a block of padding alone without a real query. Both
-    /// lengths are powers of two, so its layout order is row-major, in every block alike.
+    /// queries at or past the slot's `n_r` its padding, and a block of padding alone without a real
+    /// query. Both lengths are powers of two, so its layout order is row-major, in every block
+    /// alike.
     pub fn row_shape(&self, block: u32, padding: Padding) -> DenseShape {
-        let first = block.saturating_mul(self.queries);
-        let held = self.positions.saturating_sub(first).min(self.queries);
+        let held = self.held_queries(block);
         DenseShape::new(
             vec![
                 Axis::new(u64::from(self.heads)),
@@ -405,6 +521,13 @@ pub enum Padding {
     Constants,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct AxisSlots {
+    axis: usize,
+    slot_len: u32,
+    lengths: Vec<u32>,
+}
+
 /// The shape of a dense tensor: its axes in its own row-major order, RFC-0047's layout order of
 /// their variables, and what its padding holds.
 ///
@@ -415,6 +538,7 @@ pub struct DenseShape {
     axes: Vec<Axis>,
     order: Vec<usize>,
     padding: Padding,
+    slots: Option<AxisSlots>,
 }
 
 impl DenseShape {
@@ -427,6 +551,33 @@ impl DenseShape {
             axes,
             order,
             padding,
+            slots: None,
+        }
+    }
+
+    /// A dense tensor whose axis `slot_axis` is a multi-request batch's slotted token axis of
+    /// `lengths.len() · slot_len` positions, with request `r`'s real positions `0..lengths[r]`
+    /// inside slot `r` (RFC-0071 'The plan and the layout').
+    ///
+    /// When `lengths` holds at most one request, this is [`new`](Self::new).
+    pub fn with_slots(
+        axes: Vec<Axis>,
+        padding: Padding,
+        slot_axis: usize,
+        slot_len: u32,
+        lengths: Vec<u32>,
+    ) -> Self {
+        let order = layout_order(&axes);
+        let slots = (lengths.len() >= 2).then_some(AxisSlots {
+            axis: slot_axis,
+            slot_len,
+            lengths,
+        });
+        Self {
+            axes,
+            order,
+            padding,
+            slots,
         }
     }
 
@@ -742,6 +893,32 @@ impl AdviceLayout {
         tiles: &[TileShape],
     ) -> Result<Self, PcsError> {
         let attention = params.attention(positions)?;
+        Self::from_attention(params, attention, tiles)
+    }
+
+    /// The layout of a batch of `lengths.len() ≥ 1` requests in slots of `slot_len` positions
+    /// whose tiles, in production order, are `tiles`, under `params` (RFC-0071 'The plan and the
+    /// layout').
+    ///
+    /// # Errors
+    ///
+    /// Those of [`LayoutParams::batch_attention`], followed by the tile, layer and `2^32`-row
+    /// checks of [`new`](Self::new).
+    pub fn new_batch(
+        params: LayoutParams,
+        slot_len: u32,
+        lengths: &[u32],
+        tiles: &[TileShape],
+    ) -> Result<Self, PcsError> {
+        let attention = params.batch_attention(slot_len, lengths)?;
+        Self::from_attention(params, attention, tiles)
+    }
+
+    fn from_attention(
+        params: LayoutParams,
+        attention: Attention,
+        tiles: &[TileShape],
+    ) -> Result<Self, PcsError> {
         let segment_of = segment_of(params.layers, params.segments);
         let last_segment = params.segments - 1;
         // The tiles' forms and segments.
@@ -963,6 +1140,22 @@ fn check_value(value: &TensorShape, attention: &Attention) -> Result<(), &'stati
             if vars > MAX_TENSOR_VARS {
                 return Err(TOO_LARGE);
             }
+            if let Some(slots) = &dense.slots {
+                let Some(&axis) = dense.axes().get(slots.axis) else {
+                    return Err(SLOT_AXIS);
+                };
+                if !slots.slot_len.is_power_of_two()
+                    || slots.lengths.iter().any(|&n| n == 0 || n > slots.slot_len)
+                {
+                    return Err(SLOT_LEN);
+                }
+                let expected = u64::try_from(slots.lengths.len())
+                    .ok()
+                    .and_then(|r| r.checked_mul(u64::from(slots.slot_len)));
+                if expected != Some(axis.len) || axis.real != axis.len {
+                    return Err(SLOT_AXIS);
+                }
+            }
             Ok(())
         }
         TensorShape::Scores { block } => match *block < attention.blocks {
@@ -1023,22 +1216,55 @@ fn dense_rows(dense: &DenseShape, row_bits: u32) -> Vec<Range<u64>> {
     if dense.axes().iter().any(|a| a.real == 0) {
         return Vec::new();
     }
+    // RFC-0071 'The plan and the layout': when a multi-request batch's slotted token axis sits
+    // outermost in RFC-0047's order (`order[0]`), rule 4 skips rows whose covered token positions
+    // all lie in inter-slot or end-of-axis padding. When another padded axis (such as `d_ff`) sits
+    // outermost instead, the token axis is inner and RFC-0047 commits its padding rows.
+    let slotted_outer = dense
+        .slots
+        .as_ref()
+        .filter(|slots| row_bits > 0 && dense.order().first() == Some(&slots.axis));
     // The fixed parts, the most significant first: how many of their values are real, and their
     // bits.
     let mut parts = Vec::new();
     let mut remaining = row_bits;
+    let mut outer_runs: Option<(Vec<Range<u64>>, u32)> = None;
     let outermost_padded = dense
         .order()
         .iter()
         .copied()
         .find(|&axis| dense.axes()[axis].is_padded());
-    for &index in dense.order() {
+    for (pos, &index) in dense.order().iter().enumerate() {
         if remaining == 0 {
             break;
         }
         let axis = dense.axes()[index];
         let bits = axis.bits();
         let fixed = bits.min(remaining);
+        if pos == 0
+            && let Some(slots) = slotted_outer
+        {
+            let chunk = 1u64 << (bits - fixed);
+            let slot = u64::from(slots.slot_len);
+            let runs = if chunk >= slot {
+                let slots_per_row = chunk / slot;
+                one_run(0..(slots.lengths.len() as u64).div_ceil(slots_per_row))
+            } else {
+                let per_slot = slot / chunk;
+                let mut runs = Vec::new();
+                for (r, &n_r) in slots.lengths.iter().enumerate() {
+                    let base = (r as u64) * per_slot;
+                    let held = u64::from(n_r).div_ceil(chunk);
+                    if held > 0 {
+                        push_run(&mut runs, base..base + held);
+                    }
+                }
+                runs
+            };
+            outer_runs = Some((runs, fixed));
+            remaining -= fixed;
+            continue;
+        }
         let real = if axis.is_padded() && Some(index) != outermost_padded {
             // RFC-0047: only the outermost length padding gives skipped rows.
             1 << bits
@@ -1070,25 +1296,61 @@ fn dense_rows(dense: &DenseShape, row_bits: u32) -> Vec<Range<u64>> {
         };
         width <<= bits;
     }
+    if let Some((outer, _fixed)) = outer_runs {
+        runs = match runs.as_slice() {
+            [run] if *run == (0..width) => {
+                let mut scaled = Vec::with_capacity(outer.len());
+                for r in outer {
+                    push_run(&mut scaled, r.start * width..r.end * width);
+                }
+                scaled
+            }
+            _ => {
+                let mut repeated = Vec::new();
+                for range in outer {
+                    for value in range {
+                        for run in &runs {
+                            push_run(
+                                &mut repeated,
+                                run.start + value * width..run.end + value * width,
+                            );
+                        }
+                    }
+                }
+                repeated
+            }
+        };
+    }
     runs
 }
 
 /// A score tile's rows that hold a valid position (RFC-0034 'Zero rows', reading `Q'` for `Q` as
-/// RFC-0046 and RFC-0047 have it): row `i_hi` holds keys
-/// `i_hi·2^w` to `(i_hi + 1)·2^w − 1` against the block's queries `b·Q'` to `(b + 1)·Q' − 1`. It
-/// holds only masked positions when every key follows every query, `i_hi·2^w > (b + 1)·Q' − 1`,
-/// or when its keys or the block's queries are all padding, `i_hi·2^w ≥ n` or `b·Q' ≥ n`.
-/// The others are rows `0` to `min(⌈n / 2^w⌉, ⌊((b + 1)·Q' − 1) / 2^w⌋ + 1) − 1`.
+/// RFC-0046, RFC-0047 and RFC-0071 have it): row `i_hi` holds keys
+/// `i_hi·2^w` to `(i_hi + 1)·2^w − 1` against the block's slot-local queries `q_0` to
+/// `q_0 + Q' − 1`. It holds only masked positions when every key follows every query,
+/// `i_hi·2^w > q_0 + Q' − 1`, or when its keys or the block's queries are all padding,
+/// `i_hi·2^w ≥ n_r` or `q_0 ≥ n_r`.
+/// The others are rows `0` to `min(⌈n_r / 2^w⌉, ⌊(q_0 + Q' − 1) / 2^w⌋ + 1) − 1`.
 fn score_rows(attention: &Attention, block: u32) -> Vec<Range<u64>> {
-    let n = u64::from(attention.positions);
     let queries = u64::from(attention.queries);
-    let block = u64::from(block);
-    if block * queries >= n {
+    let (n_r, q0) = match &attention.slot_lengths {
+        None => (u64::from(attention.positions), u64::from(block) * queries),
+        Some(lengths) => {
+            let first = u64::from(block) * queries;
+            let slot = u64::from(attention.padded);
+            let r = first / slot;
+            let Some(&len) = usize::try_from(r).ok().and_then(|r| lengths.get(r)) else {
+                return Vec::new();
+            };
+            (u64::from(len), first % slot)
+        }
+    };
+    if q0 >= n_r {
         return Vec::new();
     }
     let keys = 1u64 << attention.key_bits;
-    let last_query = (block + 1) * queries - 1;
-    one_run(0..n.div_ceil(keys).min(last_query / keys + 1))
+    let last_query = q0 + queries - 1;
+    one_run(0..n_r.div_ceil(keys).min(last_query / keys + 1))
 }
 
 /// The runs of one run of rows.

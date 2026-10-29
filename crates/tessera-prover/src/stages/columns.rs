@@ -33,6 +33,7 @@ pub(super) enum Column {
     Rope {
         table: std::sync::Arc<tessera_tables::RopeTable>,
         positions: TensorId,
+        slots: Option<std::sync::Arc<tessera_ir::BatchSlots>>,
         bit: usize,
         head_vars: usize,
         row_vars: usize,
@@ -184,6 +185,7 @@ impl Column {
             Self::Rope {
                 table,
                 positions,
+                slots,
                 bit,
                 head_vars,
                 row_vars,
@@ -192,7 +194,7 @@ impl Column {
                 ..
             } => {
                 let row = (index >> (bit + head_vars)) & ((1usize << row_vars) - 1);
-                if row >= *rows {
+                if row >= *rows || slots.as_ref().is_some_and(|s| !s.is_real_row(row)) {
                     return Ok(Goldilocks::ZERO);
                 }
                 let values = witness.values(*positions).ok_or(StageError::Internal {

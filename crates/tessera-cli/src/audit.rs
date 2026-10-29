@@ -366,7 +366,11 @@ fn internal(what: &str) -> TesseraError {
 /// 4. **The batches**: first-fit decreasing on `L`, in one group (`tessera_protocol::batches`).
 ///    Greedy only: a temperature request's group is the pinned sampler key that applies to it
 ///    (RFC-0061 'Which pin applies'), and no crate implements the pins yet.
-pub(crate) fn sampled(path: &Path, logs: &Logs<'_>) -> Result<Sampled, TesseraError> {
+pub(crate) fn sampled(
+    path: &Path,
+    logs: &Logs<'_>,
+    plan: Option<&Path>,
+) -> Result<Sampled, TesseraError> {
     let sample: AuditSample = Input::new(path, &schema::AUDIT_SAMPLE).open()?;
     let window = window(logs)?;
     let shown = path.display();
@@ -418,7 +422,7 @@ pub(crate) fn sampled(path: &Path, logs: &Logs<'_>) -> Result<Sampled, TesseraEr
             Ok((*k, (), *l))
         })
         .collect::<Result<Vec<_>, TesseraError>>()?;
-    let batches = batches(sample.policy(), &requests)
+    let mut batches: Vec<SampledBatch> = batches(sample.policy(), &requests)
         .map_err(|e| internal(&e.to_string()))?
         .into_iter()
         .map(|b| SampledBatch {
@@ -434,6 +438,25 @@ pub(crate) fn sampled(path: &Path, logs: &Logs<'_>) -> Result<Sampled, TesseraEr
                 .collect(),
         })
         .collect();
+    if let Some(path) = plan.filter(|_| batches.iter().any(|b| b.requests.len() > 1)) {
+        let plan: tessera_compiler::ExecutionPlan =
+            Input::new(path, &schema::EXECUTION_PLAN).open()?;
+        let mut split = Vec::new();
+        for batch in batches {
+            split_batch(batch, &mut split, &|requests| {
+                let lengths: Vec<_> = requests
+                    .iter()
+                    .filter_map(|r| r.lengths.map(|l| (l.prompt_len, l.output_len)))
+                    .collect();
+                // Missing lengths are omitted by the pre-check, before any commitment.
+                if lengths.is_empty() {
+                    return true;
+                }
+                tessera_compiler::check_batch_advice_rows(&plan.claims, &lengths).is_ok()
+            });
+        }
+        batches = split;
+    }
     Ok(Sampled {
         sample,
         window,
@@ -441,9 +464,33 @@ pub(crate) fn sampled(path: &Path, logs: &Logs<'_>) -> Result<Sampled, TesseraEr
     })
 }
 
+// RFC-0071: one slot class has uniform capacity. Halving its padded request axis
+// and taking requests in decreasing L is the same first-fit rule with half the token cap.
+fn split_batch(
+    batch: SampledBatch,
+    out: &mut Vec<SampledBatch>,
+    fits: &impl Fn(&[Batched]) -> bool,
+) {
+    if batch.requests.len() <= 1 || fits(&batch.requests) {
+        // Keep an unprovable singleton's index; it must not suppress other proof units.
+        out.push(batch);
+        return;
+    }
+    let mut requests = batch.requests;
+    requests.sort_by_key(|r| (std::cmp::Reverse(r.tokens), r.key));
+    let capacity = requests.len().next_power_of_two() / 2;
+    let right = requests.split_off(capacity);
+    for mut requests in [requests, right] {
+        requests.sort_by_key(|r| r.key);
+        let tokens = requests.iter().map(|r| r.tokens).sum();
+        split_batch(SampledBatch { requests, tokens }, out, fits);
+    }
+}
+
 /// The flags of `tessera audit batch`.
 pub(crate) struct BatchOptions<'a> {
     pub(crate) sample: &'a Path,
+    pub(crate) plan: Option<&'a Path>,
     pub(crate) logs: Logs<'a>,
     pub(crate) out_dir: &'a Path,
 }
@@ -495,7 +542,7 @@ fn batches_json(sampled: &Sampled) -> Value {
 /// informational: `tessera prove --sample` reads the batches from the sample and the logs again,
 /// never from it.
 pub(crate) fn batch(options: &BatchOptions<'_>, json: bool) -> Result<(), TesseraError> {
-    let sampled = sampled(options.sample, &options.logs)?;
+    let sampled = sampled(options.sample, &options.logs, options.plan)?;
     let text = serde_json::to_string_pretty(&batches_json(&sampled))
         .map(|text| format!("{text}\n"))
         .map_err(|e| internal(&e.to_string()))?;
@@ -846,4 +893,68 @@ pub(crate) fn plan(options: &PlanOptions<'_>, json: bool) -> Result<(), TesseraE
         .lock()
         .write_all(shown.as_bytes())
         .map_err(io_error("cannot write to stdout".to_owned()))
+}
+
+#[cfg(test)]
+mod batch_split_tests {
+    use super::*;
+
+    fn batch() -> SampledBatch {
+        let requests = [(1, 5), (2, 7), (3, 6), (4, 8), (5, 5), (6, 6)]
+            .into_iter()
+            .map(|(id, tokens)| Batched {
+                key: RequestKey {
+                    session_id: [0; 16],
+                    request_id: id,
+                },
+                tokens,
+                lengths: Some(RequestLengths {
+                    prompt_len: 1,
+                    output_len: tokens as u32 - 1,
+                }),
+            })
+            .collect();
+        SampledBatch {
+            requests,
+            tokens: 37,
+        }
+    }
+
+    #[test]
+    fn oversized_slots_repack_by_decreasing_length_without_losing_requests() {
+        let mut out = Vec::new();
+        split_batch(batch(), &mut out, &|requests| requests.len() <= 2);
+        let keys: Vec<Vec<u64>> = out
+            .iter()
+            .map(|b| {
+                assert_eq!(b.tokens, b.requests.iter().map(|r| r.tokens).sum::<u64>());
+                b.requests.iter().map(|r| r.key.request_id).collect()
+            })
+            .collect();
+        assert_eq!(keys, [vec![2, 4], vec![3, 6], vec![1, 5]]);
+        assert_eq!(out.iter().map(|b| b.tokens).sum::<u64>(), 37);
+    }
+
+    #[test]
+    fn fitting_batch_is_unchanged_and_unfit_singletons_keep_their_indices() {
+        let mut out = Vec::new();
+        split_batch(batch(), &mut out, &|_| true);
+        assert_eq!(out.len(), 1);
+        assert_eq!(
+            out[0]
+                .requests
+                .iter()
+                .map(|r| r.key.request_id)
+                .collect::<Vec<_>>(),
+            [1, 2, 3, 4, 5, 6]
+        );
+        let mut out = Vec::new();
+        split_batch(batch(), &mut out, &|_| false);
+        assert_eq!(
+            out.iter()
+                .map(|b| b.requests[0].key.request_id)
+                .collect::<Vec<_>>(),
+            [4, 2, 3, 6, 1, 5]
+        );
+    }
 }

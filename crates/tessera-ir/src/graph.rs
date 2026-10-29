@@ -26,6 +26,154 @@ pub struct Node {
     pub outputs: Vec<TensorId>,
 }
 
+/// The slot layout of a multi-request batch on [`Graph`] (RFC-0071 'The slots', 'Lowering').
+///
+/// Absent (`None` on [`Graph::slots`]) for a single-request graph (`R = 1`). For `R ≥ 2`,
+/// `slot_len = S = 2^b` is a power of two at least `max_r n_r`, `lengths` holds the `R` requests'
+/// real sequence lengths `n_r ≥ 1` in batch order, and the unpadded token axis has length
+/// `N = R · S ≤ 2^32 − 1`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct BatchSlots {
+    /// The slot width `S = 2^b`, a power of two at least `n_max`.
+    pub slot_len: u32,
+    /// Each request's sequence length `n_r = prompt_len_r + output_len_r` in batch order (`R ≥ 2`).
+    pub lengths: Vec<u32>,
+}
+
+impl BatchSlots {
+    /// Builds the slot layout for `lengths` in `tessera-protocol/1` ([`crate::PROTOCOL_VERSION`]),
+    /// where `b = ⌈log2 n_max⌉` and `S = 2^b` (RFC-0071 'The slots').
+    ///
+    /// # Errors
+    ///
+    /// [`IrError::Declaration`] when `lengths.len() < 2`, any `n_r == 0`, or `R · S > u32::MAX`.
+    pub fn new(lengths: Vec<u32>) -> Result<Self, IrError> {
+        Self::for_protocol(crate::PROTOCOL_VERSION, lengths)
+    }
+
+    /// Builds the slot layout for `lengths` at `protocol_version` ([`crate::PROTOCOL_VERSION`] or
+    /// [`crate::PROTOCOL_VERSION_2`]; RFC-0071 'The slots').
+    ///
+    /// In `tessera-protocol/2`, `b = max(⌈log2 n_max⌉, 2)` (`S ≥ 4`) so every masked tensor has at
+    /// least two variables.
+    ///
+    /// # Errors
+    ///
+    /// [`IrError::Declaration`] when `protocol_version` is unknown, `lengths.len() < 2`, any
+    /// `n_r == 0`, or `S` or `R · S` overflows `u32`.
+    pub fn for_protocol(protocol_version: u16, lengths: Vec<u32>) -> Result<Self, IrError> {
+        if protocol_version != crate::PROTOCOL_VERSION
+            && protocol_version != crate::PROTOCOL_VERSION_2
+        {
+            return Err(IrError::Declaration {
+                rule: "protocol_version is PROTOCOL_VERSION or PROTOCOL_VERSION_2",
+            });
+        }
+        if lengths.len() < 2 {
+            return Err(IrError::Declaration {
+                rule: "a slotted batch holds at least two requests",
+            });
+        }
+        if lengths.contains(&0) {
+            return Err(IrError::Declaration {
+                rule: "every request length satisfies 1 ≤ n_r ≤ S",
+            });
+        }
+        let n_max = lengths.iter().copied().max().unwrap_or(0);
+        let raw_b = u32::BITS - n_max.saturating_sub(1).leading_zeros();
+        let b = if protocol_version == crate::PROTOCOL_VERSION_2 {
+            raw_b.max(2)
+        } else {
+            raw_b
+        };
+        let Some(slot_len) = 1u32.checked_shl(b) else {
+            return Err(IrError::Declaration {
+                rule: "a batch slot width S = 2^b fits in u32",
+            });
+        };
+        let slots = Self { slot_len, lengths };
+        slots.check()?;
+        Ok(slots)
+    }
+
+    /// Checks RFC-0071's slot invariants: `R ≥ 2`, `slot_len` a power of two, `1 ≤ n_r ≤ slot_len`
+    /// for every request, and `N = R · slot_len ≤ u32::MAX`.
+    ///
+    /// # Errors
+    ///
+    /// [`IrError::Declaration`] naming the first violated invariant.
+    pub fn check(&self) -> Result<(), IrError> {
+        if self.lengths.len() < 2 {
+            return Err(IrError::Declaration {
+                rule: "a slotted batch holds at least two requests",
+            });
+        }
+        if !self.slot_len.is_power_of_two() {
+            return Err(IrError::Declaration {
+                rule: "a batch slot width S = 2^b is a power of two",
+            });
+        }
+        if self.lengths.iter().any(|&n| n == 0 || n > self.slot_len) {
+            return Err(IrError::Declaration {
+                rule: "every request length satisfies 1 ≤ n_r ≤ S",
+            });
+        }
+        if u32::try_from(self.lengths.len())
+            .ok()
+            .and_then(|r| r.checked_mul(self.slot_len))
+            .is_none()
+        {
+            return Err(IrError::Declaration {
+                rule: "the batch token axis R · S fits in u32",
+            });
+        }
+        Ok(())
+    }
+
+    /// `b = log2(S)`, the number of intra-slot position coordinates.
+    pub fn slot_bits(&self) -> u32 {
+        self.slot_len.trailing_zeros()
+    }
+
+    /// `⌈log2 R⌉`, the number of request-slot coordinates above `slot_bits`.
+    pub fn request_bits(&self) -> u32 {
+        if self.lengths.len() <= 1 {
+            0
+        } else {
+            (self.lengths.len() - 1).ilog2() + 1
+        }
+    }
+
+    /// `n_max = max_r n_r`, the key-axis width of rectangular attention tensors.
+    pub fn n_max(&self) -> u32 {
+        self.lengths.iter().copied().max().unwrap_or(0)
+    }
+
+    /// `N = R · S`, the unpadded batch token-axis length.
+    pub fn token_len(&self) -> u32 {
+        (self.lengths.len() as u32).saturating_mul(self.slot_len)
+    }
+
+    /// `P = 2^{b + ⌈log2 R⌉}`, the padded power-of-two token-axis length.
+    pub fn padded_tokens(&self) -> usize {
+        1usize
+            .checked_shl(self.slot_bits() + self.request_bits())
+            .unwrap_or(usize::MAX)
+    }
+
+    /// Splits a token-axis row `τ` into `(slot = ⌊τ / S⌋, pos = τ mod S)`.
+    pub fn slot_of(&self, row: usize) -> (usize, usize) {
+        let s = self.slot_len as usize;
+        (row / s, row % s)
+    }
+
+    /// Whether row `τ` is a real token row (`β < R` and `p < n_β`, RFC-0071 'The slots').
+    pub fn is_real_row(&self, row: usize) -> bool {
+        let (beta, p) = self.slot_of(row);
+        self.lengths.get(beta).is_some_and(|&n_r| p < n_r as usize)
+    }
+}
+
 /// A dataflow graph, the constraint system the proof schedule derives its stages from (RFC-0010).
 /// Nodes are in topological order: each input is a graph input, a tensor no node produces, or
 /// the output of an earlier node. Ids are dense in position order, so two builds from the same
@@ -42,6 +190,8 @@ pub struct Graph {
     pub shift_classes: Vec<Vec<u8>>,
     /// The weight tensors, each with the matrix it holds, in declaration order.
     pub weights: Vec<(WeightRef, TensorId)>,
+    /// Optional multi-request slot geometry (`None` when `R = 1`, RFC-0071 'Lowering').
+    pub slots: Option<BatchSlots>,
 }
 
 impl Graph {
@@ -81,6 +231,9 @@ impl Graph {
         self.shift_classes
             .iter()
             .try_for_each(|s| check_shift_classes(s))?;
+        if let Some(slots) = &self.slots {
+            slots.check()?;
+        }
         let tensor_count = self.tensors.len();
         let mut producer = vec![None; tensor_count];
         for node in &self.nodes {
@@ -331,19 +484,37 @@ impl Graph {
                 if r < 2 || b.len() != r || a[..r - 2] != b[..r - 2] {
                     return fail("the operands are matrices with equal leading axes");
                 }
-                // `[…, m, k] × […, k, n]`, or `[…, m, k] × […, n, k]` transposed.
-                let (inner, outer) = if *transpose_rhs {
-                    (b[r - 1], b[r - 2])
-                } else {
-                    (b[r - 2], b[r - 1])
-                };
-                if a[r - 1] != inner {
-                    return fail("the inner dimensions agree");
-                }
-                let mut expected = a[..r - 1].to_vec();
-                expected.push(outer);
-                if y != expected {
-                    return fail("the output is the operands' product shape");
+                let slotted_ok = self.slots.as_ref().is_some_and(|slots| {
+                    let n_tok = slots.token_len();
+                    let n_max = slots.n_max();
+                    if a[r - 2] != n_tok
+                        || b[r - 2] != n_tok
+                        || y.len() != r
+                        || y[..r - 1] != a[..r - 1]
+                    {
+                        return false;
+                    }
+                    if *transpose_rhs {
+                        a[r - 1] == b[r - 1] && y[r - 1] == n_max
+                    } else {
+                        a[r - 1] == n_max && y[r - 1] == b[r - 1]
+                    }
+                });
+                if !slotted_ok {
+                    // `[…, m, k] × […, k, n]`, or `[…, m, k] × […, n, k]` transposed.
+                    let (inner, outer) = if *transpose_rhs {
+                        (b[r - 1], b[r - 2])
+                    } else {
+                        (b[r - 2], b[r - 1])
+                    };
+                    if a[r - 1] != inner {
+                        return fail("the inner dimensions agree");
+                    }
+                    let mut expected = a[..r - 1].to_vec();
+                    expected.push(outer);
+                    if y != expected {
+                        return fail("the output is the operands' product shape");
+                    }
                 }
             }
             Op::Mul { broadcast } => {
@@ -445,7 +616,12 @@ impl Graph {
                 )?;
                 let x = inputs[0].shape;
                 let r = x.len();
-                if r < 2 || x[r - 1] != x[r - 2] {
+                let slotted_ok = r >= 2
+                    && self
+                        .slots
+                        .as_ref()
+                        .is_some_and(|s| x[r - 2] == s.token_len() && x[r - 1] == s.n_max());
+                if r < 2 || (!slotted_ok && x[r - 1] != x[r - 2]) {
                     return fail(
                         "the scores' last two axes are the query and key positions of one sequence",
                     );
@@ -540,6 +716,21 @@ impl GraphBuilder {
     /// An empty graph.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// An empty graph carrying multi-request slot geometry (RFC-0071 'Lowering').
+    ///
+    /// # Errors
+    ///
+    /// [`IrError::Declaration`] when `slots` breaks [`BatchSlots::check`].
+    pub fn with_slots(slots: BatchSlots) -> Result<Self, IrError> {
+        slots.check()?;
+        Ok(Self {
+            graph: Graph {
+                slots: Some(slots),
+                ..Graph::default()
+            },
+        })
     }
 
     /// Declares a graph input: a public or committed tensor no node produces.

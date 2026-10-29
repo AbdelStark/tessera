@@ -364,10 +364,19 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                 let (&[heads, rows, inner], &[_, _, columns]) = (input_shape(0), output) else {
                     return internal("a MatMulAct multiplies [heads, a, j] matrices");
                 };
+                let slots = self.graph.slots.as_ref().filter(|slots| {
+                    rows == slots.token_len() && input_shape(1).get(1) == Some(&slots.token_len())
+                });
                 let shape = MatMulActShape {
-                    stack_vars: axis_vars(heads) as usize + lambda,
-                    row_vars: axis_vars(rows) as usize,
-                    inner_vars: axis_vars(inner) as usize,
+                    stack_vars: axis_vars(heads) as usize
+                        + lambda
+                        + slots.map_or(0, |s| s.request_bits() as usize),
+                    row_vars: slots.map_or(axis_vars(rows), |s| s.slot_bits()) as usize,
+                    inner_vars: if !transposed {
+                        slots.map_or(axis_vars(inner), |s| s.slot_bits())
+                    } else {
+                        axis_vars(inner)
+                    } as usize,
                     col_vars: axis_vars(columns) as usize,
                 };
                 let layout = if transposed {
@@ -519,12 +528,20 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                         }
                     }
                     Relation::OneHotCount => {
+                        let slots = self.graph.slots.clone();
                         let selector = Column::generated(arena.streaming, length, move |i| {
-                            Ok(if i / width < positions as usize {
-                                Goldilocks::ONE
-                            } else {
-                                Goldilocks::ZERO
-                            })
+                            Ok(
+                                if slots
+                                    .as_ref()
+                                    .map_or(i / width < positions as usize, |slots| {
+                                        slots.is_real_row(i / width)
+                                    })
+                                {
+                                    Goldilocks::ONE
+                                } else {
+                                    Goldilocks::ZERO
+                                },
+                            )
                         })?;
                         Plan::Elementwise {
                             inputs: vec![h, Read::Public(arena.public(selector))],
@@ -1036,9 +1053,11 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                 return internal("a streamed Rotate uses public positions");
             }
             let table = std::sync::Arc::new(table);
+            let slots = self.graph.slots.clone().map(std::sync::Arc::new);
             let column = |sine| Column::Rope {
                 table: table.clone(),
                 positions: node.inputs[1],
+                slots: slots.clone(),
                 bit,
                 head_vars,
                 row_vars,
@@ -1058,7 +1077,13 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         for k in 0..len {
             let frequency = k & ((1 << bit) - 1);
             let row = (k >> (bit + head_vars)) & ((1 << row_vars) - 1);
-            if row >= rows as usize {
+            if row >= rows as usize
+                || self
+                    .graph
+                    .slots
+                    .as_ref()
+                    .is_some_and(|slots| !slots.is_real_row(row))
+            {
                 continue;
             }
             let position = u32::try_from(positions[row]).map_err(|_| StageError::Internal {
@@ -1319,4 +1344,77 @@ fn bit_terms(f: BoolFn) -> Vec<Term<GoldilocksExt2>> {
 
 fn internal<T>(rule: &'static str) -> Result<T, StageError> {
     Err(StageError::Internal { rule })
+}
+
+#[cfg(test)]
+mod slot_tests {
+    use super::*;
+    use tessera_codec::{DecodeLimits, envelope, schema};
+    use tessera_compiler::{PublicModel, derive_schedule, lower_batch, positions_values};
+    use tessera_ir::{IntegerModel, TensorId};
+
+    struct Positions {
+        tensor: TensorId,
+        values: Vec<i64>,
+    }
+    impl WitnessSource for Positions {
+        fn values(&self, tensor: TensorId) -> Option<&[i64]> {
+            (tensor == self.tensor).then_some(&self.values)
+        }
+    }
+
+    #[test]
+    fn rope_public_tables_are_zero_on_inter_slot_and_axis_padding() {
+        let model: IntegerModel = envelope::open(
+            include_bytes!("../../../../spec/vectors/models/tiny-2-minimal.d"),
+            &schema::INTEGER_MODEL,
+            DecodeLimits::INTEGER_MODEL,
+        )
+        .unwrap();
+        let lowering = lower_batch(PublicModel::of(&model), &[2, 3, 1]).unwrap();
+        let schedule = derive_schedule(&lowering).unwrap();
+        let node = lowering
+            .graph
+            .nodes
+            .iter()
+            .find(|n| matches!(n.op, Op::Rotate { .. }))
+            .unwrap();
+        let positions = Positions {
+            tensor: node.inputs[1],
+            values: positions_values(&lowering),
+        };
+        let prover = StageProver::new(&lowering, &schedule, &positions);
+        let shape = &lowering.graph.tensors[node.inputs[0].0 as usize].shape;
+        let mut resident = None;
+        for streaming in [false, true] {
+            let (cos, sin) = prover.rope(node, shape, false, streaming).unwrap();
+            let read = |column: &Column| {
+                (0..column.len())
+                    .map(|i| column.value(&positions, i).unwrap())
+                    .collect::<Vec<_>>()
+            };
+            let (cos, sin) = (read(&cos), read(&sin));
+            if let Some((ref a, ref b)) = resident {
+                assert_eq!((&cos, &sin), (a, b));
+            } else {
+                resident = Some((cos.clone(), sin.clone()));
+            }
+            let rows = shape[0].next_power_of_two() as usize;
+            let per_row = cos.len() / rows;
+            assert!(cos[..per_row].iter().any(|&c| c != Goldilocks::ZERO));
+            // Real rows are 0,1; 4,5,6; and 8. Every other row must have a zero kernel.
+            for row in [2, 3, 7, 9, 10, 11, 12, 13, 14, 15] {
+                assert!(
+                    cos[row * per_row..(row + 1) * per_row]
+                        .iter()
+                        .all(|&c| c == Goldilocks::ZERO)
+                );
+                assert!(
+                    sin[row * per_row..(row + 1) * per_row]
+                        .iter()
+                        .all(|&c| c == Goldilocks::ZERO)
+                );
+            }
+        }
+    }
 }

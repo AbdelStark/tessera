@@ -9,7 +9,7 @@
 | `seeds` | Coin tosses over a manifest digest, the sample seed `H("audit-sample", s_V ‖ s_P ‖ manifest_digest)`, and the selection value of each key, `u64_le(H("audit-select", seed ‖ session_id ‖ u64(request_id))[0..8])` |
 | `samples` | Candidates with their lengths, the sample a policy draws from them, its TCE `payload`, every proper prefix `ERR-CODEC-TRUNCATED`, and its envelope (schema `0x0403`, version 1) |
 | `refused`, `accepted` | Payloads a reader refuses, each with its code and offset, which the oracle's own reader finds; and payloads at the edges of the rules, which it accepts |
-| `batches` | Requests with groups and tokens, and the batches first-fit decreasing packs under each bound, checked against RFC-0016's bounds |
+| `batches` | Requests with groups and tokens, and the batches slot-class first-fit decreasing packs under each bound, checked against RFC-0016's and RFC-0071's bounds |
 
 The candidates' entries are written by kind: `open`, `carry` and `close` name a session; `frame` adds its request, direction, index and ciphertext length; `end` adds its request. A test builds each period's `DigestLogEntry` values from them, numbering `seq` from 0 across the two periods, and checks them against a manifest it signs over them.
 

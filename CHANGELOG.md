@@ -6,7 +6,14 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Windowed CPU proving uses the resident native representation charged by its plan; ordinary resident proving retains computed score rounds. Generated OneHot/RoPE factors preserve inter-slot padding, with NI/Live budget-window batch coverage (RFC-0055, RFC-0056, RFC-0071, #459).
+
 - Windowed reduction stages on CPU (RFC-0055/0056, #459): grids with factored equality, mixed resident operands, regenerated witness passes, clearing folded tables and budgeted P3b accounting preserve the existing proof bytes. CPU plans retain the resident witness floor and charge stage working sets separately.
+- Structured score rounds retain the slot-aware literal path for multi-request batches; the computed single-request representation does not establish batch memory savings (RFC-0056, RFC-0071, #461).
+
+- RFC-0056 native Softmax key and forest sumchecks from INT8 queries, folded key blocks and causal prefix sums, with clearing row tables after the key rounds; the literal prover remains an equivalence oracle. Batched sumchecks share identical relations and borrowed operand tables, including repeated norm sums and root coefficient products, while preserving every transcript message and original opening claim ([#461](https://github.com/AbdelStark/tessera/issues/461)).
+- Tag-triggered draft release workflow and dry runs, with two clean container builds per Linux verifier architecture, byte comparisons, SHA-256 release notes and a scripted second-builder procedure ([#178](https://github.com/AbdelStark/tessera/issues/178), 09 §9).
+- `audit batch --plan` and sampled proving split oversized runtime advice layouts with the same slot-class packing rule; a request that cannot fit alone is refused (RFC-0071, #551).
 
 - Conformance vectors and differential prover-to-verifier adapter tests for temperature and mixture scoring checks ([#160](https://github.com/AbdelStark/tessera/issues/160), RFC-0017, RFC-0019, RFC-0030, RFC-0035, RFC-0043, RFC-0050, RFC-0058, RFC-0061):
   - **Specification clarification (`RFC-0017`).** Spelled out `Exp_T`'s precision `sigma = exp_sigma` and deterministic narrowest `key_bits ∈ [min_key_bits, max_log2_rows]` selection (`min_key_bits = max(1, bit_length(hi − lo))` over the lowered LM-head logit interval `[lo, hi]`) under `'D's decoded token'`.
@@ -1685,6 +1692,8 @@ All notable changes to the prover release train are recorded here: the crates un
 - Add exact greedy request scoring in `tessera-scoring`: original teacher-forcing source rows, clearing maximum certificates with zero output padding, per-request `Û = 0` claims, and deterministic `ERR-WITNESS-EXACT-MISMATCH` context after all rows. Proof operands reuse the recorded token's existing OneHot. Actual tiny-model CPU scoring subproofs are checked independently; full model drivers and temperature/mixture scoring remain separate (#127).
 
 - Derive all four OneHot relations in the native stage-one schedule: booleanity, vocabulary padding, row count and the original token index. Proof operands and returned opening claims retain the original indicator/token sources. Independent and CPU proof tests cover isolated alternatives, padded vocabularies, scalar axes and consistent downstream recomputation (#124).
+- Exact-greedy request-slot batches (RFC-0071, [#551](https://github.com/AbdelStark/tessera/issues/551)): batch-aware lowering, advice layouts, witness replay, attention reductions and per-request greedy keys; sampled CLI NI/Live proofs, with public omission receipts for failed anchor checks or non-greedy continuations. `Prover::check_witness` checks a candidate within the configured memory budget before any commitment. Independent oracle vectors cover slot selectors and request windows; single-request deterministic proof, claim-list and execution-plan bytes match the pre-batch fixture.
+
 
 ### Changed
 

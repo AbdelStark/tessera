@@ -36,6 +36,12 @@ gh workflow run nightly.yml
 gh workflow run nightly.yml -f fail=true
 ```
 
+The Log2 scoring tests keep wide Range table descriptions for constructor boundaries,
+but materialize dense columns only for tables referenced by the current proof.
+Their dense test helper refuses more than `2^20` rows per table before allocation;
+larger proof fixtures need a streamed table path. This avoids building all
+`Range(1)` through `Range(32)` keys (about 64 GiB) for a small proof (#590).
+
 A failing fuzz target keeps its input as the `fuzz-<target>-failure` artifact of the run ([verifier/fuzz/README.md](../../verifier/fuzz/README.md) says how to reproduce it).
 
 ## Not yet nightly

@@ -86,6 +86,20 @@ impl<'a> Envelope<'a> {
         limits: &DecodeLimits,
         digest: impl FnOnce(&[u8]) -> [u8; 32],
     ) -> Result<Self, DecodeError> {
+        Self::open_checked_digest(input, expected, limits, |bytes| Ok(digest(bytes)))
+    }
+
+    /// [`open`](Self::open) with a fallible digest computation, for cooperative
+    /// deadline checks during long artifact hashes (RFC-0019, SP-8).
+    ///
+    /// # Errors
+    /// Framing errors retain their order; a digest callback error propagates unchanged.
+    pub fn open_checked_digest(
+        input: &'a [u8],
+        expected: Expected,
+        limits: &DecodeLimits,
+        digest: impl FnOnce(&[u8]) -> Result<[u8; 32], DecodeError>,
+    ) -> Result<Self, DecodeError> {
         // 1. The header, field by field: a field cut short is ERR-CODEC-TRUNCATED at its offset,
         // and a complete field is checked before the next is read.
         let mut header = Cursor::at(input, 0, limits);
@@ -131,7 +145,7 @@ impl<'a> Envelope<'a> {
         let framing = DecodeError::new(ErrorCode::Truncated, length_at);
         let signed_len = usize::try_from(digest_at).map_err(|_| framing)?;
         let (signed, found) = input.split_at_checked(signed_len).ok_or(framing)?;
-        if digest(signed).as_slice() != found {
+        if digest(signed)?.as_slice() != found {
             return fail(ErrorCode::Digest, digest_at);
         }
         let header_len = usize::try_from(HEADER_LEN).map_err(|_| framing)?;
@@ -176,6 +190,37 @@ impl<'a> Envelope<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_digest_deadline_is_operational_and_does_not_replace_framing_errors() {
+        let mut bytes = [0u8; 52];
+        bytes[..4].copy_from_slice(b"TSRA");
+        bytes[4..6].copy_from_slice(&1u16.to_le_bytes());
+        bytes[6..8].copy_from_slice(&7u16.to_le_bytes());
+        bytes[8..10].copy_from_slice(&1u16.to_le_bytes());
+        let expected = Expected {
+            schema_id: 7,
+            version: 1,
+        };
+        assert_eq!(
+            Envelope::open_checked_digest(&bytes, expected, &DecodeLimits::MESSAGE, |_| {
+                Err(DecodeError::new(ErrorCode::Time, 20))
+            })
+            .unwrap_err(),
+            DecodeError::new(ErrorCode::Time, 20)
+        );
+        bytes[0] = 0;
+        let mut called = false;
+        assert_eq!(
+            Envelope::open_checked_digest(&bytes, expected, &DecodeLimits::MESSAGE, |_| {
+                called = true;
+                Err(DecodeError::new(ErrorCode::Time, 20))
+            })
+            .unwrap_err(),
+            DecodeError::new(ErrorCode::Magic, 0)
+        );
+        assert!(!called);
+    }
 
     #[test]
     fn debug_output_shows_no_input_byte() {
