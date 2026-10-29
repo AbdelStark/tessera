@@ -507,6 +507,14 @@ impl Evaluator<'_> {
                             true => (column, l),
                             false => (l, column),
                         };
+                        if let Some(slots) = &graph.slots
+                            && ca.dims[rank - 2] == slots.token_len() as usize
+                            && cb.dims[rank - 2] == slots.token_len() as usize
+                        {
+                            // RFC-0071: the query and right operand share their request index.
+                            right[rank - 2] +=
+                                row / slots.slot_len as usize * slots.slot_len as usize;
+                        }
                         total += i128::from(a[ca.index(&left)]) * i128::from(b[cb.index(&right)]);
                     }
                     *slot = fit(total)?;

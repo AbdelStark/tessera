@@ -17,7 +17,9 @@ use tv_field::Fp2;
 #[derive(Clone, Copy, Debug)]
 pub struct Outputs {
     site: Argmax,
+    ordinal: u32,
     prompt: u32,
+    slot_bits: usize,
     source_vars: usize,
     logits: TensorId,
     indicators: TensorId,
@@ -69,8 +71,52 @@ impl Plan<'_> {
     /// `Internal` for no outputs, an empty prompt, or inconsistent own graph geometry.
     pub fn argmax_outputs(&self, gadget: GadgetId, prompt: u32) -> Result<Outputs, GadgetError> {
         let internal = GadgetError::Internal;
+        if self.graph.slots().is_some_and(|s| s.lengths().len() >= 2) {
+            return Err(internal);
+        }
         let n = self.graph.length();
         if prompt == 0 || prompt >= n {
+            return Err(internal);
+        }
+        let rows = n.checked_sub(prompt).ok_or(internal)?;
+        self.argmax_outputs_in_slot(gadget, 0, prompt, rows)
+    }
+
+    /// Derive request `ordinal`'s output views in a slotted batch (RFC-0071).
+    /// Reduces to [`Self::argmax_outputs`] when `R = 1`.
+    ///
+    /// # Errors
+    /// `Internal` for empty prompt/outputs, out-of-range `ordinal`, mismatched slot length,
+    /// or inconsistent own graph geometry.
+    pub fn argmax_outputs_in_slot(
+        &self,
+        gadget: GadgetId,
+        ordinal: u32,
+        prompt: u32,
+        outputs: u32,
+    ) -> Result<Outputs, GadgetError> {
+        let internal = GadgetError::Internal;
+        let n = self.graph.length();
+        if prompt == 0 || outputs == 0 || n == 0 {
+            return Err(internal);
+        }
+        let n_r = prompt.checked_add(outputs).ok_or(internal)?;
+        let source_vars =
+            usize::try_from(u32::BITS.saturating_sub(n.saturating_sub(1).leading_zeros()))
+                .map_err(|_| internal)?;
+        let slot_bits = if let Some(slots) = self.graph.slots().filter(|s| s.lengths().len() >= 2) {
+            let idx = usize::try_from(ordinal).map_err(|_| internal)?;
+            if slots.lengths().get(idx).copied() != Some(n_r) {
+                return Err(internal);
+            }
+            usize::try_from(slots.slot_bits()).map_err(|_| internal)?
+        } else {
+            if ordinal != 0 || n_r != n {
+                return Err(internal);
+            }
+            source_vars
+        };
+        if slot_bits > source_vars {
             return Err(internal);
         }
         let first = self.graph.nodes().first().ok_or(internal)?;
@@ -88,13 +134,11 @@ impl Plan<'_> {
         {
             return Err(internal);
         }
-        let rows = n.checked_sub(prompt).ok_or(internal)?;
-        let source_vars =
-            usize::try_from(u32::BITS.saturating_sub(n.saturating_sub(1).leading_zeros()))
-                .map_err(|_| internal)?;
         Ok(Outputs {
-            site: Argmax::derive(gadget, vocab, rows)?,
+            site: Argmax::derive(gadget, vocab, outputs)?,
+            ordinal,
             prompt,
+            slot_bits,
             source_vars,
             logits,
             indicators,
@@ -212,9 +256,13 @@ impl View<'_> {
             .checked_sub(self.context.site.row_variables())
             .ok_or(internal)?;
         let (v, row) = self.target.split_at_checked(vb).ok_or(internal)?;
+        let (r_p, r_beta) = point
+            .split_at_checked(self.context.slot_bits)
+            .ok_or(internal)?;
         let evaluation = values.first().copied().ok_or(internal)?;
-        let value =
-            kernel(row, point, self.offset, self.context.site.rows()).ok_or(internal)? * evaluation;
+        let value = kernel(row, r_p, self.offset, self.context.site.rows()).ok_or(internal)?
+            * crate::selectors::eq_index(r_beta, u64::from(self.context.ordinal))
+            * evaluation;
         let mut full = Vec::new();
         full.try_reserve_exact(v.len().checked_add(point.len()).ok_or(internal)?)
             .map_err(|_| GadgetError::Memory)?;

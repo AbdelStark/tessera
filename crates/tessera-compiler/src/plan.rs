@@ -179,8 +179,9 @@ impl ExecutionPlan {
             .get(lowering.tokens.0 as usize)
             .and_then(|tokens| tokens.shape.first().copied())
             .ok_or(outside)?;
-        let padded = n.next_power_of_two();
-        let block = query_block(self.claims.gadget_policy.query_block, padded)?;
+        let padded = n.checked_next_power_of_two().ok_or(outside)?;
+        let slot_cap = graph.slots.as_ref().map_or(padded, |s| s.slot_len);
+        let block = query_block(self.claims.gadget_policy.query_block, slot_cap)?;
         let node_of = |node: u32| graph.nodes.get(node as usize).ok_or(outside);
         let mut expanded = Vec::with_capacity(self.tiles.len());
         for &tile in &self.tiles {
@@ -204,8 +205,23 @@ impl ExecutionPlan {
                     let heads = self.query_heads(graph, node, kv_head, n)?;
                     for index in 0..padded / block {
                         let queries = index * block..(index + 1) * block;
-                        // The block's queries that lie in the sequence: none past its end.
-                        let held = queries.start.min(n)..queries.end.min(n);
+                        // In a single sequence, queries < n are held; in a slotted batch, Q'
+                        // divides S so the block lies inside slot `r = ⌊start / S⌋` and holds the
+                        // queries whose intra-slot offset lies below `n_r` (RFC-0071 'The plan and
+                        // the layout').
+                        let held = match &graph.slots {
+                            None => queries.start.min(n)..queries.end.min(n),
+                            Some(slots) => {
+                                let r = (queries.start / slots.slot_len) as usize;
+                                let q0 = queries.start % slots.slot_len;
+                                let held_len = slots
+                                    .lengths
+                                    .get(r)
+                                    .map_or(0, |&n_r| n_r.saturating_sub(q0).min(block));
+                                let start = queries.start.min(n);
+                                start..start + held_len
+                            }
+                        };
                         let shares = node
                             .outputs
                             .iter()
@@ -239,12 +255,16 @@ impl ExecutionPlan {
         n: u32,
     ) -> Result<Range<u32>, CompileError> {
         let arch = &self.claims.arch;
+        let n_key = graph
+            .slots
+            .as_ref()
+            .map_or(n, tessera_ir::BatchSlots::n_max);
         let scores = node
             .inputs
             .first()
             .and_then(|&t| graph.tensors.get(t.0 as usize));
         let fits = matches!(node.op, Op::SoftmaxRow { .. })
-            && scores.is_some_and(|s| s.shape == [arch.n_heads, n, n])
+            && scores.is_some_and(|s| s.shape == [arch.n_heads, n, n_key])
             && arch.n_kv_heads > 0
             && arch.n_heads.is_multiple_of(arch.n_kv_heads)
             && kv_head < arch.n_kv_heads;

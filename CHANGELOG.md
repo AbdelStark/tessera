@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- `audit batch --plan` and sampled proving split oversized runtime advice layouts with the same slot-class packing rule; a request that cannot fit alone is refused (RFC-0071, #551).
+
 - Conformance vectors and differential prover-to-verifier adapter tests for temperature and mixture scoring checks ([#160](https://github.com/AbdelStark/tessera/issues/160), RFC-0017, RFC-0019, RFC-0030, RFC-0035, RFC-0043, RFC-0050, RFC-0058, RFC-0061):
   - **Specification clarification (`RFC-0017`).** Spelled out `Exp_T`'s precision `sigma = exp_sigma` and deterministic narrowest `key_bits ∈ [min_key_bits, max_log2_rows]` selection (`min_key_bits = max(1, bit_length(hi − lo))` over the lowered LM-head logit interval `[lo, hi]`) under `'D's decoded token'`.
   - **Independent gadget-finals oracles (`spec/vectors/gadget-finals/`).** Added `inverse_cdf.py` (`inverse-cdf.json`: 6 schema cases across `W ∈ [1, 51]` and 17 component cases, 6 honest and 11 isolated alternatives with omission proofs) and `one_sided_log2.py` (`one-sided-log2.json`: exact `c_match(0..=16)`, 6 `VocabMax` cases, 3 runtime table-interning cases, 7 `OneSidedLog2` schema cases, and 15 `OneSidedLog2` component cases, 5 honest and 10 isolated alternatives with omission proofs).
@@ -1683,6 +1685,8 @@ All notable changes to the prover release train are recorded here: the crates un
 - Add exact greedy request scoring in `tessera-scoring`: original teacher-forcing source rows, clearing maximum certificates with zero output padding, per-request `Û = 0` claims, and deterministic `ERR-WITNESS-EXACT-MISMATCH` context after all rows. Proof operands reuse the recorded token's existing OneHot. Actual tiny-model CPU scoring subproofs are checked independently; full model drivers and temperature/mixture scoring remain separate (#127).
 
 - Derive all four OneHot relations in the native stage-one schedule: booleanity, vocabulary padding, row count and the original token index. Proof operands and returned opening claims retain the original indicator/token sources. Independent and CPU proof tests cover isolated alternatives, padded vocabularies, scalar axes and consistent downstream recomputation (#124).
+- Exact-greedy request-slot batches (RFC-0071, [#551](https://github.com/AbdelStark/tessera/issues/551)): batch-aware lowering, advice layouts, witness replay, attention reductions and per-request greedy keys; sampled CLI NI/Live proofs, with public omission receipts for failed anchor checks or non-greedy continuations. `Prover::check_witness` checks a candidate within the configured memory budget before any commitment. Independent oracle vectors cover slot selectors and request windows; single-request deterministic proof, claim-list and execution-plan bytes match the pre-batch fixture.
+
 
 ### Changed
 
