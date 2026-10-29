@@ -15,6 +15,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
+# The macOS system Python is 3.9; datetime.UTC was added in 3.11.
+UTC = datetime.timezone.utc  # noqa: UP017
 BUDGETS = {
     name: 7200
     for name in (
@@ -91,7 +93,7 @@ def main():
         "schema_version": 1,
         "source_revision": revision,
         "state": "running",
-        "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "started_utc": datetime.datetime.now(UTC).isoformat(),
         "cpu_budget_seconds": BUDGETS,
         "manifest_file": "manifest.json",
         "manifest_sha256": digest(manifest_path),
@@ -114,7 +116,7 @@ def main():
     def save():
         status["clean_cpu_seconds"] = dict(totals)
         status["total_clean_cpu_hours"] = sum(totals.values()) / 3600
-        status["updated_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        status["updated_utc"] = datetime.datetime.now(UTC).isoformat()
         status["live"] = [
             {"pid": pid, "target": job[0], "wall_seconds": time.monotonic() - job[2]}
             for pid, job in active.items()
