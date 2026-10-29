@@ -185,7 +185,7 @@ v0.3: decoding, claim-list validation, transcript, trees, stages, openings, colu
 
 ## Open Questions
 
-- **OQ-0019-1.** Which route to mechanized proofs: extraction of `tv-core` into Lean 4 (for example through hax or Aeneas) or a separate Lean model tied to the code by refinement tests? Owner: @AbdelStark. Resolve in v1.1 planning, after the written specification exists.
+- **OQ-0019-1.** Which route to mechanized proofs: extraction of `tv-core` into Lean 4 (for example through hax or Aeneas) or a separate Lean model tied to the code by refinement tests? The [proposed separate-model blueprint](../verifier/lean-blueprint.md) (#392) lists statements, provisional code correspondences and open refinement/composition obligations; it contains no checked proofs and does not resolve this decision. Owner: @AbdelStark. Resolve in v1.1 planning, after the written specification exists.
 
 ## References
 
