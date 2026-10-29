@@ -1,0 +1,72 @@
+# Build artifacts only: no hosting or publication while the repository is private (#176).
+name: documentation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: documentation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
+jobs:
+  documentation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+          echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
+      - name: Install mdBook 0.5.4 (SHA-256 pinned)
+        run: |
+          archive=mdbook-v0.5.4-x86_64-unknown-linux-gnu.tar.gz
+          curl --proto '=https' --tlsv1.2 -sSfL -o "$RUNNER_TEMP/$archive" "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/$archive"
+          echo "3f28de05dafca9d0f2eab99c662116b0e37b89b1d96a08f8f430b9eeae958cd7  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$HOME/.cargo/bin" mdbook
+      - name: Test the artifact link checker and staging boundaries
+        run: python3 -m unittest discover -s .github/scripts
+      - name: Stage canonical Markdown and navigation
+        run: python3 .github/scripts/docs.py prepare
+      - name: Build mdBook
+        run: mdbook build .docs-build
+      - name: Build both API references independently
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          CARGO_TARGET_DIR="$PWD/.docs-build/target/prover" cargo doc -p tracing --locked
+          CARGO_TARGET_DIR="$PWD/.docs-build/target/prover" cargo doc --workspace --no-deps --locked
+          (cd verifier && CARGO_TARGET_DIR="$GITHUB_WORKSPACE/.docs-build/target/verifier" cargo doc --workspace --no-deps --locked)
+      - name: Compile and run tier-B Rust API examples
+        run: |
+          CARGO_TARGET_DIR="$PWD/.docs-build/target/prover" cargo test --doc -p tessera-prover --locked
+          (cd verifier && CARGO_TARGET_DIR="$GITHUB_WORKSPACE/.docs-build/target/verifier" cargo test --doc -p tv-core --locked)
+      - name: Assemble and check every rendered page and anchor
+        run: python3 .github/scripts/docs.py assemble
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: documentation
+          path: .docs-build/site
+          # Tracked workflow sources are linked resources under .github/. Staging
+          # excludes untracked credentials; upload exactly the checked tree.
+          include-hidden-files: true
+          if-no-files-found: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: documentation
+          path: ${{ runner.temp }}/documentation-roundtrip/site
+      - name: Check the extracted artifact, including linked hidden resources
+        run: python3 .github/scripts/docs.py check --work-dir "$RUNNER_TEMP/documentation-roundtrip"

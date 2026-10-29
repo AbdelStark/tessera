@@ -31,15 +31,22 @@ fn bits(n: u32) -> Result<u32, ClaimsError> {
     Ok(u32::BITS.saturating_sub(n.checked_sub(1).ok_or_else(internal)?.leading_zeros()))
 }
 fn variables(graph: &Graph, id: TensorId) -> Result<u32, ClaimsError> {
-    graph
-        .tensor(id)
-        .ok_or_else(internal)?
-        .shape
-        .dims()
-        .iter()
-        .try_fold(0u32, |sum, &d| {
-            sum.checked_add(bits(d)?).ok_or_else(internal)
-        })
+    let dims = graph.tensor(id).ok_or_else(internal)?.shape.dims();
+    if let Some(key_bits) = graph.attention_key_bits(id) {
+        let prefix = dims
+            .get(..dims.len().checked_sub(1).ok_or_else(internal)?)
+            .ok_or_else(internal)?;
+        return prefix
+            .iter()
+            .try_fold(0u32, |sum, &d| {
+                sum.checked_add(bits(d)?).ok_or_else(internal)
+            })?
+            .checked_add(key_bits)
+            .ok_or_else(internal);
+    }
+    dims.iter().try_fold(0u32, |sum, &d| {
+        sum.checked_add(bits(d)?).ok_or_else(internal)
+    })
 }
 /// A domain's token axis among its block variables (RFC-0054 'The token axis'): the variables of
 /// the axes after it come first (RFC-0045 'Blocks').
@@ -53,12 +60,23 @@ pub(crate) fn token(
     };
     let dims = graph.tensor(id).ok_or_else(internal)?.shape.dims();
     let axis = usize::from(axis);
+    let key_bits = graph.attention_key_bits(id);
+    let last_axis = dims.len().checked_sub(1).ok_or_else(internal)?;
     let low = dims
         .get(axis.checked_add(1).ok_or_else(internal)?..)
         .ok_or_else(internal)?
         .iter()
-        .try_fold(0u32, |sum, &d| {
-            sum.checked_add(bits(d)?).ok_or_else(internal)
+        .enumerate()
+        .try_fold(0u32, |sum, (offset, &d)| {
+            let at = axis
+                .checked_add(1)
+                .and_then(|x| x.checked_add(offset))
+                .ok_or_else(internal)?;
+            let v = match key_bits {
+                Some(kb) if at == last_axis => kb,
+                _ => bits(d)?,
+            };
+            sum.checked_add(v).ok_or_else(internal)
         })?;
     Ok(Some(TokenAxis {
         low,

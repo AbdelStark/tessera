@@ -14,7 +14,7 @@
 use core::fmt;
 use tv_codec::{Cursor, DecodeError, DecodeLimits, Envelope, ErrorCode, Expected, Rational, size};
 use tv_field::{Fp, Fp2};
-use tv_hash::{Digest, Domain, DomainHasher, hash};
+use tv_hash::{Digest, Domain, DomainHasher};
 
 use crate::opening::CombinedRow;
 use crate::stages::StageProof;
@@ -430,6 +430,14 @@ impl PublicStatement {
         self.write(&mut out);
         out.finalize()
     }
+    pub(crate) fn digest_with_cancel(
+        &self,
+        cancel: &mut impl FnMut() -> bool,
+    ) -> Result<Digest, ErrorCode> {
+        let mut out = DomainHasher::new(Domain::Statement);
+        write_with_cancel(self, &mut out, cancel)?;
+        Ok(out.finalize())
+    }
 }
 impl SeedCommit {
     /// Decode fields only; session/commitment checks belong to the driver.
@@ -609,6 +617,29 @@ impl NiProof {
     }
 }
 
+fn decode_time(deadline: Option<std::time::Instant>, offset: u64) -> Result<(), DecodeError> {
+    if deadline.is_some_and(|until| std::time::Instant::now() >= until) {
+        return Err(DecodeError::new(ErrorCode::Time, offset));
+    }
+    Ok(())
+}
+
+fn envelope_digest(
+    bytes: &[u8],
+    mut check: impl FnMut(u64) -> Result<(), DecodeError>,
+) -> Result<Digest, DecodeError> {
+    let mut digest = DomainHasher::new(Domain::Envelope);
+    let mut offset = 0u64;
+    for block in bytes.chunks(65536) {
+        check(offset)?;
+        digest.update(block);
+        offset = offset.saturating_add(u64::try_from(block.len()).unwrap_or(u64::MAX));
+    }
+    let digest = digest.finalize();
+    check(offset)?;
+    Ok(digest)
+}
+
 macro_rules! message {
     ($ty:ident, $id:literal) => {
         impl $ty {
@@ -622,8 +653,23 @@ macro_rules! message {
             /// # Errors
             /// The first RFC-0003 envelope/payload failure, with envelope-relative offset.
             pub fn open(bytes: &[u8], limits: &DecodeLimits) -> Result<Self, DecodeError> {
-                Envelope::open(bytes, Self::SCHEMA, limits, |b| hash(Domain::Envelope, b))?
-                    .decode_payload(|c, _| Self::decode(c))
+                Self::open_with_deadline(bytes, limits, None)
+            }
+            pub(crate) fn open_with_deadline(
+                bytes: &[u8],
+                limits: &DecodeLimits,
+                deadline: Option<std::time::Instant>,
+            ) -> Result<Self, DecodeError> {
+                decode_time(deadline, 0)?;
+                Envelope::open_checked_digest(bytes, Self::SCHEMA, limits, |bytes| {
+                    envelope_digest(bytes, |offset| decode_time(deadline, offset))
+                })?
+                .decode_payload(|c, _| {
+                    if let Some(deadline) = deadline {
+                        c.set_deadline(deadline)?;
+                    }
+                    Self::decode(c)
+                })
             }
             /// Reconstruct its TCE payload from values, without an envelope.
             ///
@@ -654,6 +700,15 @@ pub trait ProverMessage: Sized {
     /// # Errors
     /// The first RFC-0003 envelope or payload failure.
     fn open_sealed(bytes: &[u8], limits: &DecodeLimits) -> Result<Self, DecodeError>;
+    /// Open under an absolute cooperative deadline; `None` retains ordinary decoding.
+    ///
+    /// # Errors
+    /// The first framing/payload fault, or operational `Time` on expiry.
+    fn open_sealed_with_deadline(
+        bytes: &[u8],
+        limits: &DecodeLimits,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<Self, DecodeError>;
 }
 macro_rules! prover_message {
     ($($ty:ident),+) => {$(
@@ -662,6 +717,9 @@ macro_rules! prover_message {
             fn open_sealed(bytes: &[u8], limits: &DecodeLimits) -> Result<Self, DecodeError> {
                 $ty::open(bytes, limits)
             }
+            fn open_sealed_with_deadline(bytes: &[u8], limits: &DecodeLimits, deadline: Option<std::time::Instant>) -> Result<Self, DecodeError> {
+                $ty::open_with_deadline(bytes, limits, deadline)
+            }
         }
     )+};
 }
@@ -669,6 +727,56 @@ prover_message!(ProverSeedShare, Round1, Round2Response, Round3Response);
 
 pub(crate) trait Sink {
     fn put(&mut self, bytes: &[u8]);
+    fn stopped(&self) -> bool {
+        false
+    }
+}
+
+// RFC-0019, SP-8: stop nested sequence traversal as soon as a timed sink expires.
+struct TimedSink<'a, S, F> {
+    out: &'a mut S,
+    cancel: &'a mut F,
+    left: u16,
+    expired: bool,
+}
+impl<S: Sink, F: FnMut() -> bool> Sink for TimedSink<'_, S, F> {
+    fn put(&mut self, bytes: &[u8]) {
+        if self.expired {
+            return;
+        }
+        if self.left == 0 {
+            self.expired = (self.cancel)();
+            self.left = 4096;
+            if self.expired {
+                return;
+            }
+        }
+        self.left = self.left.saturating_sub(1);
+        self.out.put(bytes);
+    }
+    fn stopped(&self) -> bool {
+        self.expired || self.out.stopped()
+    }
+}
+fn write_with_cancel(
+    value: &(impl Tce + ?Sized),
+    out: &mut impl Sink,
+    cancel: &mut impl FnMut() -> bool,
+) -> Result<(), ErrorCode> {
+    if cancel() {
+        return Err(ErrorCode::Time);
+    }
+    let mut sink = TimedSink {
+        out,
+        cancel,
+        left: 4096,
+        expired: false,
+    };
+    value.write(&mut sink);
+    if sink.expired || (sink.cancel)() {
+        return Err(ErrorCode::Time);
+    }
+    Ok(())
 }
 impl Sink for Vec<u8> {
     fn put(&mut self, b: &[u8]) {
@@ -685,17 +793,28 @@ impl Sink for Count {
     fn put(&mut self, b: &[u8]) {
         self.0 = self.0.and_then(|n| n.checked_add(b.len()));
     }
+    fn stopped(&self) -> bool {
+        self.0.is_none()
+    }
 }
 pub(crate) trait Tce {
     fn write(&self, out: &mut impl Sink);
 }
 pub(crate) fn encode(value: &(impl Tce + ?Sized)) -> Result<Vec<u8>, ErrorCode> {
-    let mut count = Count(Some(0));
-    value.write(&mut count);
-    let len = count.0.ok_or(ErrorCode::Memory)?;
+    encode_with_cancel(value, &mut || false)
+}
+pub(crate) fn encode_with_cancel(
+    value: &(impl Tce + ?Sized),
+    cancel: &mut impl FnMut() -> bool,
+) -> Result<Vec<u8>, ErrorCode> {
+    let len =
+        usize::try_from(encoded_len_with_cancel(value, cancel)?).map_err(|_| ErrorCode::Memory)?;
+    if cancel() {
+        return Err(ErrorCode::Time);
+    }
     let mut out = Vec::new();
     out.try_reserve_exact(len).map_err(|_| ErrorCode::Memory)?;
-    value.write(&mut out);
+    write_with_cancel(value, &mut out, cancel)?;
     Ok(out)
 }
 macro_rules! integer {
@@ -713,6 +832,9 @@ impl<T: Tce> Tce for [T] {
     fn write(&self, out: &mut impl Sink) {
         u64::try_from(self.len()).unwrap_or(u64::MAX).write(out);
         for item in self {
+            if out.stopped() {
+                break;
+            }
             item.write(out);
         }
     }
@@ -722,9 +844,12 @@ impl<T: Tce> Tce for Vec<T> {
         self.as_slice().write(out);
     }
 }
-pub(crate) fn encoded_len(value: &(impl Tce + ?Sized)) -> Result<u64, ErrorCode> {
+pub(crate) fn encoded_len_with_cancel(
+    value: &(impl Tce + ?Sized),
+    cancel: &mut impl FnMut() -> bool,
+) -> Result<u64, ErrorCode> {
     let mut count = Count(Some(0));
-    value.write(&mut count);
+    write_with_cancel(value, &mut count, cancel)?;
     u64::try_from(count.0.ok_or(ErrorCode::Memory)?).map_err(|_| ErrorCode::Memory)
 }
 impl Tce for Fp {
@@ -777,7 +902,9 @@ impl Tce for PredictorSpec {
 }
 macro_rules! fields {
     ($ty:ty, $($field:ident),+) => {impl Tce for $ty {
-        fn write(&self, out: &mut impl Sink) { $(self.$field.write(out);)+ }
+        fn write(&self, out: &mut impl Sink) {
+            $(if out.stopped() { return; } self.$field.write(out);)+
+        }
     }};
 }
 fields!(SeedCommit, session_id, commitment);
@@ -827,3 +954,164 @@ fields!(MultiProof, siblings);
 fields!(MatrixColumns, matrix, columns, proof);
 fields!(Round3Response, advice_columns, advice_proof, weight_columns);
 fields!(NiProof, round1, seed_nonce, round2, query_nonce, round3);
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+    #[derive(Clone, Copy)]
+    struct Probe<'a>(&'a core::cell::Cell<usize>);
+    impl Tce for Probe<'_> {
+        fn write(&self, out: &mut impl Sink) {
+            self.0.set(self.0.get() + 1);
+            7u8.write(out);
+        }
+    }
+    struct Fields<'a> {
+        first: Vec<Probe<'a>>,
+        after: Probe<'a>,
+    }
+    fields!(Fields<'_>, first, after);
+
+    #[test]
+    fn timed_writes_stop_nested_sequences_and_fields_at_the_poll_boundary() {
+        let visited = core::cell::Cell::new(0);
+        let nested = vec![vec![Probe(&visited); 4096]; 4];
+        let mut out = Count(Some(0));
+        let mut polls = 0;
+        assert_eq!(
+            write_with_cancel(&nested, &mut out, &mut || {
+                polls += 1;
+                polls == 2
+            }),
+            Err(ErrorCode::Time)
+        );
+        assert_eq!(visited.get(), 4095);
+        assert_eq!(out.0, Some(16 + 4094));
+
+        visited.set(0);
+        let fields = Fields {
+            first: vec![Probe(&visited); 8192],
+            after: Probe(&visited),
+        };
+        polls = 0;
+        let mut out = Vec::new();
+        assert_eq!(
+            write_with_cancel(&fields, &mut out, &mut || {
+                polls += 1;
+                polls == 2
+            }),
+            Err(ErrorCode::Time)
+        );
+        assert_eq!(visited.get(), 4096);
+        assert_eq!(out.len(), 8 + 4095);
+    }
+
+    #[test]
+    fn encoding_checks_count_allocation_copy_and_completion_before_returning_bytes() {
+        let values = vec![7u8; 8192];
+        for stop in 1..=9 {
+            let mut polls = 0;
+            assert_eq!(
+                encode_with_cancel(&values, &mut || {
+                    polls += 1;
+                    polls == stop
+                }),
+                Err(ErrorCode::Time),
+                "poll {stop}"
+            );
+        }
+        let encoded = encode_with_cancel(&values, &mut || false).unwrap();
+        assert_eq!(encoded_len_with_cancel(&values, &mut || false), Ok(8200));
+        assert_eq!(encoded.get(..8), Some(8192u64.to_le_bytes().as_slice()));
+        assert_eq!(encoded.get(8..), Some(values.as_slice()));
+
+        let visited = core::cell::Cell::new(0);
+        let values = vec![Probe(&visited); 8192];
+        let mut polls = 0;
+        assert_eq!(
+            encode_with_cancel(&values, &mut || {
+                polls += 1;
+                polls == 7
+            }),
+            Err(ErrorCode::Time)
+        );
+        assert_eq!(visited.get(), 8192 + 4096);
+
+        visited.set(0);
+        assert_eq!(
+            encoded_len_with_cancel(&values, &mut || true),
+            Err(ErrorCode::Time)
+        );
+        assert_eq!(visited.get(), 0);
+    }
+
+    #[test]
+    fn statement_hashing_checks_entry_blocks_and_completion_without_changing_bytes() {
+        let statement = PublicStatement {
+            claim_list_digest: [1; 32],
+            weights_root: [2; 32],
+            weights_epoch: 3,
+            manifest_digest: [4; 32],
+            batch: BatchDescriptor {
+                requests: vec![
+                    RequestRef {
+                        request_id: 5,
+                        session_id: [6; 16],
+                        prompt_len: 7,
+                        output_len: 8,
+                    };
+                    5000
+                ],
+            },
+            predictor: PredictorSpec::Exact {
+                decoding: Decoding::Greedy,
+            },
+        };
+        let expected = tv_hash::hash(Domain::Statement, &statement.to_tce().unwrap());
+        assert_eq!(statement.digest(), expected);
+        assert_eq!(statement.digest_with_cancel(&mut || false), Ok(expected));
+        for stop in 1..=6 {
+            let mut polls = 0;
+            assert_eq!(
+                statement.digest_with_cancel(&mut || {
+                    polls += 1;
+                    polls == stop
+                }),
+                Err(ErrorCode::Time),
+                "poll {stop}"
+            );
+        }
+    }
+
+    #[test]
+    fn envelope_hash_checks_between_blocks_and_before_completion() {
+        let bytes = vec![7; 3 * 65536];
+        assert_eq!(
+            envelope_digest(&bytes, |_| Ok(())).unwrap(),
+            tv_hash::hash(Domain::Envelope, &bytes)
+        );
+        for stop in 1..=4 {
+            let mut polls = 0;
+            let error = envelope_digest(&bytes, |offset| {
+                polls += 1;
+                if polls == stop {
+                    Err(DecodeError::new(ErrorCode::Time, offset))
+                } else {
+                    Ok(())
+                }
+            })
+            .unwrap_err();
+            assert_eq!(error, DecodeError::new(ErrorCode::Time, (stop - 1) * 65536));
+        }
+        assert_eq!(
+            NiProof::open_with_deadline(
+                &[],
+                &DecodeLimits::MESSAGE,
+                Some(std::time::Instant::now())
+            )
+            .unwrap_err()
+            .code(),
+            ErrorCode::Time
+        );
+    }
+}

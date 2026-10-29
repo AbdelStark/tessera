@@ -107,6 +107,7 @@ use tv_codec::Rational;
 use tv_tables::{TableId, TableKind, exp_maps_to_zero};
 
 use crate::claims::{Profile, QuantPoint, Site, WeightType};
+use crate::sumcheck::Protocol;
 use crate::validation::{PublicPart, Rescale};
 
 mod builder;
@@ -555,11 +556,183 @@ struct Span {
     len: u32,
 }
 
-/// The graph of one sequence, as [`lower`] gives it, or a graph a [`GraphBuilder`] made.
+/// The public request-slot geometry of a lowered batch (RFC-0071 'The slots').
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Slots {
+    protocol: Protocol,
+    lengths: Vec<u32>,
+    n_max: u32,
+    slot_bits: u32,
+    slot_len: u32,
+    request_bits: u32,
+    token_len: u32,
+    padded_tokens: u32,
+    token_vars: u32,
+}
+
+impl Slots {
+    /// Derives the slot geometry for `lengths` against `max_context` under `protocol`
+    /// (RFC-0071 'The slots').
+    ///
+    /// # Errors
+    /// [`LowerError::Length`] when `lengths` is empty, an entry is `0` or exceeds `max_context`,
+    /// or the padded token axis overflows `u32`; [`LowerError::Memory`] when storage for `lengths`
+    /// cannot be reserved.
+    pub fn new(lengths: &[u32], max_context: u32, protocol: Protocol) -> Result<Self, LowerError> {
+        if lengths.is_empty() {
+            return Err(LowerError::Length { n: 0 });
+        }
+        let mut n_max = 0u32;
+        for &n_r in lengths {
+            if n_r == 0 || n_r > max_context {
+                return Err(LowerError::Length { n: n_r });
+            }
+            n_max = n_max.max(n_r);
+        }
+        let raw_b = u32::BITS.saturating_sub(n_max.saturating_sub(1).leading_zeros());
+        let slot_bits = match protocol {
+            Protocol::One => raw_b,
+            Protocol::Two => raw_b.max(2),
+        };
+        let slot_len = 1u32
+            .checked_shl(slot_bits)
+            .ok_or(LowerError::Length { n: n_max })?;
+        let (request_bits, token_len, token_vars, padded_tokens) = if lengths.len() == 1 {
+            (0, n_max, slot_bits, slot_len)
+        } else {
+            let count =
+                u32::try_from(lengths.len()).map_err(|_| LowerError::Length { n: u32::MAX })?;
+            let request_bits = u32::BITS.saturating_sub(count.saturating_sub(1).leading_zeros());
+            let token_len = count
+                .checked_mul(slot_len)
+                .ok_or(LowerError::Length { n: u32::MAX })?;
+            let token_vars = slot_bits
+                .checked_add(request_bits)
+                .ok_or(LowerError::Length { n: u32::MAX })?;
+            let padded_tokens = 1u32
+                .checked_shl(token_vars)
+                .ok_or(LowerError::Length { n: u32::MAX })?;
+            (request_bits, token_len, token_vars, padded_tokens)
+        };
+        let mut owned = Vec::new();
+        owned
+            .try_reserve_exact(lengths.len())
+            .map_err(|_| LowerError::Memory)?;
+        owned.extend_from_slice(lengths);
+        Ok(Self {
+            protocol,
+            lengths: owned,
+            n_max,
+            slot_bits,
+            slot_len,
+            request_bits,
+            token_len,
+            padded_tokens,
+            token_vars,
+        })
+    }
+
+    /// Fallibly clones this slot geometry without panicking on allocation failure.
+    pub(crate) fn try_clone(&self) -> Result<Self, LowerError> {
+        Self::new(&self.lengths, self.n_max, self.protocol)
+    }
+
+    /// The protocol version whose minimum width shaped [`slot_bits`](Self::slot_bits).
+    pub fn protocol(&self) -> Protocol {
+        self.protocol
+    }
+
+    /// Each request's sequence length `n_r = prompt_len_r + output_len_r`, in batch order.
+    pub fn lengths(&self) -> &[u32] {
+        &self.lengths
+    }
+
+    /// `n_max = max_r n_r`, the key axis's length and `positions`' bound `n_max − 1` + 1.
+    pub fn n_max(&self) -> u32 {
+        self.n_max
+    }
+
+    /// `b`: `⌈log2 n_max⌉` in `tessera-protocol/1`, `max(⌈log2 n_max⌉, 2)` in `tessera-protocol/2`.
+    pub fn slot_bits(&self) -> u32 {
+        self.slot_bits
+    }
+
+    /// `S = 2^b`, the slot length.
+    pub fn slot_len(&self) -> u32 {
+        self.slot_len
+    }
+
+    /// `⌈log2 R⌉`, `0` for one request.
+    pub fn request_bits(&self) -> u32 {
+        self.request_bits
+    }
+
+    /// `N`: `n_0` for one request, `R · S` for `R ≥ 2`.
+    pub fn token_len(&self) -> u32 {
+        self.token_len
+    }
+
+    /// `2^{token_vars}`: the padded token hypercube size.
+    pub fn padded_tokens(&self) -> u32 {
+        self.padded_tokens
+    }
+
+    /// `b + ⌈log2 R⌉`: the token axis's multilinear variable count.
+    pub fn token_vars(&self) -> u32 {
+        self.token_vars
+    }
+
+    /// Whether row `tau` of the padded token axis is a real token row (`τ mod S < n_{⌊τ/S⌋}`
+    /// with `⌊τ/S⌋ < R`).
+    pub fn is_real_row(&self, tau: u32) -> bool {
+        if tau >= self.token_len {
+            return false;
+        }
+        let pos = tau & self.slot_len.saturating_sub(1);
+        let req = tau.checked_shr(self.slot_bits).unwrap_or(0);
+        usize::try_from(req)
+            .ok()
+            .and_then(|r| self.lengths.get(r))
+            .is_some_and(|&len| pos < len)
+    }
+
+    /// The public `positions` entry at row `tau < N` (`τ mod S` on a real row, `0` on a padded
+    /// row), or `None` when `tau ≥ N`.
+    pub fn position_at(&self, tau: u32) -> Option<u32> {
+        if tau >= self.token_len {
+            return None;
+        }
+        if self.is_real_row(tau) {
+            Some(tau & self.slot_len.saturating_sub(1))
+        } else {
+            Some(0)
+        }
+    }
+
+    /// Materializes the `N`-element public `positions` input vector (RFC-0071 'The lowering').
+    ///
+    /// # Errors
+    /// [`LowerError::Memory`] when the `N` entries cannot be reserved.
+    pub fn positions(&self) -> Result<Vec<u32>, LowerError> {
+        let len = usize::try_from(self.token_len).map_err(|_| LowerError::Memory)?;
+        let mut out = Vec::new();
+        out.try_reserve_exact(len).map_err(|_| LowerError::Memory)?;
+        for tau in 0..self.token_len {
+            out.push(self.position_at(tau).unwrap_or(0));
+        }
+        Ok(out)
+    }
+}
+
+/// The graph of one sequence or batch, as [`lower`] or [`lower_batch`] gives it, or a graph a
+/// [`GraphBuilder`] made.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Graph {
-    /// The sequence's length; 0 for a graph without a lowering.
+    /// The token axis's unpadded length `N` (`n` for one request, `R · S` for `R ≥ 2`); 0 for a
+    /// graph without a lowering.
     n: u32,
+    /// The slot geometry of a lowered graph; `None` for a graph without a lowering.
+    slots: Option<Slots>,
     tensors: Vec<Tensor>,
     inputs: Vec<Input>,
     nodes: Vec<Node>,
@@ -576,10 +749,42 @@ pub struct Graph {
 }
 
 impl Graph {
-    /// The sequence's length, from 1 to `max_context` for a lowered graph; 0 for a graph a
-    /// [`GraphBuilder`] made from nothing, which has no sequence.
+    /// The token axis's length `N`: `1` to `max_context` for one request, `R · S` for a batch of
+    /// `R ≥ 2` requests (RFC-0071), or `0` for a graph a [`GraphBuilder`] made from nothing.
     pub fn length(&self) -> u32 {
         self.n
+    }
+
+    /// The attention key axis's length: `n_max` for a lowered graph (`n` for one request), or `0`
+    /// for a graph without a lowering (RFC-0071 'The lowering').
+    pub fn key_length(&self) -> u32 {
+        self.slots.as_ref().map_or(self.n, Slots::n_max)
+    }
+
+    /// The request-slot geometry of a lowered graph, or `None` for a graph a [`GraphBuilder`]
+    /// made from nothing.
+    pub fn slots(&self) -> Option<&Slots> {
+        self.slots.as_ref()
+    }
+
+    /// When `id` is an attention score or exponential tensor of a multi-request batch (`[heads,
+    /// N, n_max]` with `R ≥ 2`), returns its last axis's padded variable count `b = slot_bits`
+    /// (RFC-0071 'The slots' and 'The lowering').
+    pub(crate) fn attention_key_bits(&self, id: TensorId) -> Option<u32> {
+        let slots = self.slots.as_ref().filter(|s| s.lengths().len() >= 2)?;
+        let producer = self.tensor(id)?.producer?;
+        let node = self.node(producer)?;
+        match node.op() {
+            Op::MatMulAct {
+                transpose_rhs: true,
+            }
+            | Op::SoftmaxRow { .. }
+                if node.outputs().first() == Some(&id) =>
+            {
+                Some(slots.slot_bits())
+            }
+            _ => None,
+        }
     }
 
     /// Every tensor, by id: the graph inputs and the nodes' outputs, in creation order.
@@ -773,12 +978,29 @@ pub enum LowerError {
 }
 
 /// Lowers `public`'s claim list for a sequence of `n` tokens, `1 ≤ n ≤ max_context`, in the
-/// order of the module documentation (RFC-0044).
+/// order of the module documentation (RFC-0044). Equivalent to `lower_batch(public, &[n])`
+/// (RFC-0071 'The lowering').
 pub fn lower(public: &PublicPart<'_>, n: u32) -> Result<Graph, LowerError> {
+    lower_batch_for(public, &[n], Protocol::One)
+}
+
+/// Lowers `public`'s claim list for a batch of request lengths `lengths` (`1 ≤ n_r ≤ max_context`
+/// each) under `tessera-protocol/1` (RFC-0044, RFC-0071 'The lowering').
+pub fn lower_batch(public: &PublicPart<'_>, lengths: &[u32]) -> Result<Graph, LowerError> {
+    lower_batch_for(public, lengths, Protocol::One)
+}
+
+/// Lowers `public`'s claim list for a batch of request lengths `lengths` (`1 ≤ n_r ≤ max_context`
+/// each) under `protocol` (RFC-0044, RFC-0071 'The slots' and 'The lowering').
+pub fn lower_batch_for(
+    public: &PublicPart<'_>,
+    lengths: &[u32],
+    protocol: Protocol,
+) -> Result<Graph, LowerError> {
     let arch = public.arch();
-    if n == 0 || n > arch.max_context {
-        return Err(LowerError::Length { n });
-    }
+    let slots = Slots::new(lengths, arch.max_context, protocol)?;
+    let n = slots.token_len();
+    let n_key = slots.n_max();
     let routes = [
         route(public, Site::AttnResidual),
         route(public, Site::MlpResidual),
@@ -786,6 +1008,7 @@ pub fn lower(public: &PublicPart<'_>, n: u32) -> Result<Graph, LowerError> {
     let mut lowering = Lowering {
         public,
         n,
+        n_key,
         d: arch.d_model,
         h: arch.n_heads,
         kv: arch.n_kv_heads,
@@ -794,6 +1017,7 @@ pub fn lower(public: &PublicPart<'_>, n: u32) -> Result<Graph, LowerError> {
         vocab: arch.vocab,
         graph: Graph {
             n,
+            slots: Some(slots),
             tensors: Vec::new(),
             inputs: Vec::new(),
             nodes: Vec::new(),
@@ -850,6 +1074,7 @@ type Key = (TensorId, ShiftClasses, Option<TensorId>);
 struct Lowering<'p, 'a> {
     public: &'p PublicPart<'a>,
     n: u32,
+    n_key: u32,
     d: u32,
     h: u32,
     kv: u32,
@@ -863,11 +1088,11 @@ struct Lowering<'p, 'a> {
 
 impl Lowering<'_, '_> {
     fn build(&mut self) -> Result<(), LowerError> {
-        let (n, d, vocab) = (self.n, self.d, self.vocab);
+        let (n, n_key, d, vocab) = (self.n, self.n_key, self.d, self.vocab);
         // The graph inputs, then RoPE's table, which is table 0.
         let last = |count: u32| i64::from(count).checked_sub(1).ok_or(LowerError::Internal);
         let tokens = self.input(&[n], Kind::Advice, Role::Tokens, 0, last(vocab)?)?;
-        self.positions = self.input(&[n], Kind::Public, Role::Positions, 0, last(n)?)?;
+        self.positions = self.input(&[n], Kind::Public, Role::Positions, 0, last(n_key)?)?;
         self.rope_table()?;
         // The prologue.
         let one_hot = self.node1(Op::OneHot { vocab }, &[tokens], &[n, vocab], Kind::Advice)?;
@@ -888,7 +1113,9 @@ impl Lowering<'_, '_> {
 
     /// RFC-0044 'A layer', from the residual `res`; returns the layer's output, `c_{ℓ+1}`.
     fn layer(&mut self, layer: u32, res: TensorId) -> Result<TensorId, LowerError> {
-        let (n, d, h, kv, dh, ff) = (self.n, self.d, self.h, self.kv, self.dh, self.ff);
+        let (n, n_key, d, h, kv, dh, ff) = (
+            self.n, self.n_key, self.d, self.h, self.kv, self.dh, self.ff,
+        );
         let point = |site| QuantPoint::Layer { layer, site };
         let q_width = h.checked_mul(dh).ok_or(LowerError::Internal)?;
         let kv_width = kv.checked_mul(dh).ok_or(LowerError::Internal)?;
@@ -916,7 +1143,7 @@ impl Lowering<'_, '_> {
                 transpose_rhs: true,
             },
             &[q, k],
-            &[h, n, n],
+            &[h, n, n_key],
             Kind::Virtual,
         )?;
         let exp_table = self.exp_table(layer)?;
@@ -925,7 +1152,10 @@ impl Lowering<'_, '_> {
             Op::SoftmaxRow { exp_table, sigma },
             &[scores],
             &[
-                (Shape::of(&[h, n, n])?, Kind::Lookup { table: exp_table }),
+                (
+                    Shape::of(&[h, n, n_key])?,
+                    Kind::Lookup { table: exp_table },
+                ),
                 (Shape::of(&[h, n])?, Kind::Advice),
             ],
         )?;
