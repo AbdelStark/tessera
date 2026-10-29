@@ -41,7 +41,15 @@ from tessera_quant.integer_model import (
     Site,
     WeightType,
 )
-from tessera_quant.tables import Exp, LookupTable, Rope, RopeConstants, Silu, lookup_table
+from tessera_quant.tables import (
+    Exp,
+    LookupTable,
+    Rope,
+    RopeConstants,
+    Silu,
+    lookup_table,
+    silu_lookup,
+)
 
 INT8 = (-128, 127)
 """The range of `D`'s INT8 tensors."""
@@ -297,7 +305,10 @@ class _Forward:
         shifts = self.shifts[point]
         b = (127 * 128 * arch.d_model).bit_length() + 1
         in_exp = dict(self.model.quant.silu_in_exponents)[layer]
-        table = _silu_table(b, tuple(shifts), in_exp, self.exponents[point])
+        kind = Silu(b, shifts, in_exp, self.exponents[point])
+        table = (
+            _silu_table(b, tuple(shifts), in_exp, self.exponents[point]) if self.record else None
+        )
         classes = self.classes.get((WeightType.Gate, layer))
         per_channel = (
             np.zeros(arch.d_ff, dtype=np.int64) if classes is None else classes.astype(np.int64)
@@ -306,7 +317,11 @@ class _Forward:
         a = np.empty_like(keys)
         for c in range(len(shifts)):
             channels = per_channel == c
-            a[:, channels] = table.lookup(keys[:, channels], c)
+            a[:, channels] = (
+                table.lookup(keys[:, channels], c)
+                if table is not None
+                else silu_lookup(kind, keys[:, channels], c)
+            )
         y = torch.as_tensor(a)
         if self.record:
             self.sites[point] = y

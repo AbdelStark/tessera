@@ -37,6 +37,7 @@ from tessera_quant.tables import (
     Silu,
     lookup_table,
     rope_table,
+    silu_lookup,
 )
 from tessera_quant.tce import encode
 
@@ -102,6 +103,100 @@ def values_of(table: tables.LookupTable) -> list[int]:
     assert isinstance(kind, Requant | Silu)
     keys = np.arange(1 << kind.b, dtype=np.int64) - (1 << (kind.b - 1))
     return [v for c in range(len(kind.r_by_class)) for v in table.lookup(keys, c).tolist()]
+
+
+def test_requested_silu_lookups_match_independent_vectors() -> None:
+    for case in CASES:
+        kind = kind_of(case["kind"])
+        if not isinstance(kind, Silu):
+            continue
+        for lookup in case["lookups"]:
+            keys = np.array([lookup["key"]], dtype=np.int64)
+            if lookup["value"] is None:
+                with pytest.raises(TableError, match="lookup needs"):
+                    silu_lookup(kind, keys, lookup["class"])
+            else:
+                assert silu_lookup(kind, keys, lookup["class"]).tolist() == [lookup["value"]]
+
+
+@pytest.mark.parametrize("in_exp", [-64, -3, 0])
+@pytest.mark.parametrize("out_exp", [-2, -1])
+def test_requested_silu_lookups_equal_complete_dense_domains(in_exp: int, out_exp: int) -> None:
+    # All signed keys, three different classes including shift zero, and unaligned/empty views.
+    kind = Silu(6, [0, 1, 5], in_exp, out_exp)
+    dense = lookup_table(0, kind)
+    full = np.arange(-32, 32, dtype=np.int64).reshape(4, 16)
+    for cls in range(3):
+        for keys in [full, full[:, ::3], full[:, :0], full.reshape(-1)[:13]]:
+            found = silu_lookup(kind, keys, cls)
+            assert found.dtype == np.int64
+            assert found.shape == keys.shape
+            assert found.tolist() == dense.lookup(keys, cls).tolist()
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        Silu(6, [], -2, -2),
+        Silu(31, [1, 2, 3], -2, -2),
+        Silu(6, [-1], -2, -2),
+        Silu(6, [6], -2, -2),
+        Silu(30, [5], -2, -2),
+        Silu(6, [1], -65, -2),
+        Silu(6, [1], 1, -2),
+        Silu(6, [1], 0, -63),
+        Silu(6, [1], -64, 0),
+    ],
+)
+def test_sparse_and_dense_silu_refuse_parameters_before_generating_values(
+    kind: Silu, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def forbidden(*args: Any) -> int:
+        pytest.fail("an invalid SiLU generated a value")
+
+    monkeypatch.setattr(tables, "silu_value", forbidden)
+    with pytest.raises(TableError) as dense:
+        lookup_table(0, kind)
+    with pytest.raises(TableError) as sparse:
+        silu_lookup(kind, np.zeros(0, dtype=np.int64))
+    assert sparse.value.code == dense.value.code == "ERR-INTERNAL"
+    assert str(sparse.value) == str(dense.value)
+
+
+@pytest.mark.parametrize(("key", "cls"), [(-33, 0), (32, 0), (0, -1), (0, 3)])
+def test_requested_silu_lookup_checks_signed_key_and_class_before_values(
+    monkeypatch: pytest.MonkeyPatch, key: int, cls: int
+) -> None:
+    def forbidden(*args: Any) -> int:
+        pytest.fail("an invalid SiLU lookup generated a value")
+
+    monkeypatch.setattr(tables, "silu_value", forbidden)
+    with pytest.raises(TableError, match="a lookup needs a class") as refused:
+        silu_lookup(Silu(6, [0, 1, 5], -3, -2), np.array([key], dtype=np.int64), cls)
+    assert refused.value.code == "ERR-INTERNAL"
+
+
+def test_requested_silu_work_is_bounded_by_distinct_shifted_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kind = Silu(24, [1], -3, -2)  # A dense core would evaluate 2^23 values.
+    keys = np.arange(970, dtype=np.int64).reshape(97, 10) % 10 - 4
+    calls: list[int] = []
+    original = tables.silu_value
+
+    def counted(h: int, in_exp: int, out_exp: int) -> int:
+        calls.append(h)
+        assert len(calls) <= 5, "SiLU evaluated unrequested or repeated shifted keys"
+        return original(h, in_exp, out_exp)
+
+    monkeypatch.setattr(tables, "silu_value", counted)
+    found = silu_lookup(kind, keys)
+    assert calls == [-2, -1, 0, 1, 2]
+    expected = [[original(int(k) // 2, -3, -2) for k in row] for row in keys]
+    assert found.tolist() == expected
+    calls.clear()
+    assert silu_lookup(kind, keys).tolist() == expected
+    assert calls == [-2, -1, 0, 1, 2], "a later call reused a cache indexed by secret keys"
 
 
 def test_llama_3_1s_rope_constants_are_the_oracles_at_every_sampled_pair() -> None:
