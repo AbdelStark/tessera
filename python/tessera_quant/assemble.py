@@ -23,6 +23,7 @@ import blake3
 import numpy as np
 import torch
 
+from tessera_quant._streaming import transformed_checkpoint
 from tessera_quant.arch import ArchSpec
 from tessera_quant.capture import CalibrationResult, reference_logits
 from tessera_quant.checkpoint import FloatModel
@@ -34,7 +35,7 @@ from tessera_quant.integer_model import (
     Profile,
     Provenance,
 )
-from tessera_quant.migration import ALPHAS, mean_kl, select_alpha, transform
+from tessera_quant.migration import ALPHAS, mean_kl, select_alpha
 from tessera_quant.reference import trace
 from tessera_quant.scales import Quantized, choose
 from tessera_quant.tce import INTEGER_MODEL_LIMITS, write_artifact
@@ -84,7 +85,6 @@ def quantize(
     arch = model.arch
     # The files are hashed once, before their tensors are read.
     checkpoint = checkpoint_digests(model)
-    weights = {name: model.tensor(name).to(torch.float64) for name in model.names}
     maxima = calib.statistics.maxima
     reference = reference_logits(model, held_out, calib.calibration.seed, device)
 
@@ -95,7 +95,7 @@ def quantize(
     affine = affine_weights(arch, the_profile) if scales == "affine" else ()
 
     def quantized(alpha: Fraction) -> Quantized:
-        migrated, migrated_maxima = transform(arch, weights, maxima, alpha)
+        migrated, migrated_maxima = transformed_checkpoint(model, maxima, alpha)
         return choose(arch, the_profile, migrated, migrated_maxima, affine=affine)
 
     def divergence(alpha: Fraction) -> float:

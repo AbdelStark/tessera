@@ -60,6 +60,11 @@ d = quantize(model, calib)  # chooses the migration strength on the held-out spl
 digest = export(d, Path("llama-3.1-8b.d"))  # a secret file, mode 0600
 ```
 
+Quantization reads and transforms checkpoint weights one layer at a time in float64, with
+separate embedding and final-head groups. It retains the INT8 output model and channel
+statistics. This avoids a whole-model float64 copy; it does not bound the BF16 calibration
+model or the prover's commitments. See the [transform memory measurement](../docs/perf/v0.2/quant-transform-memory.md).
+
 The front-end and the Rust tools exchange TCE artifacts only ([RFC-0003](../docs/rfcs/RFC-0003-canonical-encoding.md)). `tessera_quant.tce` writes them as secret files, streamed and renamed into place, and reads them mapped, digest first:
 
 ```python
