@@ -17,6 +17,17 @@ products have absolute bounds `2^23` and `2^17`. Both INT32 products widen befor
 or accumulation. Every full or intermediate sum is bounded by `128*128*K < 2^63`; other
 inner dimensions decline acceleration. No floating-point conversion is used.
 
+Kernel layout is also part of exactness. The first Linux CI run returned incorrect values
+in both native attention and existing weight-tail tests, despite passing on macOS.
+[PyTorch 2.14.1's oneDNN shim](https://github.com/pytorch/pytorch/blob/v2.14.1/aten/src/ATen/native/mkldnn/Matmul.cpp#L524)
+chooses a transpose flag from strides and discards GEMM's status. A contiguous singleton
+axis can still have a leading stride smaller than BLAS requires, leaving output unwritten.
+Normalize contiguous singleton matrices to canonical row-major strides with a view of
+the same elements; ordinary non-singleton packing is unchanged. Eight always-run cases
+check the BLAS leading-dimension contract on both routes, including a one-entry inner tail
+and a zero leading stride. Six failed before this correction. The native tests remain
+enabled to check the real platform backend.
+
 The shared primitive uses at most 128 rows, 1024 columns and 1024 inner entries per tile.
 Batch broadcasting creates views. A lazy ordinal index visits one logical head at a time,
 using O(rank) metadata; it never reshapes an expanded batch or snapshots an index pool.
@@ -35,12 +46,13 @@ logs or errors (05 section 3).
 
 ## Differential and adversarial evidence
 
-All 421 Python tests pass on Apple M1 Max with no skips, including the existing golden
+All 429 Python tests pass on Apple M1 Max with no skips, including the existing golden
 conformance traces and native integer backend. Strict types, lint and formatting pass.
 The first concurrent full run passed 419 cases but failed the unchanged 30-second Exp-core
 timing gate at 37.2 seconds. With only the two own model jobs temporarily paused, the entire
-suite passed in 107.14 seconds. Both jobs resumed in a `finally` block; fuzz workers remained
-active and no threshold changed.
+initial 421-case suite passed in 107.14 seconds. After the singleton-layout correction,
+the complete 429-case suite passed in 104.43 seconds under the same controlled method.
+Both jobs resumed in a `finally` block; fuzz workers remained active and no threshold changed.
 
 New cases cover 2D/3D/4D broadcasts, strided GQA head mapping against a literal Python-integer
 oracle, signed extremes, all tile tails, odd totals above `2^32`, pre-conversion wide refusal,
@@ -49,11 +61,12 @@ Int64 outputs are poisoned before the tail checks, preventing allocator reuse fr
 an unwritten element. The test for a huge empty batch intercepts eager index pooling before
 it can allocate a billion Python integers.
 
-No-op and restored controls pass. All 14 meaningful planted source faults fail assertions:
+No-op and restored controls pass. All 15 meaningful planted source faults fail assertions:
 wrong query head; wrong key head; materialized broadcast; omitted left range check; omitted
 right range check; INT32 accumulation; wrong high digit; missing low digit; incomplete inner
 tail; incomplete column tail; partial-result success; allocator fallback; empty-batch
-traversal; and routing the full trace through the optimized path.
+traversal; routing the full trace through the optimized path; and omitting singleton
+leading-stride normalization. The complete fault campaign was repeated after the layout fix.
 
 ## Actual exported 1B candidate
 
@@ -66,6 +79,9 @@ The concurrent paired run observed 8.316 seconds with int64 scores and 8.572 sec
 tiled scores; combined peak RSS was 4,074,520,576 bytes. These short products do not establish
 a whole-model speedup. They establish only this numerical comparison, not complete held-out
 fidelity, alpha selection, an accepted proof or a hardware qualification.
+Repeating the same comparison after the singleton-layout fix again preserves every logit
+and accelerates 16/16 products: 10.349 versus 9.700 seconds, with 4,069,097,472 bytes peak
+RSS under concurrent work. Both paired observations are retained; neither is a throughput gate.
 
 The real `ni-100` proof attempt still produced no proof: the unchanged RFC-0045 leaf-layout
 guard refused inconsistent tensor reads across layers. The proposed compiler remedy remains
@@ -82,13 +98,13 @@ integer compute with reused operands; the tiled path trades two narrow dot produ
 bounded packing for a faster backend. These lower traffic bounds exclude rereads, scratch
 and library packing, and imply no hardware bandwidth or GPU throughput qualification.
 
-Measured 2026-10-29 on Apple M1 Max/64 GiB, Python 3.13.18, PyTorch 2.14.1 and NumPy 2.5.4.
+Measured 2026-10-29–30 on Apple M1 Max/64 GiB, Python 3.13.18, PyTorch 2.14.1 and NumPy 2.5.4.
 The first cohort ran beside both real-model jobs and two fuzz workers. Its median process
 medians were 90.508 versus 80.129 ms at 512 positions and 406.855 versus 367.435 ms at 1024.
 Within-process coefficients of variation reached 108%; some pairs regressed. That cohort
 does not establish an improvement under full concurrent load and remains part of the evidence.
 
-For the final cohort, the two own model jobs were temporarily paused and resumed in a
+For the five-pair cohort before the singleton-layout correction, the two own model jobs were temporarily paused and resumed in a
 `finally` block after 141.77 seconds. Fuzz workers stayed active. Vector generation and type
 checking also overlapped parts of the measurement, so this is not an isolated hardware run.
 Both modes import the same helper before timing, avoiding mode-dependent library startup
@@ -101,7 +117,7 @@ in the process RSS comparison. Five alternating pairs each use three warmups and
 | 1024 | Int64 | 254.000 ms | 210.858, 207.400, 255.557, 256.084, 254.000 | 381,845,504 B |
 | 1024 | Tiled | 60.350 ms | 60.350, 56.938, 72.492, 79.553, 59.933 | 406,650,880 B |
 
-All ten final paired comparisons improve: 1.65–3.45x at 512 positions, 3.22–4.24x at 1024.
+All ten paired comparisons improve: 1.65–3.45x at 512 positions, 3.22–4.24x at 1024.
 The ratios of medians are 2.79x and 4.21x, respectively. Within-process variation still
 exceeds a 3% noise floor: scalar CV spans 2.0–12.9% and tiled 4.1–41.9% at 512, versus
 1.3–6.2% and 4.9–18.1% at 1024. The repeated paired gains justify this component path;
@@ -114,6 +130,23 @@ Every synthetic result agrees across modes. SHA-256 is
 `07ac357c38477c53e02b257591810f9ff6d5bf93e3a45d2beea00698cc83ef32` at 1024.
 An earlier controlled cohort, before matching the scalar process's helper imports, also
 improved all ten pairs; its records are retained separately and its RSS is not compared here.
+
+After the singleton-layout correction, three alternating pairs per shape repeat the same
+three-warmup/ten-sample method, with both modes' helper imports matched. The own model jobs
+were paused for 95.15 seconds and resumed; fuzz workers, other host CPU work, vector
+generation and the scratch fault campaign remained active. Output digests remain identical.
+
+| Positions | Mode | Median of process medians | Process medians, ms | Median peak RSS |
+|---|---|---|---|---|
+| 512 | Int64 | 65.943 ms | 64.202, 65.943, 67.263 | 407,207,936 B |
+| 512 | Tiled | 20.131 ms | 20.131, 19.941, 30.354 | 410,370,048 B |
+| 1024 | Int64 | 253.376 ms | 253.376, 266.615, 244.048 | 382,763,008 B |
+| 1024 | Tiled | 80.489 ms | 80.489, 108.876, 78.001 | 409,731,072 B |
+
+All six final pairs improve: 2.22–3.31x at 512 positions and 2.45–3.15x at 1024. Ratios of
+medians are 3.28x and 3.15x. Within-process CV ranges are 5.8–19.6% (scalar) and 5.2–15.2%
+(tiled) at 512, versus 1.4–3.2% and 6.6–16.2% at 1024. The material component gains persist
+after the layout fix, with the same concurrency and whole-model limitations.
 
 ## Reproduction
 

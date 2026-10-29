@@ -4,10 +4,52 @@
 import math
 from typing import Any
 
+import numpy as np
 import pytest
 import torch
 
 from tessera_quant import _integer_matmul as tiled
+
+
+@pytest.mark.parametrize("route", ["tensor", "weights"])
+@pytest.mark.parametrize(
+    ("rows", "inner", "columns"), [(1, 7, 5), (3, 1, 5), (3, 7, 1), (3, 1025, 5)]
+)
+def test_singleton_tiles_have_valid_blas_leading_dimensions(
+    monkeypatch: pytest.MonkeyPatch, route: str, rows: int, inner: int, columns: int
+) -> None:
+    calls = 0
+
+    def blas(x: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
+        nonlocal calls
+        calls += 1
+        # Match the pinned oneDNN dispatcher: stride(1)==1 selects row-major 'N'.
+        # A size-1 axis may be contiguous with a smaller/zero leading stride; oneDNN
+        # rejects that descriptor and the upstream wrapper can leave output unwritten.
+        for operand in (x, right):
+            transposed = operand.stride(1) != 1
+            leading = operand.stride(1) if transposed else operand.stride(0)
+            required = operand.shape[0] if transposed else operand.shape[1]
+            assert leading >= required
+        return exact_kernel(x, right)
+
+    monkeypatch.setattr(torch, "_int_mm", blas)
+    left = torch.arange(rows * inner).reshape(rows, inner) % 256 - 128
+    if rows == 1:
+        left = left.as_strided(left.shape, (0, 1))
+    weights = (np.arange(columns * inner, dtype=np.int64) % 256 - 128).astype(np.int8)
+    weights = weights.reshape(columns, inner)
+    right = torch.tensor(weights, dtype=torch.int64).T
+    expected = left @ right
+    if route == "weights":
+        found = tiled.try_matmul(left, weights)
+    else:
+        found = tiled.try_bmm(left.unsqueeze(0), right.unsqueeze(0))
+        if found is not None:
+            found = found[0]
+    assert found is not None
+    assert calls > 0
+    assert torch.equal(found, expected)
 
 
 def exact_kernel(x: torch.Tensor, right: torch.Tensor) -> torch.Tensor:

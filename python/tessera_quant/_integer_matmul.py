@@ -43,6 +43,16 @@ def _batch_shape(left: torch.Size, right: torch.Size) -> tuple[int, ...] | None:
     return tuple(reversed(shape))
 
 
+def _blas_operand(matrix: torch.Tensor) -> torch.Tensor:
+    """Give contiguous singleton matrices canonical leading strides without copying (#621)."""
+    if 1 in matrix.shape and matrix.is_contiguous():
+        # contiguous() permits arbitrary singleton strides. Pinned oneDNN chooses 'N'
+        # when stride(1)==1 and silently leaves invalid leading dimensions unwritten.
+        # Only unused singleton strides change; this view visits the same elements.
+        return matrix.as_strided(matrix.shape, (matrix.shape[1], 1))
+    return matrix
+
+
 def _multiply(x: torch.Tensor, result: torch.Tensor, pack: _Pack, kernel: _Kernel) -> bool:
     """Fill one output matrix using bounded operand copies; discard it on unsupported kernels."""
     rows, columns = result.shape
@@ -53,12 +63,12 @@ def _multiply(x: torch.Tensor, result: torch.Tensor, pack: _Pack, kernel: _Kerne
             tile = torch.zeros((end_row - row, end_column - column), dtype=torch.int64)
             for start in range(0, inner, _INNER):
                 end = min(start + _INNER, inner)
-                activation = x[row:end_row, start:end].to(torch.int8).contiguous()
+                activation = _blas_operand(x[row:end_row, start:end].to(torch.int8).contiguous())
                 weight = pack(column, end_column, start, end)
                 high, low = weight >> 1, weight & 1
                 try:
-                    high_product = kernel(activation, high.T)
-                    low_product = kernel(activation, low.T)
+                    high_product = kernel(activation, _blas_operand(high.T))
+                    low_product = kernel(activation, _blas_operand(low.T))
                 except torch.OutOfMemoryError:
                     raise
                 except RuntimeError as error:
