@@ -65,6 +65,11 @@ separate embedding and final-head groups. It retains the INT8 output model and c
 statistics. This avoids a whole-model float64 copy; it does not bound the BF16 calibration
 model or the prover's commitments. See the [transform memory measurement](../docs/perf/v0.2/quant-transform-memory.md).
 
+On Metal-capable macOS hosts, the Python API accepts `device="mps"` for the BF16 reference
+and calibration. Statistics and reference logits copy to CPU in their source dtype before
+float64 conversion. The [device transfer checks](../docs/perf/v0.2/bf16-device-transfer.md)
+record the native regression and model probe; this does not add a Metal proof backend.
+
 The front-end and the Rust tools exchange TCE artifacts only ([RFC-0003](../docs/rfcs/RFC-0003-canonical-encoding.md)). `tessera_quant.tce` writes them as secret files, streamed and renamed into place, and reads them mapped, digest first:
 
 ```python

@@ -121,6 +121,15 @@ def statistics_digest(data: bytes) -> bytes:
     return blake3.blake3(data, derive_key_context=_STATISTICS_CONTEXT).digest()
 
 
+def _cpu_float64(values: torch.Tensor) -> torch.Tensor:
+    """Transfer in the source dtype, then widen on CPU (RFC-0005 'Calibration', #609).
+
+    MPS BF16's combined device/dtype copy can corrupt finite values. Keeping these as two
+    operations also makes the intended CPU conversion explicit for reference logits.
+    """
+    return values.to("cpu").to(torch.float64)
+
+
 class _Recorder:
     """Running per-channel absolute maxima, in float64."""
 
@@ -129,7 +138,7 @@ class _Recorder:
 
     def observe(self, name: str, values: torch.Tensor) -> None:
         channels = values.shape[-1]
-        found = values.detach().to("cpu", torch.float64).abs().reshape(-1, channels).amax(dim=0)
+        found = _cpu_float64(values.detach()).abs().reshape(-1, channels).amax(dim=0)
         held = self.maxima.get(name)
         self.maxima[name] = found if held is None else torch.maximum(held, found)
 
@@ -213,7 +222,7 @@ def logits_of(
         for sequence in sequences:
             tokens = torch.tensor([list(sequence)], dtype=torch.long, device=device)
             output: Any = llama(input_ids=tokens)
-            rows.append(cast(torch.Tensor, output.logits)[0].to("cpu", torch.float64))
+            rows.append(_cpu_float64(cast(torch.Tensor, output.logits)[0]))
     return rows
 
 
