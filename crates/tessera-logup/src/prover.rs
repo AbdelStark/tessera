@@ -74,7 +74,7 @@ impl<F> fmt::Debug for InstanceClaims<F> {
 /// The LogUp part of a proven leaf stage: its challenges, its messages and the claims it leaves.
 ///
 /// The messages, in transcript order: [`roots`](Self::roots) under `logup/roots`, each level's
-/// [`proof`](ProvenTreeLevel::proof) under `tree/{ℓ}`, and [`values`](Self::values) under
+/// [`proof`](tessera_sumcheck::ProvenTreeLevel::proof) under `tree/{ℓ}`, and [`values`](Self::values) under
 /// `logup/values`. A verifier checks the roots, the levels and the leaf checks; what they cannot
 /// check, the key, value and multiplicity claims of each instance and the forests' leaf claims,
 /// later stages and openings owe, and a caller that drops them accepts what nothing checked.

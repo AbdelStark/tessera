@@ -102,6 +102,9 @@ Passes are [RFC-0018](../rfcs/RFC-0018-gpu-prover-runtime.md#pass-structure)'s, 
 
 The registry is `tessera_codec::metrics`: fixed names, and labels that are enum variants, table identifiers or stage numbers, so no sample carries secret-class data (OBS-1). The CPU prover records phases, stages, passes, committed elements, lookups, table rows, product leaves and proof bytes; the CLI adds the host memory peak where `/proc` reports it. Device memory needs the GPU backend, and the weight budget and release overruns `tessera-protocol/2`, which spends the budget and releases on a schedule. `tessera_bytes_hashed_total` waits for a per-thread count: an atomic per hash would cost the Merkle and column-chain loops. Phase and stage times depend on secret data, so they and the unit costs derived from them stay on the prover's side of TB-1 ([06 §3](06-security.md#3-trust-boundaries)). A verifier sees only when messages are released, on the schedule of INV-ARCH-2 ([RFC-0018 'Release schedule'](../rfcs/RFC-0018-gpu-prover-runtime.md#release-schedule)).
 
+The CLI implements the endpoint with bounded HTTP requests and explicit listener
+ownership. See [optional telemetry](../telemetry.md) for its limits and errors.
+
 ## 5. Tracing
 
 - Spans: `compile`, `commit_weights`, `prove{batch}`, `witness_pass{layer_tile}`, `round1`, `stage{id}`, `opening{commitment}`, `round3`, `verify{proof_digest}`, `check{kind}`.
@@ -110,7 +113,7 @@ The registry is `tessera_codec::metrics`: fixed names, and labels that are enum 
   - **`check{kind}`** spans one check of RFC-0019 'Check order', inside `verify`, in the order the checks run. A check that does not run has no span. `kind` is the check's name in the verdict report (§7): `input`, `params`, `claims`, `statement`, `weight_reservation`, `transcript`, `leaf`, `stages`, `evaluations`, `queries`, `columns`, `exact_bound`, `complete`. In `live`, a check spans the work it does on each message, so steps 1–6 complete before `SeedReveal` (RFC-0019).
 - Span fields are PUBLIC class only.
 - The CPU prover computes its witness as one tile of every layer, so `witness_pass` has one span per proof until token groups regenerate it group by group (#134). The verifier's audit trail is still §7's report: its spans are diagnostics, and the report's per-check durations stay null.
-- Optional OTLP export sits behind the `otel` feature for operators who run collectors. The default build has no network telemetry.
+- Optional OTLP export sits behind the `otel` feature for operators who run collectors. The default build has no network telemetry. The CLI additionally requires `--otlp-endpoint URL`; environment settings alone never enable export. It exports OTLP/HTTP JSON with bounded queuing and best-effort delivery, as the [telemetry guide](../telemetry.md) describes.
 
 ## 6. Run manifest
 

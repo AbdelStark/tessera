@@ -62,11 +62,68 @@ impl From<LogLevel> for LevelFilter {
 }
 
 /// Installs the subscriber for the rest of the process. A second call keeps the first.
-pub(crate) fn install(format: LogFormat, level: LogLevel) {
+pub(crate) fn install(
+    format: LogFormat,
+    level: LogLevel,
+    endpoint: Option<&str>,
+) -> Result<Guard, tessera_codec::error::TesseraError> {
+    #[cfg(feature = "otel")]
+    let provider = endpoint.map(crate::otel::start).transpose()?;
+    #[cfg(not(feature = "otel"))]
+    let _ = endpoint;
     let subscriber = tracing_subscriber::registry()
         .with(LevelFilter::from(level))
-        .with(Lines { format });
-    let _ = tracing::subscriber::set_global_default(subscriber);
+        .with(
+            Lines { format }.with_filter(tracing_subscriber::filter::filter_fn(|metadata| {
+                metadata.target().starts_with("tessera_")
+            })),
+        );
+    #[cfg(feature = "otel")]
+    let subscriber = {
+        use opentelemetry::trace::TracerProvider as _;
+        let layer = provider.as_ref().map(|p| {
+            tracing_opentelemetry::layer()
+                .with_tracer(p.tracer("tessera"))
+                .with_location(false)
+                .with_threads(false)
+                .with_filter(tracing_subscriber::filter::filter_fn(|metadata| {
+                    metadata.target().starts_with("tessera_")
+                }))
+        });
+        subscriber.with(layer)
+    };
+    if tracing::subscriber::set_global_default(subscriber).is_err() {
+        #[cfg(feature = "otel")]
+        if let Some(provider) = provider {
+            let _ = provider.shutdown_with_timeout(std::time::Duration::from_secs(2));
+            return Err(tessera_codec::error::TesseraError::new(
+                tessera_codec::error::ErrorCode::Internal,
+            ));
+        }
+        return Ok(Guard {
+            #[cfg(feature = "otel")]
+            provider: None,
+        });
+    }
+    Ok(Guard {
+        #[cfg(feature = "otel")]
+        provider,
+    })
+}
+
+/// Flushes the explicitly enabled exporter before the command returns.
+pub(crate) struct Guard {
+    #[cfg(feature = "otel")]
+    provider: Option<opentelemetry_sdk::trace::SdkTracerProvider>,
+}
+
+impl Drop for Guard {
+    fn drop(&mut self) {
+        #[cfg(feature = "otel")]
+        if let Some(provider) = &self.provider {
+            let _ = provider.shutdown_with_timeout(std::time::Duration::from_secs(2));
+        }
+    }
 }
 
 /// The fields of an event or a span, by name, as JSON values: integers and booleans as such,

@@ -63,6 +63,12 @@ tessera recorder ref    --listen ADDR --upstream ADDR --log-dir DIR --key FILE -
 tessera inspect         FILE                                                # renders a TCE artifact as text (RFC-0003)
 ```
 
+Every prover command also accepts `--metrics-addr IP:PORT` for a private Prometheus
+endpoint. A build with `otel` accepts `--otlp-endpoint URL` for explicit OTLP/HTTP
+JSON trace export. Neither starts by default; environment variables alone do not
+enable export. See [optional telemetry](../telemetry.md) for transport, resource
+limits and failure behavior (05 §4–§5).
+
 Under draft [RFC-0073](../rfcs/RFC-0073-weight-mask-expansion.md#the-model-entry), in effect when it is accepted:
 - **The entry.** In `tessera-protocol/2`, the plan's claim list's protocol, `commit-weights`, `weights refresh` and `prove` take a model entry's directory with `--entry DIR` in place of a free path for a state or a link. The entry holds every epoch's state, `.twr` and link under fixed names, beside the epoch record, and is locked as a whole.
   - **In `tessera-protocol/1`,** `commit-weights --out` and `prove --weights` are unchanged, and `weights refresh` does not exist.
