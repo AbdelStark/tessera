@@ -6,6 +6,7 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- A recorder/serving-engine [integration guide](docs/integration.md) and executable loopback example ([#180](https://github.com/AbdelStark/tessera/issues/180), RFC-0015/0059/0061/0062/0063): TLS placement/trust duties, frame and nonce ownership, sampler pins, exact-engine conformance, private transcript handling, and CI checks against the reference recorder and independent sampler vectors.
 - Optional prover CLI telemetry ([#177](https://github.com/AbdelStark/tessera/issues/177), 05 §4–§5): an explicit `--metrics-addr` Prometheus endpoint over the existing registry, and `otel`-gated OTLP/HTTP JSON trace export with `--otlp-endpoint`. Default invocations open no telemetry socket; CI checks both builds in a network namespace. See the [telemetry guide](docs/telemetry.md).
 - A private mdBook documentation artifact with the specification, RFCs, guides and separate Rust API references, built and link-checked in CI with tier-B API doctests ([#176](https://github.com/AbdelStark/tessera/issues/176)).
 - Prover-side Live directory and optional mutually authenticated TLS 1.3 transport APIs, with bounded length-prefixed envelopes, absolute per-message deadlines and failure termination ([#179](https://github.com/AbdelStark/tessera/issues/179), RFC-0014).

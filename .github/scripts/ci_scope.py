@@ -7,7 +7,7 @@ import sys
 def needs_code_checks(paths: list[str]) -> bool:
     """Unknown paths and an unavailable diff require the complete bootstrap pipeline."""
     return not paths or any(
-        not (
+        path == "docs/integration.md" or not (
             ("/" not in path and path.endswith(".md"))
             or path.startswith(("docs/", "research/"))
         )

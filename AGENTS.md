@@ -30,6 +30,7 @@ Tessera proves that a committed integer language model `D` produced a recorded t
 
 ```sh
 cargo test -p <crate>                                    # narrowest first
+cargo run -p tessera-cli --example recorder_integration -- /absolute/path/to/tessera NEW_DIR  # serving integration guide
 cargo test -p tessera-cli --features otel --locked        # optional telemetry and CLI coverage
 cargo test -p tessera-protocol --features tls --lib transport --locked   # optional mTLS transport
 cargo test --workspace --locked                          # prover workspace
