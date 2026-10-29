@@ -85,6 +85,20 @@ def test_logits_only_releases_each_attention_matrix_before_the_next_layer(
     assert not any(ref() is not None for ref in matrices)
 
 
+def test_logits_only_does_not_generate_unrequested_silu_core_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        pytest.fail("the logits-only route generated a dense SiLU core")
+
+    monkeypatch.setattr(reference_module, "_silu_table", forbidden)
+    for entry in INDEX["models"]:
+        model = load(entry)
+        for sequence in entry["sequences"]:
+            expected = sequence["logits"]
+            assert run_reference(model, tokens(sequence["tokens"])).tolist() == expected
+
+
 NOT_COMPUTED = {"one-hot"}
 """The traced tensors the reference does not compute: the circuit's encoding of the prompt."""
 

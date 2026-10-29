@@ -397,6 +397,42 @@ def _class(kind: Requant, cls: int) -> tuple[int, int, int]:
     return kind.r_by_class[cls], kind.lo, kind.hi
 
 
+def _silu_parameters(kind: Silu) -> int:
+    """Validate RFC-0008's public parameters before generating any SiLU value."""
+    rows = _classes_rows("Silu", kind.b, kind.r_by_class)
+    if any(not 0 <= r < kind.b for r in kind.r_by_class):
+        raise _refuse("Silu", "0 ≤ r_c < b for every class")
+    if sum(1 << (kind.b - r) for r in kind.r_by_class) > MAX_CORE:
+        raise _refuse("Silu", "at most 2^24 values of h over the classes")
+    if not -64 <= kind.in_exp <= 0:
+        raise _refuse("Silu", "-64 ≤ in_exp ≤ 0")
+    if not 1 <= 63 - kind.in_exp + kind.out_exp <= 126:
+        raise _refuse("Silu", "1 ≤ 63 - in_exp + out_exp ≤ 126")
+    return rows
+
+
+def silu_lookup(kind: Silu, keys: Ints, cls: int = 0) -> Ints:
+    """Evaluate requested SiLU keys exactly, without generating the public table's whole core.
+
+    Validate the same public parameters and signed keys as the dense route. Evaluate the existing
+    fixed-point formula once per distinct `h = key >> r_class` in this call. Temporary arrays
+    contain secret-class keys/values; none is retained across calls (RFC-0008, SC-7).
+
+    Raises:
+        TableError: for invalid parameters, a key or a class outside the table.
+    """
+    _silu_parameters(kind)
+    _signed_keys(keys, kind.b, cls, kind.r_by_class)
+    shifted = keys >> np.int64(kind.r_by_class[cls])
+    distinct, inverse = np.unique(shifted.reshape(-1), return_inverse=True)  # pyright: ignore[reportUnknownMemberType]
+    values = np.fromiter(
+        (silu_value(int(h), kind.in_exp, kind.out_exp) for h in distinct),
+        dtype=np.int64,
+        count=distinct.size,
+    )
+    return values[inverse].reshape(keys.shape)
+
+
 def lookup_table(table_id: int, kind: Requant | Silu | Exp) -> LookupTable:
     """The table of `kind` with index `table_id`, as RFC-0008 'Table specifications' defines it.
 
@@ -413,15 +449,7 @@ def lookup_table(table_id: int, kind: Requant | Silu | Exp) -> LookupTable:
             raise _refuse("Requant", "lo ≤ hi")
         return _finish(table_id, kind, rows, [], np.zeros(0, dtype=np.int64))
     if isinstance(kind, Silu):
-        rows = _classes_rows("Silu", kind.b, kind.r_by_class)
-        if any(r >= kind.b for r in kind.r_by_class):
-            raise _refuse("Silu", "r_c < b for every class")
-        if sum(1 << (kind.b - r) for r in kind.r_by_class) > MAX_CORE:
-            raise _refuse("Silu", "at most 2^24 values of h over the classes")
-        if not -64 <= kind.in_exp <= 0:
-            raise _refuse("Silu", "-64 ≤ in_exp ≤ 0")
-        if not 1 <= 63 - kind.in_exp + kind.out_exp <= 126:
-            raise _refuse("Silu", "1 ≤ 63 - in_exp + out_exp ≤ 126")
+        rows = _silu_parameters(kind)
         values = [
             silu_value(h, kind.in_exp, kind.out_exp)
             for r in kind.r_by_class

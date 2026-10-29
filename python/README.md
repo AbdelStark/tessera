@@ -69,6 +69,9 @@ Held-out scoring runs one window at a time and retains only one KL scalar per po
 the final mean. The integer logits-only reference releases intermediate layer traces; `trace`
 still returns them for conformance consumers. The BF16 reference runs again for each alpha.
 See the [held-out memory measurement](../docs/perf/v0.2/heldout-memory.md) for costs and limits.
+The logits-only route also evaluates SiLU at distinct requested shifted keys instead of building
+its entire public core. [SiLU measurements](../docs/perf/v0.2/requested-silu.md) record exactness,
+work bounds, synthetic timings and the provisional 1B forward; this does not shrink proof tables.
 
 On Metal-capable macOS hosts, the Python API accepts `device="mps"` for the BF16 reference
 and calibration. Statistics and reference logits copy to CPU in their source dtype before
