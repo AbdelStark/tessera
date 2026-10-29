@@ -319,6 +319,9 @@ pub(crate) fn render(
     if cfg!(feature = "test-rng") {
         features.push("test-rng");
     }
+    if cfg!(feature = "otel") {
+        features.push("otel");
+    }
     let commit = option_env!("TESSERA_GIT_COMMIT").filter(|c| !c.is_empty());
     let rustc = option_env!("TESSERA_RUSTC_VERSION").filter(|c| !c.is_empty());
     with(|run| {

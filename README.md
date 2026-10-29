@@ -11,6 +11,7 @@ provides no zero knowledge. The [independent verifier CLI](docs/verifier/referen
 checks NI proofs against caller-owned statement and weight pins. Prover CLI
 orchestration and the pass planner remain separate milestones.
 
+Optional metrics and collector export are described in the [telemetry guide](docs/telemetry.md).
 The prover protocol library exposes [Live directory and optional mTLS transports](docs/live-transports.md),
 with host-owned sockets and identity configuration. The CLI's Live interface remains directory-based.
 

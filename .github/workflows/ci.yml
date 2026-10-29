@@ -107,6 +107,53 @@ jobs:
         if: needs.scope.outputs.code == 'true'
         run: cargo run --locked --quiet -p xtask -- check-branchless
 
+  telemetry:
+    name: telemetry (${{ matrix.feature }})
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        feature: [default, otel]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain and syscall tracer
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --component clippy --no-self-update
+          echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
+          sudo apt-get update -qq
+          sudo apt-get install --no-install-recommends -y strace libssl-dev pkg-config
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: telemetry-${{ matrix.feature }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Test optional export, exposition and unchanged logging
+        env:
+          TELEMETRY_FEATURE: ${{ matrix.feature }}
+        run: |
+          features=()
+          if [ "$TELEMETRY_FEATURE" = otel ]; then features=(--features otel); fi
+          cargo test -p tessera-cli --lib --test telemetry_export --test logging "${features[@]}" --locked
+          cargo clippy -p tessera-cli --all-targets "${features[@]}" --locked -- -D warnings
+      - name: Compile inside an isolated network namespace without a network syscall
+        run: |
+          # A refused connection must trip the check too. This negative control
+          # proves that isolation alone cannot hide attempted telemetry (#177).
+          sudo unshare --net -- strace -f -qq -e trace=network -o "$RUNNER_TEMP/network-control" python3 -c 'import socket; s=socket.socket(); s.connect_ex(("127.0.0.1", 4318))'
+          test -s "$RUNNER_TEMP/network-control"
+          sudo unshare --net -- strace -f -qq -e trace=network -o "$RUNNER_TEMP/network-default" env \
+            OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
+            OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces \
+            "$PWD/target/debug/tessera" compile \
+            --model spec/vectors/exact-cli/tiny-3-reference.d --params test-small \
+            --max-log2-rows 18 --query-block 2 --out-dir "$RUNNER_TEMP/network-sandbox-output"
+          if [ -s "$RUNNER_TEMP/network-default" ]; then
+            cat "$RUNNER_TEMP/network-default"
+            exit 1
+          fi
+
   rust:
     name: rust (${{ matrix.workspace }})
     needs: scope
