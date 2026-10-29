@@ -96,7 +96,7 @@ def run_reference(model: IntegerModel, tokens: npt.NDArray[np.uint32]) -> npt.ND
     Raises:
         TesseraQuantError: as `trace`.
     """
-    return trace(model, tokens).logits.numpy()
+    return _Forward(model, tokens, record=False).run().logits.numpy()
 
 
 def trace(model: IntegerModel, tokens: npt.NDArray[np.uint32]) -> Trace:
@@ -115,7 +115,9 @@ def trace(model: IntegerModel, tokens: npt.NDArray[np.uint32]) -> Trace:
 class _Forward:
     """One forward pass of `D` over one sequence."""
 
-    def __init__(self, model: IntegerModel, tokens: npt.NDArray[np.uint32]) -> None:
+    def __init__(
+        self, model: IntegerModel, tokens: npt.NDArray[np.uint32], *, record: bool = True
+    ) -> None:
         arch = model.arch
         public = model.quant.public
         n = len(tokens)
@@ -124,6 +126,7 @@ class _Forward:
         if int(tokens.max()) >= arch.vocab:
             raise UsageError("every token lies in [0, vocab)")
         self.model = model
+        self.record = record
         self.tokens = torch.as_tensor(tokens.astype(np.int64))
         self.n = n
         self.shifts = dict(public.shift_class_sets)
@@ -217,7 +220,8 @@ class _Forward:
     ) -> torch.Tensor:
         """The site at `point`: `rq` of its key with each channel's shift, into `bounds`."""
         y = rq(*self.key(x, point, ty, layer), *bounds)
-        self.sites[point] = y
+        if self.record:
+            self.sites[point] = y
         return y
 
     def norm(self, res: torch.Tensor, point: QuantPoint) -> torch.Tensor:
@@ -232,7 +236,8 @@ class _Forward:
         roots = [math.isqrt(top // (s + eps)) for s in squares]
         rho = torch.tensor(roots, dtype=torch.int64)
         _bounded(_largest(res) * max(roots, default=0), f"{point}'s norm product")
-        self.roots[point] = rho
+        if self.record:
+            self.roots[point] = rho
         return self.requant(res * rho[:, None], point, None, 0)
 
     def rope(self, x: torch.Tensor, heads: int) -> torch.Tensor:
@@ -278,9 +283,10 @@ class _Forward:
         _bounded(_largest(e) * _largest(vh) * n, "an attention sum")
         weighted = e @ vh
         _bounded(_largest(weighted) * _largest(r), "the attention output")
-        self.maxima[layer] = top.squeeze(2)
-        self.exponentials[layer] = e
-        self.reciprocals[layer] = r
+        if self.record:
+            self.maxima[layer] = top.squeeze(2)
+            self.exponentials[layer] = e
+            self.reciprocals[layer] = r
         o = weighted * r[:, :, None]
         return o.transpose(0, 1).reshape(n, heads * dh)
 
@@ -302,7 +308,8 @@ class _Forward:
             channels = per_channel == c
             a[:, channels] = table.lookup(keys[:, channels], c)
         y = torch.as_tensor(a)
-        self.sites[point] = y
+        if self.record:
+            self.sites[point] = y
         return y
 
     def residual(
@@ -317,11 +324,12 @@ class _Forward:
         key, shift = self.key(acc, point, ty, point.layer)
         half = torch.bitwise_left_shift(torch.ones_like(shift), shift - 1)
         update = torch.bitwise_right_shift(key + half, shift)
-        if point.site in self.two_steps:
+        if self.record and point.site in self.two_steps:
             wide = 2 * self.half - 1
             self.updates[point] = torch.clamp(update, -wide, wide)
         out = torch.clamp(res + update, -self.half, self.half - 1)
-        self.sites[point] = out
+        if self.record:
+            self.sites[point] = out
         return out
 
     # -- the model ----------------------------------------------------------------------------
@@ -335,7 +343,8 @@ class _Forward:
         # x0 is column `token` of the transposed embedding: res = x0 * 2^s_e.
         embed = self.weight(WeightType.Embed, 0)
         res = embed[:, self.tokens].T << shift
-        residuals = [res]
+        del embed
+        residuals = [res] if self.record else []
         for layer in range(arch.n_layers):
             y = self.norm(res, LayerPoint(layer, Site.AttnNorm))
             q = self.rope(self.matmul(y, WeightType.Q, layer), arch.n_heads)
@@ -360,7 +369,8 @@ class _Forward:
                 h = self.requant(h, LayerPoint(layer, Site.Product), None, layer)
             acc = self.matmul(h, WeightType.Down, layer)
             res = self.residual(res, acc, LayerPoint(layer, Site.MlpResidual), WeightType.Down)
-            residuals.append(res)
+            if self.record:
+                residuals.append(res)
         y = self.norm(res, FinalNormPoint())
         logits = self.matmul(y, WeightType.LmHead, 0)
         return Trace(

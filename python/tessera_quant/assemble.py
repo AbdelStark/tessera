@@ -14,6 +14,7 @@ deterministic algorithms.
 """
 
 import platform
+from contextlib import closing
 from fractions import Fraction
 from importlib.metadata import version
 from pathlib import Path
@@ -25,9 +26,9 @@ import torch
 
 from tessera_quant._streaming import transformed_checkpoint
 from tessera_quant.arch import ArchSpec
-from tessera_quant.capture import CalibrationResult, reference_logits
+from tessera_quant.capture import CalibrationResult, iter_reference_logits
 from tessera_quant.checkpoint import FloatModel
-from tessera_quant.errors import CalibrationError, UsageError
+from tessera_quant.errors import CalibrationError, TesseraQuantError, UsageError
 from tessera_quant.integer_model import (
     INTEGER_MODEL,
     CalibrationIdentity,
@@ -35,8 +36,8 @@ from tessera_quant.integer_model import (
     Profile,
     Provenance,
 )
-from tessera_quant.migration import ALPHAS, mean_kl, select_alpha
-from tessera_quant.reference import trace
+from tessera_quant.migration import ALPHAS, kl_rows, select_alpha
+from tessera_quant.reference import run_reference
 from tessera_quant.scales import Quantized, choose
 from tessera_quant.tce import INTEGER_MODEL_LIMITS, write_artifact
 
@@ -86,7 +87,6 @@ def quantize(
     # The files are hashed once, before their tensors are read.
     checkpoint = checkpoint_digests(model)
     maxima = calib.statistics.maxima
-    reference = reference_logits(model, held_out, calib.calibration.seed, device)
 
     def assembled(q: Quantized, alpha: Fraction) -> IntegerModel:
         provenance = _provenance(checkpoint, calib, alpha)
@@ -99,12 +99,36 @@ def quantize(
         return choose(arch, the_profile, migrated, migrated_maxima, affine=affine)
 
     def divergence(alpha: Fraction) -> float:
-        q = quantized(alpha)
-        d = assembled(q, alpha)
-        found = torch.cat(
-            [trace(d, np.array(w.tokens, dtype=np.uint32)).logits for w in held_out]
-        ).to(torch.float64)
-        return mean_kl(reference, found * 2.0**d.quant.public.logits_exponent)
+        rows: list[torch.Tensor] = []
+        with closing(
+            iter_reference_logits(model, held_out, calib.calibration.seed, device)
+        ) as refs:
+
+            def next_reference() -> torch.Tensor:
+                try:
+                    return next(refs)
+                except StopIteration:
+                    raise TesseraQuantError(
+                        "the reference yields one row block per window"
+                    ) from None
+
+            # Start the BF16 model before reading transformed checkpoint groups, as before.
+            reference: torch.Tensor | None = next_reference()
+            d = assembled(quantized(alpha), alpha)
+            # Avoid chain/zip retaining the first window or a previously yielded pair.
+            for window in held_out:
+                if reference is None:
+                    reference = next_reference()
+                found = torch.as_tensor(
+                    run_reference(d, np.array(window.tokens, dtype=np.uint32))
+                ).to(torch.float64)
+                rows.append(kl_rows(reference, found * 2.0**d.quant.public.logits_exponent))
+                reference = None
+                del found
+            if next(refs, None) is not None:
+                raise TesseraQuantError("the reference yields one row block per window")
+        # Retain only one scalar per position, preserving the original final mean's order.
+        return float(torch.cat(rows).mean())
 
     alpha = select_alpha(divergence, alphas)
     return assembled(quantized(alpha), alpha)

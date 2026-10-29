@@ -21,7 +21,8 @@ import gc
 import math
 import stat
 import weakref
-from collections.abc import Mapping
+from collections.abc import Generator, Mapping
+from contextlib import closing
 from dataclasses import fields, is_dataclass, replace
 from enum import Enum
 from fractions import Fraction
@@ -56,7 +57,7 @@ from tessera_quant.integer_model import (
     Profile,
     Site,
 )
-from tessera_quant.migration import ALPHAS, fold, mean_kl, transform
+from tessera_quant.migration import ALPHAS, fold, kl_rows, mean_kl, transform
 from tessera_quant.reference import run_reference, trace
 from tessera_quant.scales import exponent
 from tessera_quant.tce import INTEGER_MODEL_LIMITS, encode, read_artifact
@@ -111,19 +112,146 @@ def divergence(model: FloatModel, calib: CalibrationResult, d: IntegerModel) -> 
     return mean_kl(reference, found.to(torch.float64) * 2.0 ** (e_y + e_lm))
 
 
+@pytest.mark.parametrize(
+    ("profile", "scales"),
+    [("servable", "pot"), ("servable", "affine"), ("minimal", "pot"), ("minimal", "affine")],
+)
 def test_quantize_keeps_the_least_divergent_strength(
     calibrated: tuple[FloatModel, CalibrationResult],
+    profile: Literal["servable", "minimal"],
+    scales: Literal["pot", "affine"],
 ) -> None:
     model, calib = calibrated
-    alone = {alpha: quantize(model, calib, alphas=(alpha,)) for alpha in ALPHAS}
+    alone = {
+        alpha: quantize(model, calib, profile=profile, scales=scales, alphas=(alpha,))
+        for alpha in ALPHAS
+    }
     scores = {alpha: divergence(model, calib, d) for alpha, d in alone.items()}
     assert all(math.isfinite(s) for s in scores.values())
     best = min(sorted(scores), key=lambda alpha: scores[alpha])
-    chosen = quantize(model, calib)
+    chosen = quantize(model, calib, profile=profile, scales=scales)
     assert chosen.provenance.alpha == best
     assert encode(INTEGER_MODEL.codec, chosen) == encode(INTEGER_MODEL.codec, alone[best])
     # The strengths give different models, so the choice is not vacuous.
     assert len({encode(INTEGER_MODEL.codec, d) for d in alone.values()}) > 1
+
+
+def test_streamed_kl_preserves_ragged_position_weighting_and_final_reduction() -> None:
+    generator = torch.Generator().manual_seed(611)
+    references = [torch.randn(n, 65, generator=generator, dtype=torch.float64) for n in [1, 17, 33]]
+    logits = [torch.randn(n, 65, generator=generator, dtype=torch.float64) for n in [1, 17, 33]]
+    expected = mean_kl(torch.cat(references), torch.cat(logits))
+    rows = [kl_rows(r, q) for r, q in zip(references, logits, strict=True)]
+    assert float(torch.cat(rows).mean()) == expected
+    assert float(torch.tensor([float(row.mean()) for row in rows]).mean()) != expected
+
+
+def test_quantization_does_not_accumulate_reference_windows(
+    calibrated: tuple[FloatModel, CalibrationResult], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model, calib = calibrated
+    original = assemble.iter_reference_logits
+    live: list[weakref.ReferenceType[torch.Tensor]] = []
+
+    def references(*args: Any, **kwargs: Any) -> Generator[torch.Tensor, None, None]:
+        with closing(original(*args, **kwargs)) as source:
+            for row in source:
+                live.append(weakref.ref(row))
+                assert sum(ref() is not None for ref in live) <= 2, "held-out windows stayed live"
+                yield row
+
+    monkeypatch.setattr(assemble, "iter_reference_logits", references)
+    quantize(model, calib, alphas=(ALPHAS[0],))
+    assert len(live) == len(calib.calibration.held_out)
+    assert not any(ref() is not None for ref in live)
+
+
+@pytest.mark.parametrize("difference", [-1, 1])
+def test_a_reference_with_missing_or_extra_windows_is_refused(
+    calibrated: tuple[FloatModel, CalibrationResult],
+    monkeypatch: pytest.MonkeyPatch,
+    difference: int,
+) -> None:
+    model, calib = calibrated
+    original = assemble.iter_reference_logits
+    closed: list[bool] = []
+
+    def references(*args: Any, **kwargs: Any) -> Generator[torch.Tensor, None, None]:
+        with closing(original(*args, **kwargs)) as source:
+            try:
+                if difference < 0:
+                    for _ in range(len(calib.calibration.held_out) - 1):
+                        yield next(source)
+                else:
+                    yield from source
+                    yield torch.zeros(1, model.arch.vocab, dtype=torch.float64)
+            finally:
+                closed.append(True)
+
+    monkeypatch.setattr(assemble, "iter_reference_logits", references)
+    with pytest.raises(TesseraQuantError, match="one row block per window") as refused:
+        quantize(model, calib, alphas=(ALPHAS[0],))
+    assert refused.value.code == "ERR-INTERNAL"
+    assert closed == [True]
+
+
+def test_ragged_windows_choose_alpha_by_positions_instead_of_window_means(
+    calibrated: tuple[FloatModel, CalibrationResult], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model, calib = calibrated
+    windows = tuple(
+        replace(window, tokens=(window.tokens[0],) * n)
+        for window, n in zip(calib.calibration.held_out, [1, 17, 33], strict=True)
+    )
+    calib = replace(calib, calibration=replace(calib.calibration, held_out=windows))
+    candidate = -1
+    position = 0
+
+    def references(*args: Any, **kwargs: Any) -> Generator[torch.Tensor, None, None]:
+        nonlocal candidate, position
+        candidate += 1
+        position = 0
+        for window in windows:
+            yield torch.zeros(len(window.tokens), model.arch.vocab, dtype=torch.float64)
+
+    def found(d: IntegerModel, tokens: Any) -> Any:
+        return np.zeros((len(tokens), d.arch.vocab), dtype=np.int64)
+
+    def divergence(reference: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
+        nonlocal position
+        value = ([10.0, 0.0, 0.0], [0.0, 1.0, 1.0])[candidate][position]
+        position += 1
+        return torch.full((reference.shape[0],), value, dtype=torch.float64)
+
+    monkeypatch.setattr(assemble, "iter_reference_logits", references)
+    monkeypatch.setattr(assemble, "run_reference", found)
+    monkeypatch.setattr(assemble, "kl_rows", divergence)
+    chosen = quantize(model, calib, alphas=ALPHAS[:2])
+    assert chosen.provenance.alpha == ALPHAS[0]
+
+
+def test_integer_logits_are_widened_before_real_scale_multiplication(
+    calibrated: tuple[FloatModel, CalibrationResult], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model, calib = calibrated
+    d = quantize(model, calib, alphas=(ALPHAS[0],))
+    expected = ((1 << 25) + 1) * 2.0**d.quant.public.logits_exponent
+    original_reference = assemble.run_reference
+    original_kl = assemble.kl_rows
+
+    def found(*args: Any, **kwargs: Any) -> Any:
+        values = original_reference(*args, **kwargs)
+        # Odd integers above float32's exact range must survive the real-scale operation.
+        return values * 0 + (1 << 25) + 1
+
+    def checked(reference: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
+        assert logits.dtype == torch.float64
+        assert bool((logits == expected).all()), "integer logit bits were lost before scaling"
+        return original_kl(reference, logits)
+
+    monkeypatch.setattr(assemble, "run_reference", found)
+    monkeypatch.setattr(assemble, "kl_rows", checked)
+    quantize(model, calib, alphas=(ALPHAS[0],))
 
 
 def test_the_provenance_names_what_d_comes_from(
@@ -306,22 +434,27 @@ def test_bf16_reference_runs_before_any_float64_checkpoint_read(
 ) -> None:
     model, calib = calibrated
     original_read = FloatModel.tensor
-    original_reference = assemble.reference_logits
+    original_reference = assemble.iter_reference_logits
     reference_ran = False
     in_reference = False
 
-    def reference(*args: object, **kwargs: object) -> torch.Tensor:
+    def reference(*args: object, **kwargs: object) -> Generator[torch.Tensor, None, None]:
         nonlocal reference_ran, in_reference
         in_reference = True
-        result = original_reference(model, calib.calibration.held_out, calib.calibration.seed)
+        with closing(
+            original_reference(model, calib.calibration.held_out, calib.calibration.seed)
+        ) as refs:
+            for result in refs:
+                in_reference = False
+                reference_ran = True
+                yield result
+                in_reference = True
         in_reference = False
-        reference_ran = True
-        return result
 
     def read(self: FloatModel, name: str) -> torch.Tensor:
         assert in_reference or reference_ran, "the full checkpoint was read before the reference"
         return original_read(self, name)
 
     monkeypatch.setattr(FloatModel, "tensor", read)
-    monkeypatch.setattr(assemble, "reference_logits", reference)
+    monkeypatch.setattr(assemble, "iter_reference_logits", reference)
     quantize(model, calib, alphas=(Fraction(3, 5),))
