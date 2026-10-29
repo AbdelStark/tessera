@@ -47,9 +47,11 @@ impl Plan<'_> {
         let first = sites.first().ok_or(GadgetError::Internal)?;
         if sites.iter().any(|s| {
             s.variables() != first.variables()
+                || s.key_variables() != first.key_variables()
                 || s.row_variables() != first.row_variables()
                 || s.range_tables().len() != first.range_tables().len()
                 || s.n != first.n
+                || s.slots != first.slots
                 || s.heads != first.heads
         }) {
             return Err(GadgetError::Internal);

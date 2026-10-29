@@ -73,7 +73,7 @@ pub use degree::{
     StageDegree, degree_row, protocol2_degree, protocol2_stages, stage_degree,
 };
 pub use layers::LayerMap;
-pub use natives::{ModelNatives, NativeKind, Request, model_natives};
+pub use natives::{ModelNatives, NativeKind, Request, model_natives, model_natives_batch};
 pub use padding::{nonzero_at_padding, reads_padding, tensors_nonzero_at_padding};
 pub use public::{producers, public_tensors};
 pub use tokens::token_axes;
@@ -724,10 +724,8 @@ fn derive(
         })?;
         for out in &n.outputs {
             if out.from.checked_add(out.vars).is_none_or(|end| end > own)
-                || graph
-                    .tensors
-                    .get(out.tensor.0 as usize)
-                    .is_none_or(|t| blocks(&t.shape).iter().sum::<u32>() != out.vars)
+                || graph.tensors.get(out.tensor.0 as usize).is_none()
+                || tensor_vars(graph, out.tensor) != out.vars
             {
                 return refuse(
                     Some(n.node),
@@ -978,6 +976,22 @@ fn check_graph(
             );
         }
     }
+    if graph.slots.is_some() {
+        let slotted = padding::slotted_tensors(graph, producers);
+        for node in &graph.nodes {
+            if matches!(node.op, Op::ConstAdd { .. } | Op::AssertEqual)
+                && node
+                    .inputs
+                    .iter()
+                    .any(|t| slotted.get(t.0 as usize).copied().unwrap_or(false))
+            {
+                return refuse(
+                    Some(node.id),
+                    "no ConstAdd or AssertEqual lies downstream of a slotted batch's token axis",
+                );
+            }
+        }
+    }
     padding::check_sums(graph, tables, producers)?;
     padding::check_gadgets(graph, tables, producers)
 }
@@ -998,13 +1012,68 @@ fn committed(kind: NodeKind) -> Option<CommitmentClass> {
 
 /// `⌈log2 len⌉`: the variables of an axis of `len` positions, padded to a power of two.
 fn axis_vars(len: u32) -> u32 {
-    len.next_power_of_two().trailing_zeros()
+    u32::BITS - len.saturating_sub(1).leading_zeros()
 }
 
 /// The variables of each axis of `shape`, the last axis first: the blocks of a point, lowest
 /// first (RFC-0011 rule 1).
 fn blocks(shape: &[u32]) -> Vec<u32> {
     shape.iter().rev().map(|&len| axis_vars(len)).collect()
+}
+
+/// Whether `tensor` is an attention score or exponential tensor whose last axis is a slotted
+/// batch's key axis of `S = 2^b` padded columns (RFC-0071 'The slots', 'Lowering').
+pub(super) fn is_slot_key_tensor(
+    graph: &Graph,
+    slots: &tessera_ir::BatchSlots,
+    tensor: TensorId,
+) -> bool {
+    let n = slots.token_len();
+    let has_token_rows = |t: TensorId| {
+        graph
+            .tensors
+            .get(t.0 as usize)
+            .is_some_and(|spec| spec.shape.len() == 3 && spec.shape[1] == n)
+    };
+    if !has_token_rows(tensor) {
+        return false;
+    }
+    graph.nodes.iter().any(|node| match node.op {
+        Op::MatMulAct {
+            transpose_rhs: true,
+        } => {
+            node.outputs.first() == Some(&tensor)
+                && node.inputs.get(1).copied().is_some_and(has_token_rows)
+        }
+        Op::MatMulAct {
+            transpose_rhs: false,
+        } => {
+            node.inputs.first() == Some(&tensor)
+                && node.inputs.get(1).copied().is_some_and(has_token_rows)
+        }
+        Op::SoftmaxRow { .. } => {
+            node.inputs.first() == Some(&tensor) || node.outputs.first() == Some(&tensor)
+        }
+        _ => false,
+    })
+}
+
+/// The coordinate blocks of `tensor` in `graph`, lowest axis first, accounting for `S = 2^b` on a
+/// slotted batch's key axis when `b > ⌈log2 n_max⌉` in `tessera-protocol/2`.
+pub(super) fn tensor_blocks(graph: &Graph, tensor: TensorId) -> Vec<u32> {
+    let mut b = blocks(&graph.tensors[tensor.0 as usize].shape);
+    if let Some(slots) = &graph.slots
+        && is_slot_key_tensor(graph, slots, tensor)
+        && let Some(key) = b.first_mut()
+    {
+        *key = (*key).max(slots.slot_bits());
+    }
+    b
+}
+
+/// The variable count of `tensor` in `graph`, its layer variables aside.
+pub(super) fn tensor_vars(graph: &Graph, tensor: TensorId) -> u32 {
+    tensor_blocks(graph, tensor).iter().sum()
 }
 
 /// A refusal.

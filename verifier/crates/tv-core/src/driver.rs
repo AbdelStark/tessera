@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Protocol/1 verification over trusted application inputs (RFC-0019).
-//! The current runtime composes one exact-greedy request; unsupported predictors/batches
-//! fail explicitly. Anchor signatures, scoring circuits and persistent ledgers are v0.4.
+//! The current runtime composes exact-greedy requests in public slots (RFC-0071);
+//! unsupported predictors fail explicitly. Anchor signatures, scoring circuits and persistent ledgers are v0.4.
 //!
 //! A leaf stage in token groups (RFC-0054) runs in this order: `Round1.leaf_groups` within
 //! `t = ⌈log2 n⌉` token bits and `n_ℓ = ⌈log2 L⌉` layer bits of the trusted statement and claim
@@ -297,10 +297,11 @@ fn leaf_error(
             if e.is_rejection() {
                 return malformed(artifact);
             }
-            if let crate::logup::LookupError::Transcript(e) = e {
-                return transcript(e);
+            match e {
+                crate::logup::LookupError::Memory => memory(),
+                crate::logup::LookupError::Transcript(e) => transcript(e),
+                _ => internal(),
             }
-            internal()
         }
         leaf::Error::Level { level, error } => match error.rejected_round() {
             Some(round) => reject(RejectReason::TreeLevel {
@@ -358,12 +359,16 @@ fn layout_error(e: &leaf::groups::Error, artifact: ArtifactKind) -> Failure {
 /// tokens (0 for none), and the claim list's layers (one at least: a claim list of none fails
 /// its own validation, RFC-0007).
 fn grouping_extent(claims: &ClaimList, statement: &PublicStatement) -> leaf::groups::Extent {
-    let tokens = statement.batch.requests.iter().fold(0u64, |n, r| {
-        n.saturating_add(u64::from(r.prompt_len))
-            .saturating_add(u64::from(r.output_len))
-    });
+    let requests = &statement.batch.requests;
+    let maximum = requests
+        .iter()
+        .map(|r| u64::from(r.prompt_len).saturating_add(u64::from(r.output_len)))
+        .max()
+        .unwrap_or(0);
+    let position_bits = u64::BITS.saturating_sub(maximum.saturating_sub(1).leading_zeros());
+    let request_bits = usize::BITS.saturating_sub(requests.len().saturating_sub(1).leading_zeros());
     leaf::groups::Extent {
-        token_bits: u64::BITS.saturating_sub(tokens.saturating_sub(1).leading_zeros()),
+        token_bits: position_bits.saturating_add(request_bits),
         layers: claims.arch.n_layers.max(1),
     }
 }
@@ -408,6 +413,9 @@ fn flat_rows(packet: &protocol::WeightCombinedRows) -> Check<Vec<opening::Combin
 /// input's fault is `Reject(Malformed)` under the message's own schema, any other the
 /// verifier's `Inconclusive`, as [`verify_non_interactive_bytes`] judges an `NiProof`.
 ///
+/// This stateless opener has no session work clock. Use
+/// [`LiveVerifier::open_message_observed`] to retain a Live session's deadline.
+///
 /// # Errors
 /// The verdict that ends the session.
 #[allow(
@@ -436,17 +444,29 @@ pub fn open_live_observed<T: protocol::ProverMessage>(
 ) -> Result<T, Verdict> {
     let mut tracker = Tracker::new(observer);
     tracker.enter(CheckKind::Input);
-    let opened = T::open_sealed(bytes, limits).map_err(|e| {
-        if e.code().is_input_fault() {
-            reject(RejectReason::Malformed {
-                artifact: ArtifactKind(T::SCHEMA.schema_id),
-                code: e.code().into(),
-            })
-        } else {
-            codec(e.code())
-        }
-    });
+    let opened = open_message::<T>(bytes, limits, None);
     conclude(&mut tracker, opened).map_err(Into::into)
+}
+fn open_message<T: protocol::ProverMessage>(
+    bytes: &[u8],
+    limits: &DecodeLimits,
+    deadline: Option<Instant>,
+) -> Check<T> {
+    let decoded = match deadline {
+        Some(_) => T::open_sealed_with_deadline(bytes, limits, deadline),
+        None => T::open_sealed(bytes, limits),
+    };
+    decoded.map_err(|e| decode_error(e, ArtifactKind(T::SCHEMA.schema_id)))
+}
+fn decode_error(error: tv_codec::DecodeError, artifact: ArtifactKind) -> Failure {
+    if error.code().is_input_fault() {
+        reject(RejectReason::Malformed {
+            artifact,
+            code: error.code().into(),
+        })
+    } else {
+        codec(error.code())
+    }
 }
 /// Verify a canonical NI envelope under the caller's limits, then every semantic predicate.
 /// Decoding a prover artifact fails as Malformed; reader failures remain Inconclusive.
@@ -511,16 +531,12 @@ fn verify_ni_bytes(
         return Err(memory());
     }
     deadline(started, cfg.limits)?;
-    let proof = match NiProof::open(bytes, &limits) {
-        Ok(proof) => proof,
-        Err(e) if e.code().is_input_fault() => {
-            return Err(reject(RejectReason::Malformed {
-                artifact: ArtifactKind(0x0520),
-                code: e.code().into(),
-            }));
-        }
-        Err(e) => return Err(codec(e.code())),
-    };
+    let proof = NiProof::open_with_deadline(
+        bytes,
+        &limits,
+        started.checked_add(cfg.limits.max_wall_time),
+    )
+    .map_err(|e| decode_error(e, ArtifactKind(0x0520)))?;
     deadline(started, cfg.limits)?;
     verify_ni(claims, statement, &proof, cfg, tracker, started)
 }
@@ -710,9 +726,13 @@ fn verify_unit_tracked(
     tracker.enter(CheckKind::Input);
     let artifact = session.artifact();
     let mode = session.mode();
-    let first_bytes = protocol::encoded_len(proof.round1).map_err(codec)?;
-    let second_bytes = protocol::encoded_len(proof.round2).map_err(codec)?;
-    let third_bytes = protocol::encoded_len(proof.round3).map_err(codec)?;
+    let mut cancel = || started.elapsed() >= cfg.limits.max_wall_time;
+    let first_bytes =
+        protocol::encoded_len_with_cancel(proof.round1, &mut cancel).map_err(codec)?;
+    let second_bytes =
+        protocol::encoded_len_with_cancel(proof.round2, &mut cancel).map_err(codec)?;
+    let third_bytes =
+        protocol::encoded_len_with_cancel(proof.round3, &mut cancel).map_err(codec)?;
     let total = first_bytes
         .checked_add(second_bytes)
         .and_then(|n| n.checked_add(third_bytes))
@@ -818,22 +838,81 @@ fn verify_unit_tracked(
         }
     }
     public.map_err(weight_error)?;
-    let [request] = expected.batch.requests.as_slice() else {
-        return Err(fail(ErrorCode::Usage));
-    };
-    let n = request
-        .prompt_len
-        .checked_add(request.output_len)
-        .ok_or_else(|| mismatch(F::Batch))?;
-    if request.prompt_len == 0 || n > claims.arch.max_context {
+    let exact_greedy = expected.predictor
+        == (PredictorSpec::Exact {
+            decoding: Decoding::Greedy,
+        });
+    let requests = &expected.batch.requests;
+    if requests.is_empty() || (requests.len() >= 2 && !exact_greedy) {
         return Err(mismatch(F::Batch));
     }
-    scoring::validate_predictor(&expected.predictor).map_err(|_| mismatch(F::Predictor))?;
-    if expected.predictor
-        != (PredictorSpec::Exact {
-            decoding: Decoding::Greedy,
+    validated.batch_advice_rows(requests).map_err(|e| match e {
+        validation::ClaimsError::StatementMismatch { field: F::Layout } => mismatch(F::Batch),
+        other => claims_error(other),
+    })?;
+    // RFC-0071 / SP-8: bound metadata before reserving it; sort public keys instead of
+    // scanning every earlier request. Slot order remains the statement's order.
+    let metadata_bytes = requests
+        .len()
+        .checked_mul(
+            size_of::<([u8; 16], u64)>()
+                .saturating_add(size_of::<u32>())
+                .saturating_add(size_of::<(u32, u32)>()),
+        )
+        .and_then(|n| u64::try_from(n).ok())
+        .ok_or_else(memory)?;
+    let output_requests = requests.iter().filter(|r| r.output_len > 0).count();
+    let runtime_metadata_bytes = requests
+        .len()
+        .checked_mul(size_of::<u32>())
+        .and_then(|n| {
+            n.checked_add(output_requests.checked_mul(size_of::<gadgets::runtime::Certificate>())?)
         })
+        .and_then(|n| u64::try_from(n).ok())
+        .ok_or_else(memory)?;
+    let runtime_build_metadata_bytes = requests
+        .len()
+        .checked_mul(size_of::<(u32, u32)>())
+        .and_then(|n| u64::try_from(n).ok())
+        .and_then(|n| n.checked_add(runtime_metadata_bytes))
+        .ok_or_else(memory)?;
+    if memory_estimate
+        .checked_add(metadata_bytes.max(runtime_build_metadata_bytes))
+        .is_none_or(|n| n > cfg.limits.max_memory_bytes)
     {
+        return Err(memory());
+    }
+    {
+        let mut keys = reserve(requests.len())?;
+        for (i, request) in requests.iter().enumerate() {
+            if i.is_multiple_of(4096) {
+                deadline(started, cfg.limits)?;
+            }
+            if request.prompt_len == 0
+                || request
+                    .prompt_len
+                    .checked_add(request.output_len)
+                    .is_none_or(|n| n > claims.arch.max_context)
+            {
+                return Err(mismatch(F::Batch));
+            }
+            keys.push((request.session_id, request.request_id));
+        }
+        // In-place O(R log R), with no scratch allocation; cooperative deadline surrounds it.
+        deadline(started, cfg.limits)?;
+        keys.sort_unstable();
+        deadline(started, cfg.limits)?;
+        for (i, pair) in keys.windows(2).enumerate() {
+            if i.is_multiple_of(4096) {
+                deadline(started, cfg.limits)?;
+            }
+            if pair.first() == pair.get(1) {
+                return Err(mismatch(F::Batch));
+            }
+        }
+    }
+    scoring::validate_predictor(&expected.predictor).map_err(|_| mismatch(F::Predictor))?;
+    if !exact_greedy {
         return Err(fail(ErrorCode::Usage));
     }
     if !matches!(session, Session::Initial)
@@ -841,22 +920,38 @@ fn verify_unit_tracked(
     {
         return Err(malformed(artifact));
     }
-    let graph = crate::lowering::lower(&validation::check_public(claims).map_err(claims_error)?, n)
-        .map_err(|e| {
-            if e == crate::lowering::LowerError::Memory {
-                memory()
-            } else {
-                internal()
-            }
-        })?;
-    let runtime = gadgets::runtime::Plan::derive(
+    let mut lengths = reserve(requests.len())?;
+    let mut request_lengths = reserve(requests.len())?;
+    for (i, request) in requests.iter().enumerate() {
+        if i.is_multiple_of(4096) {
+            deadline(started, cfg.limits)?;
+        }
+        lengths.push(
+            request
+                .prompt_len
+                .checked_add(request.output_len)
+                .ok_or_else(|| mismatch(F::Batch))?,
+        );
+        request_lengths.push((request.prompt_len, request.output_len));
+    }
+    let graph = crate::lowering::lower_batch(
+        &validation::check_public(claims).map_err(claims_error)?,
+        &lengths,
+    )
+    .map_err(|e| match e {
+        crate::lowering::LowerError::Memory => memory(),
+        crate::lowering::LowerError::Length { .. } => mismatch(F::Batch),
+        _ => internal(),
+    })?;
+    drop(lengths); // The graph owns its slot lengths.
+    let runtime = gadgets::runtime::Plan::derive_batch(
         &graph,
         claims.gadget_policy,
-        request.prompt_len,
-        0,
+        &request_lengths,
         validated.tables(),
     )
     .map_err(claims_error)?;
+    drop(request_lengths); // Runtime retains certificates, not the input pairs.
     let layout = runtime
         .advice_layout(advice::Config::new(
             &claims.arch,
@@ -864,8 +959,11 @@ fn verify_unit_tracked(
             claims.layout.advice.log2_k,
             claims.layout.advice.segments,
         ))
-        .map_err(claims_error)?;
-    let statement_digest = expected.digest();
+        .map_err(|e| match e {
+            validation::ClaimsError::StatementMismatch { field: F::Layout } => mismatch(F::Batch),
+            other => claims_error(other),
+        })?;
+    let statement_digest = expected.digest_with_cancel(&mut cancel).map_err(codec)?;
     let commitment = advice::opening::Commitment::bind(
         &layout,
         claims.layout.advice,
@@ -907,6 +1005,7 @@ fn verify_unit_tracked(
         .saturating_sub(codeword_allowance);
     if memory_estimate
         .checked_add(extra)
+        .and_then(|n| n.checked_add(runtime_metadata_bytes))
         .is_none_or(|n| n > cfg.limits.max_memory_bytes)
     {
         return Err(memory());
@@ -966,13 +1065,19 @@ fn verify_unit_tracked(
         statement_digest,
         session_id: proof.round1.session_id,
     });
-    t.absorb(ascii("round1")?, &proof.round1.to_tce().map_err(codec)?);
+    t.absorb_with_cancel(
+        ascii("round1")?,
+        &protocol::encode_with_cancel(proof.round1, &mut cancel).map_err(codec)?,
+        &mut || deadline(started, cfg.limits),
+    )?;
     match session {
         Session::Ni { seed_nonce, .. } => {
             t = proof_of_work(t, &parameters, PowPhase::Seed, seed_nonce)?;
             let _seed = t.squeeze(ascii("seed")?);
         }
-        Session::Live { seed, .. } => t.absorb(ascii("seed")?, seed),
+        Session::Live { seed, .. } => {
+            t.absorb_with_cancel(ascii("seed")?, seed, &mut || deadline(started, cfg.limits))?
+        }
         Session::Initial => return Err(internal()),
     }
     let mut xi: [Vec<Fp2>; 10] = core::array::from_fn(|_| Vec::new());
@@ -1125,10 +1230,12 @@ fn verify_unit_tracked(
     let advice_evaluated = opening
         .check_evaluations(&proof.round2.advice_combined)
         .map_err(opening_error)?;
-    t.absorb(
+    t.absorb_with_cancel(
         ascii("pcs/advice/combined")?,
-        &protocol::encode(proof.round2.advice_combined.as_slice()).map_err(codec)?,
-    );
+        &protocol::encode_with_cancel(proof.round2.advice_combined.as_slice(), &mut cancel)
+            .map_err(codec)?,
+        &mut || deadline(started, cfg.limits),
+    )?;
     let mut rows: [Vec<opening::CombinedRow>; 10] = core::array::from_fn(|_| Vec::new());
     for packet in &proof.round2.weight_combined {
         let i = usize::from(packet.matrix);
@@ -1159,13 +1266,18 @@ fn verify_unit_tracked(
                 .find(|p| usize::from(p.matrix) == i)
                 .ok_or_else(internal)?;
             let label = weight_label(l.matrix(), "combined")?;
-            t.absorb(ascii(&label)?, &protocol::encode(packet).map_err(codec)?);
+            t.absorb_with_cancel(
+                ascii(&label)?,
+                &protocol::encode_with_cancel(packet, &mut cancel).map_err(codec)?,
+                &mut || deadline(started, cfg.limits),
+            )?;
         }
     }
-    t.absorb(
+    t.absorb_with_cancel(
         ascii("scoring")?,
-        &protocol::encode(&proof.round2.scoring).map_err(codec)?,
-    );
+        &protocol::encode_with_cancel(&proof.round2.scoring, &mut cancel).map_err(codec)?,
+        &mut || deadline(started, cfg.limits),
+    )?;
     deadline(started, cfg.limits)?;
     tracker.enter(CheckKind::Queries);
     let generated = match session {
@@ -1222,7 +1334,11 @@ fn verify_unit_tracked(
         _ => generated.as_ref().ok_or_else(internal)?,
     };
     if mode == Mode::Live {
-        t.absorb(ascii("queries")?, &protocol::encode(packet).map_err(codec)?);
+        t.absorb_with_cancel(
+            ascii("queries")?,
+            &protocol::encode_with_cancel(packet, &mut cancel).map_err(codec)?,
+            &mut || deadline(started, cfg.limits),
+        )?;
         if matches!(session, Session::Live { queries: None, .. }) {
             return Ok(Outcome::Queries(generated.ok_or_else(internal)?));
         }
@@ -1255,7 +1371,6 @@ fn verify_unit_tracked(
     {
         return Err(malformed(artifact));
     }
-    let mut cancel = || started.elapsed() >= cfg.limits.max_wall_time;
     advice_evaluated
         .check_columns_with_cancel(
             &advice_queries,

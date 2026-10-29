@@ -30,6 +30,8 @@ Tessera proves that a committed integer language model `D` produced a recorded t
 
 ```sh
 cargo test -p <crate>                                    # narrowest first
+cargo test -p tessera-cli --features otel --locked        # optional telemetry and CLI coverage
+cargo test -p tessera-protocol --features tls --lib transport --locked   # optional mTLS transport
 cargo test --workspace --locked                          # prover workspace
 (cd verifier && cargo test --locked)                     # verifier workspace
 (cd verifier && cargo test -p tv-core --features test-params --locked)   # tv-core's drivers and tamper corpus, which the line above skips
@@ -63,6 +65,8 @@ Each is a security property or a merge-blocking gate; breaking one is a bug even
 ## How work is done
 
 One issue, one branch, one pull request; the `issue-workflow` skill has the loop, [CONTRIBUTING.md](CONTRIBUTING.md) the rules it follows: DCO sign-off on every commit, a changelog entry per release train, the review rules and the RFC process.
+
+The [documentation build](docs/documentation.md) stages canonical Markdown, builds both Rust API references in fresh target directories, runs tier-B doctests and checks the assembled site's links. CI uploads a private artifact without hosting it.
 
 ### Agent skills and workflows
 

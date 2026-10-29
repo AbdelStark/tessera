@@ -6,7 +6,14 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- An explicit test-only CPU API acceptance build and required CI job enable the independent verifier dev-dependency's non-certifying parameters; complete one-layer NI/Live proofs are checked without conditional skips (#598, OBS-4).
+
 - Preserve stacked weight, class and multiplier inputs for one-layer models with zero layer variables, so exported one-layer integer models compile and their reduction-stage claims agree with the independent verifier; retain shared-input and partial-sharing refusals (RFC-0037, [#598](https://github.com/AbdelStark/tessera/issues/598)).
+- Optional prover CLI telemetry ([#177](https://github.com/AbdelStark/tessera/issues/177), 05 §4–§5): an explicit `--metrics-addr` Prometheus endpoint over the existing registry, and `otel`-gated OTLP/HTTP JSON trace export with `--otlp-endpoint`. Default invocations open no telemetry socket; CI checks both builds in a network namespace. See the [telemetry guide](docs/telemetry.md).
+- A private mdBook documentation artifact with the specification, RFCs, guides and separate Rust API references, built and link-checked in CI with tier-B API doctests ([#176](https://github.com/AbdelStark/tessera/issues/176)).
+- Prover-side Live directory and optional mutually authenticated TLS 1.3 transport APIs, with bounded length-prefixed envelopes, absolute per-message deadlines and failure termination ([#179](https://github.com/AbdelStark/tessera/issues/179), RFC-0014).
+- Tag-triggered draft release workflow and dry runs, with two clean container builds per Linux verifier architecture, byte comparisons, SHA-256 release notes and a scripted second-builder procedure ([#178](https://github.com/AbdelStark/tessera/issues/178), 09 §9).
+- `audit batch --plan` and sampled proving split oversized runtime advice layouts with the same slot-class packing rule; a request that cannot fit alone is refused (RFC-0071, #551).
 
 - Conformance vectors and differential prover-to-verifier adapter tests for temperature and mixture scoring checks ([#160](https://github.com/AbdelStark/tessera/issues/160), RFC-0017, RFC-0019, RFC-0030, RFC-0035, RFC-0043, RFC-0050, RFC-0058, RFC-0061):
   - **Specification clarification (`RFC-0017`).** Spelled out `Exp_T`'s precision `sigma = exp_sigma` and deterministic narrowest `key_bits ∈ [min_key_bits, max_log2_rows]` selection (`min_key_bits = max(1, bit_length(hi − lo))` over the lowered LM-head logit interval `[lo, hi]`) under `'D's decoded token'`.
@@ -1685,6 +1692,8 @@ All notable changes to the prover release train are recorded here: the crates un
 - Add exact greedy request scoring in `tessera-scoring`: original teacher-forcing source rows, clearing maximum certificates with zero output padding, per-request `Û = 0` claims, and deterministic `ERR-WITNESS-EXACT-MISMATCH` context after all rows. Proof operands reuse the recorded token's existing OneHot. Actual tiny-model CPU scoring subproofs are checked independently; full model drivers and temperature/mixture scoring remain separate (#127).
 
 - Derive all four OneHot relations in the native stage-one schedule: booleanity, vocabulary padding, row count and the original token index. Proof operands and returned opening claims retain the original indicator/token sources. Independent and CPU proof tests cover isolated alternatives, padded vocabularies, scalar axes and consistent downstream recomputation (#124).
+- Exact-greedy request-slot batches (RFC-0071, [#551](https://github.com/AbdelStark/tessera/issues/551)): batch-aware lowering, advice layouts, witness replay, attention reductions and per-request greedy keys; sampled CLI NI/Live proofs, with public omission receipts for failed anchor checks or non-greedy continuations. `Prover::check_witness` checks a candidate within the configured memory budget before any commitment. Independent oracle vectors cover slot selectors and request windows; single-request deterministic proof, claim-list and execution-plan bytes match the pre-batch fixture.
+
 
 ### Changed
 

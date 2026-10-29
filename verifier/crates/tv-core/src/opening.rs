@@ -72,8 +72,8 @@ use core::fmt;
 use core::num::NonZeroU32;
 
 use tv_field::{Fp, Fp2, NttError, TWO_ADICITY, coset_ntt_with_cancel, intt_with_cancel};
-use tv_hash::column::column_digest;
-use tv_hash::merkle::{MultiproofError, verify_multiproof};
+use tv_hash::column::column_digest_with_cancel;
+use tv_hash::merkle::{MultiproofError, verify_multiproof_with_cancel};
 use tv_hash::{Digest, Domain, DomainHasher};
 
 /// The largest bit count of a row index: a row is a `u64`.
@@ -490,8 +490,8 @@ impl Evaluated<'_> {
             queries,
             columns,
             siblings,
-            |j, column| leaf(&opening, sizes.block, j, column),
-            |index, out| row_coefficients(&opening, index, out, sizes.rows),
+            |j, column, cancel| leaf(&opening, sizes.block, j, column, cancel),
+            |index, out, cancel| row_coefficients(&opening, index, out, sizes.rows, cancel),
             &mut || false,
         )
     }
@@ -510,8 +510,12 @@ impl ColumnCheck<'_> {
         queries: &[u64],
         columns: &[Vec<Fp>],
         siblings: &[Digest],
-        make_leaf: impl Fn(u64, &[Fp]) -> Result<Digest, OpeningError>,
-        fill_coefficients: impl Fn(usize, &mut Vec<Fp2>) -> Result<(), OpeningError>,
+        make_leaf: impl Fn(u64, &[Fp], &mut dyn FnMut() -> bool) -> Result<Digest, OpeningError>,
+        fill_coefficients: impl Fn(
+            usize,
+            &mut Vec<Fp2>,
+            &mut dyn FnMut() -> bool,
+        ) -> Result<(), OpeningError>,
         cancel: &mut impl FnMut() -> bool,
     ) -> Result<(), OpeningError> {
         let Self {
@@ -519,6 +523,7 @@ impl ColumnCheck<'_> {
             combined,
             sizes,
         } = self;
+        poll(cancel, 0)?;
         // 1. The queries, the verifier's own; D, their sorted distinct set.
         if queries.is_empty() {
             return Err(OpeningError::NoQueries);
@@ -551,20 +556,22 @@ impl ColumnCheck<'_> {
             .try_reserve_exact(distinct.len())
             .map_err(|_| OpeningError::Memory)?;
         for (&j, column) in distinct.iter().zip(columns) {
-            leaves.push((j, make_leaf(j, column)?));
+            leaves.push((j, make_leaf(j, column, cancel)?));
         }
-        verify_multiproof(root, sizes.leaves, &leaves, siblings).map_err(|error| {
-            match error {
-                MultiproofError::MissingSiblings { .. }
-                | MultiproofError::ExtraSiblings { .. }
-                | MultiproofError::RootMismatch => merkle_path,
-                // n is a power of two and D sorted, distinct, non-empty and below n.
-                MultiproofError::TreeSize
-                | MultiproofError::NoLeaves
-                | MultiproofError::Unordered { .. }
-                | MultiproofError::OutOfRange { .. } => OpeningError::Internal,
-            }
-        })?;
+        verify_multiproof_with_cancel(root, sizes.leaves, &leaves, siblings, &mut *cancel)
+            .map_err(|error| {
+                match error {
+                    MultiproofError::Cancelled => OpeningError::Time,
+                    MultiproofError::MissingSiblings { .. }
+                    | MultiproofError::ExtraSiblings { .. }
+                    | MultiproofError::RootMismatch => merkle_path,
+                    // n is a power of two and D sorted, distinct, non-empty and below n.
+                    MultiproofError::TreeSize
+                    | MultiproofError::NoLeaves
+                    | MultiproofError::Unordered { .. }
+                    | MultiproofError::OutOfRange { .. } => OpeningError::Internal,
+                }
+            })?;
 
         // 4. Step 8.3: each combined row against each queried column, one codeword at a time.
         let mut coefficients = Vec::new();
@@ -582,7 +589,7 @@ impl ColumnCheck<'_> {
             if agreed == 0 {
                 break;
             }
-            fill_coefficients(index, &mut coefficients)?;
+            fill_coefficients(index, &mut coefficients, cancel)?;
             if coefficients.len() != sizes.rows {
                 return Err(OpeningError::Internal);
             }
@@ -590,7 +597,7 @@ impl ColumnCheck<'_> {
             for (position, (&j, column)) in distinct.iter().zip(columns).enumerate().take(agreed) {
                 let at = usize::try_from(j).map_err(|_| OpeningError::Internal)?;
                 let expected = *codeword.get(at).ok_or(OpeningError::Internal)?;
-                if combine(&coefficients, column) != expected {
+                if combine(&coefficients, column, cancel)? != expected {
                     agreed = position;
                     break;
                 }
@@ -830,13 +837,18 @@ fn row_coefficients(
     index: usize,
     out: &mut Vec<Fp2>,
     rows: usize,
+    cancel: &mut dyn FnMut() -> bool,
 ) -> Result<(), OpeningError> {
     out.clear();
-    out.resize(rows, Fp2::ZERO);
+    for index in 0..rows {
+        poll(cancel, index)?;
+        out.push(Fp2::ZERO);
+    }
     let mut add = |point: &[Fp2], weight: Fp2| -> Result<(), OpeningError> {
         let tables = EqTables::new(point, weight)?;
         let layout_rows = opening.layout.segments.iter().flatten();
-        for (slot, &row) in out.iter_mut().zip(layout_rows) {
+        for (index, (slot, &row)) in out.iter_mut().zip(layout_rows).enumerate() {
+            poll(cancel, index)?;
             *slot += tables.at(row).ok_or(OpeningError::Internal)?;
         }
         Ok(())
@@ -849,18 +861,31 @@ fn row_coefficients(
         }
         None => add(opening.xi_point, Fp2::ONE)?,
     }
+    poll(cancel, 0)?;
     Ok(())
 }
 
-/// `Σ_row coefficients[row]·column[row]`: a combined row's coefficients against a column's
-/// symbols.
-fn combine(coefficients: &[Fp2], column: &[Fp]) -> Fp2 {
-    coefficients
-        .iter()
-        .zip(column)
-        .fold(Fp2::ZERO, |sum, (&coefficient, &symbol)| {
-            sum + coefficient * symbol
-        })
+/// Bound a long row loop to 4,096 entries between deadline checks (RFC-0019, SP-8).
+pub(crate) fn poll(cancel: &mut dyn FnMut() -> bool, index: usize) -> Result<(), OpeningError> {
+    if index.is_multiple_of(4096) && cancel() {
+        return Err(OpeningError::Time);
+    }
+    Ok(())
+}
+
+/// `Σ_row coefficients[row]·column[row]`, retaining the caller's deadline.
+pub(crate) fn combine(
+    coefficients: &[Fp2],
+    column: &[Fp],
+    cancel: &mut dyn FnMut() -> bool,
+) -> Result<Fp2, OpeningError> {
+    let mut sum = Fp2::ZERO;
+    for (index, (&coefficient, &symbol)) in coefficients.iter().zip(column).enumerate() {
+        poll(cancel, index)?;
+        sum += coefficient * symbol;
+    }
+    poll(cancel, 0)?;
+    Ok(sum)
 }
 
 /// The codeword of a combined row, its `n` values `enc(u)(x_j) + Z_H(x_j)·M(x_j)` at
@@ -885,8 +910,14 @@ pub(crate) fn encode_with_cancel(
     cancel: &mut impl FnMut() -> bool,
 ) -> Result<(), OpeningError> {
     codeword.clear();
-    codeword.extend_from_slice(&row.u);
-    codeword.resize(n, Fp2::ZERO);
+    for chunk in row.u.chunks(4096) {
+        poll(cancel, 0)?;
+        codeword.extend_from_slice(chunk);
+    }
+    while codeword.len() < n {
+        poll(cancel, 0)?;
+        codeword.resize(codeword.len().saturating_add(4096).min(n), Fp2::ZERO);
+    }
     let (low, high) = codeword
         .split_at_mut_checked(k)
         .ok_or(OpeningError::Internal)?;
@@ -895,7 +926,13 @@ pub(crate) fn encode_with_cancel(
         return Err(OpeningError::Internal);
     }
     intt_with_cancel(low, &mut *cancel).map_err(ntt_error)?;
-    for ((low, high), &m) in low.iter_mut().zip(high.iter_mut()).zip(&row.mask) {
+    for (index, ((low, high), &m)) in low
+        .iter_mut()
+        .zip(high.iter_mut())
+        .zip(&row.mask)
+        .enumerate()
+    {
+        poll(cancel, index)?;
         *low -= m;
         *high += m;
     }
@@ -919,6 +956,7 @@ fn leaf(
     block: NonZeroU32,
     column: u64,
     symbols: &[Fp],
+    cancel: &mut dyn FnMut() -> bool,
 ) -> Result<Digest, OpeningError> {
     merged_leaf(
         &opening.params.commitment_id,
@@ -926,6 +964,7 @@ fn leaf(
         column,
         symbols,
         opening.layout.segments.iter().map(|part| Ok(part.len())),
+        cancel,
     )
 }
 
@@ -936,6 +975,7 @@ pub(crate) fn merged_leaf(
     column: u64,
     symbols: &[Fp],
     segments: impl Iterator<Item = Result<usize, OpeningError>>,
+    cancel: &mut dyn FnMut() -> bool,
 ) -> Result<Digest, OpeningError> {
     let mut merge = DomainHasher::new(Domain::ColumnMerge);
     let mut rest = symbols;
@@ -943,12 +983,19 @@ pub(crate) fn merged_leaf(
         let (own, tail) = rest
             .split_at_checked(length?)
             .ok_or(OpeningError::Internal)?;
-        merge.update(&column_digest(commitment_id, column, block, own));
+        merge.update(&column_digest_with_cancel(
+            commitment_id,
+            column,
+            block,
+            own,
+            &mut || poll(cancel, 0),
+        )?);
         rest = tail;
     }
     if !rest.is_empty() {
         return Err(OpeningError::Internal);
     }
+    poll(cancel, 0)?;
     Ok(merge.finalize())
 }
 
@@ -1103,6 +1150,208 @@ mod tests {
     }
 
     #[test]
+    fn explicit_coefficients_cancel_during_initialization_accumulation_and_exit() {
+        let segments = [(0..16385).collect()];
+        let point = [Fp2::ZERO; 15];
+        let claims = [Claim {
+            row_point: point.to_vec(),
+            gamma: Fp2::ONE,
+            value: Fp2::ZERO,
+        }];
+        let groups = [Group {
+            column_point: vec![],
+            claims: claims.to_vec(),
+        }];
+        let opening = Opening {
+            params: Params {
+                log2_k: 0,
+                log2_inv_rate: 1,
+                mask_coeffs: 1,
+                row_block: 1,
+                commitment_id: [0; 32],
+            },
+            layout: Layout {
+                row_vars: 15,
+                segments: &segments,
+            },
+            root: [0; 32],
+            groups: &groups,
+            xi_point: &point,
+        };
+        for index in [0, 1] {
+            let mut out = Vec::with_capacity(16385);
+            assert_eq!(
+                row_coefficients(&opening, index, &mut out, 16385, &mut || false),
+                Ok(())
+            );
+            assert_eq!(out[0], Fp2::ONE);
+            assert!(out[1..].iter().all(|&x| x == Fp2::ZERO));
+            for stop in [3, 8, 11] {
+                let mut polls = 0;
+                assert_eq!(
+                    row_coefficients(&opening, index, &mut out, 16385, &mut || {
+                        polls += 1;
+                        polls == stop
+                    }),
+                    Err(OpeningError::Time)
+                );
+                assert_eq!(polls, stop);
+            }
+        }
+    }
+
+    #[test]
+    fn column_folds_poll_inside_long_rows_and_before_releasing_the_result() {
+        let coefficients = vec![Fp2::ONE; 16385];
+        let column = vec![Fp::ONE; coefficients.len()];
+        assert_eq!(
+            combine(&coefficients, &column, &mut || false),
+            Ok(Fp2::from(Fp::reduce(16385)))
+        );
+        for stop in 1..=6 {
+            let mut polls = 0;
+            assert_eq!(
+                combine(&coefficients, &column, &mut || {
+                    polls += 1;
+                    polls == stop
+                }),
+                Err(OpeningError::Time)
+            );
+            assert_eq!(polls, stop);
+        }
+    }
+
+    #[test]
+    fn explicit_column_authentication_carries_deadline_into_the_chain() {
+        let params = Params {
+            log2_k: 0,
+            log2_inv_rate: 1,
+            mask_coeffs: 1,
+            row_block: 1,
+            commitment_id: [0; 32],
+        };
+        let segments = [vec![0]];
+        let opening = Opening {
+            params,
+            layout: Layout {
+                row_vars: 0,
+                segments: &segments,
+            },
+            root: [0; 32],
+            groups: &[],
+            xi_point: &[],
+        };
+        let sizes = Sizes::of(&opening).unwrap();
+        let combined = [CombinedRow {
+            u: vec![Fp2::ZERO],
+            mask: vec![Fp2::ZERO],
+        }];
+        let check = |cancel: &mut dyn FnMut() -> bool| {
+            ColumnCheck {
+                root: &opening.root,
+                combined: &combined,
+                sizes,
+            }
+            .check(
+                &[0],
+                &[vec![Fp::ZERO]],
+                &[],
+                |j, column, cancel| leaf(&opening, sizes.block, j, column, cancel),
+                |index, out, cancel| row_coefficients(&opening, index, out, sizes.rows, cancel),
+                &mut || cancel(),
+            )
+        };
+        assert_eq!(
+            check(&mut || false),
+            Err(OpeningError::MerklePath { column: 0 })
+        );
+        let mut polls = 0;
+        assert_eq!(
+            check(&mut || {
+                polls += 1;
+                polls == 3
+            }),
+            Err(OpeningError::Time)
+        );
+        assert_eq!(polls, 3);
+        polls = 0;
+        assert_eq!(
+            check(&mut || {
+                polls += 1;
+                polls == 6
+            }),
+            Err(OpeningError::Time)
+        );
+        assert_eq!(
+            polls, 6,
+            "deadline reaches Merkle authentication after the column chain"
+        );
+    }
+
+    #[test]
+    fn encoding_cancels_after_progress_in_copy_zero_and_mask_phases() {
+        let k = 16384;
+        let n = 65536;
+        let row = CombinedRow {
+            u: vec![Fp2::ONE; k],
+            mask: vec![Fp2::ONE; 8193],
+        };
+        let mut codeword = Vec::with_capacity(n);
+        let mut polls = 0;
+        assert_eq!(
+            encode_with_cancel(&row, k, n, &mut codeword, &mut || {
+                polls += 1;
+                polls == 2
+            }),
+            Err(OpeningError::Time)
+        );
+        assert_eq!(
+            codeword.len(),
+            4096,
+            "cancel within copying, before the second chunk"
+        );
+        polls = 0;
+        assert_eq!(
+            encode_with_cancel(&row, k, n, &mut codeword, &mut || {
+                polls += 1;
+                polls == 6
+            }),
+            Err(OpeningError::Time)
+        );
+        assert_eq!(
+            codeword.len(),
+            k + 4096,
+            "cancel after one zero-filled chunk"
+        );
+        let mut transformed = row.u.clone();
+        let mut transform_polls = 0;
+        intt_with_cancel(&mut transformed, || {
+            transform_polls += 1;
+            false
+        })
+        .unwrap();
+        polls = 0;
+        let mask_stop = k.div_ceil(4096) + (n - k).div_ceil(4096) + transform_polls + 2;
+        assert_eq!(
+            encode_with_cancel(&row, k, n, &mut codeword, &mut || {
+                polls += 1;
+                polls == mask_stop
+            }),
+            Err(OpeningError::Time)
+        );
+        assert!(codeword[k..k + 4096].iter().all(|&x| x == Fp2::ONE));
+        assert_eq!(
+            codeword[k + 4096],
+            Fp2::ZERO,
+            "masking stops before its second chunk"
+        );
+        assert_eq!(
+            encode_with_cancel(&row, k, n, &mut codeword, &mut || false),
+            Ok(())
+        );
+    }
+
+    #[test]
     fn cancelled_transforms_are_operational_time_errors() {
         let row = CombinedRow {
             u: vec![Fp2::ONE; 8],
@@ -1235,10 +1484,10 @@ mod tests {
                 &queries,
                 &columns,
                 &siblings,
-                |j, column| leaf(&opening, sizes.block, j, column),
-                |index, out| {
+                |j, column, cancel| leaf(&opening, sizes.block, j, column, cancel),
+                |index, out, cancel| {
                     reached.set(true);
-                    row_coefficients(&opening, index, out, sizes.rows)?;
+                    row_coefficients(&opening, index, out, sizes.rows, cancel)?;
                     out.pop();
                     Ok(())
                 },
@@ -1257,7 +1506,10 @@ mod tests {
             let mut coefficients = Vec::new();
             let mut codeword = Vec::new();
             for (index, row) in combined.iter().enumerate() {
-                row_coefficients(&opening, index, &mut coefficients, sizes.rows).unwrap();
+                row_coefficients(&opening, index, &mut coefficients, sizes.rows, &mut || {
+                    false
+                })
+                .unwrap();
                 assert_eq!(
                     coefficients,
                     fp2s(&list(recorded, "row_coefficients")[index]),
@@ -1275,7 +1527,7 @@ mod tests {
                 queries.iter().zip(&columns).zip(list(recorded, "leaves"))
             {
                 assert_eq!(
-                    leaf(&opening, sizes.block, j, column).unwrap(),
+                    leaf(&opening, sizes.block, j, column, &mut || false).unwrap(),
                     digest(expected),
                     "{name}: leaf {j}"
                 );

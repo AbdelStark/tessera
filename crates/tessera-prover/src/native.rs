@@ -87,6 +87,7 @@ impl Relation {
     }
 }
 struct Family {
+    windows: Vec<tessera_compiler::GreedyKeyColumn>,
     site: usize,
     nodes: Vec<NodeId>,
     shape: Vec<u32>,
@@ -114,6 +115,7 @@ struct Slot {
 /// Public native descriptors and complete graph schedule for the canonical CPU model.
 /// This is metadata, with no proof or acceptance verdict.
 pub struct ModelNativePlan {
+    batch: Option<tessera_ir::BatchSlots>,
     families: Vec<Family>,
     slots: Vec<Slot>,
     native: Vec<Native>,
@@ -206,6 +208,7 @@ impl ModelNativePlan {
                 Kind::Runtime(_) => return Err(bad()),
             };
             families.push(Family {
+                windows: Vec::new(),
                 site,
                 nodes,
                 shape: lowering.graph.tensors[tensor.0 as usize].shape.clone(),
@@ -328,6 +331,7 @@ impl ModelNativePlan {
             tessera_compiler::schedule::derive_composed_schedule(lowering, &deferred, &native)
                 .map_err(|_| bad())?;
         Ok(Self {
+            batch: lowering.graph.slots.clone(),
             families,
             slots,
             native,
@@ -490,7 +494,7 @@ impl<'a> ModelNativeProver<'a> {
             public: Vec::new(),
         });
     }
-    fn padding(&mut self, raw: usize, shape: &[u32]) -> Result<(), StageError> {
+    fn padding(&mut self, raw: usize, shape: &[u32], token_axis: usize) -> Result<(), StageError> {
         let n = self.tables[raw].len();
         let local = vars(shape);
         let block = 1usize.checked_shl(local).ok_or(StageError::Memory)?;
@@ -501,9 +505,14 @@ impl<'a> ModelNativeProver<'a> {
             .map(|i| {
                 let mut at = i % block;
                 let mut real = i / block < layers;
-                for &d in shape.iter().rev() {
+                for (axis, &d) in shape.iter().enumerate().rev() {
                     let padded = d.next_power_of_two() as usize;
                     real &= at % padded < d as usize;
+                    if axis == token_axis
+                        && let Some(batch) = &self.plan.batch
+                    {
+                        real &= batch.is_real_row(at % padded);
+                    }
                     at /= padded;
                 }
                 if real { G::ZERO } else { G::ONE }
@@ -621,7 +630,7 @@ impl<'a> ModelNativeProver<'a> {
                         self.add(raw.clone(), None, terms, fixed, p.to_vec(), false);
                     }
                 }
-                self.padding(rho, &f.shape)?;
+                self.padding(rho, &f.shape, 0)?;
                 let residual_shape = &lowering.graph.tensors[residual.0 as usize].shape;
                 let block = 1usize
                     .checked_shl(vars(residual_shape))
@@ -638,17 +647,15 @@ impl<'a> ModelNativeProver<'a> {
                     )?;
                 }
                 let id = self.table(values);
-                self.padding(id, residual_shape)?;
+                self.padding(id, residual_shape, 0)?;
             }
             Kind::Softmax { sigma, forest } => {
                 let &[heads, n, keys] = f.shape.as_slice() else {
                     return Err(bad());
                 };
-                if n != keys {
-                    return Err(bad());
-                }
-                let np = n.next_power_of_two() as usize;
-                let rows = heads.next_power_of_two() as usize * np;
+                let np = keys.next_power_of_two() as usize;
+                let qp = n.next_power_of_two() as usize;
+                let rows = heads.next_power_of_two() as usize * qp;
                 let max = self.source(f, witness, ModelColumn::Auxiliary(AuxColumn::Maximum))?;
                 let mut broadcast = zeros(self.tables[max].len() * np)?;
                 for (r, &v) in self.tables[max].iter().enumerate() {
@@ -668,8 +675,12 @@ impl<'a> ModelNativeProver<'a> {
                 let score = self.table(scores);
                 let mask: Vec<_> = (0..self.tables[score].len())
                     .map(|i| {
-                        let (l, h, q, k) = (i / block, i % block / (np * np), i / np % np, i % np);
-                        if l < f.nodes.len() && h < heads as usize && q < n as usize && k <= q {
+                        let (l, h, q, k) = (i / block, i % block / (np * qp), i / np % qp, i % np);
+                        let (real, position) = match &lowering.graph.slots {
+                            Some(slots) => (slots.is_real_row(q), q % slots.slot_len as usize),
+                            None => (q < n as usize, q),
+                        };
+                        if l < f.nodes.len() && h < heads as usize && real && k <= position {
                             G::ONE
                         } else {
                             G::ZERO
@@ -732,7 +743,25 @@ impl<'a> ModelNativeProver<'a> {
                     *v = chunk.iter().copied().fold(G::ZERO, |a, x| a + x) * inverse;
                 }
                 let average = self.table(average);
-                let constant = fp(1u64 << (2 * u32::from(sigma))) * selector(row_shape, rowp)?;
+                let psi = match &lowering.graph.slots {
+                    Some(slots) => {
+                        let time = &rowp[..vars(&[n]) as usize];
+                        let head = &rowp[time.len()..];
+                        tessera_poly::slot_selector(
+                            time,
+                            slots.slot_len.trailing_zeros() as usize,
+                            &slots
+                                .lengths
+                                .iter()
+                                .map(|&n| u64::from(n))
+                                .collect::<Vec<_>>(),
+                        )
+                        .map_err(|_| bad())?
+                            * selector(&[heads], head)?
+                    }
+                    None => selector(row_shape, rowp)?,
+                };
+                let constant = fp(1u64 << (2 * u32::from(sigma))) * psi;
                 let fixed = self
                     .fixed(f, witness, ModelColumn::Slack(Slack::A), rowp)?
                     .into_iter()
@@ -746,8 +775,8 @@ impl<'a> ModelNativeProver<'a> {
                     rowp.to_vec(),
                     false,
                 );
-                self.padding(max, row_shape)?;
-                self.padding(reciprocal, row_shape)?;
+                self.padding(max, row_shape, 1)?;
+                self.padding(reciprocal, row_shape, 1)?;
             }
         }
         if self
@@ -899,8 +928,22 @@ impl NativeProver for ModelNativeProver<'_> {
                     .enumerate()
                     .fold(F::ZERO, |s, (j, &v)| s + fp(1u64 << (16 * j)) * v);
                 let local = point.len() - f.lambda as usize;
-                let real = selector(&f.shape, &point[..local])?
-                    * less_than(&point[local..], f.nodes.len() as u64).map_err(|_| bad())?;
+                let rows = match &self.plan.batch {
+                    Some(batch) => {
+                        let time_vars = vars(&[*f.shape.last().ok_or_else(bad)?]) as usize;
+                        let lengths: Vec<_> = batch.lengths.iter().map(|&n| u64::from(n)).collect();
+                        tessera_poly::slot_selector(
+                            &point[..time_vars],
+                            batch.slot_bits() as usize,
+                            &lengths,
+                        )
+                        .map_err(|_| bad())?
+                            * selector(&f.shape[..f.shape.len() - 1], &point[time_vars..local])?
+                    }
+                    None => selector(&f.shape, &point[..local])?,
+                };
+                let real =
+                    rows * less_than(&point[local..], f.nodes.len() as u64).map_err(|_| bad())?;
                 vec![output(u - fp(*epsilon) * real), output(rho)]
             }
             (Relation::Key | Relation::Forest, _) => vec![output(values[1])],

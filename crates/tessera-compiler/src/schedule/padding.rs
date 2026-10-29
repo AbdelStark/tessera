@@ -144,6 +144,75 @@ fn pinned(graph: &Graph, producers: &[Option<(NodeId, u32)>]) -> Vec<bool> {
     pinned
 }
 
+/// Which tensors of a slotted graph (`graph.slots.is_some()`) carry or lie downstream of its
+/// slotted token/position axis, cutting only at a `GatherPublic` whose outermost axis is the
+/// slotted token axis and whose indices are all real rows (RFC-0072 'Padded positions', #551).
+pub(super) fn slotted_tensors(graph: &Graph, producers: &[Option<(NodeId, u32)>]) -> Vec<bool> {
+    let mut slotted = vec![false; graph.tensors.len()];
+    let Some(slots) = &graph.slots else {
+        return slotted;
+    };
+    let n = slots.token_len();
+    let weight = NodeKind::Committed {
+        commitment: CommitmentClass::Weight,
+    };
+    for (spec, producer) in graph.tensors.iter().zip(producers) {
+        if producer.is_none() && spec.kind != weight && spec.shape.first() == Some(&n) {
+            slotted[spec.id.0 as usize] = true;
+        }
+    }
+    for node in &graph.nodes {
+        match node.op {
+            Op::OneHot { .. } => {
+                if let Some(&tok) = node.inputs.first()
+                    && let Some(s) = slotted.get_mut(tok.0 as usize)
+                {
+                    *s = true;
+                }
+            }
+            Op::Rotate { .. } => {
+                if let Some(&pos) = node.inputs.get(1)
+                    && let Some(s) = slotted.get_mut(pos.0 as usize)
+                {
+                    *s = true;
+                }
+            }
+            _ => {}
+        }
+    }
+    for node in &graph.nodes {
+        let any_input = node
+            .inputs
+            .iter()
+            .any(|t| slotted.get(t.0 as usize).copied().unwrap_or(false));
+        if !any_input {
+            continue;
+        }
+        if let Op::GatherPublic { index } = &node.op
+            && let Some(&src) = node.inputs.first()
+            && graph
+                .tensors
+                .get(src.0 as usize)
+                .is_some_and(|spec| spec.shape.first() == Some(&n))
+            && graph.constants.get(index.0 as usize).is_some_and(|rows| {
+                rows.iter().all(|&idx| {
+                    usize::try_from(idx)
+                        .ok()
+                        .is_some_and(|row| slots.is_real_row(row))
+                })
+            })
+        {
+            continue;
+        }
+        for &out in &node.outputs {
+            if let Some(s) = slotted.get_mut(out.0 as usize) {
+                *s = true;
+            }
+        }
+    }
+    slotted
+}
+
 /// Whether a lookup node non-zero at padding ([`nonzero_at_padding`]) lies upstream of each tensor
 /// of `graph`, its own producer included, by tensor id (RFC-0072 'Padded positions'): the
 /// tensors whose padded positions may hold a value other than 0. Every other tensor is 0 at its
@@ -242,6 +311,14 @@ pub(super) fn check_sums(
     producers: &[Option<(NodeId, u32)>],
 ) -> Result<(), CompileError> {
     let reached = upstream(graph, tables, producers)?;
+    let slotted = slotted_tensors(graph, producers);
+    let slots_have_row_padding = graph.slots.as_ref().is_some_and(|s| {
+        !s.lengths.len().is_power_of_two() || s.lengths.iter().any(|&n| n < s.slot_len)
+    });
+    let slots_have_key_padding = graph
+        .slots
+        .as_ref()
+        .is_some_and(|s| s.lengths.iter().any(|&n| n < s.slot_len));
     let shape = |t: TensorId| {
         graph
             .tensors
@@ -291,7 +368,26 @@ pub(super) fn check_sums(
         let Some(&(x, axis)) = summed.first() else {
             continue;
         };
-        let padded = shape(x).get(axis).is_some_and(|len| !len.is_power_of_two());
+        let slotted_row_padded = slots_have_row_padding
+            && slotted.get(x.0 as usize).copied().unwrap_or(false)
+            && graph
+                .slots
+                .as_ref()
+                .is_some_and(|s| shape(x).get(axis) == Some(&s.token_len()));
+        let slotted_key_padded = slots_have_key_padding
+            && matches!(
+                node.op,
+                Op::MatMulAct {
+                    transpose_rhs: false
+                }
+            )
+            && graph
+                .slots
+                .as_ref()
+                .is_some_and(|s| super::is_slot_key_tensor(graph, s, x));
+        let padded = shape(x).get(axis).is_some_and(|len| !len.is_power_of_two())
+            || slotted_row_padded
+            || slotted_key_padded;
         if padded && !summed.iter().any(|&(t, axis)| clean(t, axis)) {
             return refuse(
                 Some(node.id),
@@ -335,12 +431,17 @@ pub(super) fn check_gadgets(
     producers: &[Option<(NodeId, u32)>],
 ) -> Result<(), CompileError> {
     let reached = reach(graph, tables, producers, false)?;
+    let slotted = slotted_tensors(graph, producers);
+    let slots_have_row_padding = graph.slots.as_ref().is_some_and(|s| {
+        !s.lengths.len().is_power_of_two() || s.lengths.iter().any(|&n| n < s.slot_len)
+    });
     let padded = |t: &TensorId| {
         reached.get(t.0 as usize).copied().unwrap_or(false)
-            && graph
+            && (graph
                 .tensors
                 .get(t.0 as usize)
                 .is_some_and(|spec| spec.shape.iter().any(|len| !len.is_power_of_two()))
+                || (slots_have_row_padding && slotted.get(t.0 as usize).copied().unwrap_or(false)))
     };
     for node in &graph.nodes {
         let gadget = node.op.class() == tessera_ir::OpClass::Gadget;

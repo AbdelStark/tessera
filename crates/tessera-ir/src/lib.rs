@@ -30,7 +30,7 @@ mod weights;
 pub use claim::{ClaimList, CommitmentLayout, GadgetPolicy, PROTOCOL_VERSION, PROTOCOL_VERSION_2};
 pub use error::IrError;
 pub use files::{LogitsFile, TokenFile};
-pub use graph::{Graph, GraphBuilder, Node};
+pub use graph::{BatchSlots, Graph, GraphBuilder, Node};
 pub use model::{
     ArchFamily, ArchSpec, CalibrationIdentity, ChannelParams, Digest, IntegerModel, Profile,
     Provenance, PublicQuantSpec, QuantPoint, QuantSpec, RopeSpec, Site, WeightTensor,
