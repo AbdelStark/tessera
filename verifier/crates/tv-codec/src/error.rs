@@ -7,7 +7,7 @@ use core::fmt;
 /// The 04 §3 codes a decoder reports.
 ///
 /// The six `ERR-CODEC-*` codes are faults of the input, one per failure class of RFC-0003
-/// 'Failure modes'. The other two are faults of the reader, which a verifier reports as
+/// 'Failure modes'. The other codes are faults of the reader, which a verifier reports as
 /// `Inconclusive`, never as a rejection of the input (04 §5, RFC-0019 'Check order'):
 /// [`is_input_fault`](Self::is_input_fault) tells them apart.
 ///
@@ -31,6 +31,8 @@ pub enum ErrorCode {
     /// `ERR-RES-MEMORY`: memory for the values of a sequence could not be reserved. The reader
     /// ran out of memory; the input is not at fault.
     Memory,
+    /// `ERR-RES-TIME`: the reader's configured cooperative deadline expired.
+    Time,
     /// `ERR-INTERNAL`: a schema decoder broke its contract, decoding a sequence element from
     /// fewer bytes than the minimum size it declared for it, or from none. A bug in the
     /// verifier, whatever the input.
@@ -40,7 +42,7 @@ pub enum ErrorCode {
 impl ErrorCode {
     /// Every code: the faults of the input in the order of the table in 04 §3, then the faults
     /// of the reader.
-    pub const ALL: [ErrorCode; 8] = [
+    pub const ALL: [ErrorCode; 9] = [
         ErrorCode::Magic,
         ErrorCode::Version,
         ErrorCode::Noncanonical,
@@ -48,6 +50,7 @@ impl ErrorCode {
         ErrorCode::Digest,
         ErrorCode::Limit,
         ErrorCode::Memory,
+        ErrorCode::Time,
         ErrorCode::Internal,
     ];
 
@@ -61,14 +64,18 @@ impl ErrorCode {
             ErrorCode::Digest => "ERR-CODEC-DIGEST",
             ErrorCode::Limit => "ERR-CODEC-LIMIT",
             ErrorCode::Memory => "ERR-RES-MEMORY",
+            ErrorCode::Time => "ERR-RES-TIME",
             ErrorCode::Internal => "ERR-INTERNAL",
         }
     }
 
     /// Whether the input is at fault, so that a verifier rejects it: true for the
-    /// `ERR-CODEC-*` codes, false for `ERR-RES-MEMORY` and `ERR-INTERNAL`.
+    /// `ERR-CODEC-*` codes, false for memory, time and internal reader faults.
     pub const fn is_input_fault(self) -> bool {
-        !matches!(self, ErrorCode::Memory | ErrorCode::Internal)
+        !matches!(
+            self,
+            ErrorCode::Memory | ErrorCode::Time | ErrorCode::Internal
+        )
     }
 }
 

@@ -53,11 +53,39 @@ impl GreedyCertificate {
     }
 }
 
+/// One active request's exact-greedy lookup key column `M[τ] − L[τ, v]` (RFC-0053, RFC-0071).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GreedyKeyColumn {
+    /// Request ordinal `r` in `statement.batch.requests`.
+    pub request_index: u32,
+    /// Positive prompt length `prompt_len_r ≥ 1`; logit position `prompt − 1` predicts the first
+    /// output.
+    pub prompt: u32,
+    /// Request sequence length `n_r = prompt_len_r + output_len_r`, with `output_len_r > 0`.
+    pub positions: u32,
+    /// Slot base offset `r · S` (`0` when `R = 1`).
+    pub slot_offset: u32,
+    /// Padded output-plus-vocabulary lookup variable count `⌈log2 output_len_r⌉ + ⌈log2 vocab⌉`.
+    pub variables: u32,
+}
+impl GreedyKeyColumn {
+    /// Both padding axes contribute zero-key lookup requests.
+    pub fn entries(self) -> u64 {
+        1u64 << self.variables
+    }
+
+    /// Output token count `n_r − prompt_len_r > 0`.
+    pub fn output_len(self) -> u32 {
+        self.positions - self.prompt
+    }
+}
+
 /// Model selection plus the optional implicit Range table, without changing the claim list.
 #[derive(Clone, Debug)]
 pub struct RuntimePlan {
     selection: Selection,
     certificate: Option<GreedyCertificate>,
+    key_columns: Vec<GreedyKeyColumn>,
 }
 impl RuntimePlan {
     /// Extend checked model metadata for one request. Empty outputs add no maximum or table.
@@ -72,7 +100,7 @@ impl RuntimePlan {
         prompt: u32,
         ordinal: u32,
     ) -> Result<Self, CompileError> {
-        if selection.tables != claims.tables {
+        if selection.tables != claims.tables || lowering.graph.slots.is_some() {
             return Err(usage(METADATA));
         }
         let shape = &lowering
@@ -88,6 +116,7 @@ impl RuntimePlan {
             return Err(usage(REQUEST));
         }
         let mut selection = selection.clone();
+        let mut key_columns = Vec::new();
         let certificate = if prompt < *positions {
             let gadget = GadgetId(
                 u32::try_from(lowering.graph.nodes.len())
@@ -95,37 +124,20 @@ impl RuntimePlan {
                     .and_then(|n| n.checked_add(ordinal))
                     .ok_or_else(|| usage(REQUEST))?,
             );
-            let logits = analyze(&lowering.graph, &lowering.tables)?
-                .of(lowering.logits)
-                .and_then(|r| r.bounded())
-                .filter(|r| -(1i128 << 28) < r.lo && r.hi < 1i128 << 28)
-                .ok_or(CompileError::Model { rule: RANGE })?;
-            let span = u32::try_from(logits.hi - logits.lo)
-                .map_err(|_| CompileError::Model { rule: RANGE })?;
-            let range_bits = (u32::BITS - span.leading_zeros()).max(1) as u8;
-            if range_bits > claims.gadget_policy.max_log2_rows {
-                return Err(CompileError::Model {
-                    rule: "the greedy physical Range width fits GadgetPolicy.max_log2_rows",
-                });
-            }
-            let kind = TableKind::Range { bits: range_bits };
-            let table = match selection.tables.iter().find(|t| t.kind == kind) {
-                Some(table) => table.id,
-                None => {
-                    let id = TableId(
-                        u32::try_from(selection.tables.len()).map_err(|_| usage(METADATA))?,
-                    );
-                    let generated = GeneratedTable::new(id, kind)
-                        .map_err(|error| CompileError::ModelTable { table: id, error })?;
-                    selection.tables.push(generated.spec().clone());
-                    id
-                }
-            };
+            let (logits, range_bits, table) =
+                intern_greedy_range_table(lowering, &mut selection, claims)?;
             let bits = |n: u32| u32::BITS - n.saturating_sub(1).leading_zeros();
             let variables = bits(*positions - prompt) + bits(*vocab);
             if variables >= u64::BITS {
                 return Err(usage(REQUEST));
             }
+            key_columns.push(GreedyKeyColumn {
+                request_index: 0,
+                prompt,
+                positions: *positions,
+                slot_offset: 0,
+                variables,
+            });
             Some(GreedyCertificate {
                 gadget,
                 table,
@@ -142,16 +154,162 @@ impl RuntimePlan {
         Ok(Self {
             selection,
             certificate,
+            key_columns,
         })
     }
+
+    /// Derive exact-greedy runtime metadata for a batch of `requests` (`(prompt_len, output_len)`
+    /// in slot order; RFC-0053, RFC-0071 'The greedy certificate and scoring').
+    ///
+    /// With one request (`R = 1`), `lowering.graph.slots` must be `None` and this matches
+    /// [`Self::derive`] at ordinal `0`. With `R ≥ 2`, `lowering.graph.slots` must match the
+    /// requests' lengths; one shared [`GreedyCertificate`] (`M` on `[N]` at ordinal `0` and one
+    /// physical `Range` table) is emitted iff at least one request has `output_len > 0`, together
+    /// with one [`GreedyKeyColumn`] per output-bearing request in batch order.
+    ///
+    /// # Errors
+    /// `Usage` for empty `requests`, `prompt_len == 0`, length mismatch against `lowering` or
+    /// `claims.arch.max_context`, or table/identity overflow; `Model` when logits exceed the
+    /// signed 28-bit greedy bound or `GadgetPolicy.max_log2_rows`.
+    pub fn derive_batch(
+        lowering: &Lowering,
+        selection: &Selection,
+        claims: &ClaimList,
+        requests: &[(u32, u32)],
+    ) -> Result<Self, CompileError> {
+        if requests.is_empty() {
+            return Err(usage(REQUEST));
+        }
+        if selection.tables != claims.tables {
+            return Err(usage(METADATA));
+        }
+        let shape = &lowering
+            .graph
+            .tensors
+            .get(lowering.logits.0 as usize)
+            .ok_or_else(|| usage(REQUEST))?
+            .shape;
+        let [token_len, vocab] = shape.as_slice() else {
+            return Err(usage(REQUEST));
+        };
+        if let &[(prompt, output_len)] = requests {
+            let n = prompt
+                .checked_add(output_len)
+                .ok_or_else(|| usage(REQUEST))?;
+            if n != *token_len || n > claims.arch.max_context {
+                return Err(usage(REQUEST));
+            }
+            return Self::derive(lowering, selection, claims, prompt, 0);
+        }
+        let Some(slots) = &lowering.graph.slots else {
+            return Err(usage(METADATA));
+        };
+        if slots.lengths.len() != requests.len() || slots.token_len() != *token_len {
+            return Err(usage(METADATA));
+        }
+        let bits = |n: u32| u32::BITS - n.saturating_sub(1).leading_zeros();
+        let vocab_bits = bits(*vocab);
+        let mut key_columns = Vec::new();
+        let mut total_entries = 0u64;
+        for (idx, &(prompt, output_len)) in requests.iter().enumerate() {
+            let n_r = prompt
+                .checked_add(output_len)
+                .ok_or_else(|| usage(REQUEST))?;
+            if prompt == 0 || n_r > claims.arch.max_context || slots.lengths[idx] != n_r {
+                return Err(usage(REQUEST));
+            }
+            if output_len > 0 {
+                let request_index = u32::try_from(idx).map_err(|_| usage(REQUEST))?;
+                let slot_offset = request_index
+                    .checked_mul(slots.slot_len)
+                    .ok_or_else(|| usage(REQUEST))?;
+                let variables = bits(output_len) + vocab_bits;
+                if variables >= u64::BITS {
+                    return Err(usage(REQUEST));
+                }
+                let col = GreedyKeyColumn {
+                    request_index,
+                    prompt,
+                    positions: n_r,
+                    slot_offset,
+                    variables,
+                };
+                total_entries = total_entries
+                    .checked_add(col.entries())
+                    .ok_or_else(|| usage(REQUEST))?;
+                key_columns.push(col);
+            }
+        }
+        let mut selection = selection.clone();
+        let certificate = if let Some(&first) = key_columns.first() {
+            let gadget =
+                GadgetId(u32::try_from(lowering.graph.nodes.len()).map_err(|_| usage(REQUEST))?);
+            let (logits, range_bits, table) =
+                intern_greedy_range_table(lowering, &mut selection, claims)?;
+            Some(GreedyCertificate {
+                gadget,
+                table,
+                prompt: first.prompt,
+                positions: *token_len,
+                vocab: *vocab,
+                logits,
+                range_bits,
+                variables: first.variables,
+            })
+        } else {
+            None
+        };
+        Ok(Self {
+            selection,
+            certificate,
+            key_columns,
+        })
+    }
+
     /// Complete catalog, preserving every model table id, kind and digest.
     pub fn selection(&self) -> &Selection {
         &self.selection
     }
-    /// A distinct certificate exists exactly when the request has outputs.
+    /// A certificate exists iff at least one request in the batch has outputs.
     pub const fn certificate(&self) -> Option<GreedyCertificate> {
         self.certificate
     }
+    /// Logical exact-greedy key columns, one per output-bearing request in batch order.
+    pub fn key_columns(&self) -> &[GreedyKeyColumn] {
+        &self.key_columns
+    }
+}
+
+fn intern_greedy_range_table(
+    lowering: &Lowering,
+    selection: &mut Selection,
+    claims: &ClaimList,
+) -> Result<(IntRange, u8, TableId), CompileError> {
+    let logits = analyze(&lowering.graph, &lowering.tables)?
+        .of(lowering.logits)
+        .and_then(|r| r.bounded())
+        .filter(|r| -(1i128 << 28) < r.lo && r.hi < 1i128 << 28)
+        .ok_or(CompileError::Model { rule: RANGE })?;
+    let span =
+        u32::try_from(logits.hi - logits.lo).map_err(|_| CompileError::Model { rule: RANGE })?;
+    let range_bits = (u32::BITS - span.leading_zeros()).max(1) as u8;
+    if range_bits > claims.gadget_policy.max_log2_rows {
+        return Err(CompileError::Model {
+            rule: "the greedy physical Range width fits GadgetPolicy.max_log2_rows",
+        });
+    }
+    let kind = TableKind::Range { bits: range_bits };
+    let table = match selection.tables.iter().find(|t| t.kind == kind) {
+        Some(table) => table.id,
+        None => {
+            let id = TableId(u32::try_from(selection.tables.len()).map_err(|_| usage(METADATA))?);
+            let generated = GeneratedTable::new(id, kind)
+                .map_err(|error| CompileError::ModelTable { table: id, error })?;
+            selection.tables.push(generated.spec().clone());
+            id
+        }
+    };
+    Ok((logits, range_bits, table))
 }
 
 /// Folds the model's public `logits_exponent` (`e_FinalNorm + e_lm`, RFC-0027) and a decoding

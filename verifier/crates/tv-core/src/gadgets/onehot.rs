@@ -155,6 +155,36 @@ impl OneHot {
                 .ok_or(GadgetError::Internal)?,
         })
     }
+
+    /// Bind to this site's incoming token claim on a slotted batch graph (RFC-0071).
+    /// Reduces to [`Self::at`] for a single-request batch (`R = 1`).
+    ///
+    /// # Errors
+    /// `Internal` for a wrong verifier-owned row-point dimension or mismatched slot geometry.
+    pub fn at_slots<'a>(
+        self,
+        slots: &crate::lowering::Slots,
+        row_point: &'a [Fp2],
+        token: Fp2,
+    ) -> Result<At<'a>, GadgetError> {
+        if slots.token_len() != self.n {
+            return Err(GadgetError::Internal);
+        }
+        if slots.lengths().len() < 2 {
+            return self.at(row_point, token);
+        }
+        if row_point.len().checked_add(self.vocab_vars) != Some(self.variables) {
+            return Err(GadgetError::Internal);
+        }
+        let slot_bits = usize::try_from(slots.slot_bits()).map_err(|_| GadgetError::Internal)?;
+        Ok(At {
+            site: self,
+            row_point,
+            token,
+            count: crate::selectors::slot_selector(row_point, slot_bits, slots.lengths())
+                .ok_or(GadgetError::Internal)?,
+        })
+    }
 }
 
 impl At<'_> {

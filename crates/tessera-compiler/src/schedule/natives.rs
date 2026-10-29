@@ -66,10 +66,7 @@ pub struct ModelNatives {
 
 /// The variables of a tensor of `shape`, each axis padded to a power of two.
 fn vars(shape: &[u32]) -> u32 {
-    shape
-        .iter()
-        .map(|n| n.next_power_of_two().trailing_zeros())
-        .sum()
+    shape.iter().map(|&n| super::axis_vars(n)).sum()
 }
 
 /// The native relations of `lowering`'s roots and softmax rows, in the order of their sites:
@@ -81,6 +78,33 @@ fn vars(shape: &[u32]) -> u32 {
 /// [`CompileError::Schedule`] for a root whose input is not a sum of squares or whose range is
 /// unbounded, logits that are not `[positions, vocabulary]`, or a graph the layer map refuses.
 pub fn model_natives(lowering: &Lowering, request: Request) -> Result<ModelNatives, CompileError> {
+    let active = match request {
+        Request::None => None,
+        Request::Prefill => Some(0),
+        Request::Generate => Some(1),
+    };
+    model_natives_inner(lowering, active)
+}
+
+/// The native relations of `lowering` and a multi-request batch with `active_output_requests`
+/// requests whose `output_len ≥ 1` (RFC-0071 'The greedy certificate and scoring'): token binding,
+/// then `active_output_requests` greedy key relations followed by one `GreedySelected`, or token
+/// binding then `Observe` when `active_output_requests == 0`.
+///
+/// # Errors
+///
+/// As [`model_natives`].
+pub fn model_natives_batch(
+    lowering: &Lowering,
+    active_output_requests: usize,
+) -> Result<ModelNatives, CompileError> {
+    model_natives_inner(lowering, Some(active_output_requests))
+}
+
+fn model_natives_inner(
+    lowering: &Lowering,
+    active_output_requests: Option<usize>,
+) -> Result<ModelNatives, CompileError> {
     let bad = |rule| CompileError::Schedule { node: None, rule };
     let layers = LayerMap::new(lowering)?;
     let graph = &lowering.graph;
@@ -168,7 +192,7 @@ pub fn model_natives(lowering: &Lowering, request: Request) -> Result<ModelNativ
                 );
             }
             Op::SoftmaxRow { .. } => {
-                let local = vars(shape(node.inputs[0]));
+                let local = super::tensor_vars(graph, node.inputs[0]);
                 for kind in [NativeKind::Key, NativeKind::Forest] {
                     add(
                         kind,
@@ -202,7 +226,7 @@ pub fn model_natives(lowering: &Lowering, request: Request) -> Result<ModelNativ
             _ => {}
         }
     }
-    if request != Request::None {
+    if let Some(active) = active_output_requests {
         let h = graph
             .producer(lowering.one_hot)
             .ok_or(bad("the one-hot vectors have a producer"))?;
@@ -253,12 +277,13 @@ pub fn model_natives(lowering: &Lowering, request: Request) -> Result<ModelNativ
             vars: nv + nt,
         }];
         let greedy = nt as usize + 3;
-        match request {
-            Request::Generate => {
+        if active == 0 {
+            add(NativeKind::Observe, l, 1, 1, true, logits);
+        } else {
+            for _ in 0..active {
                 add(NativeKind::GreedyKey, l, 2, greedy, false, logits.clone());
-                add(NativeKind::GreedySelected, l, 3, greedy, true, logits);
             }
-            _ => add(NativeKind::Observe, l, 1, 1, true, logits),
+            add(NativeKind::GreedySelected, l, 3, greedy, true, logits);
         }
         out.deferred.push((l, None));
     }

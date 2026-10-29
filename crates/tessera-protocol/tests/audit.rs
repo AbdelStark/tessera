@@ -325,8 +325,22 @@ fn rates_read_exactly() {
     }
 }
 
-/// Every request in exactly one batch, the bounds of RFC-0016 'Batching', each batch's keys in
-/// order and its total its requests'.
+fn slot_class(tokens: u64) -> u32 {
+    u64::BITS - (tokens.max(1) - 1).leading_zeros()
+}
+
+fn counted_tokens(class: u32, count: usize) -> u64 {
+    let req_bits = if count <= 1 {
+        0
+    } else {
+        usize::BITS - (count - 1).leading_zeros()
+    };
+    1u64.checked_shl(class.saturating_add(req_bits))
+        .unwrap_or(u64::MAX)
+}
+
+/// Every request in exactly one batch, the bounds of RFC-0016 'Batching' and RFC-0071, each
+/// batch's keys in order and its total its requests'.
 fn check_bounds(policy: &AuditPolicy, requests: &[(RequestKey, u8, u64)], packed: &[Batch<u8>]) {
     let tokens: BTreeMap<RequestKey, (u8, u64)> =
         requests.iter().map(|(k, g, t)| (*k, (*g, *t))).collect();
@@ -342,22 +356,36 @@ fn check_bounds(policy: &AuditPolicy, requests: &[(RequestKey, u8, u64)], packed
             b.requests.iter().all(|k| tokens[k].0 == b.group),
             "one group per batch"
         );
-        let total: u64 = b.requests.iter().map(|k| tokens[k].1).sum();
-        assert_eq!(b.tokens, total);
+        let class = slot_class(tokens[&b.requests[0]].1);
         assert!(
-            b.tokens <= u64::from(policy.max_batch_tokens()) || b.requests.len() == 1,
+            b.requests.iter().all(|k| slot_class(tokens[k].1) == class),
+            "one slot class per batch"
+        );
+        let total = b
+            .requests
+            .iter()
+            .fold(0u64, |acc, k| acc.saturating_add(tokens[k].1));
+        assert_eq!(b.tokens, total);
+        let counted = counted_tokens(class, b.requests.len());
+        assert!(
+            counted <= u64::from(policy.max_batch_tokens()) || b.requests.len() == 1,
             "a batch over the maximum"
         );
-        if b.tokens < u64::from(policy.min_batch_tokens()) {
-            *small.entry(b.group).or_insert(0) += 1;
+        if counted < u64::from(policy.min_batch_tokens()) {
+            *small.entry((b.group, class)).or_insert(0) += 1;
         }
     }
     assert!(
         small.values().all(|&n| n <= 1),
-        "two batches of a group under the minimum"
+        "two batches of a class under the minimum"
     );
-    // Groups are packed in increasing order.
-    assert!(packed.windows(2).all(|w| w[0].group <= w[1].group));
+    // Groups in increasing order, and within each group classes in decreasing order.
+    assert!(packed.windows(2).all(|w| {
+        w[0].group < w[1].group
+            || (w[0].group == w[1].group
+                && slot_class(tokens[&w[0].requests[0]].1)
+                    >= slot_class(tokens[&w[1].requests[0]].1))
+    }));
 }
 
 proptest! {
@@ -394,46 +422,39 @@ proptest! {
 }
 
 #[test]
-fn batching_is_first_fit_decreasing() {
+fn batching_is_slot_class_first_fit_decreasing() {
     let key = |id: u64| RequestKey {
         session_id: [0; 16],
         request_id: id,
     };
-    let p = policy(Vec::new(), 1, 10);
-    // Decreasing: 6 opens a batch, 5 does not fit it and opens a second, 4 fills the first and
-    // 3 goes to the second.
+    let p = policy(Vec::new(), 4, 16);
+    // Class c = 3 (L in 5..=8): under max = 16, R = 2 counts 2^{3+1} = 16 <= 16, while R = 3
+    // counts 2^{3+2} = 32 > 16. Decreasing L = 8, 7, 6, 5 packs (8, 7) then (6, 5); a c = 2
+    // request (L = 4) packs in its own class afterwards.
     let requests = [
-        (key(1), 0u8, 6),
-        (key(2), 0, 5),
-        (key(3), 0, 4),
-        (key(4), 0, 3),
+        (key(1), 0u8, 8),
+        (key(2), 0, 7),
+        (key(3), 0, 6),
+        (key(4), 0, 5),
+        (key(5), 0, 4),
     ];
     let packed = batches(&p, &requests).expect("distinct keys");
     let shape: Vec<(Vec<u64>, u64)> = packed
         .iter()
         .map(|b| (b.requests.iter().map(|k| k.request_id).collect(), b.tokens))
         .collect();
-    assert_eq!(shape, [(vec![1, 3], 10), (vec![2, 4], 8)]);
-    // First fit, not best fit: under 20, 12 opens a batch and both 9s the second (18). The 2 fits
-    // both and goes to the first, 14, though best fit would fill the second to 20.
-    let wide = policy(Vec::new(), 1, 20);
-    let requests = [
-        (key(1), 0u8, 12),
-        (key(2), 0, 9),
-        (key(3), 0, 9),
-        (key(4), 0, 2),
-    ];
-    let packed = batches(&wide, &requests).expect("distinct keys");
-    assert_eq!(packed[0].requests, [key(1), key(4)]);
-    assert_eq!(packed[1].requests, [key(2), key(3)]);
-    // Ties in key order: the lower key goes first.
-    let requests = [(key(9), 0u8, 6), (key(8), 0, 6), (key(7), 0, 4)];
-    let packed = batches(&p, &requests).expect("distinct keys");
-    assert_eq!(packed[0].requests, [key(7), key(8)]);
-    assert_eq!(packed[1].requests, [key(9)]);
-    // A request longer than the maximum is alone, and takes no other.
-    let requests = [(key(1), 0u8, 11), (key(2), 0, 1)];
-    let packed = batches(&p, &requests).expect("distinct keys");
+    assert_eq!(shape, [(vec![1, 2], 15), (vec![3, 4], 11), (vec![5], 4)]);
+    // Ties in key order within a class: under max = 8 and c = 2 (L = 4), R = 2 counts 8 <= 8,
+    // so keys 7 and 8 fill the first batch and key 9 opens the second.
+    let tight = policy(Vec::new(), 2, 8);
+    let requests = [(key(9), 0u8, 4), (key(8), 0, 4), (key(7), 0, 3)];
+    let packed = batches(&tight, &requests).expect("distinct keys");
+    assert_eq!(packed[0].requests, [key(8), key(9)]);
+    assert_eq!(packed[1].requests, [key(7)]);
+    // A request of class c > floor(log2 max_batch_tokens) is alone (L = 10 has c = 4, 2^4 = 16 > 10).
+    let ten = policy(Vec::new(), 1, 10);
+    let requests = [(key(1), 0u8, 10), (key(2), 0, 1)];
+    let packed = batches(&ten, &requests).expect("distinct keys");
     assert_eq!(packed.len(), 2);
     assert_eq!(packed[0].requests, [key(1)]);
     // A key given twice is refused.
@@ -560,8 +581,8 @@ fn batching_at_its_edges() {
         request_id: id,
     };
     let p = policy(Vec::new(), 1, 10);
-    // A request of exactly the maximum fills its batch, and zero-token requests go where they
-    // first fit: the first batch with room.
+    // Under max = 10, L = 10 has class c = 4 (2^4 = 16 > 10, solo), L = 4 has class c = 2, and
+    // zero-token requests take class c = 0 (max(L, 1) = 1) and pack together (2^{0+1} = 2 <= 10).
     let requests = [
         (key(1), 0u8, 10),
         (key(2), 0, 4),
@@ -573,13 +594,15 @@ fn batching_at_its_edges() {
         .iter()
         .map(|b| (b.requests.iter().map(|k| k.request_id).collect(), b.tokens))
         .collect();
-    assert_eq!(shape, [(vec![1, 3, 4], 10), (vec![2], 4)]);
-    // A request of 2^64 − 1 tokens, a candidate with no length, is alone; the sum cannot wrap.
+    assert_eq!(shape, [(vec![1], 10), (vec![2], 4), (vec![3, 4], 0)]);
+    // A request of 2^64 − 1 tokens, a candidate with no length, has c = 64 and stays alone
+    // without shift overflow; smaller classes follow in decreasing order.
     let requests = [(key(1), 0u8, u64::MAX), (key(2), 0, 3), (key(3), 0, 0)];
     let packed = batches(&p, &requests).expect("distinct keys");
     assert_eq!(packed[0].requests, [key(1)]);
     assert_eq!(packed[0].tokens, u64::MAX);
-    assert_eq!(packed[1].requests, [key(2), key(3)]);
+    assert_eq!(packed[1].requests, [key(2)]);
+    assert_eq!(packed[2].requests, [key(3)]);
 }
 
 // ----- The vectors ------------------------------------------------------------------------------

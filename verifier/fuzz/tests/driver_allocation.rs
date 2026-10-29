@@ -135,7 +135,65 @@ fn live_share_limits_precede_allocation_and_allocator_failures_are_fallible() {
 
 /// Runs on the process's only thread (`harness = false`): libtest would keep a thread of its own,
 /// whose allocations the process-wide cap counts against this test's budget (#501).
+#[cfg(feature = "test-params")]
+fn batch_row_preflight_allocates_nothing_on_success_or_oversized_rejection() {
+    use tv_core::protocol::RequestRef;
+    use tv_core::validation::{self, ClaimsError, StatementField};
+    let mut claims = ClaimList::open(&fixture("claims.tcl"), &DecodeLimits::MESSAGE).unwrap();
+    claims.arch.max_context = 4096;
+    let public = validation::check_public(&claims).unwrap();
+    let graph = tv_core::lowering::lower(&public, claims.arch.max_context).unwrap();
+    let selected = tv_core::selection::derive(&graph, claims.gadget_policy).unwrap();
+    claims.tables = selected
+        .tables
+        .iter()
+        .map(|t| {
+            tv_tables::Table::generate(t.id, t.kind.clone())
+                .unwrap()
+                .spec()
+                .clone()
+        })
+        .collect();
+    let validated = validation::validate(&claims).unwrap();
+    let oversized: Vec<_> = (0..65536)
+        .map(|request_id| RequestRef {
+            request_id,
+            session_id: [0; 16],
+            prompt_len: 4096,
+            output_len: 0,
+        })
+        .collect();
+    let small = [RequestRef {
+        request_id: 1,
+        session_id: [0; 16],
+        prompt_len: 1,
+        output_len: 2,
+    }];
+    for (requests, succeeds) in [(small.as_slice(), true), (oversized.as_slice(), false)] {
+        let allocated = ALLOCATOR.total_allocated();
+        ALLOCATOR.set_limit(ALLOCATOR.allocated()).unwrap();
+        let result = validated.batch_advice_rows(requests);
+        ALLOCATOR.set_limit(usize::MAX).unwrap();
+        assert_eq!(ALLOCATOR.total_allocated(), allocated);
+        if succeeds {
+            assert!(result.is_ok());
+        } else {
+            assert!(matches!(
+                result,
+                Err(ClaimsError::StatementMismatch {
+                    field: StatementField::Layout
+                })
+            ));
+        }
+    }
+}
+
 fn main() {
+    #[cfg(feature = "test-params")]
+    {
+        batch_row_preflight_allocates_nothing_on_success_or_oversized_rejection();
+        println!("batch row preflight: success and oversized rejection allocate 0 bytes");
+    }
     predecode_policy_decode_failures_and_report_serialization_respect_allocation_failures();
     #[cfg(unix)]
     live_share_limits_precede_allocation_and_allocator_failures_are_fallible();

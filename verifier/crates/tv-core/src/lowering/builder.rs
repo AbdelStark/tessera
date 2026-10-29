@@ -296,6 +296,7 @@ impl GraphBuilder {
     pub fn new(capacity: Capacity) -> Result<Self, BuildError> {
         let graph = Graph {
             n: 0,
+            slots: None,
             tensors: Vec::new(),
             inputs: Vec::new(),
             nodes: Vec::new(),

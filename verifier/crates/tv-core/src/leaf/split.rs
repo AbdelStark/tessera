@@ -36,8 +36,31 @@ pub enum Column {
     SoftmaxA,
     /// Softmax's virtual second bracket slack `b`.
     SoftmaxB,
-    /// Runtime greedy Range key, owed to the native original-source reduction.
+    /// Runtime greedy Range key for request ordinal 0, owed to the native original-source
+    /// reduction.
     GreedyKey,
+    /// Runtime greedy Range key for request ordinal `r >= 1` in a multi-request batch (RFC-0071
+    /// 'The greedy certificate and scoring').
+    GreedyKeyOrdinal(u32),
+}
+
+impl Column {
+    /// Runtime greedy Range key column for batch request `ordinal` (`0` uses [`Self::GreedyKey`]).
+    pub const fn greedy_key(ordinal: u32) -> Self {
+        match ordinal {
+            0 => Self::GreedyKey,
+            r => Self::GreedyKeyOrdinal(r),
+        }
+    }
+
+    /// Batch request ordinal if this column is a runtime greedy Range key.
+    pub const fn greedy_key_ordinal(self) -> Option<u32> {
+        match self {
+            Self::GreedyKey => Some(0),
+            Self::GreedyKeyOrdinal(r) => Some(r),
+            _ => None,
+        }
+    }
 }
 
 /// One column read at public coordinates of RFC-0045's common point `P`.

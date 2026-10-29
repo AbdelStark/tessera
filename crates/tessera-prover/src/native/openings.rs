@@ -102,7 +102,10 @@ impl ModelNativePlan {
                             .collect();
                         out.push(OriginalAdvice { point, pieces });
                     }
-                    (Relation::Runtime, Kind::Runtime(Runtime::Key(c) | Runtime::Selected(c))) => {
+                    (
+                        Relation::Runtime,
+                        Kind::Runtime(Runtime::Key(c, _) | Runtime::Selected(c)),
+                    ) => {
                         let nv = vars(&[family.shape[1]]) as usize;
                         let time = p.get(nv..).ok_or_else(bad)?;
                         out.push(OriginalAdvice {

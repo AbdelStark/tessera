@@ -226,7 +226,7 @@ fn every_refused_payload_is_refused_with_the_oracles_code_and_offset() {
 fn every_batch_set_is_packed_as_the_oracle_packs_it() {
     let doc = read_vectors("audit/audit.json");
     let cases = list(&doc, "batches");
-    assert_eq!(cases.len(), 5);
+    assert_eq!(cases.len(), 6);
     for case in cases {
         let name = text(case, "name");
         let requests: Vec<BatchRequest<u64>> = list(case, "requests")
@@ -248,19 +248,38 @@ fn every_batch_set_is_packed_as_the_oracle_packs_it() {
             let keys: Vec<RequestKey> = list(want, "requests").iter().map(key_of).collect();
             assert_eq!(got.requests, keys, "{name}");
         }
-        // RFC-0016's bounds, read from the batches alone.
-        let mut groups: Vec<u64> = packed.iter().map(|b| b.group).collect();
-        groups.dedup();
-        for g in groups {
+        // RFC-0016 + RFC-0071 bounds: per (group, slot_class), at most one batch has counted
+        // tokens below min_batch_tokens, and every multi-request batch has counted tokens <= max.
+        let class_of = |key: RequestKey| -> u32 {
+            let t = requests.iter().find(|r| r.key == key).unwrap().tokens;
+            u64::BITS.saturating_sub(t.saturating_sub(1).leading_zeros())
+        };
+        let counted_of = |b: &tv_core::audit::Batch<u64>| -> u128 {
+            let c = class_of(b.requests[0]);
+            for &k in &b.requests {
+                assert_eq!(class_of(k), c, "{name}: mixed classes in batch");
+            }
+            let r_bits =
+                usize::BITS.saturating_sub(b.requests.len().saturating_sub(1).leading_zeros());
+            1u128 << (c + r_bits)
+        };
+        let mut group_classes: Vec<(u64, u32)> = packed
+            .iter()
+            .map(|b| (b.group, class_of(b.requests[0])))
+            .collect();
+        group_classes.dedup();
+        for (g, c) in group_classes {
             let small = packed
                 .iter()
-                .filter(|b| b.group == g && b.tokens < min)
+                .filter(|b| {
+                    b.group == g && class_of(b.requests[0]) == c && counted_of(b) < u128::from(min)
+                })
                 .count();
-            assert!(small <= 1, "{name}: group {g}");
+            assert!(small <= 1, "{name}: group {g} class {c}");
         }
         for b in &packed {
             assert!(
-                b.tokens <= u64::from(max) || b.requests.len() == 1,
+                counted_of(b) <= u128::from(max) || b.requests.len() == 1,
                 "{name}"
             );
         }

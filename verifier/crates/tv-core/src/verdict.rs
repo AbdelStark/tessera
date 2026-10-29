@@ -202,6 +202,7 @@ impl From<tv_codec::ErrorCode> for ErrorCode {
             C::Digest => Self::CodecDigest,
             C::Limit => Self::CodecLimit,
             C::Memory => Self::Memory,
+            C::Time => Self::Time,
             C::Internal => Self::Internal,
         }
     }
