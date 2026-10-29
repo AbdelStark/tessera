@@ -192,13 +192,19 @@ class _Quantizer:
                     f"affine names {module} in layers {named} only: every layer or none (RFC-0038)"
                 )
         # A site takes several classes in every layer once one layer's channels need several.
-        self.several = frozenset(
-            site
-            for site, module, pairs in _CLASSED
-            if (site is not Site.Up or self.profile is Profile.Servable)
-            and _name(0, module) not in self.affine
-            and any(len(set(self._exponents(_name(layer, module), pairs))) > 1 for layer in layers)
-        )
+        several: set[Site] = set()
+        # Layer-major traversal keeps a streamed checkpoint's transformed group hot. Only
+        # channel exponents survive this scan, never another copy of its float64 weights.
+        for layer in layers:
+            for site, module, pairs in _CLASSED:
+                if (
+                    site not in several
+                    and (site is not Site.Up or self.profile is Profile.Servable)
+                    and _name(layer, module) not in self.affine
+                    and len(set(self._exponents(_name(layer, module), pairs))) > 1
+                ):
+                    several.add(site)
+        self.several = frozenset(several)
         residual = max(
             self._maximum(name)
             for layer in range(arch.n_layers)

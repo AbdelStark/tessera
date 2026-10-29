@@ -17,8 +17,11 @@ A tiny Llama-3.1 at Llama's magnitudes is calibrated, quantized and exported.
 - **Refusals.** An empty held-out split, and an unknown profile.
 """
 
+import gc
 import math
 import stat
+import weakref
+from collections.abc import Mapping
 from dataclasses import fields, is_dataclass, replace
 from enum import Enum
 from fractions import Fraction
@@ -35,11 +38,13 @@ from tessera_quant import (
     CalibrationError,
     CalibrationResult,
     TesseraQuantError,
+    assemble,
     calibrate,
     export,
     import_checkpoint,
     quantize,
 )
+from tessera_quant._streaming import transformed_checkpoint
 from tessera_quant.calibration import DatasetIdentity, draw
 from tessera_quant.capture import reference_logits
 from tessera_quant.checkpoint import FloatModel
@@ -51,7 +56,7 @@ from tessera_quant.integer_model import (
     Profile,
     Site,
 )
-from tessera_quant.migration import ALPHAS, fold, mean_kl
+from tessera_quant.migration import ALPHAS, fold, mean_kl, transform
 from tessera_quant.reference import run_reference, trace
 from tessera_quant.scales import exponent
 from tessera_quant.tce import INTEGER_MODEL_LIMITS, encode, read_artifact
@@ -224,3 +229,99 @@ def test_affine_scales_give_every_weight_that_can_take_them_a_multiplier(
             INTEGER_MODEL.codec,
             quantize(model, calib, profile=profile, scales="affine", alphas=(Fraction(3, 5),)),
         )
+
+
+@pytest.mark.parametrize("alpha", ALPHAS)
+def test_lazy_transforms_equal_eager_even_when_accesses_cross_groups(
+    calibrated: tuple[FloatModel, CalibrationResult], alpha: Fraction
+) -> None:
+    model, calib = calibrated
+    source = {name: model.tensor(name).to(torch.float64) for name in model.names}
+    expected, expected_maxima = transform(model.arch, source, calib.statistics.maxima, alpha)
+    weights, maxima = transformed_checkpoint(model, calib.statistics.maxima, alpha)
+    assert tuple(weights) == tuple(expected)
+    assert len(weights) == len(expected)
+    assert tuple(maxima) == tuple(expected_maxima)
+    assert len(maxima) == len(expected_maxima)
+    for name in reversed(expected):
+        assert torch.equal(weights[name], expected[name]), name
+    for name in reversed(expected_maxima):
+        assert torch.equal(maxima[name], expected_maxima[name]), name
+    # A weights access after statistics has changed the cache still reads the right group.
+    for name in expected:
+        assert torch.equal(weights[name], expected[name]), name
+    for mapping in (weights, maxima):
+        with pytest.raises(KeyError):
+            _ = mapping["not-a-tensor"]
+
+
+def test_borrowed_groups_are_released_before_the_next_group_is_read(
+    calibrated: tuple[FloatModel, CalibrationResult], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model, calib = calibrated
+    weights, maxima = transformed_checkpoint(model, calib.statistics.maxima, Fraction(3, 5))
+    previous = [
+        weakref.ref(weights["model.layers.0.self_attn.q_proj.weight"]),
+        weakref.ref(maxima["layers.0.q"]),
+    ]
+    original = FloatModel.tensor
+
+    def checked_read(self: FloatModel, name: str) -> torch.Tensor:
+        gc.collect()
+        assert all(value() is None for value in previous), "another group's tensors stayed live"
+        return original(self, name)
+
+    monkeypatch.setattr(FloatModel, "tensor", checked_read)
+    _ = weights["model.layers.1.mlp.down_proj.weight"]
+
+
+@pytest.mark.parametrize(
+    ("profile", "scales"),
+    [("servable", "pot"), ("servable", "affine"), ("minimal", "pot"), ("minimal", "affine")],
+)
+def test_streamed_d_is_byte_identical_to_eager_d(
+    calibrated: tuple[FloatModel, CalibrationResult],
+    monkeypatch: pytest.MonkeyPatch,
+    profile: Literal["servable", "minimal"],
+    scales: Literal["pot", "affine"],
+) -> None:
+    model, calib = calibrated
+    streamed = quantize(model, calib, profile=profile, scales=scales, alphas=ALPHAS[:2])
+
+    def eager(
+        source: FloatModel, maxima: Mapping[str, torch.Tensor], alpha: Fraction
+    ) -> tuple[Mapping[str, torch.Tensor], Mapping[str, torch.Tensor]]:
+        weights = {name: source.tensor(name).to(torch.float64) for name in source.names}
+        return transform(source.arch, weights, maxima, alpha)
+
+    monkeypatch.setattr(assemble, "transformed_checkpoint", eager)
+    expected = quantize(model, calib, profile=profile, scales=scales, alphas=ALPHAS[:2])
+    assert encode(INTEGER_MODEL.codec, streamed, limits=INTEGER_MODEL_LIMITS) == encode(
+        INTEGER_MODEL.codec, expected, limits=INTEGER_MODEL_LIMITS
+    )
+
+
+def test_bf16_reference_runs_before_any_float64_checkpoint_read(
+    calibrated: tuple[FloatModel, CalibrationResult], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model, calib = calibrated
+    original_read = FloatModel.tensor
+    original_reference = assemble.reference_logits
+    reference_ran = False
+    in_reference = False
+
+    def reference(*args: object, **kwargs: object) -> torch.Tensor:
+        nonlocal reference_ran, in_reference
+        in_reference = True
+        result = original_reference(model, calib.calibration.held_out, calib.calibration.seed)
+        in_reference = False
+        reference_ran = True
+        return result
+
+    def read(self: FloatModel, name: str) -> torch.Tensor:
+        assert in_reference or reference_ran, "the full checkpoint was read before the reference"
+        return original_read(self, name)
+
+    monkeypatch.setattr(FloatModel, "tensor", read)
+    monkeypatch.setattr(assemble, "reference_logits", reference)
+    quantize(model, calib, alphas=(Fraction(3, 5),))
