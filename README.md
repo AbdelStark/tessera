@@ -1,15 +1,35 @@
 # Tessera
 
-Tessera proves that a committed integer language model `D` produced a recorded token stream. The proof is sound against a prover that controls every piece of hardware and software, hides weights, activations, prompts and outputs from the verifier, and is designed to cost a small multiple of the inference it certifies. An independent verifier rebuilds every constraint from a public claim list and shares no code with the prover.
+Tessera targets proofs that a committed integer language model `D` produced a recorded token stream: sound against an untrusted prover, zero-knowledge, and checked by an independent verifier that rebuilds constraints from public data. The specification describes that target; the current implementation boundary is below.
 
-**Status:** pre-release. Milestone v0.1 (primitives and the unit-cost gate) is in progress. Nothing here is usable for audits yet, and every performance figure in the specification is a projection until it is measured.
+**Status:** pre-release CPU reference implementation. Synthetic tiny-model tests exercise exact-greedy proofs through the public API and real command-line tools. Protocol/1 is non-hiding, `test-small/1` certifies nothing, and production audits and frontier performance remain unqualified.
 
-The reference CPU path now exposes [`tessera_prover::Prover`](docs/spec/02-public-api.md#31-prover)
-for one exact-greedy request through NI and Live sessions. Tiny-model acceptance
-tests use `test-small/1`, which certifies nothing. The current protocol/1 path
-provides no zero knowledge. The [independent verifier CLI](docs/verifier/reference-cli.md)
-checks NI proofs against caller-owned statement and weight pins. Prover CLI
-orchestration and the pass planner remain separate milestones.
+The CPU route compiles a model, commits its weights, proves one or several requests,
+and checks the result with the [independent verifier CLI](docs/verifier/reference-cli.md).
+It supports NI and directory Live sessions. The pass planner can select leaf groups
+and regenerated reduction-stage windows using conservative memory estimates.
+Computed score rounds serve the ordinary single-request route; slotted batches and
+windowed native relations retain their materialized representation.
+
+Run the [exact CLI and sampled-route suites](docs/testing/exact-cli.md):
+
+```sh
+cargo test -p tessera-e2e --test exact_cli --locked
+cargo test -p tessera-cli --test prove_sample --locked
+cargo test -p tessera-prover --features test-params --test model_leaf public_cpu_api_ --locked
+```
+
+The API acceptance build explicitly enables the verifier dev-dependency's non-certifying
+parameters and is forbidden in release builds. These tests cover NI/Live acceptance,
+request binding, rejection controls, redaction, one-layer models and budget windows;
+they do not establish a deployed recorder trust boundary or production resource bounds.
+
+For recorder placement, TLS boundaries and serving-engine conformance, use the
+[integration guide](docs/integration.md). Optional metrics and collector export are
+in the [telemetry guide](docs/telemetry.md). The prover protocol library exposes
+[Live directory and optional mTLS transports](docs/live-transports.md), with host-owned
+sockets and identity configuration. The independent verifier's mTLS route remains
+[#181](https://github.com/AbdelStark/tessera/issues/181); end-to-end CLI Live uses a directory.
 
 ## Specification
 
