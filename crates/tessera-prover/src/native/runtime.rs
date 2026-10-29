@@ -3,12 +3,12 @@
 //! Original-source exact-greedy stage tables, from draft RFC-0053's Boolean formulas.
 
 use super::*;
-use tessera_compiler::{GreedyCertificate, schedule::Deferred};
+use tessera_compiler::{GreedyCertificate, GreedyKeyColumn, schedule::Deferred};
 
 #[derive(Clone, Copy)]
 pub(super) enum Runtime {
     Tokens,
-    Key(GreedyCertificate),
+    Key(GreedyCertificate, GreedyKeyColumn),
     Selected(GreedyCertificate),
     Observe,
 }
@@ -34,6 +34,11 @@ pub(super) fn append(
     let mut add = |kind, node, degree, evaluations, zero, outputs, site| {
         let family = families.len();
         families.push(Family {
+            windows: if matches!(kind, Runtime::Selected(_)) {
+                runtime.key_columns().to_vec()
+            } else {
+                Vec::new()
+            },
             site,
             nodes: vec![node],
             shape: shape.clone(),
@@ -44,7 +49,7 @@ pub(super) fn append(
             tag: (native.len() + 1) as u32,
             kind: match kind {
                 Runtime::Tokens => NativeKind::Tokens,
-                Runtime::Key(_) => NativeKind::GreedyKey,
+                Runtime::Key(..) => NativeKind::GreedyKey,
                 Runtime::Selected(_) => NativeKind::GreedySelected,
                 Runtime::Observe => NativeKind::Observe,
             },
@@ -95,19 +100,21 @@ pub(super) fn append(
                 layout
                     .reads(s, 0)?
                     .iter()
-                    .any(|r| r.term == ModelColumn::GreedyKey)
+                    .any(|r| r.term.is_greedy_key())
                     .then_some(s)
             })
             .ok_or_else(bad)?;
-        add(
-            Runtime::Key(c),
-            l,
-            2,
-            nt as usize + 3,
-            false,
-            outputs.clone(),
-            site,
-        );
+        for &column in runtime.key_columns() {
+            add(
+                Runtime::Key(c, column),
+                l,
+                2,
+                nt as usize + 3,
+                false,
+                outputs.clone(),
+                site,
+            );
+        }
         add(
             Runtime::Selected(c),
             l,
@@ -161,7 +168,7 @@ pub(super) fn build(
         push(expanded);
     } else {
         push(graph_column(lowering, graph, lowering.logits)?);
-        if let Runtime::Key(c) | Runtime::Selected(c) = kind {
+        if let Runtime::Key(c, _) | Runtime::Selected(c) = kind {
             let (id, m) = witness.greedy_maximum().ok_or_else(bad)?;
             if id != c.gadget || m.len() != tp {
                 return Err(bad());
@@ -186,12 +193,16 @@ pub(super) fn build(
             }
         }
     }
-    let (point, fixed) = if let Runtime::Key(c) = kind {
+    let (point, fixed) = if let Runtime::Key(_, column) = kind {
         // The greedy key has no token axis (RFC-0054 'No token axis'): no group variables.
-        let point = leaf.point(c.variables as usize, &[]).ok_or_else(bad)?;
+        let point = leaf.point(column.variables as usize, &[]).ok_or_else(bad)?;
         let p = point.as_slice();
         let keys = witness
-            .values(family.site, 0, ModelColumn::GreedyKey)
+            .values(
+                family.site,
+                0,
+                ModelColumn::greedy_key(column.request_index),
+            )
             .ok_or_else(bad)?;
         let mut values = zeros(keys.len())?;
         for (out, &key) in values.iter_mut().zip(keys.iter()) {
@@ -228,14 +239,14 @@ pub(super) fn prepare(
     let count = data.raw.len();
     let mut coefficients = vec![
         vec![F::ZERO; tp * vp];
-        if matches!(kind, Runtime::Key(_)) {
+        if matches!(kind, Runtime::Key(..)) {
             3
         } else {
             2
         }
     ];
-    if let Runtime::Key(c) | Runtime::Selected(c) = kind {
-        let (vocabulary, outputs) = if matches!(kind, Runtime::Key(_)) {
+    if matches!(kind, Runtime::Key(..) | Runtime::Selected(_)) {
+        let (vocabulary, outputs) = if matches!(kind, Runtime::Key(..)) {
             (
                 eq_table(&data.point[..nv]).map_err(|_| bad())?,
                 eq_table(&data.point[nv..]).map_err(|_| bad())?,
@@ -249,20 +260,30 @@ pub(super) fn prepare(
             .copied()
             .fold(F::ZERO, |a, x| a + x);
         for t in 0..tp {
-            let active = c.prompt as usize - 1 <= t && t < n as usize - 1;
-            let weight = if matches!(kind, Runtime::Key(_)) {
-                if active {
-                    outputs[t + 1 - c.prompt as usize]
-                } else {
-                    F::ZERO
-                }
+            let window = match kind {
+                Runtime::Key(_, column) => Some(column),
+                _ => family.windows.iter().copied().find(|column| {
+                    let start = (column.slot_offset + column.prompt - 1) as usize;
+                    let end = (column.slot_offset + column.positions - 1) as usize;
+                    start <= t && t < end
+                }),
+            };
+            let start = window.map_or(0, |column| {
+                (column.slot_offset + column.prompt - 1) as usize
+            });
+            let end = window.map_or(0, |column| {
+                (column.slot_offset + column.positions - 1) as usize
+            });
+            let active = start <= t && t < end;
+            let weight = if matches!(kind, Runtime::Key(..)) {
+                if active { outputs[t - start] } else { F::ZERO }
             } else {
                 time[t]
             };
             let mut suffix = F::ZERO;
             for (j, &vocabulary_weight) in vocabulary.iter().enumerate() {
                 let i = t * vp + j;
-                if matches!(kind, Runtime::Key(_)) {
+                if matches!(kind, Runtime::Key(..)) {
                     coefficients[0][i] = if j == 0 { weight * mass } else { F::ZERO };
                     if j < v as usize {
                         coefficients[1][i] = weight * vocabulary_weight;
@@ -294,7 +315,7 @@ pub(super) fn prepare(
                     .collect(),
             );
         }
-        if matches!(kind, Runtime::Key(_)) {
+        if matches!(kind, Runtime::Key(..)) {
             data.target = *data.fixed.first().ok_or_else(bad)?;
             data.terms.push(Term::new(F::ONE, vec![1, count]));
             data.terms.push(Term::new(-F::ONE, vec![0, count + 1]));
@@ -337,6 +358,100 @@ mod tests {
     use tessera_ir::{GadgetId, IntRange, TableId};
 
     #[test]
+    fn batch_key_coefficients_stay_in_own_slot_and_selected_covers_all_windows() {
+        let c = GreedyCertificate {
+            gadget: GadgetId(1),
+            table: TableId(1),
+            positions: 12,
+            vocab: 2,
+            prompt: 1,
+            logits: IntRange { lo: -8, hi: 7 },
+            range_bits: 4,
+            variables: 1,
+        };
+        let windows = vec![
+            GreedyKeyColumn {
+                request_index: 0,
+                prompt: 1,
+                positions: 2,
+                slot_offset: 0,
+                variables: 1,
+            },
+            GreedyKeyColumn {
+                request_index: 2,
+                prompt: 1,
+                positions: 3,
+                slot_offset: 8,
+                variables: 2,
+            },
+        ];
+        let zero = vec![F::from(G::from_u64_reduced(3)); 5];
+        for kind in [Runtime::Key(c, windows[1]), Runtime::Selected(c)] {
+            let family = Family {
+                windows: windows.clone(),
+                site: 0,
+                nodes: Vec::new(),
+                shape: vec![12, 2],
+                lambda: 0,
+                kind: Kind::Runtime(kind),
+            };
+            let mut data = Data {
+                score: None,
+                raw: vec![0; 7],
+                mask: None,
+                terms: Vec::new(),
+                fixed: vec![F::ZERO],
+                point: vec![F::from(G::from_u64_reduced(2)); 2],
+                full_point: true,
+                equality: Default::default(),
+                target: F::ZERO,
+                public: Vec::new(),
+            };
+            prepare(
+                &mut data,
+                &family,
+                kind,
+                &NativeContext {
+                    stage: 1,
+                    layer: &[],
+                    zero: &zero,
+                },
+            )
+            .unwrap();
+            for t in 0..16 {
+                for v in 0..2 {
+                    let expected = match kind {
+                        Runtime::Key(..) => {
+                            let output_weight = match t {
+                                8 => F::ONE - data.point[1],
+                                9 => data.point[1],
+                                _ => F::ZERO,
+                            };
+                            output_weight
+                                * if v == 0 {
+                                    F::ONE - data.point[0]
+                                } else {
+                                    data.point[0]
+                                }
+                        }
+                        _ => {
+                            let active = matches!(t, 0 | 8 | 9);
+                            if active {
+                                zero[1..].iter().enumerate().fold(F::ONE, |acc, (bit, &r)| {
+                                    acc * if t >> bit & 1 == 1 { r } else { F::ONE - r }
+                                })
+                            } else {
+                                F::ZERO
+                            }
+                        }
+                    };
+                    assert_eq!(data.public[1][t * 2 + v], expected, "t={t}, v={v}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn production_coefficients_match_all_literal_native_finals() {
         let vectors: serde_json::Value = serde_json::from_str(include_str!(
             "../../../../spec/vectors/greedy-boundary/greedy-boundary.json"
@@ -364,16 +479,24 @@ mod tests {
                 range_bits: 8,
                 variables: vars(&[n - prompt, v]),
             };
+            let column = GreedyKeyColumn {
+                request_index: 0,
+                prompt,
+                positions: n,
+                slot_offset: 0,
+                variables: c.variables,
+            };
             let p = point(&case["point"]);
             let mut z = vec![F::ZERO; vars(&[v]) as usize];
             z.extend(point(&case["zero"]));
             for (kind, raw, expected) in [
                 (Runtime::Tokens, "token_raw", "token_final"),
-                (Runtime::Key(c), "raw", "key_final"),
+                (Runtime::Key(c, column), "raw", "key_final"),
                 (Runtime::Selected(c), "raw", "selected_final"),
             ] {
                 let raw = point(&case[raw]);
                 let family = Family {
+                    windows: vec![column],
                     site: 0,
                     nodes: Vec::new(),
                     shape: vec![n, v],

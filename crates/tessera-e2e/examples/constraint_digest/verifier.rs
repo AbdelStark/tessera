@@ -230,13 +230,25 @@ fn relation(r: &s::Relation) -> Value {
         s::Relation::Rotate {
             positions,
             middle_vars,
-        } => json!({"Rotate":[json!(positions),json!(middle_vars)]}),
+            slots,
+        } => match slots {
+            None => json!({"Rotate":[positions,middle_vars]}),
+            Some(slots) => {
+                json!({"Rotate":[positions,middle_vars,{"slot_len":slots.slot_len(),"lengths":slots.lengths()}]})
+            }
+        },
         s::Relation::Booleanity => json!({"Booleanity":[]}),
         s::Relation::Vocabulary { vocab, vocab_vars } => json!({"Vocabulary":[vocab,vocab_vars]}),
         s::Relation::OneHotCount {
             vocab_vars,
             positions,
-        } => json!({"OneHotCount":[vocab_vars,positions]}),
+            slots,
+        } => match slots {
+            None => json!({"OneHotCount":[vocab_vars,positions]}),
+            Some(slots) => {
+                json!({"OneHotCount":[vocab_vars,positions,{"slot_len":slots.slot_len(),"lengths":slots.lengths()}]})
+            }
+        },
         s::Relation::OneHotIndex { vocab_vars } => json!({"OneHotIndex":[vocab_vars]}),
         s::Relation::Equality { constant } => json!({"Equality":[constant.to_canonical()]}),
     }

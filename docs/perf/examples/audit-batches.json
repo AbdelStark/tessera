@@ -21,20 +21,20 @@
     {
       "index": 1,
       "group": "greedy",
-      "tokens": 240000,
+      "tokens": 180000,
       "requests": [
         {
           "session_id": "5b7e019c3d2fa8e46b1c0d9e2f3a4b5c",
           "request_id": 3,
-          "tokens": 200000,
-          "prompt_len": 199000,
+          "tokens": 100000,
+          "prompt_len": 99000,
           "output_len": 1000
         },
         {
           "session_id": "5b7e019c3d2fa8e46b1c0d9e2f3a4b5c",
           "request_id": 8,
-          "tokens": 40000,
-          "prompt_len": 39500,
+          "tokens": 80000,
+          "prompt_len": 79500,
           "output_len": 500
         }
       ]

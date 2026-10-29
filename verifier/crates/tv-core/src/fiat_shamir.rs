@@ -102,7 +102,8 @@ pub(crate) fn absorb_under(
     values: &[Fp2],
 ) -> Result<(), Failure> {
     let label = Ascii::new(label).map_err(Failure::Label)?;
-    transcript.absorb(label, &tce(values));
+    let bytes = tce(values).map_err(Failure::Transcript)?;
+    transcript.absorb(label, &bytes);
     Ok(())
 }
 
@@ -117,15 +118,22 @@ pub(crate) fn challenge_under(
 
 /// The TCE encoding of a `Vec<Fp2>`: the length as a little-endian `u64`, then each element as
 /// `c0 ‖ c1`, 8 little-endian bytes each (RFC-0003 'Primitive types').
-pub(crate) fn tce(values: &[Fp2]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(values.len().saturating_mul(16).saturating_add(8));
-    // A slice in memory is shorter than 2^64 elements.
-    let length = u64::try_from(values.len()).unwrap_or(u64::MAX);
+/// Size overflow and failed reservation return `TranscriptError::Memory` before absorption (SP-8).
+pub(crate) fn tce(values: &[Fp2]) -> Result<Vec<u8>, TranscriptError> {
+    let length = u64::try_from(values.len()).map_err(|_| TranscriptError::Memory)?;
+    let size = values
+        .len()
+        .checked_mul(16)
+        .and_then(|bytes| bytes.checked_add(8))
+        .ok_or(TranscriptError::Memory)?;
+    let mut out = Vec::new();
+    out.try_reserve_exact(size)
+        .map_err(|_| TranscriptError::Memory)?;
     out.extend_from_slice(&length.to_le_bytes());
     for value in values {
         out.extend_from_slice(&value.to_le_bytes());
     }
-    out
+    Ok(out)
 }
 
 /// Absorbs `values`, a prover message, as TCE `Vec<Fp2>` under the label of `step`.

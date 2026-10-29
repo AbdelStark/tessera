@@ -54,6 +54,32 @@ fn variables(shape: &[u32]) -> Option<u32> {
         v.checked_add(d.checked_next_power_of_two()?.trailing_zeros())
     })
 }
+// RFC-0071: attention tiles omit gap queries; their Softmax keys are Exp's last row or zero.
+fn softmax_gaps(lowering: &Lowering, node: &Node, domain: &[u32]) -> Result<usize, LeafError> {
+    if !matches!(node.op, tessera_ir::Op::SoftmaxRow { .. }) {
+        return Ok(0);
+    }
+    let Some(slots) = &lowering.graph.slots else {
+        return Ok(0);
+    };
+    let real = slots
+        .lengths
+        .iter()
+        .try_fold(0u32, |sum, &n| sum.checked_add(n))
+        .ok_or(LeafError::Memory)?;
+    let heads = *domain.first().ok_or(LeafError::Memory)?;
+    let rows = *domain.get(1).ok_or(LeafError::Memory)?;
+    let gaps = rows.checked_sub(real).ok_or(LeafError::Internal {
+        rule: "Softmax domain covers the batch's real rows",
+    })?;
+    domain.iter().skip(2).try_fold(
+        (heads as usize)
+            .checked_mul(gaps as usize)
+            .ok_or(LeafError::Memory)?,
+        |n, &d| n.checked_mul(d as usize).ok_or(LeafError::Memory),
+    )
+}
+
 fn elements(shape: &[u32]) -> Option<usize> {
     shape
         .iter()
@@ -198,11 +224,12 @@ impl ModelWitness {
                     } else {
                         0
                     };
+                    let gaps = softmax_gaps(lowering, node, &domain)?;
                     let mut column = Column {
                         name: read.term,
                         domain,
                         values: buffer(len, fill)?,
-                        written: 0,
+                        written: gaps,
                     };
                     if let Some(id) = tensor(read.term, node) {
                         if lowering.graph.tensors[id.0 as usize].shape != column.domain {
@@ -225,11 +252,12 @@ impl ModelWitness {
                     let len = 1usize
                         .checked_shl(variables(&domain).ok_or(LeafError::Memory)?)
                         .ok_or(LeafError::Memory)?;
+                    let gaps = softmax_gaps(lowering, node, &domain)?;
                     columns.push(Column {
                         name: ModelColumn::Auxiliary(tessera_compiler::AuxColumn::Maximum),
                         domain,
                         values: buffer(len, 0)?,
-                        written: 0,
+                        written: gaps,
                     });
                 }
                 real_layers.push(columns);
@@ -254,35 +282,33 @@ impl ModelWitness {
                 let mut padded = buffer(n.next_power_of_two() as usize, 0)?;
                 padded[..m.len()].copy_from_slice(m);
                 maximum = Some((id, padded));
-                let requests: Vec<_> = values.lookups().collect();
-                let [request] = requests.as_slice() else {
-                    return own();
-                };
-                let Some((s, _)) = sites.iter().enumerate().find(|(_, layers)| {
-                    layers
-                        .iter()
-                        .flatten()
-                        .any(|c| c.name == ModelColumn::GreedyKey)
-                }) else {
-                    return own();
-                };
-                let [columns] = sites[s].as_mut_slice() else {
-                    return own();
-                };
-                let [column] = columns.as_mut_slice() else {
-                    return own();
-                };
-                if layout.sites()[s].layers[0].lookups[0].lookup.table != request.table()
-                    || column.values.len() != request.keys().len()
-                    || request.values().is_some()
-                {
+                let key_columns: Vec<_> = sites
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(s, layers)| {
+                        layers.iter().enumerate().flat_map(move |(l, columns)| {
+                            columns.iter().enumerate().filter_map(move |(i, c)| {
+                                c.name.is_greedy_key().then_some((s, l, i))
+                            })
+                        })
+                    })
+                    .collect();
+                if values.lookups().count() != key_columns.len() {
                     return own();
                 }
-                // This domain is outputs x vocabulary, independently padded on both axes.
-                for (out, &key) in column.values.iter_mut().zip(request.keys()) {
-                    *out = i64::from(key);
+                for (request, (s, l, i)) in values.lookups().zip(key_columns) {
+                    let column = &mut sites[s][l][i];
+                    if layout.sites()[s].layers[l].lookups[i].lookup.table != request.table()
+                        || column.values.len() != request.keys().len()
+                        || request.values().is_some()
+                    {
+                        return own();
+                    }
+                    for (out, &key) in column.values.iter_mut().zip(request.keys()) {
+                        *out = i64::from(key);
+                    }
+                    column.written = elements(&column.domain).ok_or(LeafError::Memory)?;
                 }
-                column.written = elements(&column.domain).ok_or(LeafError::Memory)?;
                 continue;
             }
             let id = match tile.tile {
@@ -290,11 +316,7 @@ impl ModelWitness {
                 _ => continue,
             };
             let target = layout.sites().iter().enumerate().find_map(|(s, site)| {
-                if sites[s]
-                    .iter()
-                    .flatten()
-                    .any(|c| c.name == ModelColumn::GreedyKey)
-                {
+                if sites[s].iter().flatten().any(|c| c.name.is_greedy_key()) {
                     return None;
                 }
                 (0..site.layers.len())
@@ -403,7 +425,7 @@ impl ModelWitness {
             forests: Vec::new(),
             maximum,
         };
-        result.build_forests(layout)?;
+        result.build_forests(layout, lowering)?;
         Ok(result)
     }
 
@@ -461,7 +483,11 @@ impl ModelWitness {
     pub fn forest_sites(&self) -> impl Iterator<Item = NodeRef> + '_ {
         self.forests.iter().map(|f| f.site)
     }
-    fn build_forests(&mut self, layout: &LeafLayout<ModelColumn>) -> Result<(), LeafError> {
+    fn build_forests(
+        &mut self,
+        layout: &LeafLayout<ModelColumn>,
+        lowering: &Lowering,
+    ) -> Result<(), LeafError> {
         for (s, site) in layout.sites().iter().enumerate() {
             let Some(column) = self.columns[s][0]
                 .iter()
@@ -472,10 +498,8 @@ impl ModelWitness {
             let &[heads, n, keys] = column.domain.as_slice() else {
                 return own();
             };
-            if keys != n {
-                return own();
-            }
-            let height = n.next_power_of_two().trailing_zeros();
+            let height = keys.next_power_of_two().trailing_zeros();
+            let query_bits = n.next_power_of_two().trailing_zeros();
             if height == 0 {
                 continue;
             }
@@ -492,8 +516,23 @@ impl ModelWitness {
                     })?;
                 for head in 0..heads {
                     for query in 0..n {
-                        for key in 0..=query {
-                            let index = ((head as usize) << (2 * height))
+                        let position = match &lowering.graph.slots {
+                            Some(slots) => {
+                                let ordinal = (query / slots.slot_len) as usize;
+                                let position = query % slots.slot_len;
+                                if slots
+                                    .lengths
+                                    .get(ordinal)
+                                    .is_none_or(|&len| position >= len)
+                                {
+                                    continue;
+                                }
+                                position
+                            }
+                            None => query,
+                        };
+                        for key in 0..=position {
+                            let index = ((head as usize) << (query_bits + height))
                                 | ((query as usize) << height)
                                 | key as usize;
                             leaves[l * block + index] = Goldilocks::from_i64(values[index]);

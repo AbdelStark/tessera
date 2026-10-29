@@ -109,18 +109,21 @@ impl TileWitness {
         }
     }
 
-    pub(crate) fn greedy(
+    pub(crate) fn greedy_batch(
         certificate: GreedyCertificate,
         maximum: SecretBuf<i64>,
-        keys: SecretBuf<u32>,
+        key_columns: Vec<SecretBuf<u32>>,
     ) -> Self {
         Self {
             maximum: Some((certificate.gadget, maximum)),
-            lookups: vec![Lookup {
-                table: certificate.table,
-                keys,
-                values: None,
-            }],
+            lookups: key_columns
+                .into_iter()
+                .map(|keys| Lookup {
+                    table: certificate.table,
+                    keys,
+                    values: None,
+                })
+                .collect(),
             ..Self::empty()
         }
     }
@@ -355,19 +358,33 @@ impl Structure<'_> {
                 }
                 let n = self.positions();
                 let padded = n.next_power_of_two();
+                let slot_cap = graph.slots.as_ref().map_or(padded, |s| s.slot_len as usize);
                 let Some(block) = tile.block.as_ref() else {
                     return usage(NOT_A_BLOCK);
                 };
                 let (start, end) = (block.queries.start as usize, block.queries.end as usize);
                 let width = end.saturating_sub(start);
                 let aligned = width.is_power_of_two()
-                    && width <= padded
+                    && width <= slot_cap
                     && start == block.index as usize * width
                     && end <= padded;
                 if !aligned {
                     return usage(NOT_A_BLOCK);
                 }
-                let queries = start.min(n)..end.min(n);
+                let queries = match &graph.slots {
+                    None => start.min(n)..end.min(n),
+                    Some(slots) => {
+                        let s = slots.slot_len as usize;
+                        let r = start / s;
+                        let q0 = start % s;
+                        let held_len = slots
+                            .lengths
+                            .get(r)
+                            .map_or(0, |&n_r| (n_r as usize).saturating_sub(q0).min(width));
+                        let clamped = start.min(n);
+                        clamped..clamped + held_len
+                    }
+                };
                 let as_u32 = |r: &Range<usize>| r.start as u32..r.end as u32;
                 let shares = node
                     .outputs
@@ -431,6 +448,7 @@ pub(crate) struct Gadgets {
     pub(crate) read: Vec<TableId>,
     incomplete: Vec<TableId>,
     pub(crate) certificate: Option<GreedyCertificate>,
+    pub(crate) key_columns: Vec<tessera_compiler::GreedyKeyColumn>,
     /// A grouped leaf stage's lookup columns, each table's entries over every group (RFC-0054);
     /// empty for an ungrouped stage.
     pub(crate) columns: Vec<(TableId, u64)>,
@@ -525,6 +543,7 @@ impl Gadgets {
             read,
             incomplete,
             certificate: None,
+            key_columns: Vec::new(),
             columns: Vec::new(),
         })
     }
@@ -642,19 +661,43 @@ impl Gadgets {
                 });
             }
             Op::RsqrtRow { .. } => {
+                let slotted = graph.slots.as_ref().filter(|s| {
+                    graph.tensors[node.inputs[0].0 as usize].shape.first() == Some(&s.token_len())
+                });
                 self.prepared(node.id.0)?.root_tile(
                     node.outputs[0],
                     input(0)?,
+                    slotted,
                     output(0)?,
                     &mut tile,
                 )?;
             }
             Op::SoftmaxRow { .. } => {
+                let in_shape = &graph.tensors[node.inputs[0].0 as usize].shape;
+                let n_key = channels(0);
+                let seq_rows = in_shape
+                    .get(in_shape.len().saturating_sub(2))
+                    .copied()
+                    .unwrap_or(1) as usize;
+                let slotted = graph
+                    .slots
+                    .as_ref()
+                    .filter(|s| seq_rows == s.token_len() as usize && n_key == s.n_max() as usize);
+                let padded_keys =
+                    slotted.map_or_else(|| n_key.next_power_of_two(), |s| s.slot_len as usize);
                 self.prepared(node.id.0)?.softmax_tile(
                     node.outputs[0],
                     input(0)?,
-                    channels(0),
-                    |row| row % channels(0) + 1,
+                    n_key,
+                    padded_keys,
+                    |row| {
+                        let q = row % seq_rows;
+                        match slotted {
+                            Some(s) if !s.is_real_row(q) => 0,
+                            Some(s) => q % (s.slot_len as usize) + 1,
+                            None => q + 1,
+                        }
+                    },
                     output(0)?,
                     output(1)?,
                     &mut tile,
@@ -756,7 +799,7 @@ impl Gadgets {
     /// query head after another.
     pub(crate) fn attention_tile(
         &self,
-        _structure: &Structure<'_>,
+        structure: &Structure<'_>,
         core: &Core,
         rows: Rows,
         queries: Range<usize>,
@@ -767,11 +810,26 @@ impl Gadgets {
             ..TileWitness::empty()
         };
         let held = queries.len().max(1);
+        let slotted = structure
+            .graph()
+            .slots
+            .as_ref()
+            .filter(|s| core.n == s.token_len() as usize);
+        let padded_keys =
+            slotted.map_or_else(|| core.n_key.next_power_of_two(), |s| s.slot_len as usize);
         self.prepared(core.softmax)?.softmax_tile(
             core.e,
             &scores,
-            core.n,
-            |row| queries.start + row % held + 1,
+            core.n_key,
+            padded_keys,
+            |row| {
+                let q = queries.start + row % held;
+                match slotted {
+                    Some(s) if !s.is_real_row(q) => 0,
+                    Some(s) => q % (s.slot_len as usize) + 1,
+                    None => q + 1,
+                }
+            },
             0,
             1,
             &mut tile,
@@ -909,6 +967,70 @@ impl Gadgets {
         self.requests[node.id.0 as usize].contains(&table)
     }
 
+    /// Counted and padded lookup elements of a `SoftmaxRow` node for `table`.
+    fn softmax_domain_counts(
+        structure: &Structure<'_>,
+        node: &Node,
+        exp_table: TableId,
+        table: TableId,
+        overflow: WitnessError,
+    ) -> Result<(u64, u64), WitnessError> {
+        let graph = structure.graph();
+        let scores_shape = &graph.tensors[node.inputs[0].0 as usize].shape;
+        let recip_shape = &graph.tensors[node.outputs[1].0 as usize].shape;
+        let (&seq_rows, outer) = recip_shape.split_last().ok_or(overflow)?;
+        let &n_key = scores_shape.last().ok_or(overflow)?;
+        let slotted = graph
+            .slots
+            .as_ref()
+            .filter(|s| seq_rows == s.token_len() && n_key == s.n_max());
+        let is_core = structure.core_of(node.id.0).is_some();
+        let counted_queries = match (is_core, slotted) {
+            (true, Some(s)) => s
+                .lengths
+                .iter()
+                .try_fold(0u64, |acc, &len| acc.checked_add(u64::from(len)))
+                .ok_or(overflow)?,
+            _ => u64::from(seq_rows),
+        };
+        let outer_real = outer
+            .iter()
+            .try_fold(1u64, |n, &d| n.checked_mul(u64::from(d)))
+            .ok_or(overflow)?;
+        let outer_padded = outer
+            .iter()
+            .try_fold(1u64, |n, &d| {
+                u64::from(d)
+                    .checked_next_power_of_two()
+                    .and_then(|p| n.checked_mul(p))
+            })
+            .ok_or(overflow)?;
+        let padded_queries = u64::from(seq_rows)
+            .checked_next_power_of_two()
+            .ok_or(overflow)?;
+        if table == exp_table {
+            let padded_keys = match slotted {
+                Some(s) => u64::from(s.slot_len),
+                None => u64::from(n_key)
+                    .checked_next_power_of_two()
+                    .ok_or(overflow)?,
+            };
+            let real = outer_real
+                .checked_mul(counted_queries)
+                .and_then(|n| n.checked_mul(u64::from(n_key)))
+                .ok_or(overflow)?;
+            let padded = outer_padded
+                .checked_mul(padded_queries)
+                .and_then(|n| n.checked_mul(padded_keys))
+                .ok_or(overflow)?;
+            Ok((real, padded))
+        } else {
+            let real = outer_real.checked_mul(counted_queries).ok_or(overflow)?;
+            let padded = outer_padded.checked_mul(padded_queries).ok_or(overflow)?;
+            Ok((real, padded))
+        }
+    }
+
     /// Public upper bound on insertions, including weighted padding and the row-0 tail.
     pub(crate) fn update_bound(
         &self,
@@ -917,13 +1039,16 @@ impl Gadgets {
     ) -> Result<u64, WitnessError> {
         let error = WitnessError::MemoryTable { table };
         let graph = structure.graph();
-        let mut total = 1u64
-            .checked_add(
-                self.certificate
-                    .filter(|c| c.table == table)
-                    .map_or(0, GreedyCertificate::entries),
-            )
-            .ok_or(error)?;
+        let runtime_entries = match self.certificate.filter(|c| c.table == table) {
+            Some(c) if self.key_columns.is_empty() => c.entries(),
+            Some(_) => self
+                .key_columns
+                .iter()
+                .try_fold(0u64, |acc, col| acc.checked_add(col.entries()))
+                .ok_or(error)?,
+            None => 0,
+        };
+        let mut total = 1u64.checked_add(runtime_entries).ok_or(error)?;
         for node in &graph.nodes {
             let frequency = self.requests[node.id.0 as usize]
                 .iter()
@@ -932,10 +1057,17 @@ impl Gadgets {
             if frequency == 0 {
                 continue;
             }
-            let tensor = match node.op {
-                Op::SoftmaxRow { exp_table, .. } if exp_table != table => node.outputs[1],
-                _ => node.inputs[0],
-            };
+            if let Op::SoftmaxRow { exp_table, .. } = node.op {
+                let (real, padded) =
+                    Self::softmax_domain_counts(structure, node, exp_table, table, error)?;
+                let padding_calls = u64::from(real != padded);
+                total = frequency
+                    .checked_mul(real.checked_add(padding_calls).ok_or(error)?)
+                    .and_then(|n| total.checked_add(n))
+                    .ok_or(error)?;
+                continue;
+            }
+            let tensor = node.inputs[0];
             let shape = &graph.tensors[tensor.0 as usize].shape;
             let real = shape
                 .iter()
@@ -975,11 +1107,36 @@ impl Gadgets {
         counts: &mut Multiplicities,
         read_classes: impl FnOnce(TensorId) -> Result<SecretBuf<i64>, WitnessError>,
     ) -> Result<(), WitnessError> {
-        let input = node.inputs[0];
-        let domain = match node.op {
-            Op::SoftmaxRow { exp_table, .. } if exp_table != counts.table => node.outputs[1],
-            _ => input,
-        };
+        if let Op::SoftmaxRow { exp_table, .. } = node.op {
+            let (real, padded) = Self::softmax_domain_counts(
+                structure,
+                node,
+                exp_table,
+                counts.table,
+                WitnessError::Internal {
+                    rule: "a lookup domain fits u64",
+                },
+            )?;
+            if padded == real {
+                return Ok(());
+            }
+            if counts.table != exp_table {
+                for &table in &self.requests[node.id.0 as usize] {
+                    if table == counts.table {
+                        counts.add(0, padded - real)?;
+                    }
+                }
+                return Ok(());
+            }
+            let table = structure.engine.lookup(exp_table)?;
+            let TableKind::Exp { key_bits, .. } = table.spec().kind else {
+                return Err(WitnessError::Internal {
+                    rule: "SoftmaxRow reads an Exp table",
+                });
+            };
+            return counts.add((1u64 << key_bits) - 1, padded - real);
+        }
+        let domain = node.inputs[0];
         let shape = &structure.graph().tensors[domain.0 as usize].shape;
         let product = |padded: bool| {
             shape.iter().try_fold(1u64, |size, &d| {
@@ -996,23 +1153,6 @@ impl Gadgets {
         let (real, padded) = (product(false)?, product(true)?);
         if padded == real {
             return Ok(());
-        }
-        if let Op::SoftmaxRow { exp_table, .. } = node.op {
-            if counts.table != exp_table {
-                for &table in &self.requests[node.id.0 as usize] {
-                    if table == counts.table {
-                        counts.add(0, padded - real)?;
-                    }
-                }
-                return Ok(());
-            }
-            let table = structure.engine.lookup(exp_table)?;
-            let TableKind::Exp { key_bits, .. } = table.spec().kind else {
-                return Err(WitnessError::Internal {
-                    rule: "SoftmaxRow reads an Exp table",
-                });
-            };
-            return counts.add((1u64 << key_bits) - 1, padded - real);
         }
         if matches!(node.op, Op::RsqrtRow { .. }) {
             for &table in &self.requests[node.id.0 as usize] {

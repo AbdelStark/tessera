@@ -166,6 +166,11 @@ pub fn analyze(graph: &Graph) -> Result<Vec<Interval>, RangeError> {
                 symmetric(maximum)
             }
             Op::MatMulAct { transpose_rhs } => {
+                let left_dims = graph.tensor(first).ok_or(RangeError::Internal)?.shape;
+                if left_dims.dims().len() < 2 {
+                    return Err(RangeError::Internal);
+                }
+                let count = *left_dims.dims().last().ok_or(RangeError::Internal)?;
                 let right = operand(node, 1)?;
                 let dims = graph.tensor(right).ok_or(RangeError::Internal)?.shape;
                 let from_end = if transpose_rhs { 1 } else { 2 };
@@ -174,7 +179,17 @@ pub fn analyze(graph: &Graph) -> Result<Vec<Interval>, RangeError> {
                     .len()
                     .checked_sub(from_end)
                     .ok_or(RangeError::Internal)?;
-                let count = *dims.dims().get(axis).ok_or(RangeError::Internal)?;
+                let right_count = *dims.dims().get(axis).ok_or(RangeError::Internal)?;
+                let fits = if transpose_rhs {
+                    count == right_count
+                } else if graph.slots().is_some_and(|s| s.lengths().len() >= 2) {
+                    count == graph.key_length() && right_count == graph.length()
+                } else {
+                    count == right_count
+                };
+                if !fits {
+                    return Err(RangeError::Internal);
+                }
                 a.product(get(&ranges, right)?).scale(i128::from(count))
             }
             Op::SoftmaxRow { sigma, .. } => {

@@ -45,9 +45,10 @@ pub(crate) struct Core {
     pub(crate) r: TensorId,
     pub(crate) pv: TensorId,
     pub(crate) o: TensorId,
-    /// `heads`, `n` and `d_head`.
+    /// `heads`, `n` (token rows), `n_key` (score/exponential columns) and `d_head`.
     pub(crate) heads: usize,
     pub(crate) n: usize,
+    pub(crate) n_key: usize,
     pub(crate) d_head: usize,
     /// The `Exp` table and the exponentials' precision `σ`.
     pub(crate) table: TableId,
@@ -231,13 +232,18 @@ fn core(
     let [heads, n, d_head] = *shape(q)? else {
         return None;
     };
+    let n_key = graph
+        .slots
+        .as_ref()
+        .filter(|s| n == s.token_len())
+        .map_or(n, tessera_ir::BatchSlots::n_max);
     let rows = [heads, n, d_head];
     let shapes_fit = shape(k)? == rows
         && shape(v)? == rows
         && shape(pv)? == rows
         && shape(o)? == rows
-        && shape(scores)? == [heads, n, n]
-        && shape(e)? == [heads, n, n]
+        && shape(scores)? == [heads, n, n_key]
+        && shape(e)? == [heads, n, n_key]
         && shape(r)? == [heads, n];
     shapes_fit.then_some(Core {
         scores_node: product.id.0,
@@ -254,6 +260,7 @@ fn core(
         o,
         heads: heads as usize,
         n: n as usize,
+        n_key: n_key as usize,
         d_head: d_head as usize,
         table: exp_table,
         sigma,

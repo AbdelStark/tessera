@@ -3,7 +3,7 @@
 //! Current-model public leaf geometry, independently derived from RFC-0008/0010/0045/0050.
 use super::{Error, Schedule, Tree, reserved};
 use crate::claims::GadgetPolicy;
-use crate::lowering::{Graph, Op, TensorId};
+use crate::lowering::{Graph, Op, Slots, TensorId};
 use crate::selection;
 use crate::validation::ClaimsError;
 use tv_field::Fp2;
@@ -16,6 +16,7 @@ pub struct ModelSchedule {
     schedule: Schedule,
     lookups: Vec<(TableId, u64)>,
     forests: Vec<Root>,
+    slots: Option<Slots>,
 }
 
 /// A Softmax forest's public shape (RFC-0010 'Tree levels'; RFC-0054 'The forest'): its leaf
@@ -75,13 +76,13 @@ impl ModelSchedule {
     /// `Internal` for invalid own graph/template geometry or sizes outside 63 variables.
     pub fn derive(graph: &Graph, policy: GadgetPolicy) -> Result<Self, ClaimsError> {
         let selected = selection::derive(graph, policy)?;
-        Self::from_selection(graph, &selected, None)
+        Self::from_selection(graph, &selected, &[])
     }
 
     pub(crate) fn from_selection(
         graph: &Graph,
         selected: &selection::Selection,
-        extra: Option<(TableId, u64)>,
+        extra: &[(TableId, u64)],
     ) -> Result<Self, ClaimsError> {
         let layers = crate::schedule::template_layers(graph).map_err(|error| match error {
             crate::schedule::ScheduleError::Memory => ClaimsError::Memory,
@@ -99,9 +100,23 @@ impl ModelSchedule {
                 }
                 .ok_or(ClaimsError::Internal)?;
                 let dimensions = graph.tensor(*domain).ok_or(ClaimsError::Internal)?.shape;
-                let bits = dimensions.dims().iter().try_fold(0u32, |sum, &d| {
-                    sum.checked_add(vars(d)?).ok_or(ClaimsError::Internal)
-                })?;
+                let dims = dimensions.dims();
+                let bits = if let Some(key_bits) = graph.attention_key_bits(*domain) {
+                    let prefix = dims
+                        .get(..dims.len().checked_sub(1).ok_or(ClaimsError::Internal)?)
+                        .ok_or(ClaimsError::Internal)?;
+                    prefix
+                        .iter()
+                        .try_fold(0u32, |sum, &d| {
+                            sum.checked_add(vars(d)?).ok_or(ClaimsError::Internal)
+                        })?
+                        .checked_add(key_bits)
+                        .ok_or(ClaimsError::Internal)?
+                } else {
+                    dims.iter().try_fold(0u32, |sum, &d| {
+                        sum.checked_add(vars(d)?).ok_or(ClaimsError::Internal)
+                    })?
+                };
                 let entries = 1u64.checked_shl(bits).ok_or(ClaimsError::Internal)?;
                 let total = totals
                     .get_mut(usize::try_from(table.0).map_err(|_| ClaimsError::Internal)?)
@@ -109,7 +124,7 @@ impl ModelSchedule {
                 *total = total.checked_add(entries).ok_or(ClaimsError::Internal)?;
             }
         }
-        if let Some((table, entries)) = extra {
+        for &(table, entries) in extra {
             let total = totals
                 .get_mut(usize::try_from(table.0).map_err(|_| ClaimsError::Internal)?)
                 .ok_or(ClaimsError::Internal)?;
@@ -177,10 +192,13 @@ impl ModelSchedule {
             let &[heads, queries, keys] = shape.dims() else {
                 return Err(ClaimsError::Internal);
             };
-            if queries != graph.length() || keys != queries {
+            if queries != graph.length() || keys != graph.key_length() {
                 return Err(ClaimsError::Internal);
             }
-            let height = vars(keys)?;
+            let height = match graph.attention_key_bits(source) {
+                Some(kb) => kb,
+                None => vars(keys)?,
+            };
             // A one-key maximum has no product-tree reduction level.
             if height == 0 {
                 continue;
@@ -202,10 +220,18 @@ impl ModelSchedule {
             });
             trees.push(Tree::Forest { height, trees_log });
         }
+        let slots = match graph.slots() {
+            Some(s) => Some(s.try_clone().map_err(|e| match e {
+                crate::lowering::LowerError::Memory => ClaimsError::Memory,
+                _ => ClaimsError::Internal,
+            })?),
+            None => None,
+        };
         Ok(Self {
             schedule: Schedule::new(&trees).map_err(own)?,
             lookups,
             forests,
+            slots,
         })
     }
 
@@ -248,14 +274,22 @@ impl ModelSchedule {
         if layers.len() != usize::try_from(vars(root.layers).ok()?).ok()? {
             return None;
         }
-        Some(
-            Fp2::ONE
-                - crate::selectors::row_selector(
+        let psi = match &self.slots {
+            Some(slots) if slots.lengths().len() >= 2 => {
+                crate::selectors::slot_selector(
                     queries,
-                    u64::from(root.n),
-                    Some((heads, u64::from(root.heads))),
-                    Some((layers, u64::from(root.layers))),
-                )?,
-        )
+                    usize::try_from(slots.slot_bits()).ok()?,
+                    slots.lengths(),
+                )? * crate::selectors::lt(heads, u64::from(root.heads))?
+                    * crate::selectors::lt(layers, u64::from(root.layers))?
+            }
+            _ => crate::selectors::row_selector(
+                queries,
+                u64::from(root.n),
+                Some((heads, u64::from(root.heads))),
+                Some((layers, u64::from(root.layers))),
+            )?,
+        };
+        Some(Fp2::ONE - psi)
     }
 }

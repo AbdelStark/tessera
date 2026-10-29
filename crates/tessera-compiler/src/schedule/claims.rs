@@ -59,9 +59,11 @@ impl<'a> Derivation<'a> {
 
     /// The variables of `kind`, its layer variables aside.
     pub(super) fn vars(&self, kind: Kind) -> u32 {
-        blocks(&self.layers.spec(self.graph, kind).shape)
-            .iter()
-            .sum()
+        let tensor = self
+            .layers
+            .tensor(self.graph, kind, 0)
+            .unwrap_or(TensorId(0));
+        super::tensor_vars(self.graph, tensor)
     }
 
     /// The node that produces `kind`, as the schedule names it, when one does.
