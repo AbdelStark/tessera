@@ -390,7 +390,9 @@ pub use merge::{
     prove_merge, prove_merge_two_pass,
 };
 pub use proof::SumcheckProof;
-pub use prover::{Instance, Prefix, ProvenBatch, Table, TreeScope, prove_batch};
+pub use prover::{
+    Computed, ComputedState, Instance, Prefix, ProvenBatch, Table, TreeScope, prove_batch,
+};
 pub use recompose::{Recomposition, RecompositionTables};
 pub use rotate::{Rotate, RotateTables};
 pub use select::{Selected, Selection, SelectionTables};

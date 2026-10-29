@@ -19,6 +19,7 @@ tessera-hash = { path = "../tessera-hash" }
 tessera-poly = { path = "../tessera-poly" }
 
 [dev-dependencies]
+allocation-counter = "0.8"
 serde_json = "1"
 # The verifier's independent sumcheck checks, field and transcript: every proof the tests produce
 # is checked by them (DEP-2).

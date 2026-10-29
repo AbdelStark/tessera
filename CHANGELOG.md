@@ -6,6 +6,9 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Structured score rounds retain the slot-aware literal path for multi-request batches; the computed single-request representation does not establish batch memory savings (RFC-0056, RFC-0071, #461).
+
+- RFC-0056 native Softmax key and forest sumchecks from INT8 queries, folded key blocks and causal prefix sums, with clearing row tables after the key rounds; the literal prover remains an equivalence oracle. Batched sumchecks share identical relations and borrowed operand tables, including repeated norm sums and root coefficient products, while preserving every transcript message and original opening claim ([#461](https://github.com/AbdelStark/tessera/issues/461)).
 - A recorder/serving-engine [integration guide](docs/integration.md) and executable loopback example ([#180](https://github.com/AbdelStark/tessera/issues/180), RFC-0015/0059/0061/0062/0063): TLS placement/trust duties, frame and nonce ownership, sampler pins, exact-engine conformance, private transcript handling, and CI checks against the reference recorder and independent sampler vectors.
 - Optional prover CLI telemetry ([#177](https://github.com/AbdelStark/tessera/issues/177), 05 §4–§5): an explicit `--metrics-addr` Prometheus endpoint over the existing registry, and `otel`-gated OTLP/HTTP JSON trace export with `--otlp-endpoint`. Default invocations open no telemetry socket; CI checks both builds in a network namespace. See the [telemetry guide](docs/telemetry.md).
 - A private mdBook documentation artifact with the specification, RFCs, guides and separate Rust API references, built and link-checked in CI with tier-B API doctests ([#176](https://github.com/AbdelStark/tessera/issues/176)).
