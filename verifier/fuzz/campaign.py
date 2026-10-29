@@ -91,7 +91,7 @@ def main():
         "schema_version": 1,
         "source_revision": revision,
         "state": "running",
-        "started_utc": datetime.datetime.now(datetime.UTC).isoformat(),
+        "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "cpu_budget_seconds": BUDGETS,
         "manifest_file": "manifest.json",
         "manifest_sha256": digest(manifest_path),
@@ -114,7 +114,7 @@ def main():
     def save():
         status["clean_cpu_seconds"] = dict(totals)
         status["total_clean_cpu_hours"] = sum(totals.values()) / 3600
-        status["updated_utc"] = datetime.datetime.now(datetime.UTC).isoformat()
+        status["updated_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         status["live"] = [
             {"pid": pid, "target": job[0], "wall_seconds": time.monotonic() - job[2]}
             for pid, job in active.items()
