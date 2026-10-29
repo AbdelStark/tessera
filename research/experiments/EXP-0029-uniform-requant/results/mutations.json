@@ -1,0 +1,62 @@
+[
+  {
+    "fault": "control",
+    "exit_code": 0,
+    "source_sha256": "e0b28dba54f4f5de382fadfba9547098070466da0efac55809b1b500d4222016"
+  },
+  {
+    "fault": "per-layer",
+    "exit_code": 1,
+    "source_sha256": "cef43ca987f7b0d8506278c7ed569b25d498041217b0b7a24101f975191a2684"
+  },
+  {
+    "fault": "low-presence",
+    "exit_code": 1,
+    "source_sha256": "045688da3f1195e04f5917f85c4f0d745dfff59cfb2f7b3ace8f41761a5bece0"
+  },
+  {
+    "fault": "packed-bound",
+    "exit_code": 1,
+    "source_sha256": "d2d3dd9f59c6a55d9a358d8a0aeda85f904c570fcdb1bbb126d591c8b9b999a3"
+  },
+  {
+    "fault": "rounding-bit",
+    "exit_code": 1,
+    "source_sha256": "4f44052352575cf986ea6a21cda143ff21cc923fb656a270fb0f2cd5372fb81c"
+  },
+  {
+    "fault": "low-range",
+    "exit_code": 1,
+    "source_sha256": "fbf34aa0a5da52326662a495e4bb6a19c26a23837798fd3f95abd7252266b498"
+  },
+  {
+    "fault": "signed-offset",
+    "exit_code": 1,
+    "source_sha256": "ea23e57e011fdf8206ce1c4654b9f8b8867953420b7f2c943a1d4012b260a170"
+  },
+  {
+    "fault": "key-bound",
+    "exit_code": 1,
+    "source_sha256": "29f05dc529aa5d5e898140b2703b4f53353c70cc37be4c2522d62d621012ef7d"
+  },
+  {
+    "fault": "middle-width",
+    "exit_code": 1,
+    "source_sha256": "f25d76aa382a2e76d35aa63811f4da4da186fd126e805fc153c7c120a7ed0a24"
+  },
+  {
+    "fault": "table-bound",
+    "exit_code": 1,
+    "source_sha256": "80171aa8428887d3df7bdaaf997137ccc7b60df1b077b200798eba34b49fdf1d"
+  },
+  {
+    "fault": "class-presence",
+    "exit_code": 1,
+    "source_sha256": "ab05c118d605570664b162d34918c2f8406903e7a6854c1da964ee2384e45291"
+  },
+  {
+    "fault": "restored",
+    "exit_code": 0,
+    "source_sha256": "e0b28dba54f4f5de382fadfba9547098070466da0efac55809b1b500d4222016"
+  }
+]

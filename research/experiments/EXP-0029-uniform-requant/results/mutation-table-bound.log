@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-mutants-4c5kr0fy/run.py", line 463, in <module>
+    probes()
+    ~~~~~~^^
+  File "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-mutants-4c5kr0fy/run.py", line 244, in probes
+    assert wide(Profile(38, (2,), -128, 127, 8)) is None, "table-bound"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: table-bound

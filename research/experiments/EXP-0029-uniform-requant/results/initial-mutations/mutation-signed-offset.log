@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-mutants-3pfwmr91/run.py", line 348, in <module>
+    probes()
+    ~~~~~~^^
+  File "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-mutants-3pfwmr91/run.py", line 202, in probes
+    assert accepts(a, bad, -(1 << 61), 0, (1, 127)), "known wrap attack must pass unchecked relations"
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: known wrap attack must pass unchecked relations

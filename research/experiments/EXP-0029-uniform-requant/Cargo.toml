@@ -1,0 +1,23 @@
+[package]
+name = "uniform-requant-layout-probe"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "uniform-requant-layout-probe"
+path = "layout_probe.rs"
+
+[dependencies]
+tessera-codec = { path = "../../../crates/tessera-codec" }
+tessera-ir = { path = "../../../crates/tessera-ir" }
+tessera-compiler = { path = "../../../crates/tessera-compiler" }
+tessera-prover = { path = "../../../crates/tessera-prover" }
+tessera-tables = { path = "../../../crates/tessera-tables" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

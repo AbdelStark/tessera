@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-mutants-4c5kr0fy/run.py", line 463, in <module>
+    probes()
+    ~~~~~~^^
+  File "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-617-mutants-4c5kr0fy/run.py", line 238, in probes
+    assert not accepts(a, q, 0, 0, (1 << q.s, honest[-1])), "low-range"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: low-range

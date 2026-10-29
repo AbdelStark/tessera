@@ -1,0 +1,4 @@
+   Compiling uniform-requant-layout-probe v0.0.0 (/Users/abdel/dev/tessera/research/experiments/EXP-0029-uniform-requant)
+    Finished `release` profile [optimized] target(s) in 18.11s
+     Running `target/release/uniform-requant-layout-probe tiny`
+Error: Internal { rule: "model leaf sources and requests follow the canonical lowering and selection" }

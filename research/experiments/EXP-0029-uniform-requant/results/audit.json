@@ -1,0 +1,9 @@
+{
+  "scope": "E0 audit; no proof or global security claim",
+  "frozen_plan_sha256": "e9d2a3ad49888df6a94a18de72d63b3560232c3c4dc48768c3df2e418f717a47",
+  "source_claim_sha256": "af7d31a9e853cde6fdf4e2a8a195e6d312ae3ae6fc2fdb2e8700cb963ab3d5aa",
+  "singleton_recount": 154380,
+  "planned_sites_recount": 154900,
+  "mutation_sources_restored": true,
+  "impossible_common_plan": "refused"
+}
