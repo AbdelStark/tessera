@@ -128,7 +128,7 @@ full proof resources and independent review remain separate.
 
 | Gain | Confidence | Cost | Priority |
 |---|---|---|---|
-| 0 credited performance gain | 0.3 pending experiment | l: canonical selection/RFC and independent implementation | 0; authorized correctness prerequisite |
+| 0 credited performance gain | 0.6: existing lemmas and finite experiment; non-author review pending | l: canonical selection/RFC and independent implementation | 0; authorized correctness prerequisite |
 
 ## Decision and links
 

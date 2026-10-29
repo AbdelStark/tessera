@@ -82,6 +82,8 @@ limit is `B` in `[1,32]`. Signed model saturation has
 `-2^31 <= lo_i < 0 <= hi_i < 2^31`; set
 `M_i=max(abs(lo_i),abs(hi_i),1)` and `m_i=ceil(log2 M_i)`.
 These are integers derived from the statement, never hidden channel values.
+Preserve each layer's original ordered shift list and channel-class indexing;
+min/max calculations do not permit sorting, relabeling or changing its classes.
 
 ### Preserve the old case
 
