@@ -246,3 +246,7 @@ scenario, total weight-work target is `0.24 + B/530e9`, about 1.474 GPU-s; re-pl
 These are E0 proposed budgets, not measured costs or an accepted protocol decision.
 No source/default chart or security score changes. Actual bounded draw/consumer work
 must be measured on H100, with secret rejection counts excluded from production reports.
+
+## Real-model public-layout prerequisite (2026-10-29)
+
+[#617](https://github.com/AbdelStark/tessera/issues/617) records the actual 1B candidate’s failed proof preparation: at B=31/32 its MLP residual selects one Wide and fifteen Split gadgets; B=30 selects two Wide and fourteen Split. The synthetic two-layer derivative also fails the existing read-role guard. These are E0 public metadata observations, not successful proofs or performance figures. [EXP-0029](experiments/EXP-0029-uniform-requant/README.md) is planned; no candidate result is credited.

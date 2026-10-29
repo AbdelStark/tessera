@@ -1,0 +1,1944 @@
+{
+  "source_revision": "174d291",
+  "source_claim_sha256": "af7d31a9e853cde6fdf4e2a8a195e6d312ae3ae6fc2fdb2e8700cb963ab3d5aa",
+  "source_model": "NousResearch/Llama-3.2-1B",
+  "source_model_revision": "a9745ffc3556f145a830ac0c203509ba860582a3",
+  "profile": "servable",
+  "normalization": "tied embedding copied bit for bit to independent lm_head; original BF16 outputs checked identical",
+  "alpha": "1/2 fixed provisional; no full heldout/fidelity qualification",
+  "scope": "public Requant metadata only; no tokens, weights, private calibration statistics or proof",
+  "rows": [
+    {
+      "node": 6,
+      "layer": 0,
+      "position": 3,
+      "b": 40,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 0, site: AttnNorm })"
+    },
+    {
+      "node": 17,
+      "layer": 0,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        37
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 0, site: RopeQ })"
+    },
+    {
+      "node": 19,
+      "layer": 0,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        36
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 0, site: RopeK })"
+    },
+    {
+      "node": 21,
+      "layer": 0,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        22
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 0, site: V })"
+    },
+    {
+      "node": 38,
+      "layer": 0,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        32
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 0, site: AttnOut })"
+    },
+    {
+      "node": 43,
+      "layer": 0,
+      "position": 40,
+      "b": 42,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 0, site: AttnResidual })"
+    },
+    {
+      "node": 47,
+      "layer": 0,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 0, site: MlpNorm })"
+    },
+    {
+      "node": 52,
+      "layer": 0,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        23
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 0, site: Up })"
+    },
+    {
+      "node": 54,
+      "layer": 0,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        5
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 0, site: Product })"
+    },
+    {
+      "node": 59,
+      "layer": 0,
+      "position": 56,
+      "b": 44,
+      "shifts": [
+        16
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 0, site: MlpResidual })"
+    },
+    {
+      "node": 63,
+      "layer": 1,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 1, site: AttnNorm })"
+    },
+    {
+      "node": 74,
+      "layer": 1,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        37
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 1, site: RopeQ })"
+    },
+    {
+      "node": 76,
+      "layer": 1,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        38
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 1, site: RopeK })"
+    },
+    {
+      "node": 78,
+      "layer": 1,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        23
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 1, site: V })"
+    },
+    {
+      "node": 95,
+      "layer": 1,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        31
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 1, site: AttnOut })"
+    },
+    {
+      "node": 100,
+      "layer": 1,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 1, site: AttnResidual })"
+    },
+    {
+      "node": 104,
+      "layer": 1,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 1, site: MlpNorm })"
+    },
+    {
+      "node": 109,
+      "layer": 1,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 1, site: Up })"
+    },
+    {
+      "node": 111,
+      "layer": 1,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        4
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 1, site: Product })"
+    },
+    {
+      "node": 116,
+      "layer": 1,
+      "position": 56,
+      "b": 44,
+      "shifts": [
+        12
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 1, site: MlpResidual })"
+    },
+    {
+      "node": 120,
+      "layer": 2,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 2, site: AttnNorm })"
+    },
+    {
+      "node": 131,
+      "layer": 2,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        38
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 2, site: RopeQ })"
+    },
+    {
+      "node": 133,
+      "layer": 2,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        37
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 2, site: RopeK })"
+    },
+    {
+      "node": 135,
+      "layer": 2,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 2, site: V })"
+    },
+    {
+      "node": 152,
+      "layer": 2,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        31
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 2, site: AttnOut })"
+    },
+    {
+      "node": 157,
+      "layer": 2,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 2, site: AttnResidual })"
+    },
+    {
+      "node": 161,
+      "layer": 2,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 2, site: MlpNorm })"
+    },
+    {
+      "node": 166,
+      "layer": 2,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        23
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 2, site: Up })"
+    },
+    {
+      "node": 168,
+      "layer": 2,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        2
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 2, site: Product })"
+    },
+    {
+      "node": 173,
+      "layer": 2,
+      "position": 56,
+      "b": 45,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 2, site: MlpResidual })"
+    },
+    {
+      "node": 177,
+      "layer": 3,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 3, site: AttnNorm })"
+    },
+    {
+      "node": 188,
+      "layer": 3,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        39
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 3, site: RopeQ })"
+    },
+    {
+      "node": 190,
+      "layer": 3,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        39
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 3, site: RopeK })"
+    },
+    {
+      "node": 192,
+      "layer": 3,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        23
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 3, site: V })"
+    },
+    {
+      "node": 209,
+      "layer": 3,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        31
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 3, site: AttnOut })"
+    },
+    {
+      "node": 214,
+      "layer": 3,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 3, site: AttnResidual })"
+    },
+    {
+      "node": 218,
+      "layer": 3,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 3, site: MlpNorm })"
+    },
+    {
+      "node": 223,
+      "layer": 3,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        23
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 3, site: Up })"
+    },
+    {
+      "node": 225,
+      "layer": 3,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        1
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 3, site: Product })"
+    },
+    {
+      "node": 230,
+      "layer": 3,
+      "position": 56,
+      "b": 45,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 3, site: MlpResidual })"
+    },
+    {
+      "node": 234,
+      "layer": 4,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 4, site: AttnNorm })"
+    },
+    {
+      "node": 245,
+      "layer": 4,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        39
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 4, site: RopeQ })"
+    },
+    {
+      "node": 247,
+      "layer": 4,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        39
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 4, site: RopeK })"
+    },
+    {
+      "node": 249,
+      "layer": 4,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        23
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 4, site: V })"
+    },
+    {
+      "node": 266,
+      "layer": 4,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        32
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 4, site: AttnOut })"
+    },
+    {
+      "node": 271,
+      "layer": 4,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 4, site: AttnResidual })"
+    },
+    {
+      "node": 275,
+      "layer": 4,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 4, site: MlpNorm })"
+    },
+    {
+      "node": 280,
+      "layer": 4,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 4, site: Up })"
+    },
+    {
+      "node": 282,
+      "layer": 4,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        2
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 4, site: Product })"
+    },
+    {
+      "node": 287,
+      "layer": 4,
+      "position": 56,
+      "b": 45,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 4, site: MlpResidual })"
+    },
+    {
+      "node": 291,
+      "layer": 5,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 5, site: AttnNorm })"
+    },
+    {
+      "node": 302,
+      "layer": 5,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        37
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 5, site: RopeQ })"
+    },
+    {
+      "node": 304,
+      "layer": 5,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        36
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 5, site: RopeK })"
+    },
+    {
+      "node": 306,
+      "layer": 5,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 5, site: V })"
+    },
+    {
+      "node": 323,
+      "layer": 5,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        31
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 5, site: AttnOut })"
+    },
+    {
+      "node": 328,
+      "layer": 5,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 5, site: AttnResidual })"
+    },
+    {
+      "node": 332,
+      "layer": 5,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 5, site: MlpNorm })"
+    },
+    {
+      "node": 337,
+      "layer": 5,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 5, site: Up })"
+    },
+    {
+      "node": 339,
+      "layer": 5,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        1
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 5, site: Product })"
+    },
+    {
+      "node": 344,
+      "layer": 5,
+      "position": 56,
+      "b": 45,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 5, site: MlpResidual })"
+    },
+    {
+      "node": 348,
+      "layer": 6,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 6, site: AttnNorm })"
+    },
+    {
+      "node": 359,
+      "layer": 6,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        39
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 6, site: RopeQ })"
+    },
+    {
+      "node": 361,
+      "layer": 6,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        39
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 6, site: RopeK })"
+    },
+    {
+      "node": 363,
+      "layer": 6,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 6, site: V })"
+    },
+    {
+      "node": 380,
+      "layer": 6,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        31
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 6, site: AttnOut })"
+    },
+    {
+      "node": 385,
+      "layer": 6,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 6, site: AttnResidual })"
+    },
+    {
+      "node": 389,
+      "layer": 6,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 6, site: MlpNorm })"
+    },
+    {
+      "node": 394,
+      "layer": 6,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        23
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 6, site: Up })"
+    },
+    {
+      "node": 396,
+      "layer": 6,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        2
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 6, site: Product })"
+    },
+    {
+      "node": 401,
+      "layer": 6,
+      "position": 56,
+      "b": 45,
+      "shifts": [
+        18
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 6, site: MlpResidual })"
+    },
+    {
+      "node": 405,
+      "layer": 7,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 7, site: AttnNorm })"
+    },
+    {
+      "node": 416,
+      "layer": 7,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        39
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 7, site: RopeQ })"
+    },
+    {
+      "node": 418,
+      "layer": 7,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        38
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 7, site: RopeK })"
+    },
+    {
+      "node": 420,
+      "layer": 7,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        25
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 7, site: V })"
+    },
+    {
+      "node": 437,
+      "layer": 7,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        30
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 7, site: AttnOut })"
+    },
+    {
+      "node": 442,
+      "layer": 7,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 7, site: AttnResidual })"
+    },
+    {
+      "node": 446,
+      "layer": 7,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 7, site: MlpNorm })"
+    },
+    {
+      "node": 451,
+      "layer": 7,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 7, site: Up })"
+    },
+    {
+      "node": 453,
+      "layer": 7,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        1
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 7, site: Product })"
+    },
+    {
+      "node": 458,
+      "layer": 7,
+      "position": 56,
+      "b": 45,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 7, site: MlpResidual })"
+    },
+    {
+      "node": 462,
+      "layer": 8,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 8, site: AttnNorm })"
+    },
+    {
+      "node": 473,
+      "layer": 8,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        38
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 8, site: RopeQ })"
+    },
+    {
+      "node": 475,
+      "layer": 8,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        39
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 8, site: RopeK })"
+    },
+    {
+      "node": 477,
+      "layer": 8,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 8, site: V })"
+    },
+    {
+      "node": 494,
+      "layer": 8,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        32
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 8, site: AttnOut })"
+    },
+    {
+      "node": 499,
+      "layer": 8,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 8, site: AttnResidual })"
+    },
+    {
+      "node": 503,
+      "layer": 8,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 8, site: MlpNorm })"
+    },
+    {
+      "node": 508,
+      "layer": 8,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 8, site: Up })"
+    },
+    {
+      "node": 510,
+      "layer": 8,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        2
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 8, site: Product })"
+    },
+    {
+      "node": 515,
+      "layer": 8,
+      "position": 56,
+      "b": 45,
+      "shifts": [
+        18
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 8, site: MlpResidual })"
+    },
+    {
+      "node": 519,
+      "layer": 9,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 9, site: AttnNorm })"
+    },
+    {
+      "node": 530,
+      "layer": 9,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        39
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 9, site: RopeQ })"
+    },
+    {
+      "node": 532,
+      "layer": 9,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        38
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 9, site: RopeK })"
+    },
+    {
+      "node": 534,
+      "layer": 9,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 9, site: V })"
+    },
+    {
+      "node": 551,
+      "layer": 9,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        31
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 9, site: AttnOut })"
+    },
+    {
+      "node": 556,
+      "layer": 9,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 9, site: AttnResidual })"
+    },
+    {
+      "node": 560,
+      "layer": 9,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 9, site: MlpNorm })"
+    },
+    {
+      "node": 565,
+      "layer": 9,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 9, site: Up })"
+    },
+    {
+      "node": 567,
+      "layer": 9,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        2
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 9, site: Product })"
+    },
+    {
+      "node": 572,
+      "layer": 9,
+      "position": 56,
+      "b": 45,
+      "shifts": [
+        18
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 9, site: MlpResidual })"
+    },
+    {
+      "node": 576,
+      "layer": 10,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 10, site: AttnNorm })"
+    },
+    {
+      "node": 587,
+      "layer": 10,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        39
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 10, site: RopeQ })"
+    },
+    {
+      "node": 589,
+      "layer": 10,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        38
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 10, site: RopeK })"
+    },
+    {
+      "node": 591,
+      "layer": 10,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 10, site: V })"
+    },
+    {
+      "node": 608,
+      "layer": 10,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        31
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 10, site: AttnOut })"
+    },
+    {
+      "node": 613,
+      "layer": 10,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 10, site: AttnResidual })"
+    },
+    {
+      "node": 617,
+      "layer": 10,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 10, site: MlpNorm })"
+    },
+    {
+      "node": 622,
+      "layer": 10,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 10, site: Up })"
+    },
+    {
+      "node": 624,
+      "layer": 10,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        2
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 10, site: Product })"
+    },
+    {
+      "node": 629,
+      "layer": 10,
+      "position": 56,
+      "b": 45,
+      "shifts": [
+        18
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 10, site: MlpResidual })"
+    },
+    {
+      "node": 633,
+      "layer": 11,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 11, site: AttnNorm })"
+    },
+    {
+      "node": 644,
+      "layer": 11,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        39
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 11, site: RopeQ })"
+    },
+    {
+      "node": 646,
+      "layer": 11,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        38
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 11, site: RopeK })"
+    },
+    {
+      "node": 648,
+      "layer": 11,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 11, site: V })"
+    },
+    {
+      "node": 665,
+      "layer": 11,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        31
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 11, site: AttnOut })"
+    },
+    {
+      "node": 670,
+      "layer": 11,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 11, site: AttnResidual })"
+    },
+    {
+      "node": 674,
+      "layer": 11,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 11, site: MlpNorm })"
+    },
+    {
+      "node": 679,
+      "layer": 11,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        23
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 11, site: Up })"
+    },
+    {
+      "node": 681,
+      "layer": 11,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        2
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 11, site: Product })"
+    },
+    {
+      "node": 686,
+      "layer": 11,
+      "position": 56,
+      "b": 45,
+      "shifts": [
+        18
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 11, site: MlpResidual })"
+    },
+    {
+      "node": 690,
+      "layer": 12,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 12, site: AttnNorm })"
+    },
+    {
+      "node": 701,
+      "layer": 12,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        38
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 12, site: RopeQ })"
+    },
+    {
+      "node": 703,
+      "layer": 12,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        37
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 12, site: RopeK })"
+    },
+    {
+      "node": 705,
+      "layer": 12,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 12, site: V })"
+    },
+    {
+      "node": 722,
+      "layer": 12,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        32
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 12, site: AttnOut })"
+    },
+    {
+      "node": 727,
+      "layer": 12,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        18
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 12, site: AttnResidual })"
+    },
+    {
+      "node": 731,
+      "layer": 12,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 12, site: MlpNorm })"
+    },
+    {
+      "node": 736,
+      "layer": 12,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 12, site: Up })"
+    },
+    {
+      "node": 738,
+      "layer": 12,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        2
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 12, site: Product })"
+    },
+    {
+      "node": 743,
+      "layer": 12,
+      "position": 56,
+      "b": 45,
+      "shifts": [
+        18
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 12, site: MlpResidual })"
+    },
+    {
+      "node": 747,
+      "layer": 13,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 13, site: AttnNorm })"
+    },
+    {
+      "node": 758,
+      "layer": 13,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        38
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 13, site: RopeQ })"
+    },
+    {
+      "node": 760,
+      "layer": 13,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        38
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 13, site: RopeK })"
+    },
+    {
+      "node": 762,
+      "layer": 13,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 13, site: V })"
+    },
+    {
+      "node": 779,
+      "layer": 13,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        32
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 13, site: AttnOut })"
+    },
+    {
+      "node": 784,
+      "layer": 13,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        18
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 13, site: AttnResidual })"
+    },
+    {
+      "node": 788,
+      "layer": 13,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 13, site: MlpNorm })"
+    },
+    {
+      "node": 793,
+      "layer": 13,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 13, site: Up })"
+    },
+    {
+      "node": 795,
+      "layer": 13,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        2
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 13, site: Product })"
+    },
+    {
+      "node": 800,
+      "layer": 13,
+      "position": 56,
+      "b": 45,
+      "shifts": [
+        18
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 13, site: MlpResidual })"
+    },
+    {
+      "node": 804,
+      "layer": 14,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 14, site: AttnNorm })"
+    },
+    {
+      "node": 815,
+      "layer": 14,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        38
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 14, site: RopeQ })"
+    },
+    {
+      "node": 817,
+      "layer": 14,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        37
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 14, site: RopeK })"
+    },
+    {
+      "node": 819,
+      "layer": 14,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        24
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 14, site: V })"
+    },
+    {
+      "node": 836,
+      "layer": 14,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        30
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 14, site: AttnOut })"
+    },
+    {
+      "node": 841,
+      "layer": 14,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        20
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 14, site: AttnResidual })"
+    },
+    {
+      "node": 845,
+      "layer": 14,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 14, site: MlpNorm })"
+    },
+    {
+      "node": 850,
+      "layer": 14,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        25
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 14, site: Up })"
+    },
+    {
+      "node": 852,
+      "layer": 14,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        1
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 14, site: Product })"
+    },
+    {
+      "node": 857,
+      "layer": 14,
+      "position": 56,
+      "b": 44,
+      "shifts": [
+        16
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 14, site: MlpResidual })"
+    },
+    {
+      "node": 861,
+      "layer": 15,
+      "position": 3,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 15, site: AttnNorm })"
+    },
+    {
+      "node": 872,
+      "layer": 15,
+      "position": 14,
+      "b": 57,
+      "shifts": [
+        38
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 15, site: RopeQ })"
+    },
+    {
+      "node": 874,
+      "layer": 15,
+      "position": 16,
+      "b": 57,
+      "shifts": [
+        38
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 15, site: RopeK })"
+    },
+    {
+      "node": 876,
+      "layer": 15,
+      "position": 18,
+      "b": 42,
+      "shifts": [
+        22
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 15, site: V })"
+    },
+    {
+      "node": 893,
+      "layer": 15,
+      "position": 35,
+      "b": 40,
+      "shifts": [
+        32
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 15, site: AttnOut })"
+    },
+    {
+      "node": 898,
+      "layer": 15,
+      "position": 40,
+      "b": 43,
+      "shifts": [
+        18
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 15, site: AttnResidual })"
+    },
+    {
+      "node": 902,
+      "layer": 15,
+      "position": 44,
+      "b": 50,
+      "shifts": [
+        30
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 15, site: MlpNorm })"
+    },
+    {
+      "node": 907,
+      "layer": 15,
+      "position": 49,
+      "b": 42,
+      "shifts": [
+        23
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 15, site: Up })"
+    },
+    {
+      "node": 909,
+      "layer": 15,
+      "position": 51,
+      "b": 16,
+      "shifts": [
+        2
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(Layer { layer: 15, site: Product })"
+    },
+    {
+      "node": 914,
+      "layer": 15,
+      "position": 56,
+      "b": 44,
+      "shifts": [
+        14
+      ],
+      "lo": -524288,
+      "hi": 524287,
+      "point": "Some(Layer { layer: 15, site: MlpResidual })"
+    },
+    {
+      "node": 918,
+      "layer": null,
+      "position": null,
+      "b": 50,
+      "shifts": [
+        29
+      ],
+      "lo": -128,
+      "hi": 127,
+      "point": "Some(FinalNorm)"
+    }
+  ]
+}

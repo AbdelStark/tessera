@@ -7,10 +7,12 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 | Kind | Next identifier |
 |---|---|
 | Survey | SUR-0017 |
-| Idea | IDEA-0041 |
-| Experiment | EXP-0029 |
+| Idea | IDEA-0042 |
+| Experiment | EXP-0030 |
 
 ## Queue
+
+Current real-model integrity prerequisite (2026-10-29): [#617](https://github.com/AbdelStark/tessera/issues/617) identifies incompatible per-layer Requant read roles on the exported 1B candidate. [IDEA-0041](ideas/IDEA-0041-uniform-requant.md) is `triaged`; [EXP-0029](experiments/EXP-0029-uniform-requant/README.md) is `planned` and frozen before code. Next: commit/verify registration, then run the exact public-selection experiment; preserve the leaf guard, unchanged integer D and all soundness bounds. No full proof, production adoption, performance or hiding credit. This authorized correctness prerequisite precedes historical performance work.
 
 Current #489 frontier (2026-10-25): [IDEA-0040](ideas/IDEA-0040-batched-mask-opening.md) is `validated` by [EXP-0027](experiments/EXP-0027-batched-mask-opening/README.md) (E0). **The mechanism.** One masked batching sumcheck opens every masking polynomial's `G_k(r_k)` and every tree-level mask claim `R̃_t(r'_t)` of `tessera-protocol/2` at one point. Its pad `S` is laid out like the mask block `M`, and its final claim is `(M̃ + ρS̃)(r*)`. **The 405B count**, from the compiler's schedule. 2,667 mask claims: 46 masked sumchecks and 2,621 tree-level claims, against #489's projection of about 200. One opening group of 64 MiB replaces 612 groups (38.25 GiB) or 2,667 (166.7 GiB). `S` takes 0.163% of the advice rows, and the sumcheck 32 rounds of degree 2. **Zero knowledge.** Lemma B holds exactly on a toy protocol: the candidate's view never separated two witnesses in 300 draws. The bare batching, `M̃(r*)` alone and `S` laid out by `C`'s support each leaked on every draw of the configuration built to expose them. **Next.** RFC-0070 promotes it (item 1). Its owed obligations are the implementation and #162's negative controls. This correctness unit precedes the historical performance queue.
 
@@ -163,10 +165,13 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | [IDEA-0034](ideas/IDEA-0034-public-window-attention-shapes.md) | Public windowed attention shapes with exact selected/masked/padded semantics | `A`, layouts, counts; changed D/native denominator | 0 (unpriced) | `triaged` | — | EXP21 validates the bounded finite selector/score/PV transport/local-row audit. Physical counts, full binding/error/joint masking and fidelity remain unknown; zero credited gain. |
 | [IDEA-0035](ideas/IDEA-0035-combined-row-second-commitment.md) | Second Ligero commitment over combined opening rows | size/verify; new PCS work | 0 (unpriced) | `triaged` | [EXP-0022](experiments/EXP-0022-two-level-opening-coupling/README.md) | Finite ideal-PCS coupling/terminal algebra validated over4,608 fixtures/18,432 reductions with164 controls and independent recount. Coefficient-basis adoption, concrete PCS/extractor, G-4/FS/joint-ZK, current groups/payload and size kill criterion remain unknown. No size/runtime credit. |
 
+| [IDEA-0041](ideas/IDEA-0041-uniform-requant.md) | Common public Requant family at incompatible layer sites | correctness/coverage; canonical tables/advice | 0 credited gain | `triaged` | [EXP-0029](experiments/EXP-0029-uniform-requant/README.md) planned | Exact integer/field and unmodified leaf-layout experiment first; unknown security rows block promotion. |
+
 ## Experiments
 
 | ID | Title | Idea | Status | Verdict | Evidence |
 |---|---|---|---|---|---|
+| [EXP-0029](experiments/EXP-0029-uniform-requant/README.md) | Uniform public requant selection | IDEA-0041 / #617 | `planned` | pending | E0 planned; criteria and public baseline fixture frozen before code; no proof or gain credit |
 | [EXP-0028](experiments/EXP-0028-weight-mask-draws/README.md) | Complete weight-mask draw accounting | #568 | `done: validated` | validated | E0: 3,671 cases, 25,576 accounting judgments, 28,500 independent replay checks, ten faults caught; no timing/security claim |
 | [EXP-0027](experiments/EXP-0027-batched-mask-opening/README.md) | Batched mask opening: rank, distinguisher, soundness, 405B count | IDEA-0040 | `done: validated` | validated | E0. 13,500 rank draws, generic rank `2m` on every draw. Candidate distinguishable on 0 of 300 draws, four controls on 100%. 366 and 421 accepted cheats against 381.4 and 427.2 predicted. The 405B count from the compiler. Seeding amendment disclosed |
 | [EXP-0025](experiments/EXP-0025-greedy-boundary/README.md) | Original-source greedy boundary | IDEA-0038 | `done: validated` | validated | E0: 324 domains, 129,885 integer cases, 18 experiment faults; no full protocol credit |
@@ -307,3 +312,5 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-10-29 | `autoresearch experiment` (#568, result) | [EXP-0028](experiments/EXP-0028-weight-mask-draws/README.md) `done: validated` in its frozen E0 domain: 3,671 cases, 25,576 accounting judgments and 28,500 independent saved-record checks; ten accounting faults and eleven reader corruptions caught with passing controls. Tight 405B full support is 653,675,986,944 accepted bytes versus historical 654,109,048,832. No throughput, complete Protocol Two implementation or security validation. |
 
 | 2026-10-29 | `#568 cost decision draft` | [RFC-0075](../docs/rfcs/RFC-0075-weight-mask-cost.md) proposes bounded full-support GPU regeneration with stored P5 columns, complete W and separate core/total gates. The 530e9 B/s effective-rate scenario is explicitly unmeasured; historical envelope gives projected target 1.474 and re-plan above 1.734 GPU-s, with the original 0.24/0.5 core gate retained. Accepted documents carry conditional draft marks only. No implementation, performance qualification or joint hiding approval. |
+
+| 2026-10-29 | #617 common-family research registration | IDEA-0041 self-triaged; EXP-0029 planned with frozen integer/field, actual public geometry, tiny repro and ten negative-control criteria. No candidate code yet. Next: commit and verify registration, then implement the bounded experiment; preserve current canonical production behavior. |
