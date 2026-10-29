@@ -356,6 +356,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 - Check several reading-site claims on `ChannelParams` in `tv-core::weights` (RFC-0052, accepted; RFC-0012 'Opening'; RFC-0036; RFC-0049; [#386](https://github.com/AbdelStark/tessera/issues/386)):
   - `Layout::channel_point` embeds a reading site's weight-type index and zero-pads its channel point to `c_vars = ⌈log2 C⌉`.
   - `Opening` takes `claims: &'a [Claim<'a>]` and `evaluations: &'a [&'a [Fp2]]`: a committed matrix other than `ChannelParams` requires `G = 1`, `ChannelParams` accepts `G >= 1` site claims (checked against `evaluations[g]` with `Evaluation { group: Some(g) }` on the first failure) and re-encodes all `G + 1` combined rows against every queried column, and an empty matrix still requires `G = 0`.
+- Independent request-slot batch validation and verification (RFC-0071, [#551](https://github.com/AbdelStark/tessera/issues/551)): per-request greedy keys, shared maximum checks, slot-aware selectors and source reconstruction, and audit packing by slot class. The Live CLI accepts ordered metadata through `--requests SESSION_HEX:ID:PROMPT:OUTPUT,...`, mutually exclusive with the existing single-request flags; the caller still supplies the statement pin.
+
 
 ### Changed
 

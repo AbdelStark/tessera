@@ -831,7 +831,11 @@ impl Prover<'_> {
                     .collect();
                 (vec![x], Some(public(eqs)), Form::Square)
             }
-            Relation::Rotate { positions, .. } => {
+            Relation::Rotate {
+                positions,
+                ref slots,
+                ..
+            } => {
                 let xd = self.layout.dims(node.inputs()[0]);
                 let own = shape_vars(&xd);
                 let x = stack(&|n| table_of(n.inputs()[0]));
@@ -840,11 +844,15 @@ impl Prover<'_> {
                 let position_shift = own - vars(xd[0]);
                 let kernel: Vec<Fe> = (0..1usize << own)
                     .map(|x| {
-                        let position = x >> position_shift;
+                        let row = (x >> position_shift) as u32;
                         let frequency = x & ((1 << b) - 1);
                         let bit = (x >> b) & 1;
-                        let (c, s) = if (position as u32) < positions {
-                            let (c, s) = self.rope.pair(position as u32, frequency).unwrap();
+                        let real_pos = match slots {
+                            Some(s) => s.is_real_row(row).then(|| s.position_at(row).unwrap()),
+                            None => (row < positions).then_some(row),
+                        };
+                        let (c, s) = if let Some(pos) = real_pos {
+                            let (c, s) = self.rope.pair(pos, frequency).unwrap();
                             (signed(c), signed(s))
                         } else {
                             (Fe::ZERO, Fe::ZERO)
@@ -886,6 +894,7 @@ impl Prover<'_> {
             Relation::OneHotCount {
                 vocab_vars,
                 positions,
+                ref slots,
             } => {
                 let h = table_of(node.outputs()[0]);
                 let width = 1usize << vocab_vars;
@@ -894,11 +903,12 @@ impl Prover<'_> {
                     .collect();
                 let selector = (0..h.len())
                     .map(|v| {
-                        if v / width < positions as usize {
-                            Fe::ONE
-                        } else {
-                            Fe::ZERO
-                        }
+                        let row = (v / width) as u32;
+                        let real = match slots {
+                            Some(s) => s.is_real_row(row),
+                            None => row < positions,
+                        };
+                        if real { Fe::ONE } else { Fe::ZERO }
                     })
                     .collect();
                 return Product {

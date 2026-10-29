@@ -48,6 +48,7 @@ impl Plan<'_> {
                 || s.residual_padding_instance() != first.residual_padding_instance()
                 || s.sources().len() != first.sources().len()
                 || s.n != first.n
+                || s.slots != first.slots
                 || s.dim != first.dim
                 || s.epsilon != first.epsilon
         }) {
@@ -163,9 +164,9 @@ impl<'p> RootStack<'p> {
                 .split_at_checked(site.features)
                 .ok_or(GadgetError::Internal)?;
             crate::selectors::lt(feature, u64::from(site.dim)).ok_or(GadgetError::Internal)?
-                * crate::selectors::lt(time, u64::from(site.n)).ok_or(GadgetError::Internal)?
+                * site.row_psi(time)?
         } else {
-            crate::selectors::lt(local, u64::from(site.n)).ok_or(GadgetError::Internal)?
+            site.row_psi(local)?
         };
         Ok(Final {
             value: eq(zero, point).ok_or(GadgetError::Internal)?
@@ -253,7 +254,7 @@ impl Product<'_, '_, '_> {
         }
         let mut claims = c.stack.family.claims(layer, &rows)?;
         let site = c.stack.sites.first().ok_or(GadgetError::Internal)?;
-        let psi = crate::selectors::lt(local, u64::from(site.n)).ok_or(GadgetError::Internal)?;
+        let psi = site.row_psi(local)?;
         // RFC-0050's graph S is zero padded over time AND layers.
         let squares = claims.first_mut().ok_or(GadgetError::Internal)?;
         squares.value += site.epsilon * psi * (Fp2::ONE - c.stack.family.real(layer)?);

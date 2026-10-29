@@ -544,17 +544,37 @@ impl fmt::Display for RepeatedRequest {
 
 impl std::error::Error for RepeatedRequest {}
 
-/// Packs `requests`, each `(key, group, tokens)`, into batches (RFC-0016 'Batching').
+/// The slot class `c = ⌈log2 max(L, 1)⌉` of a request with `tokens = L`
+/// (RFC-0016 'Batching', RFC-0071 'The statement and the batching').
+fn slot_class(tokens: u64) -> u32 {
+    u64::BITS - (tokens.max(1) - 1).leading_zeros()
+}
+
+/// The counted tokens `2^{c + ⌈log2 R⌉}` of a batch of `count = R ≥ 1` requests in slot class `c`
+/// (RFC-0016 'Batching'), or `None` when `c + ⌈log2 R⌉ ≥ 64`.
+fn counted_tokens(class: u32, count: usize) -> Option<u64> {
+    let req_bits = if count <= 1 {
+        0
+    } else {
+        usize::BITS - (count - 1).leading_zeros()
+    };
+    let shift = class.checked_add(req_bits)?;
+    (shift < u64::BITS).then(|| 1u64 << shift)
+}
+
+/// Packs `requests`, each `(key, group, tokens)`, into batches by slot class and first-fit
+/// decreasing (RFC-0016 'Batching', RFC-0071 'The statement and the batching').
 ///
-/// Groups are packed on their own, in increasing order. Within a group, requests go in
-/// decreasing tokens, ties in [`RequestKey`] order, each into the first batch, in the order
-/// batches were opened, that it fits in under `policy.max_batch_tokens`, else into a new batch.
-/// A request longer than the maximum fits in no batch, so it opens one, which takes no other.
+/// Groups are packed on their own, in increasing order. Within a group, classes
+/// `c = ⌈log2 max(L, 1)⌉` are packed in decreasing order; within a class, requests go in
+/// decreasing `L`, ties in [`RequestKey`] order, each into the first open batch whose counted
+/// tokens `2^{c + ⌈log2 R⌉}` stay at most `policy.max_batch_tokens`, else into a new batch. A
+/// request of class `c > ⌊log2 max_batch_tokens⌋` opens a batch of its own, which takes no other.
+/// `Batch.tokens` remains the batch's total real `L`.
 ///
 /// What follows, since a valid policy has `2 · min_batch_tokens ≤ max_batch_tokens`: every
-/// batch is within the maximum but a lone longer request, and at most one batch of each group has
-/// fewer than `min_batch_tokens` tokens. Two such batches would total under the maximum, so the
-/// later one's first request would have fit in the earlier one.
+/// batch's counted tokens stay within the maximum except a lone request of a larger class, and at
+/// most one batch of each class in a group has fewer than `min_batch_tokens` counted tokens.
 ///
 /// # Errors
 /// [`RepeatedRequest`] for a key given twice.
@@ -567,24 +587,43 @@ pub fn batches<G: Ord + Clone>(
     if let Some(pair) = order.windows(2).find(|w| w[0].0 == w[1].0) {
         return Err(RepeatedRequest(pair[0].0));
     }
-    // By group, then decreasing tokens, then key.
-    order.sort_by(|a, b| a.1.cmp(&b.1).then(b.2.cmp(&a.2)).then(a.0.cmp(&b.0)));
+    // By group, then decreasing slot class, then decreasing tokens, then key.
+    order.sort_by(|a, b| {
+        a.1.cmp(&b.1)
+            .then(slot_class(b.2).cmp(&slot_class(a.2)))
+            .then(b.2.cmp(&a.2))
+            .then(a.0.cmp(&b.0))
+    });
     let max = u64::from(policy.max_batch_tokens);
+    let max_class = policy.max_batch_tokens.max(1).ilog2();
     let mut out = Vec::new();
     let mut start = 0;
     while start < order.len() {
         let group = &order[start].1;
-        let end = start + order[start..].iter().take_while(|r| r.1 == *group).count();
-        // Each open batch: its total and its requests. A request past the maximum opens a batch
-        // that no later request fits in, so it stays alone with no rule of its own.
+        let class = slot_class(order[start].2);
+        let end = start
+            + order[start..]
+                .iter()
+                .take_while(|r| r.1 == *group && slot_class(r.2) == class)
+                .count();
+        if class > max_class {
+            for &&(key, _, tokens) in &order[start..end] {
+                out.push(Batch {
+                    group: group.clone(),
+                    requests: vec![key],
+                    tokens,
+                });
+            }
+            start = end;
+            continue;
+        }
         let mut open: Vec<(u64, Vec<RequestKey>)> = Vec::new();
         for &&(key, _, tokens) in &order[start..end] {
-            match open
-                .iter_mut()
-                .find(|(total, _)| total.checked_add(tokens).is_some_and(|t| t <= max))
-            {
+            match open.iter_mut().find(|(_, keys)| {
+                counted_tokens(class, keys.len() + 1).is_some_and(|counted| counted <= max)
+            }) {
                 Some((total, keys)) => {
-                    *total += tokens;
+                    *total = total.saturating_add(tokens);
                     keys.push(key);
                 }
                 None => open.push((tokens, vec![key])),

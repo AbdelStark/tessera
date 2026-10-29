@@ -1,6 +1,6 @@
 # Protocol/1 verifier CLI
 
-The v0.3 reference CLI verifies one exact-greedy request in NI or directory Live mode through
+The v0.3 reference CLI verifies exact-greedy batches of one or more requests in NI or directory Live mode through
 the independent verifier. It regenerates table catalogs and retains the existing
 parameter calculator. Protocol/1 does not hide weights or tokens. Test-small
 parameters certify nothing and are accepted only by an explicit test build.
@@ -161,6 +161,13 @@ target/debug/tessera-verify live \
   --prompt-len 2 --output-len 3 --manifest-digest "$MANIFEST_HEX" \
   --out verdict.json --json
 ```
+
+For a batch, replace the four request flags with
+`--requests SESSION_HEX:ID:PROMPT:OUTPUT,SESSION_HEX:ID:PROMPT:OUTPUT`.
+Entries stay in the caller's slot order; each session is 16 bytes of hex, each
+prompt has at least one token, and an output length of zero is allowed. Request
+keys `(session, id)` must be distinct. The batch flag and singleton flags are
+mutually exclusive. The whole-statement pin covers the entire ordered batch.
 
 The application supplies every expected request field before the verifier emits
 `SeedCommit`. The independently constructed statement must match the external

@@ -318,29 +318,42 @@ impl<'a> Replay<'a> {
             live.require(core.k)?,
             live.require(core.v)?,
         );
-        let (heads, n, d_head) = (core.heads, core.n, core.d_head);
+        let (heads, n, n_key, d_head) = (core.heads, core.n, core.n_key, core.d_head);
         let graph = self.structure.graph();
+        let slotted = graph.slots.as_ref().filter(|s| n == s.token_len() as usize);
         let range = |t: TensorId| graph.tensors[t.0 as usize].range;
         let table = self.structure.engine.lookup(core.table)?;
         let mut o = zeros(core.o, heads * n * d_head)?;
-        let mut scores = zeros(core.scores, n)?;
-        let mut e = zeros(core.e, n)?;
+        let mut scores = zeros(core.scores, n_key)?;
+        let mut e = zeros(core.e, n_key)?;
         let mut pv = zeros(core.pv, d_head)?;
         for head in 0..heads {
             let keys = &k[head * n * d_head..(head + 1) * n * d_head];
             let values = &v[head * n * d_head..(head + 1) * n * d_head];
             for query in 0..n {
+                if slotted.is_some_and(|s| !s.is_real_row(query)) {
+                    continue;
+                }
+                let (slot_base, q_pos) = match slotted {
+                    Some(slots) => {
+                        let s = slots.slot_len as usize;
+                        ((query / s) * s, query % s)
+                    }
+                    None => (0, query),
+                };
+                let slot_keys = &keys[slot_base * d_head..(slot_base + n_key) * d_head];
+                let slot_values = &values[slot_base * d_head..(slot_base + n_key) * d_head];
                 let row = head * n + query;
                 act_row(
                     &q[row * d_head..(row + 1) * d_head],
-                    keys,
-                    (d_head, n),
+                    slot_keys,
+                    (d_head, n_key),
                     true,
                     &mut scores,
                 );
                 e.fill(0);
-                let r = softmax_row(table, core.sigma, &scores, query, &mut e)?;
-                act_row(&e, values, (n, d_head), false, &mut pv);
+                let r = softmax_row(table, core.sigma, &scores, q_pos, &mut e)?;
+                act_row(&e, slot_values, (n_key, d_head), false, &mut pv);
                 check(core.scores, &scores, range(core.scores))?;
                 check(core.e, &e, range(core.e))?;
                 check(core.r, &[r], range(core.r))?;
@@ -367,34 +380,45 @@ impl<'a> Replay<'a> {
         queries: Range<usize>,
     ) -> Result<Rows, WitnessError> {
         let (q, k) = (live.require(core.q)?, live.require(core.k)?);
-        let (n, d_head) = (core.n, core.d_head);
+        let (n, n_key, d_head) = (core.n, core.n_key, core.d_head);
         let graph = self.structure.graph();
+        let slotted = graph.slots.as_ref().filter(|s| n == s.token_len() as usize);
         let range = |t: TensorId| graph.tensors[t.0 as usize].range;
         let table = self.structure.engine.lookup(core.table)?;
         let rows = heads.len() * queries.len();
-        let mut scores = zeros(core.scores, rows * n)?;
-        let mut e = zeros(core.e, rows * n)?;
+        let mut scores = zeros(core.scores, rows * n_key)?;
+        let mut e = zeros(core.e, rows * n_key)?;
         let mut r = zeros(core.r, rows)?;
         let mut x = 0;
         for head in heads {
             let keys = &k[head * n * d_head..(head + 1) * n * d_head];
             for query in queries.clone() {
+                let (slot_base, q_pos, is_real) = match slotted {
+                    Some(slots) => {
+                        let s = slots.slot_len as usize;
+                        ((query / s) * s, query % s, slots.is_real_row(query))
+                    }
+                    None => (0, query, true),
+                };
+                let slot_keys = &keys[slot_base * d_head..(slot_base + n_key) * d_head];
                 let row = head * n + query;
-                let held = x * n..(x + 1) * n;
+                let held = x * n_key..(x + 1) * n_key;
                 act_row(
                     &q[row * d_head..(row + 1) * d_head],
-                    keys,
-                    (d_head, n),
+                    slot_keys,
+                    (d_head, n_key),
                     true,
                     &mut scores[held.clone()],
                 );
-                r[x] = softmax_row(
-                    table,
-                    core.sigma,
-                    &scores[held.clone()],
-                    query,
-                    &mut e[held],
-                )?;
+                if is_real {
+                    r[x] = softmax_row(
+                        table,
+                        core.sigma,
+                        &scores[held.clone()],
+                        q_pos,
+                        &mut e[held],
+                    )?;
+                }
                 x += 1;
             }
         }

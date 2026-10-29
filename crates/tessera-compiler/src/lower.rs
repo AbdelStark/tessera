@@ -33,9 +33,9 @@
 
 use tessera_codec::Rational;
 use tessera_ir::{
-    ArchSpec, Broadcast, ClaimList, CommitmentClass, Graph, GraphBuilder, IntRange, IntType,
-    IntegerModel, IrError, NodeKind, Op, Profile, PublicQuantSpec, QuantPoint, Site, TableId,
-    TensorDecl, TensorId, WeightRef, WeightType,
+    ArchSpec, BatchSlots, Broadcast, ClaimList, CommitmentClass, Graph, GraphBuilder, IntRange,
+    IntType, IntegerModel, IrError, NodeKind, Op, PROTOCOL_VERSION, PROTOCOL_VERSION_2, Profile,
+    PublicQuantSpec, QuantPoint, Site, TableId, TensorDecl, TensorId, WeightRef, WeightType,
 };
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableKind, TableSpec};
 
@@ -214,7 +214,7 @@ pub fn lower(model: PublicModel<'_>, positions: u32) -> Result<Lowering, Compile
             rule: "n_heads · positions < 2^32",
         });
     }
-    let mut builder = Builder::new(model, positions)?;
+    let mut builder = Builder::new(model, positions, None)?;
     let (one_hot, logits, checkpoints) = builder.forward()?;
     let mut graph = builder.graph.finish();
     let ranges = analyze(&graph, &builder.tables)?;
@@ -232,6 +232,116 @@ pub fn lower(model: PublicModel<'_>, positions: u32) -> Result<Lowering, Compile
         multipliers: builder.multipliers,
         sites: builder.sites,
     })
+}
+
+/// Lowers `model` over a batch of `lengths.len() ≥ 1` request slots in `tessera-protocol/1`
+/// ([`PROTOCOL_VERSION`]; RFC-0071 'Lowering').
+///
+/// With one request (`lengths == [n]`), this delegates to [`lower`] and produces `graph.slots ==
+/// None`. With two or more requests, `graph.slots` records `S = 2^{⌈log2 n_max⌉}` and `lengths`,
+/// `tokens` and `positions` have shape `[R · S]`, `positions` has range `[0, n_max − 1]`, and the
+/// attention scores and exponentials have shape `[n_heads, R · S, n_max]`.
+///
+/// # Errors
+///
+/// The errors of [`lower`], plus [`CompileError::Usage`] when `lengths` is empty, any request lies
+/// outside `1..=max_context`, or `n_heads · R · S` or the padded token axis exceeds `2^31`.
+pub fn lower_batch(model: PublicModel<'_>, lengths: &[u32]) -> Result<Lowering, CompileError> {
+    lower_batch_for_protocol(PROTOCOL_VERSION, model, lengths)
+}
+
+/// Lowers `model` over `lengths` at `protocol_version` ([`PROTOCOL_VERSION`] or
+/// [`PROTOCOL_VERSION_2`]; RFC-0071 'The slots', 'Lowering').
+///
+/// In `tessera-protocol/2`, a multi-request batch uses slot bits `b = max(⌈log2 n_max⌉, 2)` so
+/// every masked tensor has at least two variables (RFC-0013 'Masked extensions').
+///
+/// # Errors
+///
+/// [`CompileError::Usage`] if `protocol_version` is unknown, `lengths` is empty, any request lies
+/// outside `1..=max_context`, or `n_heads · R · S` or the padded token axis overflows dimension
+/// bounds; plus the model, range, and profile errors of [`lower`].
+pub fn lower_batch_for_protocol(
+    protocol_version: u16,
+    model: PublicModel<'_>,
+    lengths: &[u32],
+) -> Result<Lowering, CompileError> {
+    if protocol_version != PROTOCOL_VERSION && protocol_version != PROTOCOL_VERSION_2 {
+        return Err(CompileError::Usage {
+            rule: "protocol_version is PROTOCOL_VERSION or PROTOCOL_VERSION_2",
+        });
+    }
+    if lengths.is_empty() {
+        return Err(CompileError::Usage {
+            rule: "a batch has at least one request",
+        });
+    }
+    if let &[positions] = lengths {
+        return lower(model, positions);
+    }
+    check_public(model)?;
+    if lengths
+        .iter()
+        .any(|&n| n == 0 || n > model.arch.max_context)
+    {
+        return Err(CompileError::Usage {
+            rule: "a sequence has 1 to max_context positions",
+        });
+    }
+    let slots =
+        BatchSlots::for_protocol(protocol_version, lengths.to_vec()).map_err(|err| match err {
+            IrError::Declaration { rule } => CompileError::Usage { rule },
+            other => CompileError::Graph(other),
+        })?;
+    let n = slots.token_len();
+    if n.checked_next_power_of_two().is_none() || model.arch.n_heads.checked_mul(n).is_none() {
+        return Err(CompileError::Usage {
+            rule: "n_heads · R · S < 2^32 and padded batch positions ≤ 2^31",
+        });
+    }
+    let mut builder = Builder::new(model, n, Some(slots))?;
+    let (one_hot, logits, checkpoints) = builder.forward()?;
+    let mut graph = builder.graph.finish();
+    let ranges = analyze(&graph, &builder.tables)?;
+    check_profile(&graph, &ranges, &builder.tables, model.profile)?;
+    settle(&mut graph, &ranges)?;
+    Ok(Lowering {
+        graph,
+        tables: builder.tables,
+        tokens: builder.tokens,
+        positions: builder.positions,
+        one_hot,
+        logits,
+        checkpoints,
+        classes: builder.classes,
+        multipliers: builder.multipliers,
+        sites: builder.sites,
+    })
+}
+
+/// Public position values along the lowered token axis (RFC-0071 'Lowering'): `0 .. n` for a
+/// single request, or `τ mod S` at real rows and `0` at padded rows for a slotted batch.
+pub fn positions_values(lowering: &Lowering) -> Vec<i64> {
+    if let Some(slots) = &lowering.graph.slots {
+        let n = slots.token_len() as usize;
+        (0..n)
+            .map(|tau| {
+                if slots.is_real_row(tau) {
+                    (tau % slots.slot_len as usize) as i64
+                } else {
+                    0
+                }
+            })
+            .collect()
+    } else {
+        let n = lowering
+            .graph
+            .tensors
+            .get(lowering.positions.0 as usize)
+            .and_then(|t| t.shape.first().copied())
+            .unwrap_or(0);
+        (0..i64::from(n)).collect()
+    }
 }
 
 /// Checks the constraints `profile` claims on a forward pass (RFC-0005 'Profiles'), with the
@@ -622,6 +732,7 @@ fn bits(x: u128) -> u8 {
 struct Builder<'a> {
     model: PublicModel<'a>,
     n: u32,
+    n_key: u32,
     graph: GraphBuilder,
     tables: Vec<TableSpec>,
     classes: Vec<(WeightRef, TensorId)>,
@@ -672,9 +783,17 @@ fn whole(shape: &[u32], last: u32, kind: NodeKind) -> TensorDecl {
 }
 
 impl<'a> Builder<'a> {
-    fn new(model: PublicModel<'a>, n: u32) -> Result<Self, CompileError> {
+    fn new(
+        model: PublicModel<'a>,
+        n: u32,
+        slots: Option<BatchSlots>,
+    ) -> Result<Self, CompileError> {
         let arch = model.arch;
-        let mut graph = GraphBuilder::new();
+        let n_key = slots.as_ref().map_or(n, BatchSlots::n_max);
+        let mut graph = match slots {
+            Some(slots) => GraphBuilder::with_slots(slots)?,
+            None => GraphBuilder::new(),
+        };
         let tokens = graph.input(whole(
             &[n],
             arch.vocab - 1,
@@ -682,7 +801,7 @@ impl<'a> Builder<'a> {
                 commitment: CommitmentClass::Advice,
             },
         ))?;
-        let positions = graph.input(whole(&[n], n - 1, NodeKind::Public))?;
+        let positions = graph.input(whole(&[n], n_key - 1, NodeKind::Public))?;
         let rope = arch.rope;
         let kind = TableKind::Rope {
             theta: rope.theta,
@@ -700,6 +819,7 @@ impl<'a> Builder<'a> {
         Ok(Self {
             model,
             n,
+            n_key,
             graph,
             tables: vec![rope.spec().clone()],
             classes: Vec::new(),
@@ -1043,7 +1163,13 @@ impl<'a> Builder<'a> {
         v: TensorId,
     ) -> Result<TensorId, CompileError> {
         let arch = self.model.arch;
-        let (n, h, kv, dh) = (self.n, arch.n_heads, arch.n_kv_heads, arch.d_head);
+        let (n, n_key, h, kv, dh) = (
+            self.n,
+            self.n_key,
+            arch.n_heads,
+            arch.n_kv_heads,
+            arch.d_head,
+        );
         let q = self.heads(q, h)?;
         let k = self.heads(k, kv)?;
         let v = self.heads(v, kv)?;
@@ -1052,7 +1178,7 @@ impl<'a> Builder<'a> {
                 transpose_rhs: true,
             },
             &[q, k],
-            virt(&[h, n, n]),
+            virt(&[h, n, n_key]),
         )?;
         let quant = self.model.quant;
         let scale = quant
@@ -1071,7 +1197,7 @@ impl<'a> Builder<'a> {
             sigma: quant.exp_sigma,
         };
         let outputs = vec![
-            decl(&[h, n, n], NodeKind::LookupOutput { table: exp }),
+            decl(&[h, n, n_key], NodeKind::LookupOutput { table: exp }),
             advice(&[h, n]),
         ];
         let softmax = self.graph.node(softmax, &[scores], outputs)?;
