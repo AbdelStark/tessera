@@ -11,10 +11,14 @@ publish.workspace = true
 [features]
 # Test-only: accepts the `test-small` parameter set, which certifies nothing. A release build with it fails to compile.
 test-params = []
+# Network transport is opt-in; directory users do not link a TLS stack.
+tls = ["dep:rustls"]
 
 [dependencies]
 # The operating system's CSPRNG, the source of every share, session id and column query (06 §7).
 getrandom = "0.4"
+libc = "0.2"
+rustls = { version = "0.23", default-features = false, features = ["std", "ring"], optional = true }
 tessera-codec = { path = "../tessera-codec" }
 tessera-field = { path = "../tessera-field" }
 tessera-hash = { path = "../tessera-hash" }
@@ -25,6 +29,7 @@ tessera-sumcheck = { path = "../tessera-sumcheck" }
 [dev-dependencies]
 allocation-counter = "0.8"
 proptest = "1"
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 serde_json = "1"
 # The verifier's independent soundness calculator, compared across 1,000 random profiles (#110), and
 # its audit sampling, across 1,000 seeds (#151): DEP-2.

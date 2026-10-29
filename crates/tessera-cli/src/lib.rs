@@ -15,7 +15,7 @@
 //! tessera audit sample    --manifest MANIFEST.tlm --log LOG.tdl
 //!                         [--previous-manifest MANIFEST.tlm --previous-log LOG.tdl] [--between MANIFEST.tlm]...
 //!                         --state DIR --verifier-share HEX --out SAMPLE.tas
-//! tessera audit batch     --sample SAMPLE.tas LOGS --out-dir DIR
+//! tessera audit batch     --sample SAMPLE.tas LOGS [--plan PLAN.tep] --out-dir DIR
 //! tessera audit plan      --policy POLICY.json --traffic PROFILE.json (--plan plan.tep | --source-defaults)
 //!                         [--eta η] [--target-overhead O] [--out PLAN.json]
 //! tessera params check    --params PARAMSET [--lookups N] [--table-rows T]
@@ -256,6 +256,9 @@ struct SampleArgs {
 /// `tessera audit batch`.
 #[derive(Debug, Args)]
 struct BatchArgs {
+    /// The proving plan: split batches that exceed its maximum advice layout.
+    #[arg(long, value_name = "PLAN.tep")]
+    plan: Option<PathBuf>,
     /// The sample, whose policy holds the batch bounds.
     #[arg(long, value_name = "SAMPLE.tas")]
     sample: PathBuf,
@@ -523,6 +526,7 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
             audit::batch(
                 &audit::BatchOptions {
                     sample: &a.sample,
+                    plan: a.plan.as_deref(),
                     logs: a.logs.logs(),
                     out_dir: &a.out_dir,
                 },

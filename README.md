@@ -11,6 +11,9 @@ provides no zero knowledge. The [independent verifier CLI](docs/verifier/referen
 checks NI proofs against caller-owned statement and weight pins. Prover CLI
 orchestration and the pass planner remain separate milestones.
 
+The prover protocol library exposes [Live directory and optional mTLS transports](docs/live-transports.md),
+with host-owned sockets and identity configuration. The CLI's Live interface remains directory-based.
+
 ## Specification
 
 - Build or download the [navigable documentation artifact](docs/documentation.md), including both Rust API references.

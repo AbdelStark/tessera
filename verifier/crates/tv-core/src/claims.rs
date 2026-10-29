@@ -441,13 +441,7 @@ impl ParamSetId {
     /// Decodes the identifier, an `Ascii` copied out of the input into memory reserved
     /// fallibly: memory that cannot be reserved is `ERR-RES-MEMORY` at the name.
     pub(crate) fn decode(c: &mut Cursor<'_>) -> Result<Self, DecodeError> {
-        let at = c.offset();
-        let text = c.ascii()?;
-        let mut copy = String::new();
-        copy.try_reserve_exact(text.len())
-            .map_err(|_| DecodeError::new(ErrorCode::Memory, at))?;
-        copy.push_str(text);
-        Ok(Self(copy))
+        Ok(Self(c.ascii()?))
     }
 }
 

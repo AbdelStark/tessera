@@ -544,10 +544,11 @@ fn requests_sort_by_session_then_by_number() {
         })
         .collect();
     // Equal lengths go in key order: 1 opens the first batch, 256 the second.
-    let packed = pack(10, &tied).unwrap();
+    // Tokens = 7 lies in slot class c = 3 (slot width 8); two requests count 16 tokens.
+    let packed = pack(14, &tied).unwrap();
     assert_eq!(packed[0].requests, [one]);
     assert_eq!(packed[1].requests, [big]);
-    let both = pack(14, &tied).unwrap();
+    let both = pack(16, &tied).unwrap();
     assert_eq!(both[0].requests, [one, big]);
     // The accounting finds each by number, and the report lists them in order.
     let ledger = owning(&[&sample]);
@@ -1879,9 +1880,10 @@ fn a_request_listed_twice_for_batching_is_refused_and_bounds_hold() {
         pack(10, &[r(1, 3), r(2, 3), r(1, 4)]).err(),
         Some(inconclusive(Code::Usage))
     );
-    // A request longer than the maximum takes no other; ties go in key order; exactly the
-    // maximum fits.
-    let packed = pack(10, &[r(1, 11), r(2, 5), r(3, 5), r(4, 0)]).unwrap();
+    // RFC-0071 slot-class packing: c = 4 (11) exceeds max = 10; c = 3 (5, 5) fits 1 per batch
+    // (counted 8 <= 10, 16 > 10); c = 2 (3, 4) fits 2 per batch (counted 8 <= 10); c = 0 (0) is
+    // packed in its own class.
+    let packed = pack(10, &[r(1, 11), r(2, 5), r(3, 5), r(4, 3), r(5, 4), r(6, 0)]).unwrap();
     let shapes: Vec<(Vec<RequestKey>, u64)> = packed
         .iter()
         .map(|b| (b.requests.clone(), b.tokens))
@@ -1890,7 +1892,10 @@ fn a_request_listed_twice_for_batching_is_refused_and_bounds_hold() {
         shapes,
         [
             (vec![key(1, 1)], 11),
-            (vec![key(2, 1), key(3, 1), key(4, 1)], 10)
+            (vec![key(2, 1)], 5),
+            (vec![key(3, 1)], 5),
+            (vec![key(4, 1), key(5, 1)], 7),
+            (vec![key(6, 1)], 0),
         ]
     );
 }
@@ -1984,36 +1989,51 @@ fn a_selection_value_equal_to_its_threshold_is_not_selected() {
     assert!(policy(&[(1, value + 1)]).selects(value, 1));
 }
 
-/// First-fit decreasing as RFC-0016 'Batching' states it, by a scan of every batch opened: the
-/// reference `pack`'s tree of maxima must agree with.
+/// First-fit decreasing per slot class as RFC-0016 'Batching' and RFC-0071 'The batching' state
+/// it, by a direct scan of every batch opened in the class.
 fn reference_pack(
     max: u64,
     requests: &[tv_core::audit::BatchRequest<u8>],
 ) -> Vec<(u8, Vec<RequestKey>, u64)> {
+    let slot_class =
+        |tokens: u64| -> u32 { u64::BITS.saturating_sub(tokens.saturating_sub(1).leading_zeros()) };
+    let fits = |class: u32, count: usize| -> bool {
+        let req_bits = usize::BITS.saturating_sub(count.saturating_sub(1).leading_zeros());
+        class
+            .checked_add(req_bits)
+            .and_then(|exp| 1u128.checked_shl(exp))
+            .is_some_and(|counted| counted <= u128::from(max))
+    };
     let mut order: Vec<_> = requests.to_vec();
     order.sort_by(|a, b| {
         a.group
             .cmp(&b.group)
-            .then(b.tokens.cmp(&a.tokens))
-            .then(a.key.cmp(&b.key))
+            .then_with(|| slot_class(b.tokens).cmp(&slot_class(a.tokens)))
+            .then_with(|| b.tokens.cmp(&a.tokens))
+            .then_with(|| a.key.cmp(&b.key))
     });
     let mut out = Vec::new();
     let mut start = 0;
     while start < order.len() {
         let group = order[start].group;
+        let class = slot_class(order[start].tokens);
         let end = start
             + order[start..]
                 .iter()
-                .take_while(|r| r.group == group)
+                .take_while(|r| r.group == group && slot_class(r.tokens) == class)
                 .count();
         let mut opened: Vec<(u64, Vec<RequestKey>)> = Vec::new();
         for r in &order[start..end] {
-            match opened
-                .iter_mut()
-                .find(|(t, _)| t.checked_add(r.tokens).is_some_and(|x| x <= max))
-            {
+            let target = if fits(class, 1) {
+                opened
+                    .iter_mut()
+                    .find(|(_, keys)| fits(class, keys.len() + 1))
+            } else {
+                None
+            };
+            match target {
                 Some((t, keys)) => {
-                    *t += r.tokens;
+                    *t = t.saturating_add(r.tokens);
                     keys.push(r.key);
                 }
                 None => opened.push((r.tokens, vec![r.key])),
