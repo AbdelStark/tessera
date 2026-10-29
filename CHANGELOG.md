@@ -6,6 +6,9 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Windowed CPU proving uses the resident native representation charged by its plan; ordinary resident proving retains computed score rounds. Generated OneHot/RoPE factors preserve inter-slot padding, with NI/Live budget-window batch coverage (RFC-0055, RFC-0056, RFC-0071, #459).
+
+- Windowed reduction stages on CPU (RFC-0055/0056, #459): grids with factored equality, mixed resident operands, regenerated witness passes, clearing folded tables and budgeted P3b accounting preserve the existing proof bytes. CPU plans retain the resident witness floor and charge stage working sets separately.
 - An explicit test-only CPU API acceptance build and required CI job enable the independent verifier dev-dependency's non-certifying parameters; complete one-layer NI/Live proofs are checked without conditional skips (#598, OBS-4).
 
 - Preserve stacked weight, class and multiplier inputs for one-layer models with zero layer variables, so exported one-layer integer models compile and their reduction-stage claims agree with the independent verifier; retain shared-input and partial-sharing refusals (RFC-0037, [#598](https://github.com/AbdelStark/tessera/issues/598)).

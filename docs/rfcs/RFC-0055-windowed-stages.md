@@ -238,7 +238,7 @@ Each projection lists the stages' working sets and windows.
     - front-padded instances, and windows of 1 to `n_max − 1` rounds;
     - instances kept resident beside windowed ones.
   - **Memory.** Under a forced budget, the stage never exceeds it, and the pass counter counts P3 and P3b once each.
-  - **Adversarial.** A window computed from a wrong grid sends a round polynomial that RFC-0010's check rejects, `Reject(Sumcheck)` at that round.
+  - **Adversarial.** A fixed algebraic corruption of a grid, with the original claim and regenerated source unchanged, must produce `Reject(Sumcheck)` in the regression fixture. Assert the final relation mismatch at round `n_max`: RFC-0010 omits `p(1)` and reconstructs it from the running claim, so a well-formed corrupted round need not be rejected at the round that first uses the grid. This test does not change the protocol or its soundness bound.
 
 ## Open Questions
 

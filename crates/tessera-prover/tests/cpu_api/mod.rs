@@ -568,13 +568,16 @@ fn the_pass_plan_bounds_the_measured_peak_and_the_budget_refuses_before_p1() {
                     .is_ok(),
                 "{name}, n = {n}: the plan's own budget"
             );
-            // One byte short, the leaf stage takes token groups (RFC-0054): the grouped plan
-            // fits, and the grouped proof's measured peak stays within it.
+            // One byte short, the planner reduces the stage working set or groups the leaf.
+            // Both paths retain the complete measured peak and before-P1 refusal checks.
             let grouped = Prover::new(&plan, &model, &mut state, budgeted(bytes - 1))
                 .unwrap()
                 .plan(&batch)
                 .unwrap();
-            assert_ne!(grouped.leaf_groups(), protocol::LeafGroups::NONE);
+            assert!(
+                grouped.leaf_groups() != protocol::LeafGroups::NONE
+                    || grouped.stage_windows().iter().any(|s| s.cut > 0)
+            );
             let grouped_bytes = grouped.resident_bytes().unwrap();
             assert!(grouped_bytes < bytes);
             let info = allocation_counter::measure(|| {
@@ -658,8 +661,28 @@ fn public_cpu_api_groups_the_leaf_stage_under_a_forced_budget() {
         .plan(&batch)
         .unwrap();
     assert_eq!(ungrouped.leaf_groups(), protocol::LeafGroups::NONE);
-    let mut budget = ungrouped.resident_bytes().unwrap();
     for bits in 1..=3u8 {
+        // Find the lowest feasible public budget with at most this many group bits. Stage
+        // windows now share the memory budget, so one byte below the resident total may use
+        // windows first. The minimal grouping and its layer-before-token order remain pinned.
+        let (mut low, mut high) = (0, ungrouped.resident_bytes().unwrap());
+        while high - low > 1 {
+            let middle = low + (high - low) / 2;
+            let candidate = Prover::new(&plan, &model, &mut state, budgeted(middle))
+                .unwrap()
+                .plan(&batch);
+            let fits = candidate.is_ok_and(|p| {
+                p.resident_bytes().is_some_and(|bytes| bytes <= middle)
+                    && u16::from(p.leaf_groups().token_bits) + u16::from(p.leaf_groups().layer_bits)
+                        <= u16::from(bits)
+            });
+            if fits {
+                high = middle;
+            } else {
+                low = middle;
+            }
+        }
+        let budget = high + 1;
         let grouped = Prover::new(&plan, &model, &mut state, budgeted(budget - 1))
             .unwrap()
             .plan(&batch)
@@ -750,8 +773,169 @@ fn public_cpu_api_groups_the_leaf_stage_under_a_forced_budget() {
             write("weights.tce", tessera_codec::encode(&weights));
             write("ni.tnp", envelope::seal(&schema::NI_PROOF, &proof));
         }
-        budget = grouped.resident_bytes().unwrap();
     }
+}
+
+#[test]
+fn public_cpu_api_selects_real_stage_windows_under_budget() {
+    // Metrics are process-global; use a child running this exact test so other proof tests
+    // cannot change the manifest counters between the reset and the snapshot.
+    const CHILD: &str = "TESSERA_WINDOWED_CPU_METRICS_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "cpu_api::public_cpu_api_selects_real_stage_windows_under_budget",
+            ])
+            .env(CHILD, "1")
+            .status()
+            .unwrap();
+        assert!(status.success());
+        return;
+    }
+    for name in ["tiny-2-servable", "tiny-2-minimal", "tiny-2-affine"] {
+        let model = bounded_model_named(name);
+        for n in [3, 5, 8, 16] {
+            if n > model.arch.max_context {
+                continue;
+            }
+            let (plan, batch, weights) = fixture(&model, n, n - 1);
+            let (claims, statement, verifier_config) = independent(&plan, &batch, &weights);
+            let mut state = WeightCommitmentState::new(weights).unwrap();
+            let resident = Prover::new(&plan, &model, &mut state, cfg(Mode::NonInteractive))
+                .unwrap()
+                .plan(&batch)
+                .unwrap();
+            let total = resident.resident_bytes().unwrap();
+            let stage = resident
+                .stage_windows()
+                .iter()
+                .map(|s| s.working_bytes)
+                .max()
+                .unwrap();
+            for step in 1..=128 {
+                let host = total - stage * step / 128;
+                let mut config = cfg(Mode::NonInteractive);
+                config.memory_budget.host = host;
+                #[cfg(feature = "test-rng")]
+                {
+                    config.mask_rng = MaskRng::Seeded(19);
+                }
+                let Ok(candidate) = Prover::new(&plan, &model, &mut state, config.clone())
+                    .unwrap()
+                    .plan(&batch)
+                else {
+                    continue;
+                };
+                if candidate.stage_windows().iter().any(|s| s.cut > 0) {
+                    assert!(candidate.passes().contains(&tessera_prover::Pass::P3b));
+                    tessera_codec::metrics::reset();
+                    let mut proof = None;
+                    let info = allocation_counter::measure(|| {
+                        proof = Some(
+                            Prover::new(&plan, &model, &mut state, config.clone())
+                                .unwrap()
+                                .prove_non_interactive(&batch)
+                                .unwrap(),
+                        );
+                    });
+                    assert!(
+                        info.bytes_max <= host,
+                        "windowed peak {} exceeds budget {host}",
+                        info.bytes_max
+                    );
+                    let expected: usize = candidate
+                        .stage_windows()
+                        .iter()
+                        .map(|s| s.fold_passes)
+                        .sum();
+                    let samples = tessera_codec::metrics::snapshot();
+                    let recorded = samples
+                        .iter()
+                        .find(|s| {
+                            s.name == "tessera_passes_total"
+                                && s.labels.iter().any(|(k, v)| *k == "pass" && v == "p3b")
+                        })
+                        .unwrap();
+                    assert_eq!(
+                        recorded.value,
+                        tessera_codec::metrics::Value::Counter(expected as u64)
+                    );
+                    assert_eq!(
+                        candidate
+                            .passes()
+                            .iter()
+                            .filter(|&&p| p == tessera_prover::Pass::P3b)
+                            .count(),
+                        expected
+                    );
+                    let proof = proof.unwrap();
+                    let decoded = tv_codec::decode(
+                        &tessera_codec::encode(&proof),
+                        &tv_codec::DecodeLimits::MESSAGE,
+                        tv_core::protocol::NiProof::decode,
+                    )
+                    .unwrap();
+                    let verdict = tv_core::verify_non_interactive(
+                        &claims,
+                        &statement,
+                        &decoded,
+                        &verifier_config,
+                    );
+                    if tv_core::params::ParamSet::accept(&claims.params).is_some() {
+                        assert!(
+                            matches!(verdict, tv_core::Verdict::Accept(_)),
+                            "{verdict:?}"
+                        );
+                        let mut live_config = config.clone();
+                        live_config.mode = Mode::Live;
+                        let mut live = Prover::new(&plan, &model, &mut state, live_config).unwrap();
+                        let verifier = tv_core::LiveVerifier::new(
+                            claims.clone(),
+                            statement.clone(),
+                            verifier_config.clone(),
+                        );
+                        let verdict =
+                            live_verdict(&mut live, &batch, verifier, candidate.leaf_groups());
+                        assert!(
+                            matches!(verdict, tv_core::Verdict::Accept(_)),
+                            "{verdict:?}"
+                        );
+                    } else {
+                        assert!(
+                            matches!(
+                                verdict,
+                                tv_core::Verdict::Reject(tv_core::RejectReason::Params { .. })
+                            ),
+                            "{verdict:?}"
+                        );
+                    }
+                    #[cfg(feature = "test-rng")]
+                    if candidate.leaf_groups() == resident.leaf_groups() {
+                        let mut literal_config = config.clone();
+                        literal_config.memory_budget.host = total;
+                        let literal = Prover::new(&plan, &model, &mut state, literal_config)
+                            .unwrap()
+                            .prove_non_interactive(&batch)
+                            .unwrap();
+                        assert_eq!(
+                            tessera_codec::encode(&proof),
+                            tessera_codec::encode(&literal)
+                        );
+                    }
+                    if let Some(path) = std::env::var_os("TESSERA_WINDOWED_CPU_EVIDENCE") {
+                        let path = PathBuf::from(path);
+                        assert!(!path.exists(), "evidence capture refuses to overwrite");
+                        let stages: Vec<_> = candidate.stage_windows().iter().enumerate().map(|(k,s)| serde_json::json!({"stage":k,"cut":s.cut,"fold_passes":s.fold_passes,"working_bytes":s.working_bytes})).collect();
+                        let evidence = serde_json::json!({"schema_version":1,"model":name,"tokens":n,"resident_plan_bytes":total,"budget_bytes":host,"windowed_plan_bytes":candidate.resident_bytes().unwrap(),"measured_peak_bytes":info.bytes_max,"p3b":expected,"stages":stages,"independent_verifier_accepts":tv_core::params::ParamSet::accept(&claims.params).is_some()});
+                        fs::write(path, serde_json::to_vec_pretty(&evidence).unwrap()).unwrap();
+                    }
+                    return;
+                }
+            }
+        }
+    }
+    panic!("the conformance budgets must exercise the production window path");
 }
 
 #[test]
@@ -775,7 +959,16 @@ fn public_cpu_api_proves_one_token_requests_without_a_key_forest() {
     check_slotted_batch(&[(1, 0), (1, 0), (1, 0)]);
 }
 
+#[test]
+fn public_cpu_api_proves_slotted_batches_through_budget_windows() {
+    check_slotted_batch_with_windows(&[(1, 1), (1, 2)], true);
+}
+
 fn check_slotted_batch(requests: &[(u32, u32)]) {
+    check_slotted_batch_with_windows(requests, false);
+}
+
+fn check_slotted_batch_with_windows(requests: &[(u32, u32)], windows: bool) {
     let model = bounded_model();
     let (plan, mut batch, weights) = fixture(&model, 3, 1);
     let template = batch.statement.batch.requests[0];
@@ -834,7 +1027,42 @@ fn check_slotted_batch(requests: &[(u32, u32)]) {
     batch.tokens = Secret::new(tokens);
     let (claims, statement, vcfg) = independent(&plan, &batch, &weights);
     let mut state = WeightCommitmentState::new(weights).unwrap();
-    let mut prover = Prover::new(&plan, &model, &mut state, cfg(Mode::NonInteractive)).unwrap();
+    let mut config = cfg(Mode::NonInteractive);
+    let resident = Prover::new(&plan, &model, &mut state, config.clone())
+        .unwrap()
+        .plan(&batch)
+        .unwrap();
+    if windows {
+        let total = resident.resident_bytes().unwrap();
+        let stage = resident
+            .stage_windows()
+            .iter()
+            .map(|s| s.working_bytes)
+            .max()
+            .unwrap();
+        let mut selected = None;
+        for step in 1..=128 {
+            config.memory_budget.host = total - stage * step / 128;
+            let candidate = Prover::new(&plan, &model, &mut state, config.clone())
+                .unwrap()
+                .plan(&batch);
+            if let Ok(candidate) = candidate
+                && candidate.stage_windows().iter().any(|s| s.cut > 0)
+            {
+                selected = Some(candidate);
+                break;
+            }
+        }
+        assert!(
+            selected.is_some(),
+            "the slotted fixture must exercise budget windows"
+        );
+    }
+    let mut prover = Prover::new(&plan, &model, &mut state, config.clone()).unwrap();
+    let selected = prover.plan(&batch).unwrap();
+    if windows {
+        assert!(selected.stage_windows().iter().any(|s| s.cut > 0));
+    }
     if let Some(tokens) = gap_tokens {
         let bad = ProofBatch {
             statement: batch.statement.clone(),
@@ -847,7 +1075,17 @@ fn check_slotted_batch(requests: &[(u32, u32)]) {
     }
     assert!(prover.plan(&batch).is_ok());
     prover.check_witness(&batch).unwrap();
-    let proof = prover.prove_non_interactive(&batch).unwrap();
+    let mut proof = None;
+    let measured = allocation_counter::measure(|| {
+        proof = Some(prover.prove_non_interactive(&batch).unwrap());
+    });
+    if windows {
+        assert!(
+            measured.bytes_max <= config.memory_budget.host,
+            "slotted window peak: {measured:?}"
+        );
+    }
+    let proof = proof.unwrap();
     if tv_core::params::ParamSet::accept(&claims.params).is_some() {
         let decoded = tv_codec::decode(
             &tessera_codec::encode(&proof),
@@ -868,8 +1106,9 @@ fn check_slotted_batch(requests: &[(u32, u32)]) {
     drop(prover);
     if tv_core::params::ParamSet::accept(&claims.params).is_some() {
         let verifier = tv_core::LiveVerifier::new(claims, statement, vcfg);
-        let mut live = Prover::new(&plan, &model, &mut state, cfg(Mode::Live)).unwrap();
-        let verdict = live_verdict(&mut live, &batch, verifier, protocol::LeafGroups::NONE);
+        config.mode = Mode::Live;
+        let mut live = Prover::new(&plan, &model, &mut state, config).unwrap();
+        let verdict = live_verdict(&mut live, &batch, verifier, selected.leaf_groups());
         assert!(
             matches!(verdict, tv_core::Verdict::Accept(_)),
             "{verdict:?}"

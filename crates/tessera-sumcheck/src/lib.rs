@@ -390,6 +390,10 @@ pub use merge::{
     prove_merge, prove_merge_two_pass,
 };
 pub use proof::SumcheckProof;
+pub use prover::window::{
+    MAX_WINDOW_VARS, PreparedWindow, WindowError, WindowInstance, WindowMemory, WindowPass,
+    WindowShape, WindowSource, WindowTable,
+};
 pub use prover::{
     Computed, ComputedState, Instance, Prefix, ProvenBatch, Table, TreeScope, prove_batch,
 };

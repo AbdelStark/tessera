@@ -695,6 +695,150 @@ fn six_and_three_heads_prove_through_the_actual_cpu_engine_and_verify() {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum WindowEvent {
+    Regenerate,
+    Absorb(String),
+}
+struct WindowTranscript {
+    inner: Transcript,
+    events: std::rc::Rc<std::cell::RefCell<Vec<WindowEvent>>>,
+}
+impl SumcheckTranscript<F> for WindowTranscript {
+    fn absorb_message(&mut self, label: &str, values: &[F]) {
+        self.events
+            .borrow_mut()
+            .push(WindowEvent::Absorb(label.to_owned()));
+        self.inner.absorb_message(label, values);
+    }
+    fn challenge(&mut self, label: &str) -> F {
+        self.inner.challenge(label)
+    }
+}
+
+#[test]
+fn regenerated_windowed_stages_match_resident_messages_and_independent_verifier() {
+    for name in MODELS {
+        let (model, tokens) = conformance(name);
+        let seed = tokens.len() as u64 * 7919 + name.len() as u64;
+        let reference = prove_model(&model, tokens, seed);
+        let n = reference.lowering.graph.tensors[reference.lowering.positions.0 as usize].shape[0];
+        let schedule = derive_schedule(&reference.lowering).unwrap();
+        let side = verifier_side(name, n);
+        let engine = Engine::new(&reference.lowering).unwrap();
+        for requested in [0usize, 1, 2, 4, 8, 12, usize::MAX] {
+            let cuts: Vec<_> = schedule
+                .stages
+                .iter()
+                .enumerate()
+                .map(|(k, s)| {
+                    let requested = if requested == usize::MAX {
+                        usize::from(k % 2 == 0)
+                    } else {
+                        requested
+                    };
+                    requested.min(s.rounds.saturating_sub(1) as usize)
+                })
+                .collect();
+            let events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            let mut calls = 0;
+            let mut regenerate = || {
+                events.borrow_mut().push(WindowEvent::Regenerate);
+                calls += 1;
+                engine.regenerate(&model, &reference.witness).map_err(|_| {
+                    tessera_prover::StageError::Internal {
+                        rule: "the conformance witness regenerates",
+                    }
+                })
+            };
+            let mut t = WindowTranscript {
+                inner: transcript(),
+                events: events.clone(),
+            };
+            let mut prover = StageProver::new(&reference.lowering, &schedule, &reference.witness);
+            let leaf = prover.leaf(&reference.points).unwrap();
+            t.absorb_message(
+                "test/leaf",
+                &leaf.iter().flatten().copied().collect::<Vec<_>>(),
+            );
+            assert_eq!(prover.leaf_splits(&mut t).unwrap(), reference.leaf_splits);
+            let mut stages = Vec::new();
+            for (k, &cut) in cuts.iter().enumerate().skip(1) {
+                stages.push(
+                    prover
+                        .prove_stage_windowed(
+                            &mut t,
+                            k as u16,
+                            cut,
+                            cuts.get(k + 1).copied().unwrap_or(0),
+                            &mut regenerate,
+                        )
+                        .unwrap_or_else(|e| panic!("{name}, stage{k}, cut{cut}: {e}")),
+                );
+            }
+            let expected_calls: usize = schedule
+                .stages
+                .iter()
+                .enumerate()
+                .skip(1)
+                .map(|(k, s)| {
+                    let cut = cuts[k];
+                    let own = s
+                        .instances
+                        .iter()
+                        .filter(|i| {
+                            !matches!(
+                                i.relation,
+                                tessera_compiler::schedule::Relation::MatMulWeight
+                                    | tessera_compiler::schedule::Relation::MatMulAct { .. }
+                            )
+                        })
+                        .map(|i| cut.saturating_sub((s.rounds - i.vars) as usize))
+                        .max()
+                        .unwrap_or(0);
+                    if cut == 0 { 0 } else { 1 + own.div_ceil(8) }
+                })
+                .sum();
+            assert_eq!(
+                calls, expected_calls,
+                "one genuine regeneration per P3 and P3b"
+            );
+            let events = events.borrow();
+            for (k, &cut) in cuts.iter().enumerate().skip(2) {
+                let previous = k - 1;
+                let evals = events
+                    .iter()
+                    .position(|e| *e == WindowEvent::Absorb(format!("stage/{previous}/evals")))
+                    .unwrap();
+                let split = events
+                    .iter()
+                    .position(|e| *e == WindowEvent::Absorb(format!("stage/{previous}/split")))
+                    .unwrap();
+                assert_eq!(
+                    events[evals + 1..split]
+                        .iter()
+                        .filter(|e| **e == WindowEvent::Regenerate)
+                        .count(),
+                    usize::from(cut != 0),
+                    "stage {k}'s P3 serves the preceding splits before gamma"
+                );
+            }
+            assert_eq!(stages, reference.stages, "{name}, requested{requested}");
+            assert_eq!(prover.pool(), reference.pool);
+            let proof = Proven {
+                lowering: reference.lowering.clone(),
+                witness: engine.regenerate(&model, &reference.witness).unwrap(),
+                points: reference.points.clone(),
+                leaf: reference.leaf.clone(),
+                leaf_splits: reference.leaf_splits.clone(),
+                stages,
+                pool: prover.pool().to_vec(),
+            };
+            assert!(check(&side, &proof, &messages(&proof)).is_ok());
+        }
+    }
+}
+
 /// #598: the independent verifier already uses public parameter roles at L=1. Both
 /// profiles, classed/affine sites and zero/padded token-coordinate cases must agree.
 #[test]
