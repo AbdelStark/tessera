@@ -18,6 +18,9 @@ def strip_yaml_comments(text: str) -> str:
 
 
 class ScopeTests(unittest.TestCase):
+    def test_serving_integration_guide_runs_its_example(self):
+        self.assertTrue(needs_code_checks(["docs/integration.md"]))
+
     def test_documentation_only(self):
         self.assertFalse(
             needs_code_checks([
