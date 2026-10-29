@@ -11,6 +11,8 @@
   - [00 §9](../spec/00-overview.md#9-risks) RISK-2: the `minimal` profile's upper bound, and the projections that follow from it.
 - Origin: [#292](https://github.com/AbdelStark/tessera/issues/292)
 
+- Proposed amendment: draft [RFC-0076](RFC-0076-uniform-requant-families.md) defines common-family Protocol One model Requant selection; in effect only on acceptance.
+
 ## Summary
 
 `RequantSplit` takes a requantization key wider than one table by committing its low bits, but only while the split stays below every class's rounding bit. `minimal`'s down projection breaks that: its residual key reaches about `2^{54}` at 8B and `2^{58}` at 405B, against shifts near 17, so `minimal` does not compile at Llama's sizes. This RFC adds `RequantWide`. It splits below the rounding bit as far as it may, keeps a middle part as wide as the output's range needs, and reduces the top part to its saturation, `clamp(h1, −2, 1)`. The cost is four commitments and five lookups per element, into existing table kinds. With it, `minimal` compiles at 8B and 405B, and its projected `μ(1K)` rises from 9.4 to 10.0.

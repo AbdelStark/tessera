@@ -4,6 +4,8 @@
 - Governs: every surface a user or integrator touches, its stability tier, and its compatibility promise
 - Related: [03 Data model](03-data-model.md), [04 Error model](04-error-model.md), [09 Release and versioning](09-release-and-versioning.md)
 
+- Proposed exception: draft [RFC-0076](../rfcs/RFC-0076-uniform-requant-families.md#compatibility-decision) requests a one-time unreleased Protocol One canonical-selection refinement; the current version rules remain in force until acceptance.
+
 ## 1. Stability tiers
 
 | Tier | Surfaces | Promise |
