@@ -178,12 +178,20 @@ def mean_kl(reference: torch.Tensor, logits: torch.Tensor) -> float:
 
     Both are logits `[..., vocab]` of the same positions, the reference's first.
     """
+    return float(kl_rows(reference, logits).mean())
+
+
+def kl_rows(reference: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
+    """KL divergence per position, retaining the existing float64 row reduction.
+
+    Concatenate these scalars in position order before taking the final mean; averaging window
+    means changes weighting and rounding (RFC-0005 'Calibration').
+    """
     if reference.shape != logits.shape:
         raise TesseraQuantError("the divergence compares logits of the same shape")
     log_p = torch.log_softmax(reference.to(torch.float64), dim=-1)
     log_q = torch.log_softmax(logits.to(torch.float64), dim=-1)
-    per_position = (log_p.exp() * (log_p - log_q)).sum(dim=-1)
-    return float(per_position.mean())
+    return (log_p.exp() * (log_p - log_q)).sum(dim=-1)
 
 
 def _float64(tensors: Mapping[str, torch.Tensor]) -> Tensors:

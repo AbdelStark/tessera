@@ -10,6 +10,7 @@ statistics file is written as a secret artifact, beside a report that names them
 
 import json
 import stat
+import weakref
 from pathlib import Path
 from typing import Any, cast
 
@@ -20,12 +21,14 @@ from transformers import LlamaForCausalLM
 from transformers.models.llama import modeling_llama
 
 from tessera_quant import CalibrationError, TesseraQuantError, import_checkpoint
+from tessera_quant import capture as capture_module
 from tessera_quant.calibration import CalibrationSet, DatasetIdentity, draw
 from tessera_quant.capture import (
     REPORT_FILE,
     STATISTICS_FILE,
     calibrate,
     capture,
+    iter_reference_logits,
     points,
     reference_model,
     statistics_digest,
@@ -86,6 +89,41 @@ def test_the_reference_computes_what_hugging_faces_loader_gives(tmp_path: Path) 
     tokens = torch.tensor([sequences().calibration[0].tokens])
     with torch.no_grad():
         assert torch.equal(ours(input_ids=tokens).logits, theirs(input_ids=tokens).logits)
+
+
+@pytest.mark.parametrize("exhaust", [False, True])
+def test_reference_iterator_restores_modes_and_releases_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, exhaust: bool
+) -> None:
+    model = import_checkpoint(checkpoint(tmp_path))
+    live: list[weakref.ReferenceType[LlamaForCausalLM]] = []
+    original = reference_model
+
+    def build(*args: Any, **kwargs: Any) -> LlamaForCausalLM:
+        llama = original(*args, **kwargs)
+        live.append(weakref.ref(llama))
+        return llama
+
+    monkeypatch.setattr(capture_module, "reference_model", build)
+    previous = torch.are_deterministic_algorithms_enabled()
+    previous_grad = torch.is_grad_enabled()
+    torch.use_deterministic_algorithms(False)
+    refs = iter_reference_logits(model, sequences().calibration, 11)
+    try:
+        next(refs)
+        assert torch.are_deterministic_algorithms_enabled()
+        assert not torch.is_grad_enabled()
+        assert len(live) == 1
+        assert live[0]() is not None
+        if exhaust:
+            list(refs)
+    finally:
+        refs.close()
+        restored = torch.are_deterministic_algorithms_enabled()
+        torch.use_deterministic_algorithms(previous)
+    assert not restored
+    assert torch.is_grad_enabled() == previous_grad
+    assert live[0]() is None
 
 
 def channel_maxima(values: torch.Tensor) -> torch.Tensor:

@@ -206,8 +206,19 @@ def reference_logits(
     The windows' positions follow one another, window by window. They run under deterministic
     algorithms and `seed`, as the capture does.
     """
+    return torch.cat(list(iter_reference_logits(model, windows, seed, device)))
+
+
+def iter_reference_logits(
+    model: FloatModel, windows: Sequence[Window], seed: int, device: str = "cpu"
+) -> Generator[torch.Tensor, None, None]:
+    """Yield one window's CPU float64 logits at a time, in the reference's original order.
+
+    One BF16 model serves the iterator. Exhaust or close it to release the model and restore
+    the deterministic-algorithm and gradient modes, including when scoring a window fails.
+    """
     llama = reference_model(model, device)
-    return torch.cat(logits_of(llama, [w.tokens for w in windows], seed, device))
+    yield from _iter_logits_of(llama, [w.tokens for w in windows], seed, device)
 
 
 def logits_of(
@@ -217,13 +228,20 @@ def logits_of(
 
     They run under deterministic algorithms and `seed`.
     """
-    rows: list[torch.Tensor] = []
+    return list(_iter_logits_of(llama, sequences, seed, device))
+
+
+def _iter_logits_of(
+    llama: LlamaForCausalLM, sequences: Sequence[Sequence[int]], seed: int, device: str
+) -> Generator[torch.Tensor, None, None]:
     with _deterministic(seed), torch.no_grad():
         for sequence in sequences:
             tokens = torch.tensor([list(sequence)], dtype=torch.long, device=device)
             output: Any = llama(input_ids=tokens)
-            rows.append(_cpu_float64(cast(torch.Tensor, output.logits)[0]))
-    return rows
+            logits = _cpu_float64(cast(torch.Tensor, output.logits)[0])
+            del output
+            yield logits
+            del logits
 
 
 def continue_greedily(

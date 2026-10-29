@@ -24,6 +24,7 @@
 
 import json
 import math
+import weakref
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,7 @@ import numpy.typing as npt
 import pytest
 import torch
 
+from tessera_quant import reference as reference_module
 from tessera_quant.errors import TesseraQuantError
 from tessera_quant.integer_model import (
     INTEGER_MODEL,
@@ -50,6 +52,38 @@ from tessera_quant.tce import INTEGER_MODEL_LIMITS, unseal
 MODELS = Path(__file__).resolve().parents[2] / "spec" / "vectors" / "models"
 INDEX: dict[str, Any] = json.loads((MODELS / "models.json").read_text(encoding="utf-8"))
 TRACES: dict[str, Any] = json.loads((MODELS / "traces.json").read_text(encoding="utf-8"))
+
+
+def test_logits_only_releases_each_attention_matrix_before_the_next_layer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = unseal(
+        (MODELS / "tiny-2-servable.d").read_bytes(), INTEGER_MODEL, limits=INTEGER_MODEL_LIMITS
+    )
+    sequence = tokens([i % model.arch.vocab for i in range(4)])
+    expected = trace(model, sequence).logits.numpy().copy()
+    matrices: list[weakref.ReferenceType[torch.Tensor]] = []
+    original_multiply = torch.Tensor.__mul__
+    original_attention = reference_module._Forward.attention  # pyright: ignore[reportPrivateUsage]
+
+    def multiply(self: torch.Tensor, other: Any) -> torch.Tensor:
+        result = original_multiply(self, other)
+        if isinstance(other, torch.Tensor) and other.dtype == torch.bool and result.ndim == 3:
+            matrices.append(weakref.ref(result))
+        return result
+
+    def attention(self: Any, *args: Any, **kwargs: Any) -> torch.Tensor:
+        assert not any(ref() is not None for ref in matrices), (
+            "a previous layer's exponentials stayed live"
+        )
+        return original_attention(self, *args, **kwargs)
+
+    monkeypatch.setattr(torch.Tensor, "__mul__", multiply)
+    monkeypatch.setattr(reference_module._Forward, "attention", attention)  # pyright: ignore[reportPrivateUsage]
+    assert torch.equal(torch.as_tensor(run_reference(model, sequence)), torch.as_tensor(expected))
+    assert len(matrices) == model.arch.n_layers
+    assert not any(ref() is not None for ref in matrices)
+
 
 NOT_COMPUTED = {"one-hot"}
 """The traced tensors the reference does not compute: the circuit's encoding of the prompt."""

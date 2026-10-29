@@ -65,6 +65,11 @@ separate embedding and final-head groups. It retains the INT8 output model and c
 statistics. This avoids a whole-model float64 copy; it does not bound the BF16 calibration
 model or the prover's commitments. See the [transform memory measurement](../docs/perf/v0.2/quant-transform-memory.md).
 
+Held-out scoring runs one window at a time and retains only one KL scalar per position before
+the final mean. The integer logits-only reference releases intermediate layer traces; `trace`
+still returns them for conformance consumers. The BF16 reference runs again for each alpha.
+See the [held-out memory measurement](../docs/perf/v0.2/heldout-memory.md) for costs and limits.
+
 On Metal-capable macOS hosts, the Python API accepts `device="mps"` for the BF16 reference
 and calibration. Statistics and reference logits copy to CPU in their source dtype before
 float64 conversion. The [device transfer checks](../docs/perf/v0.2/bf16-device-transfer.md)

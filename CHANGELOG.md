@@ -1707,6 +1707,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- Stream quantization's held-out KL scoring by window and retain only per-position divergences; the integer logits-only reference releases layer traces while preserving full-trace conformance consumers, exact rounding and alpha selection (RFC-0005, SC-7, [#611](https://github.com/AbdelStark/tessera/issues/611)).
+
 - Calibration and reference logits transfer BF16 tensors to CPU before widening to float64, avoiding corrupt Metal device/dtype copies; native regression cases cover every finite BF16 pattern (RFC-0005, [#609](https://github.com/AbdelStark/tessera/issues/609)).
 
 - CPU protocol/1 weight commitments retain public Merkle metadata and regenerate column answers in bounded clearing buffers, preserving roots and proof bytes while charging blocks, folds and answers in the host budget (RFC-0012/0040, [#607](https://github.com/AbdelStark/tessera/issues/607)).
