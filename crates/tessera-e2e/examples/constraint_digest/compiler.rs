@@ -318,7 +318,12 @@ impl Context<'_> {
             s::Relation::Rotate => {
                 let a = &g.tensors[node.inputs[0].0 as usize].shape;
                 (
-                    json!({"Rotate":[json!(a[0]),json!(shape_vars(&a[1..a.len()-1]))]}),
+                    match &g.slots {
+                        None => json!({"Rotate":[a[0],shape_vars(&a[1..a.len()-1])]}),
+                        Some(slots) => {
+                            json!({"Rotate":[a[0],shape_vars(&a[1..a.len()-1]),{"slot_len":slots.slot_len,"lengths":slots.lengths}]})
+                        }
+                    },
                     2,
                 )
             }
@@ -335,7 +340,15 @@ impl Context<'_> {
             s::Relation::OneHotVocabulary => {
                 (json!({"Vocabulary":[out[1],shape_vars(&out[1..])]}), 3)
             }
-            s::Relation::OneHotCount => (json!({"OneHotCount":[shape_vars(&out[1..]),out[0]]}), 2),
+            s::Relation::OneHotCount => (
+                match &g.slots {
+                    None => json!({"OneHotCount":[shape_vars(&out[1..]),out[0]]}),
+                    Some(slots) => {
+                        json!({"OneHotCount":[shape_vars(&out[1..]),out[0],{"slot_len":slots.slot_len,"lengths":slots.lengths}]})
+                    }
+                },
+                2,
+            ),
             s::Relation::OneHotIndex => (json!({"OneHotIndex":[shape_vars(&out[1..])]}), 2),
             s::Relation::ScaleChannels => panic!("no per-channel ConstMul in the Llama lowering"),
             s::Relation::Selection | s::Relation::BitFn(_) => {

@@ -4,6 +4,9 @@ The steps for every release of the prover train (`vX.Y.Z`) and the verifier trai
 
 Each milestone is a minor release (`v0.1.0` … `v0.5.0`, then `v1.0.0`, [09 §2](../spec/09-release-and-versioning.md#2-semantic-versioning)). Its exit criteria are in [SPEC.md](../../SPEC.md#release-plan).
 
+The [reproducible-build procedure](reproducible-builds.md) describes the release
+workflow, dry runs, second-builder checks and draft artifacts.
+
 ## 1. Freeze
 
 - [ ] Every issue in the milestone is closed or moved to a later milestone, with a comment saying why.

@@ -46,10 +46,16 @@ mod runtime;
 pub mod schedule;
 mod select;
 
-pub use advice::{AdviceClaimImage, AdviceSource, AuxColumn, CompareColumn, ModelAdviceLayout};
+pub use advice::{
+    AdviceClaimImage, AdviceSource, AuxColumn, CompareColumn, ModelAdviceLayout,
+    check_batch_advice_rows,
+};
 pub use claim::{claim_list, claim_list_for_protocol};
 pub use error::CompileError;
-pub use lower::{Lowering, PublicModel, check_profile, lower, settle, validate};
+pub use lower::{
+    Lowering, PublicModel, check_profile, lower, lower_batch, lower_batch_for_protocol,
+    positions_values, settle, validate,
+};
 pub use plan::{ExecutionPlan, QueryBlock, SequenceTile, Share, Tile, check_plan, plan, tiles};
 pub use range::{HALF_FIELD, Range, Ranges, analyze, analyze_fragment};
 pub use report::{
@@ -57,7 +63,7 @@ pub use report::{
     Tally, report, stage_count,
 };
 pub use runtime::{
-    CdfAdviceColumn, GreedyCertificate, Log2AdviceColumn, MAX_BATCH_TEMPERATURES,
+    CdfAdviceColumn, GreedyCertificate, GreedyKeyColumn, Log2AdviceColumn, MAX_BATCH_TEMPERATURES,
     MixtureCertificate, MixtureDecoding, MixturePlan, MixtureRequestSpec, RuntimePlan,
     TemperatureCertificate, TemperaturePlan, TemperatureRequestSpec, TemperatureTable,
     cdf_columns_and_requests, log2_columns_and_requests, vocab_exp_scale,

@@ -148,8 +148,9 @@ impl WitnessSource for Regenerator<'_> {
             Target::Greedy(c) => {
                 let logits = structure.lowering.logits;
                 let live = self.replay.compute(self.store, &[logits])?;
-                crate::runtime::maximum(
+                crate::runtime::maximum_batch(
                     c,
+                    &self.gadgets.key_columns,
                     &self.replay.tokens()?,
                     live.get(logits).ok_or(WitnessError::Internal {
                         rule: "the runtime replay contains the LM-head logits",
@@ -325,8 +326,9 @@ impl WitnessSource for Resident<'_> {
     fn tile(&self, tile: &SequenceTile) -> Result<TileWitness, WitnessError> {
         let structure = &self.structure;
         match structure.target(tile, &self.gadgets)? {
-            Target::Greedy(c) => crate::runtime::maximum(
+            Target::Greedy(c) => crate::runtime::maximum_batch(
                 c,
+                &self.gadgets.key_columns,
                 self.values(structure.lowering.tokens)?,
                 self.values(structure.lowering.logits)?,
             ),
@@ -348,11 +350,12 @@ impl WitnessSource for Resident<'_> {
                         Ok(Rows {
                             scores: Self::copied(
                                 core.scores,
-                                &self.values(core.scores)?[row * core.n..(row + 1) * core.n],
+                                &self.values(core.scores)?
+                                    [row * core.n_key..(row + 1) * core.n_key],
                             )?,
                             e: Self::copied(
                                 core.e,
-                                &self.values(core.e)?[row * core.n..(row + 1) * core.n],
+                                &self.values(core.e)?[row * core.n_key..(row + 1) * core.n_key],
                             )?,
                             r: Self::copied(core.r, &self.values(core.r)?[row..row + 1])?,
                         })
@@ -386,15 +389,15 @@ impl WitnessSource for Resident<'_> {
                     self.values(core.e)?,
                     self.values(core.r)?,
                 );
-                let n = core.n;
+                let (n, n_key) = (core.n, core.n_key);
                 let rows = heads.len() * queries.len();
                 let mut cut = Rows {
-                    scores: SecretBuf::try_with_capacity(rows * n).map_err(|_| {
+                    scores: SecretBuf::try_with_capacity(rows * n_key).map_err(|_| {
                         WitnessError::Memory {
                             tensor: core.scores,
                         }
                     })?,
-                    e: SecretBuf::try_with_capacity(rows * n)
+                    e: SecretBuf::try_with_capacity(rows * n_key)
                         .map_err(|_| WitnessError::Memory { tensor: core.e })?,
                     r: SecretBuf::try_with_capacity(rows)
                         .map_err(|_| WitnessError::Memory { tensor: core.r })?,
@@ -403,8 +406,9 @@ impl WitnessSource for Resident<'_> {
                     for query in queries.clone() {
                         let row = head * n + query;
                         cut.scores
-                            .extend(scores[row * n..(row + 1) * n].iter().copied());
-                        cut.e.extend(e[row * n..(row + 1) * n].iter().copied());
+                            .extend(scores[row * n_key..(row + 1) * n_key].iter().copied());
+                        cut.e
+                            .extend(e[row * n_key..(row + 1) * n_key].iter().copied());
                         cut.r.push(r[row]);
                     }
                 }
@@ -463,11 +467,15 @@ fn multiplicities(
             block: None,
             shares: Vec::new(),
         })?;
-        let lookup = witness.lookups().next().ok_or(WitnessError::Internal {
-            rule: "the runtime certificate supplies its single range lookup",
-        })?;
-        for &key in lookup.keys() {
-            counts.add(u64::from(key), 1)?;
+        if witness.lookups().len() != gadgets.key_columns.len() {
+            return Err(WitnessError::Internal {
+                rule: "the runtime certificate supplies one range lookup per active request",
+            });
+        }
+        for lookup in witness.lookups() {
+            for &key in lookup.keys() {
+                counts.add(u64::from(key), 1)?;
+            }
         }
     }
     // Add the combined tail once, after both model and certificate requests (RFC-0045).
@@ -483,8 +491,16 @@ fn attention_counts(
     mut read: impl FnMut(usize, usize) -> Result<Rows, WitnessError>,
 ) -> Result<(), WitnessError> {
     let table = counts.table;
+    let slotted = structure
+        .graph()
+        .slots
+        .as_ref()
+        .filter(|s| core.n == s.token_len() as usize);
     for head in 0..core.heads {
         for query in 0..core.n {
+            if slotted.is_some_and(|s| !s.is_real_row(query)) {
+                continue;
+            }
             let tile =
                 gadgets.attention_tile(structure, core, read(head, query)?, query..query + 1)?;
             for lookup in tile.lookups().filter(|l| l.table() == table) {

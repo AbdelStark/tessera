@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Batching (RFC-0016 'Batching'): first-fit decreasing on total tokens within each group, so
-//! that both parties can reproduce a sample's batches.
+//! Batching (RFC-0016 'Batching', RFC-0071 'The batching'): first-fit decreasing per slot class
+//! within each group, so that both parties can reproduce a sample's batches.
 
 use super::memory;
 use super::sample::RequestKey;
@@ -33,93 +33,46 @@ pub struct Batch<G> {
     pub tokens: u64,
 }
 
-/// An opened batch while a group is packed. A batch opened by a request longer than
-/// `max_batch_tokens` is already past it, so no other request fits in it.
-struct Open {
-    tokens: u64,
-    requests: Vec<RequestKey>,
+/// Request `r`'s slot class `c_r = ⌈log2 max(L_r, 1)⌉` (`0..=64`, RFC-0071 'The batching').
+fn slot_class(tokens: u64) -> u32 {
+    u64::BITS.saturating_sub(tokens.saturating_sub(1).leading_zeros())
 }
 
-/// The room of a group's batches, leaves in opening order, under a tree of maxima, so that the
-/// first batch with room for a request is found in `O(log n)` steps rather than by a scan of
-/// every batch opened. A batch's room is `max − total + 1`: a request of `t ≤ max` tokens fits
-/// iff the room is at least `t + 1`. A batch past the maximum, and a leaf of no batch yet, have
-/// room 0, where nothing fits.
-struct Rooms {
-    leaves: usize,
-    tree: Vec<u64>,
+/// Maximum requests of `class` whose counted tokens `2^{class + ⌈log2 R⌉}` stay at most
+/// `max_batch_tokens` (`1` when `max_batch_tokens == 0` or `class > ⌊log2 max_batch_tokens⌋`,
+/// RFC-0071 'The batching').
+fn class_capacity(max_batch_tokens: u32, class: u32) -> usize {
+    if max_batch_tokens == 0 {
+        return 1;
+    }
+    let floor_log = u32::BITS
+        .saturating_sub(1)
+        .saturating_sub(max_batch_tokens.leading_zeros());
+    let Some(shift) = floor_log.checked_sub(class) else {
+        return 1;
+    };
+    1u64.checked_shl(shift)
+        .and_then(|cap| usize::try_from(cap).ok())
+        .unwrap_or(usize::MAX)
+        .max(1)
 }
 
-impl Rooms {
-    /// Room for `batches` batches, all leaves 0.
-    fn new(batches: usize) -> Result<Self, Failure> {
-        let leaves = batches.max(1).checked_next_power_of_two().ok_or(memory())?;
-        let len = leaves.checked_mul(2).ok_or(memory())?;
-        let mut tree = Vec::new();
-        tree.try_reserve_exact(len).map_err(|_| memory())?;
-        tree.resize(len, 0);
-        Ok(Self { leaves, tree })
-    }
-
-    fn at(&self, node: usize) -> u64 {
-        self.tree.get(node).copied().unwrap_or(0)
-    }
-
-    /// Sets batch `batch`'s room, then the maxima on its path to the root.
-    fn set(&mut self, batch: usize, room: u64) {
-        let Some(mut node) = self.leaves.checked_add(batch) else {
-            return;
-        };
-        if let Some(leaf) = self.tree.get_mut(node) {
-            *leaf = room;
-        }
-        while let Some(parent) = node.checked_div(2).filter(|&p| p >= 1) {
-            let left = parent.saturating_mul(2);
-            let most = self.at(left).max(self.at(left.saturating_add(1)));
-            if let Some(slot) = self.tree.get_mut(parent) {
-                *slot = most;
-            }
-            node = parent;
-        }
-    }
-
-    /// The first batch, in opening order, whose room is at least `need`: down from the root,
-    /// to the left child whenever its maximum suffices.
-    fn first(&self, need: u64) -> Option<usize> {
-        if self.at(1) < need {
-            return None;
-        }
-        let mut node = 1usize;
-        while node < self.leaves {
-            let left = node.checked_mul(2)?;
-            node = if self.at(left) >= need {
-                left
-            } else {
-                left.checked_add(1)?
-            };
-        }
-        node.checked_sub(self.leaves)
-    }
-}
-
-/// A batch's room under `max`: `max − tokens + 1`, or 0 past `max`.
-fn room(max: u64, tokens: u64) -> u64 {
-    max.checked_sub(tokens).map_or(0, |r| r.saturating_add(1))
-}
-
-/// Packs `requests` as RFC-0016 'Batching' fixes, group by group in increasing order of `G`:
+/// Packs `requests` as RFC-0016 'Batching' and RFC-0071 'The batching' fix, group by group in
+/// increasing order of `G` and slot class by slot class in decreasing order of
+/// `c_r = ⌈log2 max(L_r, 1)⌉`:
 ///
-/// - within a group, requests go in decreasing `L`, ties in `RequestKey` order;
-/// - each goes into the first batch, in the order the batches were opened, whose total stays at
-///   most `max_batch_tokens` with it, else into a new batch;
-/// - a request longer than `max_batch_tokens` is a batch on its own, which takes no other.
+/// - within a `(group, c)` class, requests go in decreasing `L`, ties in `RequestKey` order;
+/// - a batch of `R` requests of class `c` counts `2^{c + ⌈log2 R⌉}` tokens against
+///   `max_batch_tokens`;
+/// - each goes into the first batch of its class whose counted tokens stay at most
+///   `max_batch_tokens` with it, else into a new batch;
+/// - a request of class `c > ⌊log2 max_batch_tokens⌋` is a batch on its own.
 ///
-/// The batches of a group follow in the order they were opened, each listing its requests in
-/// `RequestKey` order. The first batch with room is found through a tree of maxima over the
-/// batches' room, so `n` requests cost `O(n log n)` however many batches they open. Under a policy's bounds, `max_batch_tokens ≥ 2 · min_batch_tokens`, at
-/// most one batch of each group has fewer than `min_batch_tokens` tokens: two such batches would
-/// total under `max_batch_tokens`, so the later one's first request would have fit in the
-/// earlier one.
+/// Because counted tokens within class `c` depend only on `c` and the request count `R`, every
+/// batch in class `c` has uniform capacity `2^{⌊log2 max_batch_tokens⌋ − c}` (or `1` when
+/// `c > ⌊log2 max_batch_tokens⌋`), so first-fit decreasing fills batches sequentially in
+/// `O(n log n)` total work. Each batch lists its requests in `RequestKey` order and records their
+/// saturating sum of real `tokens`.
 ///
 /// # Errors
 ///
@@ -129,7 +82,6 @@ pub fn pack<G: Ord + Copy>(
     max_batch_tokens: u32,
     requests: &[BatchRequest<G>],
 ) -> Result<Vec<Batch<G>>, Failure> {
-    let max = u64::from(max_batch_tokens);
     let mut order: Vec<&BatchRequest<G>> = Vec::new();
     order
         .try_reserve_exact(requests.len())
@@ -143,57 +95,39 @@ pub fn pack<G: Ord + Copy>(
     if keys.windows(2).any(|w| matches!(w, [a, b] if a == b)) {
         return Err(usage());
     }
-    // Group, then decreasing tokens, then the key.
+    // Group, then decreasing slot class, then decreasing tokens, then the key.
     order.sort_unstable_by(|a, b| {
         a.group
             .cmp(&b.group)
-            .then(b.tokens.cmp(&a.tokens))
-            .then(a.key.cmp(&b.key))
+            .then_with(|| slot_class(b.tokens).cmp(&slot_class(a.tokens)))
+            .then_with(|| b.tokens.cmp(&a.tokens))
+            .then_with(|| a.key.cmp(&b.key))
     });
     let mut out: Vec<Batch<G>> = Vec::new();
-    for group in order.chunk_by(|a, b| a.group == b.group) {
-        let Some(first) = group.first() else {
+    for class_slice in
+        order.chunk_by(|a, b| a.group == b.group && slot_class(a.tokens) == slot_class(b.tokens))
+    {
+        let Some(first) = class_slice.first() else {
             continue;
         };
-        let mut opened: Vec<Open> = Vec::new();
-        let mut rooms = Rooms::new(group.len())?;
-        for request in group {
-            // A request longer than the maximum fits in no batch, and opens its own.
-            let fit = if request.tokens <= max {
-                request
-                    .tokens
-                    .checked_add(1)
-                    .and_then(|need| rooms.first(need))
-            } else {
-                None
-            };
-            match fit.and_then(|i| opened.get_mut(i).map(|batch| (i, batch))) {
-                Some((i, batch)) => {
-                    batch.tokens = batch.tokens.saturating_add(request.tokens);
-                    batch.requests.try_reserve(1).map_err(|_| memory())?;
-                    batch.requests.push(request.key);
-                    rooms.set(i, room(max, batch.tokens));
-                }
-                None => {
-                    opened.try_reserve(1).map_err(|_| memory())?;
-                    let mut keys = Vec::new();
-                    keys.try_reserve(1).map_err(|_| memory())?;
-                    keys.push(request.key);
-                    rooms.set(opened.len(), room(max, request.tokens));
-                    opened.push(Open {
-                        tokens: request.tokens,
-                        requests: keys,
-                    });
-                }
+        let cap = class_capacity(max_batch_tokens, slot_class(first.tokens));
+        let batch_count = class_slice.len().div_ceil(cap);
+        out.try_reserve(batch_count).map_err(|_| memory())?;
+        for chunk in class_slice.chunks(cap) {
+            let mut batch_keys = Vec::new();
+            batch_keys
+                .try_reserve_exact(chunk.len())
+                .map_err(|_| memory())?;
+            let mut tokens = 0u64;
+            for req in chunk {
+                tokens = tokens.saturating_add(req.tokens);
+                batch_keys.push(req.key);
             }
-        }
-        out.try_reserve(opened.len()).map_err(|_| memory())?;
-        for mut batch in opened {
-            batch.requests.sort_unstable();
+            batch_keys.sort_unstable();
             out.push(Batch {
                 group: first.group,
-                requests: batch.requests,
-                tokens: batch.tokens,
+                requests: batch_keys,
+                tokens,
             });
         }
     }

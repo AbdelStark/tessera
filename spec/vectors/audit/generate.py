@@ -311,46 +311,82 @@ def selected(policy, seed, key, tokens):
     return True if thr is None else selection_value(seed, key) < thr
 
 
-# ----- Batching (RFC-0016 'Batching') -------------------------------------------------------------
+# ----- Batching (RFC-0016 'Batching', RFC-0071 'The statement and the batching') ---------------
+
+def slot_class(tokens):
+    """RFC-0016 'Batching': c = ceil(log2 max(L, 1))."""
+    return (max(tokens, 1) - 1).bit_length()
+
+
+def ceil_log2(n):
+    """ceil(log2 n) for n >= 1."""
+    require(n >= 1, f"ceil_log2({n})")
+    return (n - 1).bit_length()
+
+
+def counted_tokens(c, count):
+    """RFC-0016 'Batching': 2^{c + ceil(log2 R)} rows spanned by the batch's token axis."""
+    return 1 << (c + ceil_log2(count))
+
 
 def batches(policy, requests):
-    """First-fit decreasing within each group, groups in increasing order. A request goes to the
-    first batch, in the order batches were opened, that it fits under the maximum; a request
-    longer than the maximum is a batch on its own, which takes no other."""
+    """Slot-class first-fit decreasing within each group, groups in increasing order and classes
+    c = ceil(log2 max(L, 1)) in decreasing order. Within a class, requests go in decreasing L,
+    ties by RequestKey, into the first open batch whose counted tokens 2^{c + ceil(log2 R)} stay at
+    most max_batch_tokens; a request of class c > floor(log2 max_batch_tokens) is a batch on its
+    own, which takes no other."""
+    max_batch = policy["max_batch_tokens"]
+    require(max_batch >= 1, "max_batch_tokens >= 1")
+    max_class = max_batch.bit_length() - 1
     out = []
     for group in sorted({g for _, g, _ in requests}):
-        items = sorted(((t, k) for k, g, t in requests if g == group), key=lambda x: (-x[0], x[1]))
-        opened = []  # [total, keys, alone]
-        for tokens, key in items:
-            if tokens > policy["max_batch_tokens"]:
-                opened.append([tokens, [key], True])
+        by_class = {}
+        for key, g, tokens in requests:
+            if g == group:
+                by_class.setdefault(slot_class(tokens), []).append((tokens, key))
+        for c in sorted(by_class, reverse=True):
+            items = sorted(by_class[c], key=lambda x: (-x[0], x[1]))
+            if c > max_class:
+                for tokens, key in items:
+                    out.append({"group": group, "requests": [key], "tokens": tokens})
                 continue
-            for b in opened:
-                if not b[2] and b[0] + tokens <= policy["max_batch_tokens"]:
-                    b[0] += tokens
-                    b[1].append(key)
-                    break
-            else:
-                opened.append([tokens, [key], False])
-        for total, keys, _ in opened:
-            out.append({"group": group, "requests": sorted(keys), "tokens": total})
+            opened = []  # [total, keys]
+            for tokens, key in items:
+                for b in opened:
+                    if counted_tokens(c, len(b[1]) + 1) <= max_batch:
+                        b[0] = min(U64, b[0] + tokens)
+                        b[1].append(key)
+                        break
+                else:
+                    opened.append([tokens, [key]])
+            for total, keys in opened:
+                out.append({"group": group, "requests": sorted(keys), "tokens": total})
     return out
 
 
 def check_batches(policy, requests, packed):
-    """The bounds RFC-0016 promises, read from the batches alone."""
+    """The bounds RFC-0016 and RFC-0071 promise, read from the batches alone."""
     seen = [k for b in packed for k in b["requests"]]
     require(sorted(seen) == sorted(k for k, _, _ in requests), "every request in exactly one batch")
     tokens = {k: t for k, _, t in requests}
     for group in {b["group"] for b in packed}:
-        small = 0
+        small_by_class = {}
+        prev_class = None
         for b in packed:
             if b["group"] != group:
                 continue
-            require(b["tokens"] == sum(tokens[k] for k in b["requests"]), "a batch's total")
-            require(b["tokens"] <= policy["max_batch_tokens"] or len(b["requests"]) == 1, "over the maximum")
-            small += b["tokens"] < policy["min_batch_tokens"]
-        require(small <= 1, "two batches of one group under the minimum")
+            classes = {slot_class(tokens[k]) for k in b["requests"]}
+            require(len(classes) == 1, "every request of a batch has the same slot class")
+            (c,) = classes
+            require(prev_class is None or c <= prev_class, "classes in decreasing order")
+            prev_class = c
+            require(b["requests"] == sorted(b["requests"]), "batch requests in RequestKey order")
+            require(b["tokens"] == min(U64, sum(tokens[k] for k in b["requests"])), "a batch's total")
+            counted = counted_tokens(c, len(b["requests"]))
+            require(counted <= policy["max_batch_tokens"] or len(b["requests"]) == 1, "over the maximum")
+            if counted < policy["min_batch_tokens"]:
+                small_by_class[c] = small_by_class.get(c, 0) + 1
+        require(all(v <= 1 for v in small_by_class.values()), "two batches of one class under the minimum")
 
 
 # ----- The vectors ----------------------------------------------------------------------------
@@ -548,19 +584,31 @@ def main():
         require(not isinstance(outcome(data), tuple), f"{name}: refused")
         accepted_json.append({"name": name, "payload": data.hex()})
 
-    # Batches: a set at the edges, then random ones.
+    # Batches: a set at the edges, a slot-class split, then random ones.
     batch_cases = []
     k = lambda i: (b"\0" * 16, i)
     edges = [(k(1), 0, 10), (k(2), 0, 4), (k(3), 0, 0), (k(4), 0, 0), (k(5), 1, U64), (k(6), 1, 3), (k(7), 1, 10)]
     policy = dict(POLICY, min_batch_tokens=1, max_batch_tokens=10)
     packed = batches(policy, edges)
     check_batches(policy, edges, packed)
-    require([b["tokens"] for b in packed] == [10, 4, U64, 10, 3], "the edge batches")
+    require([b["tokens"] for b in packed] == [10, 4, 0, U64, 10, 3], "the edge batches")
     batch_cases.append({
         "name": "edges",
         "min_batch_tokens": 1,
         "max_batch_tokens": 10,
         "requests": [{"key": key_json(kk), "group": g, "tokens": t} for kk, g, t in edges],
+        "batches": [{"group": b["group"], "requests": [key_json(kk) for kk in b["requests"]], "tokens": b["tokens"]} for b in packed],
+    })
+    slot_split = [(k(1), 0, 4), (k(2), 0, 3), (k(3), 0, 3), (k(4), 0, 2), (k(5), 0, 1)]
+    policy = dict(POLICY, min_batch_tokens=4, max_batch_tokens=10)
+    packed = batches(policy, slot_split)
+    check_batches(policy, slot_split, packed)
+    require([b["tokens"] for b in packed] == [7, 3, 2, 1], "the slot-class batches")
+    batch_cases.append({
+        "name": "slot-classes",
+        "min_batch_tokens": 4,
+        "max_batch_tokens": 10,
+        "requests": [{"key": key_json(kk), "group": g, "tokens": t} for kk, g, t in slot_split],
         "batches": [{"group": b["group"], "requests": [key_json(kk) for kk in b["requests"]], "tokens": b["tokens"]} for b in packed],
     })
     for name, lo, hi, n, groups in [
