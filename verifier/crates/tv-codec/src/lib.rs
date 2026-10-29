@@ -91,12 +91,14 @@
 //! - `ERR-CODEC-DIGEST` ([`ErrorCode::Digest`]): an envelope digest other than the digest of the
 //!   header and payload, at the digest, `20 + payload_len`.
 //!
-//! Two codes are faults of the reader, not of the input ([`ErrorCode::is_input_fault`]); a
+//! Reader codes are faults of the reader, not of the input ([`ErrorCode::is_input_fault`]); a
 //! verifier reports them as `Inconclusive` (04 §5):
 //!
 //! - `ERR-RES-MEMORY` ([`ErrorCode::Memory`]): memory for the values of a sequence cannot be
 //!   reserved, at the sequence's first byte. Values can take more memory than their encodings,
 //!   so this depends on the reader, not on the input alone.
+//! - `ERR-RES-TIME` ([`ErrorCode::Time`]): a configured cooperative deadline expired,
+//!   at the cursor position where it was observed. Ordinary decoding has no deadline.
 //! - `ERR-INTERNAL` ([`ErrorCode::Internal`]): a schema decoder broke its contract, decoding a
 //!   sequence or array element from fewer bytes than the minimum it declared, or from none, at
 //!   the element's first byte. No input causes it under a correct schema.

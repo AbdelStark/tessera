@@ -12,12 +12,16 @@ checks NI proofs against caller-owned statement and weight pins. Prover CLI
 orchestration and the pass planner remain separate milestones.
 
 For recorder placement, TLS boundaries and serving-engine conformance, start with the [integration guide](docs/integration.md).
+Optional metrics and collector export are described in the [telemetry guide](docs/telemetry.md).
+The prover protocol library exposes [Live directory and optional mTLS transports](docs/live-transports.md),
+with host-owned sockets and identity configuration. The CLI's Live interface remains directory-based.
 
 ## Specification
 
+- Build or download the [navigable documentation artifact](docs/documentation.md), including both Rust API references.
 - [`SPEC.md`](SPEC.md): executive summary, reading order, release plan and risk register.
 - [`docs/spec/`](docs/spec/): overview, architecture, public API, data model, error model, observability, security, testing, performance, release policy and glossary.
-- [`docs/rfcs/`](docs/rfcs/): the accepted design decisions, RFC-0001 to RFC-0020, and RFC-0022 to RFC-0035.
+- [`docs/rfcs/`](docs/rfcs/): design decisions and draft proposals; each document records its status.
 - [`docs/roadmap/IMPLEMENTATION.md`](docs/roadmap/IMPLEMENTATION.md): the issue tracker generated from the corpus.
 
 ## Repository layout
@@ -64,9 +68,11 @@ During the fast-build phase, [`.github/workflows/ci.yml`](.github/workflows/ci.y
 | `python` | `uv sync --locked --extra cpu`, Ruff, strict Pyright and pytest on Python 3.13 ([python/README.md](python/README.md)) |
 | `constraint-digest` | Independent constraint-system digest conformance and the tiny servable-model case |
 
-Documentation-only changes (root Markdown, `docs/`, `research/`) run routing tests and repository/PR policies without rebuilding unchanged code. Unknown paths and manual dispatch run the complete bootstrap pipeline. CI omits debug symbols while retaining overflow checks and debug assertions.
+In the core pipeline, documentation-only changes (root Markdown, `docs/`, `research/`) run routing tests and repository/PR policies without rebuilding unchanged code. Unknown paths and manual dispatch run the complete bootstrap pipeline. CI omits debug symbols while retaining overflow checks and debug assertions.
 
-Fuzz, soundness calibration, microbenchmarks and PR-policy also remain available with manual dispatch from the Actions page. [The manual quality workflow](.github/workflows/quality.yml) retains dependency audits, MSRV, macOS builds, GPU host checks, rustdoc and both complete workspace suites. Exhaustive vector-oracle regeneration, infrastructure self-tests, standalone compiler/witness stress tests, benchmark/report tests and doctests run there; the constraint-digest example runs once in its dedicated automatic job. They do not run automatically during fast backlog development. The normal checks still protect verifier independence, secret handling, protocol tests, Python packaging and the existing tiny-model conformance path. To reproduce a failure, run the job's commands locally.
+The [documentation workflow](.github/workflows/docs.yml) builds the Markdown book and both Rust API references, compiles tier-B Rust examples, checks rendered links and uploads a private artifact on every PR and main push. See the [build procedure](docs/documentation.md).
+
+Fuzz, soundness calibration, microbenchmarks and PR-policy also remain available with manual dispatch from the Actions page. [The manual quality workflow](.github/workflows/quality.yml) retains dependency audits, MSRV, macOS builds, GPU host checks, rustdoc and both complete workspace suites. Exhaustive vector-oracle regeneration, infrastructure self-tests, standalone compiler/witness stress tests, benchmark/report tests and the remaining doctests run there; the constraint-digest example runs once in its dedicated automatic job. They do not run automatically during fast backlog development. The normal checks still protect verifier independence, secret handling, protocol tests, Python packaging and the existing tiny-model conformance path. To reproduce a failure, run the job's commands locally.
 
 ## Contributing
 

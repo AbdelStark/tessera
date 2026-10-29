@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Caller-pinned one-request directory Live CLI (RFC-0014/0019/0036).
+//! Caller-pinned request-batch directory Live CLI (RFC-0014/0019/0036).
 //!
 //! Each check is reported to the `verify` span's [`Trail`] as it completes (05 §2, §5): the
 //! CLI's reading of the inputs and its pins as step 1, a parameter set it does not accept as
@@ -21,14 +21,13 @@ use std::{
 use tv_core::{
     LiveVerifier, ResourceLimits, VerifierConfig,
     observe::{CheckKind, CheckOutcome},
-    open_live_observed,
     params::ParamSet,
     protocol::*,
     verdict::{ErrorCode, RejectReason, Verdict},
 };
 use tv_hash::{Domain, hash};
 
-const HELP: &str = "tessera-verify live --claims CLAIMS.tcl --weights WEIGHTS.twr --weights-root HEX --statement-digest HEX --bound BITS --connect DIR --request-id N --request-session HEX --prompt-len N --output-len N --manifest-digest HEX [--out VERDICT.json] [--json] [--timeout-ms N] [--max-artifact-bytes N] [--max-memory-bytes N] [--log-format human|json] [--log-level LEVEL]\nOne-shot RFC-0014 directory exchange, non-hiding protocol/1. The caller owns all request metadata and both pins. No TLS, anchor, ledger or ZK. Test parameters certify nothing. Default message deadlines:600 seconds,3600 for Round2.\n";
+const HELP: &str = "tessera-verify live --claims CLAIMS.tcl --weights WEIGHTS.twr --weights-root HEX --statement-digest HEX --bound BITS --connect DIR (--requests SESSION_HEX:ID:PROMPT:OUTPUT,... | --request-id N --request-session HEX --prompt-len N --output-len N) --manifest-digest HEX [--out VERDICT.json] [--json] [--timeout-ms N] [--max-artifact-bytes N] [--max-memory-bytes N] [--log-format human|json] [--log-level LEVEL]\nOne-shot RFC-0014 directory exchange, non-hiding protocol/1. The caller owns all request metadata and both pins. No TLS, anchor, ledger or ZK. Test parameters certify nothing. Default message deadlines:600 seconds,3600 for Round2.\n";
 
 fn checked_output(
     out: Option<&str>,
@@ -53,6 +52,86 @@ fn checked_output(
     Ok(())
 }
 
+// RFC-0071: slot order is caller-owned; duplicate RequestKeys are forbidden.
+fn parse_requests(opts: &Options<'_>) -> Result<Vec<RequestRef>, ErrorCode> {
+    let mut requests = Vec::new();
+    if let Some(batch) = opts.get("--requests") {
+        if [
+            "--request-id",
+            "--request-session",
+            "--prompt-len",
+            "--output-len",
+        ]
+        .iter()
+        .any(|key| opts.get(key).is_some())
+        {
+            return Err(ErrorCode::Usage);
+        }
+        let count = batch.split(',').count();
+        let bytes = count
+            .checked_mul(size_of::<RequestRef>())
+            .ok_or(ErrorCode::Memory)?;
+        let budget = opts.number(
+            "--max-memory-bytes",
+            ResourceLimits::default().max_memory_bytes,
+        )?;
+        if u64::try_from(bytes).map_err(|_| ErrorCode::Memory)? > budget {
+            return Err(ErrorCode::Memory);
+        }
+        requests
+            .try_reserve_exact(count)
+            .map_err(|_| ErrorCode::Memory)?;
+        for entry in batch.split(',') {
+            let mut fields = entry.split(':');
+            let session_id = options::hex::<16>(fields.next().ok_or(ErrorCode::Usage)?)?;
+            let mut number = || -> Result<u64, ErrorCode> {
+                let text = fields.next().ok_or(ErrorCode::Usage)?;
+                if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) {
+                    return Err(ErrorCode::Usage);
+                }
+                text.parse().map_err(|_| ErrorCode::Usage)
+            };
+            let request_id = number()?;
+            let prompt_len = u32::try_from(number()?).map_err(|_| ErrorCode::Usage)?;
+            let output_len = u32::try_from(number()?).map_err(|_| ErrorCode::Usage)?;
+            if fields.next().is_some() {
+                return Err(ErrorCode::Usage);
+            }
+            requests.push(RequestRef {
+                session_id,
+                request_id,
+                prompt_len,
+                output_len,
+            });
+        }
+    } else {
+        requests
+            .try_reserve_exact(1)
+            .map_err(|_| ErrorCode::Memory)?;
+        requests.push(RequestRef {
+            request_id: opts.required_number("--request-id")?,
+            session_id: options::hex::<16>(opts.required("--request-session")?)?,
+            prompt_len: u32::try_from(opts.required_number("--prompt-len")?)
+                .map_err(|_| ErrorCode::Usage)?,
+            output_len: u32::try_from(opts.required_number("--output-len")?)
+                .map_err(|_| ErrorCode::Usage)?,
+        });
+    }
+    for (i, request) in requests.iter().enumerate() {
+        if request.prompt_len == 0
+            || request.prompt_len.checked_add(request.output_len).is_none()
+            || requests
+                .get(..i)
+                .ok_or(ErrorCode::Usage)?
+                .iter()
+                .any(|r| r.session_id == request.session_id && r.request_id == request.request_id)
+        {
+            return Err(ErrorCode::Usage);
+        }
+    }
+    Ok(requests)
+}
+
 struct Config<'a> {
     claims: &'a str,
     weights: &'a str,
@@ -61,7 +140,7 @@ struct Config<'a> {
     root: [u8; 32],
     pin: [u8; 32],
     bound: FixedBits,
-    request: RequestRef,
+    requests: Vec<RequestRef>,
     manifest: [u8; 32],
     timeout: Option<Duration>,
     limits: ResourceLimits,
@@ -77,6 +156,7 @@ impl<'a> Config<'a> {
                 "--statement-digest",
                 "--bound",
                 "--connect",
+                "--requests",
                 "--request-id",
                 "--request-session",
                 "--prompt-len",
@@ -94,15 +174,7 @@ impl<'a> Config<'a> {
         let root = options::digest(opts.required("--weights-root")?)?;
         let pin = options::digest(opts.required("--statement-digest")?)?;
         let bound = FixedBits(options::bound(opts.required("--bound")?)?);
-        let request_id = opts.required_number("--request-id")?;
-        let session_id = options::hex::<16>(opts.required("--request-session")?)?;
-        let prompt_len =
-            u32::try_from(opts.required_number("--prompt-len")?).map_err(|_| ErrorCode::Usage)?;
-        let output_len =
-            u32::try_from(opts.required_number("--output-len")?).map_err(|_| ErrorCode::Usage)?;
-        if prompt_len == 0 || output_len == 0 || prompt_len.checked_add(output_len).is_none() {
-            return Err(ErrorCode::Usage);
-        }
+        let requests = parse_requests(&opts)?;
         let manifest = options::digest(opts.required("--manifest-digest")?)?;
         let timeout = opts
             .get("--timeout-ms")
@@ -129,12 +201,7 @@ impl<'a> Config<'a> {
             root,
             pin,
             bound,
-            request: RequestRef {
-                request_id,
-                session_id,
-                prompt_len,
-                output_len,
-            },
+            requests,
             manifest,
             timeout,
             limits,
@@ -199,7 +266,7 @@ pub(crate) fn run(args: &[String], flags: Flags) -> CommandOutput {
                 weights_epoch: weights.epoch,
                 manifest_digest: c.manifest,
                 batch: BatchDescriptor {
-                    requests: vec![c.request.clone()],
+                    requests: c.requests.clone(),
                 },
                 predictor: PredictorSpec::Exact {
                     decoding: Decoding::Greedy,
@@ -208,7 +275,11 @@ pub(crate) fn run(args: &[String], flags: Flags) -> CommandOutput {
             e.phase(1, || {
                 if statement.digest() != c.pin
                     || weights.weights_root(|b| hash(Domain::WeightsRoot, b)) != c.root
-                    || c.request.prompt_len + c.request.output_len > claims.arch.max_context
+                    || c.requests.iter().any(|r| {
+                        r.prompt_len
+                            .checked_add(r.output_len)
+                            .is_none_or(|n| n > claims.arch.max_context)
+                    })
                 {
                     return Err(ErrorCode::Usage);
                 }
@@ -258,15 +329,22 @@ pub(crate) fn run(args: &[String], flags: Flags) -> CommandOutput {
                     &commit.to_tce().map_err(ErrorCode::from)?,
                 )?;
                 // A prover's message that fails to decode is Malformed (RFC-0043).
-                let first = match open_live_observed::<Round1>(&d.receive(1)?, &decode, trail) {
+                let first = match verifier.open_message_observed::<Round1>(
+                    &d.receive(1)?,
+                    &decode,
+                    trail,
+                ) {
                     Ok(m) => m,
                     Err(v) => return Ok(v),
                 };
-                let share =
-                    match open_live_observed::<ProverSeedShare>(&d.receive(2)?, &decode, trail) {
-                        Ok(m) => m,
-                        Err(v) => return Ok(v),
-                    };
+                let share = match verifier.open_message_observed::<ProverSeedShare>(
+                    &d.receive(2)?,
+                    &decode,
+                    trail,
+                ) {
+                    Ok(m) => m,
+                    Err(v) => return Ok(v),
+                };
                 let reveal = match verifier.on_round1_observed(&first, &share, trail) {
                     Ok(r) => r,
                     Err(v) => return Ok(v),
@@ -276,11 +354,14 @@ pub(crate) fn run(args: &[String], flags: Flags) -> CommandOutput {
                     SeedReveal::SCHEMA,
                     &reveal.to_tce().map_err(ErrorCode::from)?,
                 )?;
-                let second =
-                    match open_live_observed::<Round2Response>(&d.receive(4)?, &decode, trail) {
-                        Ok(m) => m,
-                        Err(v) => return Ok(v),
-                    };
+                let second = match verifier.open_message_observed::<Round2Response>(
+                    &d.receive(4)?,
+                    &decode,
+                    trail,
+                ) {
+                    Ok(m) => m,
+                    Err(v) => return Ok(v),
+                };
                 let queries = match verifier.on_round2_observed(&second, trail) {
                     Ok(q) => q,
                     Err(v) => return Ok(v),
@@ -290,11 +371,14 @@ pub(crate) fn run(args: &[String], flags: Flags) -> CommandOutput {
                     ColumnQueries::SCHEMA,
                     &queries.to_tce().map_err(ErrorCode::from)?,
                 )?;
-                let third =
-                    match open_live_observed::<Round3Response>(&d.receive(6)?, &decode, trail) {
-                        Ok(m) => m,
-                        Err(v) => return Ok(v),
-                    };
+                let third = match verifier.open_message_observed::<Round3Response>(
+                    &d.receive(6)?,
+                    &decode,
+                    trail,
+                ) {
+                    Ok(m) => m,
+                    Err(v) => return Ok(v),
+                };
                 Ok(verifier.on_round3_observed(&third, trail))
             })();
             exchange.unwrap_or_else(verify::inconclusive)
@@ -460,7 +544,7 @@ mod tests {
             weights_epoch: 7,
             manifest_digest: c.manifest,
             batch: BatchDescriptor {
-                requests: vec![c.request.clone()],
+                requests: c.requests.clone(),
             },
             predictor: PredictorSpec::Exact {
                 decoding: Decoding::Greedy,
@@ -570,12 +654,80 @@ mod tests {
             .collect();
         assert_eq!(events, ["tessera.tv_cli.verified"]);
     }
+    fn batch_args(f: &Fixture, value: &str) -> Vec<String> {
+        let singleton = [
+            "--request-id",
+            "--request-session",
+            "--prompt-len",
+            "--output-len",
+        ];
+        let mut args = Vec::new();
+        let mut input = f.args.iter();
+        while let Some(arg) = input.next() {
+            if singleton.contains(&arg.as_str()) {
+                input.next();
+            } else {
+                args.push(arg.clone());
+            }
+        }
+        args.extend(["--requests".into(), value.into()]);
+        args
+    }
+    #[test]
+    fn batch_metadata_preserves_order_and_allows_outputless_requests() {
+        let f = Fixture::new();
+        let first = format!("{}:23:2:3", "11".repeat(16));
+        let second = format!("{}:23:1:0", "22".repeat(16));
+        let args = batch_args(&f, &format!("{second},{first}"));
+        let c = Config::parse(&args).unwrap();
+        assert_eq!(c.requests.len(), 2);
+        assert_eq!(c.requests[0].session_id, [0x22; 16]);
+        assert_eq!(c.requests[0].output_len, 0);
+        assert_eq!(c.requests[1].prompt_len, 2);
+        assert!(Config::parse(&f.set("--output-len", "0".into())).is_ok());
+    }
+    #[test]
+    fn malformed_duplicate_or_ambiguous_batches_never_start_an_exchange() {
+        let f = Fixture::new();
+        let valid = format!("{}:23:2:3", "11".repeat(16));
+        for bad in [
+            String::new(),
+            format!("{valid},{valid}"),
+            format!("{valid},"),
+            format!("{valid}:9"),
+            format!("{}:1:0:1", "11".repeat(16)),
+            format!("{}:1:4294967295:1", "11".repeat(16)),
+            format!("{}:18446744073709551616:1:0", "11".repeat(16)),
+            format!("{}:1:1:4294967296", "11".repeat(16)),
+            format!("{}:+1:1:0", "11".repeat(16)),
+            "bad:1:1:0".into(),
+        ] {
+            let args = batch_args(&f, &bad);
+            assert!(matches!(Config::parse(&args), Err(ErrorCode::Usage)));
+            let output = run(&args, true);
+            assert_eq!(output.exit_code, 64);
+            assert!(output.stdout.contains("ERR-USAGE"));
+            assert_eq!(fs::read_dir(f.dir.join("exchange")).unwrap().count(), 0);
+        }
+        for flag in [
+            "--request-id",
+            "--request-session",
+            "--prompt-len",
+            "--output-len",
+        ] {
+            let mut args = batch_args(&f, &valid);
+            args.extend([flag.into(), "1".into()]);
+            assert!(matches!(Config::parse(&args), Err(ErrorCode::Usage)));
+        }
+        let mut args = batch_args(&f, &valid);
+        args.extend(["--max-memory-bytes".into(), "0".into()]);
+        assert!(matches!(Config::parse(&args), Err(ErrorCode::Memory)));
+    }
     #[test]
     fn lengths_are_exact_and_oversized_pinned_requests_never_start() {
         let f = Fixture::new();
         for (key, value) in [
             ("--prompt-len", "0"),
-            ("--output-len", "0"),
             ("--prompt-len", "4294967295"),
             ("--output-len", "4294967296"),
             ("--request-id", "18446744073709551616"),
@@ -594,7 +746,7 @@ mod tests {
             weights_epoch: 7,
             manifest_digest: c.manifest,
             batch: BatchDescriptor {
-                requests: vec![c.request.clone()],
+                requests: c.requests.clone(),
             },
             predictor: PredictorSpec::Exact {
                 decoding: Decoding::Greedy,

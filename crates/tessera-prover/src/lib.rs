@@ -3,6 +3,34 @@
 //! Orchestration of the witness pass, commitments, stages and openings over the CPU and GPU
 //! backends (RFC-0018).
 //!
+//! # Non-interactive CPU API
+//!
+//! The caller supplies a checked plan, its integer model and committed weight state,
+//! a matching configuration, and recorded tokens in a [`ProofBatch`]. A prover is
+//! one-shot: after success or failure, start a fresh session rather than retrying
+//! with the same commitment and randomness (INV-PROTO-1). The current protocol/1
+//! CPU path is exact-greedy and provides no zero knowledge.
+//!
+//! ```no_run
+//! use tessera_compiler::ExecutionPlan;
+//! use tessera_ir::IntegerModel;
+//! use tessera_pcs::WeightCommitmentState;
+//! use tessera_protocol::Message;
+//! use tessera_prover::{ProofBatch, Prover, ProverConfig, ProverError};
+//!
+//! fn prove(
+//!     plan: &ExecutionPlan,
+//!     model: &IntegerModel,
+//!     weights: &mut WeightCommitmentState,
+//!     config: ProverConfig,
+//!     batch: &ProofBatch,
+//! ) -> Result<Vec<u8>, ProverError> {
+//!     let mut prover = Prover::new(plan, model, weights, config)?;
+//!     let proof = prover.prove_non_interactive(batch)?;
+//!     Ok(proof.seal())
+//! }
+//! ```
+//!
 //! [`StageProver`] proves a stage schedule's reduction stages over a [`WitnessSource`]: each
 //! stage's batched sumcheck, its split values and the claim pool's values (RFC-0010 'Stages',
 //! RFC-0037). [`PaddedWitness`] gives a source the padded positions of the tensors a lookup

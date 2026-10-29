@@ -160,16 +160,21 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
     }
     if let Some(path) = &a.sample {
         // Everything the sample route reads is checked, and the batch pre-checked, here.
-        let sampled = sample::request(a, path)?;
+        let mut sampled = sample::request(a, path)?;
+        let requests = std::mem::take(&mut sampled.requests);
+        let tokens = std::mem::replace(&mut sampled.tokens, Secret::new(Vec::new()));
+        let sample_inputs = sampled.inputs.clone();
+        let params = sampled.params.clone();
         let mut inputs: Vec<&Path> = vec![path];
-        inputs.extend(sampled.inputs.iter().map(PathBuf::as_path));
+        inputs.extend(sample_inputs.iter().map(PathBuf::as_path));
         return produce(
             a,
             json,
             &inputs,
             sampled.manifest_digest,
-            Some(&sampled.params),
-            || Ok((sampled.request, sampled.tokens)),
+            Some(&params),
+            Some(&mut sampled),
+            || Ok((requests, tokens)),
         );
     }
     let input = a
@@ -193,7 +198,7 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
             .as_deref()
             .ok_or_else(|| usage("manifest digest required"))?,
     )?;
-    produce(a, json, &[input], manifest_digest, None, || {
+    produce(a, json, &[input], manifest_digest, None, None, || {
         let data: tokens::Tokens = Input::new(input, &schema::TOKEN_FILE).open()?;
         let output_len = data
             .len
@@ -206,12 +211,12 @@ pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
             prompt_len: prompt,
             output_len,
         };
-        Ok((request, data.values))
+        Ok((vec![request], data.values))
     })
 }
 
-/// Proves one request: reads the model, the plan and the weight state, then `request` its
-/// reference and tokens, builds the `PublicStatement` of the request alone with
+/// Proves a batch: reads the model, plan and weight state, then its request references
+/// and concatenated tokens, and builds their `PublicStatement` with
 /// `manifest_digest`, proves it in the mode the flags give, and prints the `tessera.proof-run/1`
 /// receipt. `inputs` are the files besides those three that the output must not alias.
 ///
@@ -224,7 +229,8 @@ fn produce(
     inputs: &[&Path],
     manifest_digest: [u8; 32],
     policy_params: Option<&tessera_hash::ParamSetId>,
-    request: impl FnOnce() -> Result<(protocol::RequestRef, Secret<Vec<u32>>), TesseraError>,
+    mut sampled: Option<&mut sample::Sampled>,
+    request: impl FnOnce() -> Result<(Vec<protocol::RequestRef>, Secret<Vec<u32>>), TesseraError>,
 ) -> Result<(), TesseraError> {
     if let Some(out) = &a.out {
         let mut all: Vec<&Path> = vec![&a.model, &a.plan, &a.weights];
@@ -251,7 +257,7 @@ fn produce(
         envelope::ReadError::Io(_) => TesseraError::new(ErrorCode::ResIo),
     })?;
     crate::manifest::input(&a.weights, &schema::WEIGHT_COMMITMENT_STATE);
-    let (request, tokens) = request()?;
+    let (requests, tokens) = request()?;
     let params = ParamSet::defined(&plan.claims.params)
         .ok_or_else(|| usage("undefined claim-list parameter set"))?;
     crate::manifest::params(params.id, Some("tessera-protocol/1"));
@@ -273,16 +279,12 @@ fn produce(
         weights_root: weights.public.weights_root(),
         weights_epoch: weights.public.epoch,
         manifest_digest,
-        batch: protocol::BatchDescriptor {
-            requests: vec![request],
-        },
+        batch: protocol::BatchDescriptor { requests },
         predictor: protocol::PredictorSpec::Exact {
             decoding: protocol::Decoding::Greedy,
         },
     };
-    let statement_digest = digest(statement.digest());
-    let root = digest(statement.weights_root);
-    let batch = ProofBatch { statement, tokens };
+    let mut batch = ProofBatch { statement, tokens };
     let cfg = ProverConfig {
         backend: Backend::Cpu { threads: 1 },
         params: *params,
@@ -292,6 +294,12 @@ fn produce(
         release: ReleaseConfig,
     };
     let mut prover = Prover::new(&plan, &model, &mut weights, cfg).map_err(prover_error)?;
+    if let Some(sampled) = sampled.as_deref_mut() {
+        sampled.replay(&prover, &mut batch)?;
+    }
+    let unproven = sampled.as_ref().map_or(&[][..], |s| s.unproven.as_slice());
+    let statement_digest = digest(batch.statement.digest());
+    let root = digest(batch.statement.weights_root);
     if let Some(dir) = &a.live {
         directory::run(
             &mut prover,
@@ -308,11 +316,25 @@ fn produce(
             &envelope::seal(&schema::NI_PROOF, &proof),
         )?;
     }
-    let report = serde_json::json!({"schema":"tessera.proof-run/1","protocol":"tessera-protocol/1","params":params.id,"mode":if mode==Mode::Live {"Live"}else{"NonInteractive"},"statement_digest":statement_digest,"weights_root":root,"test_parameters":params.id=="test-small/1","zero_knowledge":false,"verifier_acceptance":false});
+    let mut report = serde_json::json!({"schema":"tessera.proof-run/1","protocol":"tessera-protocol/1","params":params.id,"mode":if mode==Mode::Live {"Live"}else{"NonInteractive"},"statement_digest":statement_digest,"weights_root":root,"test_parameters":params.id=="test-small/1","zero_knowledge":false,"verifier_acceptance":false});
+    if !unproven.is_empty() {
+        report["unproven"] = serde_json::json!(unproven);
+    }
     let text = if json {
         format!("{report}\n")
     } else {
-        format!("Proof produced ({statement_digest}); obtain the independent verifier verdict\n")
+        let mut text = format!(
+            "Proof produced ({statement_digest}); obtain the independent verifier verdict\n"
+        );
+        for request in unproven {
+            text.push_str(&format!(
+                "Unproven request {} in session {}: {}\n",
+                request["request_id"],
+                request["session_id"].as_str().unwrap_or(""),
+                request["code"].as_str().unwrap_or("")
+            ));
+        }
+        text
     };
     io::stdout()
         .lock()

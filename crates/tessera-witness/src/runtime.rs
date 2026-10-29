@@ -4,7 +4,7 @@
 
 use core::hint::select_unpredictable;
 use tessera_codec::SecretBuf;
-use tessera_compiler::{GreedyCertificate, RuntimePlan, analyze};
+use tessera_compiler::{GreedyCertificate, GreedyKeyColumn, RuntimePlan, analyze};
 
 use crate::{TileWitness, WitnessError, structure::Structure, tile::Gadgets};
 
@@ -22,6 +22,7 @@ pub(crate) fn configure(
             .map_err(|_| WitnessError::Usage { rule: METADATA })?;
         if lowering.graph.tensors[lowering.logits.0 as usize].shape != [c.positions, c.vocab]
             || ranges.of(lowering.logits).and_then(|r| r.bounded()) != Some(c.logits)
+            || runtime.key_columns().is_empty()
         {
             return Err(WitnessError::Usage { rule: METADATA });
         }
@@ -30,41 +31,73 @@ pub(crate) fn configure(
             gadgets.read.sort_unstable();
         }
         gadgets.certificate = Some(c);
+        gadgets.key_columns = runtime.key_columns().to_vec();
     }
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn maximum(
     c: GreedyCertificate,
     tokens: &[i64],
     logits: &[i64],
 ) -> Result<TileWitness, WitnessError> {
+    maximum_batch(
+        c,
+        &[GreedyKeyColumn {
+            request_index: 0,
+            prompt: c.prompt,
+            positions: c.positions,
+            slot_offset: 0,
+            variables: c.variables,
+        }],
+        tokens,
+        logits,
+    )
+}
+
+pub(crate) fn maximum_batch(
+    c: GreedyCertificate,
+    columns: &[GreedyKeyColumn],
+    tokens: &[i64],
+    logits: &[i64],
+) -> Result<TileWitness, WitnessError> {
     let (n, v) = (c.positions as usize, c.vocab as usize);
-    if tokens.len() != n || n.checked_mul(v) != Some(logits.len()) {
+    if tokens.len() != n || n.checked_mul(v) != Some(logits.len()) || columns.is_empty() {
         return Err(WitnessError::Usage { rule: INPUT });
     }
     let memory = WitnessError::MemoryTable { table: c.table };
     let mut maxima = SecretBuf::try_with_capacity(n).map_err(|_| memory)?;
     maxima.resize(n, 0i64);
-    let size = usize::try_from(c.entries()).map_err(|_| memory)?;
-    let mut keys = SecretBuf::try_with_capacity(size).map_err(|_| memory)?;
-    keys.resize(size, 0u32);
     let padded_v = v.next_power_of_two();
     let mut valid = true;
     let mut exact = true;
-    for t in c.prompt as usize - 1..n - 1 {
-        let token = tokens[t + 1];
-        valid &= (0 <= token) & (token < v as i64);
-        for (index, &logit) in logits[t * v..(t + 1) * v].iter().enumerate() {
-            valid &= (c.logits.lo <= i128::from(logit)) & (i128::from(logit) <= c.logits.hi);
-            maxima[t] = select_unpredictable(index as i64 == token, logit, maxima[t]);
+    let mut key_columns = Vec::with_capacity(columns.len());
+    for col in columns {
+        let base = col.slot_offset as usize;
+        let prompt = col.prompt as usize;
+        let end = base.saturating_add(col.positions as usize);
+        if prompt == 0 || prompt >= col.positions as usize || end > n {
+            return Err(WitnessError::Usage { rule: INPUT });
         }
-        for (index, &logit) in logits[t * v..(t + 1) * v].iter().enumerate() {
-            let key =
-                i128::from(maxima[t]) - i128::from(logit) - i128::from((index as i64) < token);
-            exact &= (0 <= key) & (key < 1i128 << c.range_bits);
-            keys[(t + 1 - c.prompt as usize) * padded_v + index] = key as u32;
+        let size = usize::try_from(col.entries()).map_err(|_| memory)?;
+        let mut keys = SecretBuf::try_with_capacity(size).map_err(|_| memory)?;
+        keys.resize(size, 0u32);
+        for (u, t) in (base + prompt - 1..end - 1).enumerate() {
+            let token = tokens[t + 1];
+            valid &= (0 <= token) & (token < v as i64);
+            for (index, &logit) in logits[t * v..(t + 1) * v].iter().enumerate() {
+                valid &= (c.logits.lo <= i128::from(logit)) & (i128::from(logit) <= c.logits.hi);
+                maxima[t] = select_unpredictable(index as i64 == token, logit, maxima[t]);
+            }
+            for (index, &logit) in logits[t * v..(t + 1) * v].iter().enumerate() {
+                let key =
+                    i128::from(maxima[t]) - i128::from(logit) - i128::from((index as i64) < token);
+                exact &= (0 <= key) & (key < 1i128 << c.range_bits);
+                keys[u * padded_v + index] = key as u32;
+            }
         }
+        key_columns.push(keys);
     }
     if !valid {
         return Err(WitnessError::Internal { rule: INPUT });
@@ -72,7 +105,7 @@ pub(crate) fn maximum(
     if !exact {
         return Err(WitnessError::ExactMismatch);
     }
-    Ok(TileWitness::greedy(c, maxima, keys))
+    Ok(TileWitness::greedy_batch(c, maxima, key_columns))
 }
 
 #[cfg(test)]

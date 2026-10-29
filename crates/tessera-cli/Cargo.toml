@@ -28,8 +28,15 @@ tessera-hash = { path = "../tessera-hash" }
 # The subscriber of 05 §2: the span registry only, with no formatting, ANSI or filter crates.
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "std"] }
+# Host-owned optional trace export (05 §5). No exporter or HTTP runtime in default builds.
+opentelemetry = { version = "0.33.1", default-features = false, features = ["trace"], optional = true }
+opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["trace"], optional = true }
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["trace", "http-json", "reqwest-blocking-client"], optional = true }
+tracing-opentelemetry = { version = "0.34.0", default-features = false, optional = true }
+reqwest = { version = "0.13.1", default-features = false, features = ["blocking", "native-tls-no-alpn"], optional = true }
 
 [features]
+otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-opentelemetry", "dep:reqwest"]
 # Test-only: `prove --test-mask-seed` pins the masks, for OBS-5's reproducibility test. A release
 # build with it fails to compile (RFC-0001 'Cargo features').
 test-rng = ["tessera-prover/test-rng"]
@@ -38,6 +45,8 @@ test-rng = ["tessera-prover/test-rng"]
 # The integration example's simulated issuer draws a public nonce (RFC-0061).
 getrandom = { version = "0.3", features = ["std"] }
 tessera-scoring = { path = "../tessera-scoring" }
+# Independent parser for the Prometheus exposition contract (#177).
+prometheus-parse = "0.2.5"
 # The independent verifier's decoders and statement digest, so that `tests/prove_sample.rs`
 # builds the expected statement apart from the prover (DEP-2).
 tv-codec = { path = "../../verifier/crates/tv-codec" }
