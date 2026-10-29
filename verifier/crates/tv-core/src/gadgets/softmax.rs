@@ -20,6 +20,7 @@ use tv_tables::{TableId, TableKind};
 pub struct Softmax<'p> {
     gadget: GadgetId,
     node: NodeId,
+    pub(super) slots: Option<&'p crate::lowering::Slots>,
     scores: TensorId,
     exponentials: TensorId,
     reciprocal: TensorId,
@@ -29,6 +30,7 @@ pub struct Softmax<'p> {
     limb_bits: u8,
     pub(super) n: u32,
     pub(super) heads: u32,
+    key_vars: usize,
     token_vars: usize,
     row_vars: usize,
     numerator: Fp2,
@@ -122,9 +124,10 @@ impl Plan<'_> {
                     return Err(internal);
                 };
                 if n != self.graph.length()
-                    || keys != n
+                    || keys != self.graph.key_length()
                     || heads == 0
                     || n == 0
+                    || keys == 0
                     || self.graph.tensor(exponentials).ok_or(internal)?.shape != shape
                     || self.graph.tensor(reciprocal).ok_or(internal)?.shape.dims() != [heads, n]
                 {
@@ -183,9 +186,14 @@ impl Plan<'_> {
                     }
                 }
                 let token_vars = bits(n)?;
+                let key_vars = match self.graph.attention_key_bits(scores) {
+                    Some(kb) => usize::try_from(kb).map_err(|_| internal)?,
+                    None => bits(keys)?,
+                };
                 Ok(Softmax {
                     gadget: GadgetId(u32::try_from(index).map_err(|_| internal)?),
                     node: c.node,
+                    slots: self.graph.slots(),
                     scores,
                     exponentials,
                     reciprocal,
@@ -195,6 +203,7 @@ impl Plan<'_> {
                     limb_bits,
                     n,
                     heads,
+                    key_vars,
                     token_vars,
                     row_vars: token_vars.checked_add(bits(heads)?).ok_or(internal)?,
                     numerator: field(
@@ -202,7 +211,7 @@ impl Plan<'_> {
                             .ok_or(internal)?,
                     ),
                     row_scale: field(
-                        1u64.checked_shl(u32::try_from(token_vars).map_err(|_| internal)?)
+                        1u64.checked_shl(u32::try_from(key_vars).map_err(|_| internal)?)
                             .ok_or(internal)?,
                     ),
                     last_key: field(
@@ -224,9 +233,13 @@ impl<'p> Softmax<'p> {
     pub const fn node(self) -> NodeId {
         self.node
     }
-    /// Variables of a square score tensor, natural order key/query/head.
+    /// Variables of the score key axis (`b = slot_bits` for batched attention).
+    pub const fn key_variables(self) -> usize {
+        self.key_vars
+    }
+    /// Variables of a score tensor, natural order key/query/head.
     pub const fn variables(self) -> usize {
-        self.token_vars.saturating_add(self.row_vars)
+        self.key_vars.saturating_add(self.row_vars)
     }
     /// Variables of a row tensor, natural order query/head.
     pub const fn row_variables(self) -> usize {
@@ -260,24 +273,42 @@ impl<'p> Softmax<'p> {
             return Err(GadgetError::Internal);
         }
         let (row, head) = point.split_at(self.token_vars);
-        crate::selectors::row_selector(
-            row,
-            u64::from(self.n),
-            Some((head, u64::from(self.heads))),
-            None,
-        )
-        .ok_or(GadgetError::Internal)
+        match self.slots {
+            Some(s) if s.lengths().len() >= 2 => Ok(crate::selectors::slot_selector(
+                row,
+                usize::try_from(s.slot_bits()).map_err(|_| GadgetError::Internal)?,
+                s.lengths(),
+            )
+            .ok_or(GadgetError::Internal)?
+                * crate::selectors::lt(head, u64::from(self.heads))
+                    .ok_or(GadgetError::Internal)?),
+            _ => crate::selectors::row_selector(
+                row,
+                u64::from(self.n),
+                Some((head, u64::from(self.heads))),
+                None,
+            )
+            .ok_or(GadgetError::Internal),
+        }
     }
     pub(super) fn causal(self, point: &[Fp2]) -> Result<Fp2, GadgetError> {
         if point.len() != self.variables() {
             return Err(GadgetError::Internal);
         }
-        let (key, row) = point.split_at(self.token_vars);
+        let (key, row) = point.split_at(self.key_vars);
         let (query, head) = row.split_at(self.token_vars);
-        Ok(
-            crate::selectors::causal(query, key, u64::from(self.n)).ok_or(GadgetError::Internal)?
-                * crate::selectors::lt(head, u64::from(self.heads)).ok_or(GadgetError::Internal)?,
-        )
+        let c = match self.slots {
+            Some(s) if s.lengths().len() >= 2 => crate::selectors::causal_slots(
+                query,
+                key,
+                usize::try_from(s.slot_bits()).map_err(|_| GadgetError::Internal)?,
+                s.lengths(),
+            )
+            .ok_or(GadgetError::Internal)?,
+            _ => crate::selectors::causal(query, key, u64::from(self.n))
+                .ok_or(GadgetError::Internal)?,
+        };
+        Ok(c * crate::selectors::lt(head, u64::from(self.heads)).ok_or(GadgetError::Internal)?)
     }
     /// Public maximum-forest root: zero on real rows, one on padding.
     /// Returns `Internal` for the verifier's wrong row-point geometry.
@@ -294,7 +325,7 @@ impl<'p> Softmax<'p> {
         out.try_reserve_exact(self.variables())
             .map_err(|_| GadgetError::Memory)?;
         out.resize(
-            self.token_vars,
+            self.key_vars,
             Fp2::from(Fp::reduce(2).inverse().ok_or(GadgetError::Internal)?),
         );
         out.extend_from_slice(row);
@@ -489,7 +520,7 @@ impl Key<'_, '_> {
                     input: Input {
                         source: Source::Auxiliary(self.site.node, Auxiliary::SoftmaxMaximum),
                         point: point
-                            .get(self.site.token_vars..)
+                            .get(self.site.key_vars..)
                             .ok_or(GadgetError::Internal)?,
                     },
                     value: c,

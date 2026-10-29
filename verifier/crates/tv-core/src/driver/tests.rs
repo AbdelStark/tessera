@@ -91,12 +91,13 @@ fn recorded_live_and_ni_reports_are_identical_on_100_complete_replays() {
 fn opening_row_scratch_is_budgeted_before_a_live_reveal() {
     for large_advice in [true, false] {
         let (mut claims, mut proof, mut cfg) = fixture();
-        let frame_bytes = protocol::encoded_len(&proof.round1).unwrap()
-            + protocol::encoded_len(&EMPTY_ROUND2).unwrap()
-            + protocol::encoded_len(&EMPTY_ROUND3).unwrap();
+        let frame_bytes = protocol::encoded_len_with_cancel(&proof.round1, &mut || false).unwrap()
+            + protocol::encoded_len_with_cancel(&EMPTY_ROUND2, &mut || false).unwrap()
+            + protocol::encoded_len_with_cancel(&EMPTY_ROUND3, &mut || false).unwrap();
         let allowance = (1u64 << (u32::from(claims.layout.advice.log2_k) + 1)) * 64;
         let coarse = frame_bytes * 8 + u64::from(claims.arch.n_layers) * (1 << 20) + allowance;
-        cfg.limits.max_memory_bytes = coarse + 1;
+        let certificate = size_of::<gadgets::runtime::Certificate>() as u64;
+        cfg.limits.max_memory_bytes = coarse + 1 + (12 + certificate).max(36);
         let share = |id| protocol::ProverSeedShare {
             session_id: id,
             share: [17; 32],
@@ -176,7 +177,13 @@ fn opening_row_scratch_is_budgeted_before_a_live_reveal() {
             .max()
             .unwrap();
         assert_eq!(advice > weights, large_advice);
-        let required = coarse + advice.max(weights).saturating_sub(allowance);
+        let metadata = size_of::<u32>() as u64
+            + if expected.batch.requests[0].output_len > 0 {
+                certificate
+            } else {
+                0
+            };
+        let required = coarse + advice.max(weights).saturating_sub(allowance) + metadata;
         assert!(required > cfg.limits.max_memory_bytes);
         // RFC-0031 descriptor from public geometry, never a supplied row count.
         let mut h = tv_hash::DomainHasher::new(tv_hash::Domain::CommitmentId);
@@ -491,4 +498,178 @@ fn live_replay_reaches_step_twelve_uhat_bound_and_enforces_exact_zero_bound() {
             (CheckKind::ExactBound, CheckOutcome::Reject),
         ]
     );
+}
+
+#[test]
+fn lookup_claim_memory_is_operational_before_table_mapping() {
+    let error = crate::logup::LookupError::Memory;
+    assert!(!error.is_rejection());
+    assert_eq!(error.rejected_instance(), None);
+    assert!(matches!(
+        leaf_error(leaf::Error::Lookup(error), &[], ArtifactKind(0x0511)),
+        Failure::Inconclusive(VerifierError {
+            code: ErrorCode::Memory
+        })
+    ));
+}
+
+#[test]
+fn batched_statement_rules_reject_before_runtime_binding() {
+    for case in 0..6 {
+        let (claims, mut proof, cfg) = fixture();
+        let first = proof.round1.statement.batch.requests[0].clone();
+        match case {
+            0 => proof.round1.statement.batch.requests.clear(),
+            1 => proof.round1.statement.batch.requests.push(first),
+            2 => proof.round1.statement.batch.requests[0].prompt_len = 0,
+            3 => proof.round1.statement.batch.requests[0].output_len = u32::MAX,
+            4 => {
+                let mut second = first;
+                second.request_id += 1;
+                proof.round1.statement.batch.requests.push(second);
+                proof.round1.statement.predictor = PredictorSpec::Mixture {
+                    decoding: Decoding::Greedy,
+                    eps_log2: 1,
+                };
+            }
+            5 => proof.round1.statement.batch.requests[0].prompt_len = claims.arch.max_context + 1,
+            _ => unreachable!(),
+        }
+        let expected = &proof.round1.statement;
+        let outcome = verify_unit(
+            &claims,
+            expected,
+            Frame {
+                round1: &proof.round1,
+                round2: &EMPTY_ROUND2,
+                round3: &EMPTY_ROUND3,
+            },
+            &cfg,
+            Session::Initial,
+        );
+        assert!(
+            matches!(
+                outcome,
+                Err(Failure::Rejected(RejectReason::StatementMismatch {
+                    field: validation::StatementField::Batch,
+                }))
+            ),
+            "case {case}"
+        );
+    }
+}
+
+#[test]
+fn grouping_extent_counts_slot_gaps_and_padded_request_slots() {
+    let (claims, mut proof, _) = fixture();
+    let first = proof.round1.statement.batch.requests[0].clone();
+    proof.round1.statement.batch.requests = vec![first.clone(), first.clone(), first];
+    for request in &mut proof.round1.statement.batch.requests {
+        request.prompt_len = 1;
+        request.output_len = 4;
+    }
+    // Three slots of width eight occupy a padded axis of 32, rather than 15 real tokens.
+    assert_eq!(
+        grouping_extent(&claims, &proof.round1.statement).token_bits,
+        5
+    );
+    proof.round1.statement.batch.requests.truncate(1);
+    assert_eq!(
+        grouping_extent(&claims, &proof.round1.statement).token_bits,
+        3
+    );
+}
+
+#[test]
+fn oversized_batch_layout_is_a_batch_rejection_before_commitment_binding() {
+    let (mut claims, mut proof, cfg) = fixture();
+    claims.arch.max_context = 4096;
+    let public = validation::check_public(&claims).unwrap();
+    let maximal = crate::lowering::lower(&public, claims.arch.max_context).unwrap();
+    let selected = crate::selection::derive(&maximal, claims.gadget_policy).unwrap();
+    claims.tables = selected
+        .tables
+        .iter()
+        .map(|t| {
+            tv_tables::Table::generate(t.id, t.kind.clone())
+                .unwrap()
+                .spec()
+                .clone()
+        })
+        .collect();
+    validation::validate(&claims).unwrap();
+    proof.round1.statement.claim_list_digest = claims.digest();
+    let request = proof.round1.statement.batch.requests[0].clone();
+    proof.round1.statement.batch.requests = (0..65536)
+        .map(|r| protocol::RequestRef {
+            request_id: r,
+            session_id: request.session_id,
+            prompt_len: 4096,
+            output_len: 0,
+        })
+        .collect();
+    // No advice descriptor for this batch is supplied: refusal must precede binding it,
+    // before any sumcheck source tables or codeword scratch could be allocated.
+    let result = verify_unit(
+        &claims,
+        &proof.round1.statement,
+        Frame {
+            round1: &proof.round1,
+            round2: &EMPTY_ROUND2,
+            round3: &EMPTY_ROUND3,
+        },
+        &cfg,
+        Session::Initial,
+    );
+    let Err(error) = result else {
+        panic!("oversized batch reached commitment binding")
+    };
+    let verdict = Verdict::from(error);
+    assert!(
+        matches!(
+            verdict,
+            Verdict::Reject(RejectReason::StatementMismatch {
+                field: validation::StatementField::Batch,
+            })
+        ),
+        "{verdict:?}"
+    );
+}
+
+#[test]
+fn sorting_request_keys_detects_a_nonadjacent_duplicate_without_reordering_slots() {
+    let (claims, mut proof, cfg) = fixture();
+    let first = proof.round1.statement.batch.requests[0].clone();
+    proof.round1.statement.batch.requests = (0..4097)
+        .rev()
+        .map(|id| protocol::RequestRef {
+            request_id: id,
+            ..first.clone()
+        })
+        .collect();
+    proof
+        .round1
+        .statement
+        .batch
+        .requests
+        .push(proof.round1.statement.batch.requests[0].clone());
+    let original = proof.round1.statement.batch.clone();
+    let outcome = verify_unit(
+        &claims,
+        &proof.round1.statement,
+        Frame {
+            round1: &proof.round1,
+            round2: &EMPTY_ROUND2,
+            round3: &EMPTY_ROUND3,
+        },
+        &cfg,
+        Session::Initial,
+    );
+    assert!(matches!(
+        outcome,
+        Err(Failure::Rejected(RejectReason::StatementMismatch {
+            field: validation::StatementField::Batch,
+        }))
+    ));
+    assert_eq!(proof.round1.statement.batch, original);
 }

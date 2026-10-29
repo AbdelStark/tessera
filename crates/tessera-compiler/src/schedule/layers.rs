@@ -324,6 +324,20 @@ impl LayerMap {
                     tensors.sort_unstable();
                     tensors.dedup();
                     match tensors.len() {
+                        // RFC-0037 'Layers and kinds': a persistent layer parameter stays
+                        // stacked at L=1 (lambda=0). Cardinality alone cannot distinguish
+                        // it from a shared input; public inputs and genuinely shared
+                        // inputs across multiple layers retain the case below (#598).
+                        1 if self.count == 1
+                            && matches!(
+                                graph.tensors[t.0 as usize].kind,
+                                NodeKind::Committed {
+                                    commitment: CommitmentClass::Weight
+                                }
+                            ) =>
+                        {
+                            Kind::LayerParameter { position, input: i }
+                        }
                         1 => Kind::Tensor(t),
                         n if n == sources.len() => Kind::LayerParameter { position, input: i },
                         _ => {

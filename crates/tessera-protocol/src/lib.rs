@@ -148,6 +148,7 @@ mod round3;
 mod schedule;
 mod seed;
 mod soundness;
+pub mod transport;
 mod verifier;
 
 pub use audit::{

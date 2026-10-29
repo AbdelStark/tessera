@@ -5,6 +5,7 @@
 use core::fmt;
 use core::fmt::Write as _;
 use core::ops::Range;
+use std::collections::BTreeMap;
 
 use tessera_codec::{Secret, SecretBuf, Zeroize};
 use tessera_field::PrimeField;
@@ -246,12 +247,42 @@ impl<F: PolyField> fmt::Debug for Table<'_, F> {
 ///   tree's level is `eq·(N_0·D_1 + N_1·D_0 + λ·D_0·D_1)`, over the tables
 ///   `[eq (public), N_0, N_1, D_0, D_1]` with the terms `(1, {eq, N_0, D_1})`,
 ///   `(1, {eq, N_1, D_0})` and `(λ, {eq, D_0, D_1})`; its final evaluations are `N_0, N_1, D_0,
-///   D_1`. Each table is bound once per round, however many terms read it.
+///   D_1`. Each table is bound once per round, however many terms read it;
+/// - **computed rounds** ([`Instance::computed`]), which supply the same round polynomials and
+///   final evaluations without materializing full tables (RFC-0056).
 #[derive(Clone)]
 pub struct Instance<'a, F: PolyField> {
     tables: Vec<Table<'a, F>>,
     /// `None` for a product of every table.
     terms: Option<Vec<Term<F>>>,
+    computed: Option<&'a dyn Computed<F>>,
+}
+
+/// A prover-side representation of a relation whose rounds need no full multilinear tables
+/// (RFC-0056 'Score instances without the score tensor'). The independent verifier still checks
+/// the ordinary sumcheck messages and original final evaluations.
+/// Metadata stays fixed throughout a batch. Repeated starts represent the same fixed polynomial;
+/// they create fresh working storage, without sampling new witness or masking randomness.
+pub trait Computed<F: PolyField>: Sync {
+    /// Number of own variables, at most 62.
+    fn vars(&self) -> usize;
+    /// Degree of each round, including public equality and mask factors.
+    fn degree(&self) -> usize;
+    /// Number of final evaluations, in the original relation's order.
+    fn evaluations(&self) -> usize;
+    /// Fresh clearing working state, before any own variable has been bound.
+    fn start(&self) -> Box<dyn ComputedState<F> + '_>;
+}
+
+/// Working state for a [`Computed`] relation. Tables derived from witnesses must clear their
+/// allocations (OBS-6); only `evaluations` releases values into the proof message.
+pub trait ComputedState<F: PolyField> {
+    /// Evaluate the next own round polynomial at each public node, overwriting `values`.
+    fn round(&self, nodes: &[F], values: &mut [F]);
+    /// Bind the lowest remaining own variable to the transcript challenge.
+    fn bind(&mut self, challenge: F);
+    /// Append the original relation's final evaluations after all own variables are bound.
+    fn evaluations(&self, out: &mut Vec<F>);
 }
 
 impl<'a, F: PolyField> Instance<'a, F> {
@@ -260,6 +291,7 @@ impl<'a, F: PolyField> Instance<'a, F> {
         Self {
             tables,
             terms: None,
+            computed: None,
         }
     }
 
@@ -270,10 +302,69 @@ impl<'a, F: PolyField> Instance<'a, F> {
         Self {
             tables,
             terms: Some(terms),
+            computed: None,
         }
     }
 
-    /// The tables, in order.
+    /// A relation represented by its structured round prover, with no materialized tables.
+    pub fn computed(relation: &'a dyn Computed<F>) -> Self {
+        Self {
+            tables: Vec::new(),
+            terms: None,
+            computed: Some(relation),
+        }
+    }
+
+    /// Number of final evaluations, public factors left out.
+    pub fn evaluations(&self) -> usize {
+        self.computed.map_or_else(
+            || self.tables.iter().filter(|t| !t.public).count(),
+            Computed::evaluations,
+        )
+    }
+
+    /// Whether this is a structured relation on `vars` own variables.
+    pub fn computed_vars(&self) -> Option<usize> {
+        self.computed.map(Computed::vars)
+    }
+
+    /// Relation identity is public metadata and borrowed-buffer identity; term weights are
+    /// protocol-class data (RFC-0056). Never compare the entries of a witness table.
+    fn same_relation(&self, other: &Self) -> bool {
+        match (self.computed, other.computed) {
+            (Some(a), Some(b)) => core::ptr::eq(a, b),
+            (None, None) => {
+                self.terms == other.terms
+                    && self.tables.len() == other.tables.len()
+                    && self.tables.iter().zip(&other.tables).all(|(a, b)| {
+                        a.public == b.public
+                            && match (a.values, b.values) {
+                                (Values::Base(a), Values::Base(b)) => core::ptr::eq(a, b),
+                                (Values::Ext(a), Values::Ext(b)) => core::ptr::eq(a, b),
+                                _ => false,
+                            }
+                    })
+            }
+            _ => false,
+        }
+    }
+
+    fn identity_bucket(&self) -> (u8, usize, usize) {
+        if let Some(computed) = self.computed {
+            return (
+                2,
+                computed as *const dyn Computed<F> as *const () as usize,
+                0,
+            );
+        }
+        match self.tables[0].values {
+            Values::Base(v) => (0, v.as_ptr() as usize, v.len()),
+            Values::Ext(v) => (1, v.as_ptr() as usize, v.len()),
+        }
+    }
+
+    /// The tables, in order; empty for a computed relation, whose shape is given by
+    /// [`Self::computed_vars`] and [`Self::evaluations`].
     pub fn tables(&self) -> &[Table<'a, F>] {
         &self.tables
     }
@@ -289,6 +380,7 @@ impl<F: PolyField> fmt::Debug for Instance<'_, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut debug = f.debug_struct("Instance");
         debug.field("tables", &self.tables);
+        debug.field("computed_vars", &self.computed_vars());
         if let Some(terms) = &self.terms {
             debug.field("terms", terms);
         }
@@ -586,6 +678,21 @@ fn instance_vars<F: PolyField>(
     index: usize,
     degree: usize,
 ) -> Result<usize, SumcheckError> {
+    if let Some(computed) = instance.computed {
+        if computed.degree() == 0 || computed.degree() > degree {
+            return Err(SumcheckError::Degree {
+                degree: computed.degree(),
+                max: degree,
+            });
+        }
+        if computed.vars() > 62 {
+            return Err(SumcheckError::ComputedVariables {
+                instance: index,
+                vars: computed.vars(),
+            });
+        }
+        return Ok(computed.vars());
+    }
     let tables = instance.tables();
     let Some(first) = tables.first() else {
         return Err(SumcheckError::NoTables { instance: index });
@@ -644,6 +751,93 @@ fn instance_vars<F: PolyField>(
     Ok(expected.trailing_zeros() as usize)
 }
 
+/// A shared table is identified by its borrowed allocation, field and length, never by
+/// comparing or hashing secret entries. Its length fixes its front-padding schedule.
+struct Binding<'a, F: PolyField> {
+    table: Table<'a, F>,
+    values: SecretBuf<F>,
+    read: bool,
+    needed: bool,
+    pad: usize,
+}
+
+struct Bindings<'a, F: PolyField> {
+    tables: Vec<Binding<'a, F>>,
+    index: BTreeMap<(u8, usize, usize), usize>,
+}
+
+impl<F: PolyField> Default for Bindings<'_, F> {
+    fn default() -> Self {
+        Self {
+            tables: Vec::new(),
+            index: BTreeMap::new(),
+        }
+    }
+}
+
+impl<'a, F: PolyField> Bindings<'a, F> {
+    fn intern(&mut self, table: Table<'a, F>, read: bool, pad: usize) -> usize {
+        let key = match table.values {
+            Values::Base(v) => (0, v.as_ptr() as usize, v.len()),
+            Values::Ext(v) => (1, v.as_ptr() as usize, v.len()),
+        };
+        let next = self.tables.len();
+        let id = *self.index.entry(key).or_insert(next);
+        if id == next {
+            self.tables.push(Binding {
+                table,
+                values: SecretBuf::new(),
+                read: false,
+                needed: false,
+                pad,
+            });
+        }
+        let slot = &mut self.tables[id];
+        slot.needed |= !table.public;
+        if read && !slot.read {
+            slot.values = if table.len() == 1 {
+                SecretBuf::filled(table.single(), 1)
+            } else {
+                SecretBuf::with_capacity(table.len() / 2)
+            };
+            slot.read = true;
+        }
+        id
+    }
+
+    fn bind(&mut self, j: usize, r: F) {
+        for slot in self
+            .tables
+            .iter_mut()
+            .filter(|s| s.read && s.table.len() > 1)
+        {
+            if j == slot.pad {
+                match slot.table.values {
+                    Values::Base(v) => kernel::bind_base(v, r, &mut slot.values),
+                    Values::Ext(v) => kernel::bind_ext(v, r, &mut slot.values),
+                }
+            } else if j > slot.pad {
+                kernel::bind_in_place(&mut slot.values, r);
+            }
+        }
+    }
+
+    /// Even a column no term reads still owes its original opening evaluation. Evaluate
+    /// it once, at the common point fixed by its length, after all rounds. A column some
+    /// other term read already has that value in its shared binding (RFC-0056).
+    fn finish(&mut self, point: &[F]) {
+        for slot in self.tables.iter_mut().filter(|s| s.needed && !s.read) {
+            let n = slot.table.len().trailing_zeros() as usize;
+            let point = &point[point.len() - n..];
+            let value = match slot.table.values {
+                Values::Base(v) => evaluate_base(v, point).ok(),
+                Values::Ext(v) => evaluate(v, point).ok(),
+            };
+            slot.values = SecretBuf::filled(value.unwrap_or(F::ZERO), 1);
+        }
+    }
+}
+
 /// One instance while the rounds run.
 struct State<'a, F: PolyField> {
     tables: &'a [Table<'a, F>],
@@ -654,10 +848,8 @@ struct State<'a, F: PolyField> {
     /// For a sum-of-products instance, its plan and its tables unbound in order; `None` for a
     /// product, which `base` and `ext` serve.
     terms: Option<(Plan<F>, Vec<Entries<'a, F>>)>,
-    /// Whether the rounds read each table: every table of a product, the tables some term
-    /// multiplies in a sum of products. A table no round reads is never bound: its evaluation is
-    /// computed once, at the instance's point.
-    read: Vec<bool>,
+    /// The number of own variables; the table pool binds every read column once and evaluates
+    /// columns no term reads once at the final point.
     vars: usize,
     /// `n_max − n_i`: the padding rounds, which the batch runs first.
     pad: usize,
@@ -669,9 +861,8 @@ struct State<'a, F: PolyField> {
     /// The first own round's sums at the nodes `0, 1, …, d`, computed with `S_i` from the
     /// unbound tables of a padded instance; unused otherwise.
     first: [F; NODES],
-    /// The tables, in order, as the rounds bind them: empty until the first own round binds
-    /// them; for an instance on no variable, its tables' single entries.
-    bound: Vec<SecretBuf<F>>,
+    /// Indices of the shared bindings, in the original table order.
+    bound: Vec<usize>,
 }
 
 /// The bound tables clear themselves; `first`, the instance's own sums, which no message carries
@@ -679,6 +870,7 @@ struct State<'a, F: PolyField> {
 impl<F: PolyField> Drop for State<'_, F> {
     fn drop(&mut self) {
         self.first.zeroize();
+        self.weighted_sum.zeroize();
     }
 }
 
@@ -693,6 +885,7 @@ impl<'a, F: PolyField> State<'a, F> {
         weight: F,
         degree: Degree,
         scratch: &mut Scratch<F>,
+        pool: &mut Bindings<'a, F>,
     ) -> Self {
         let tables = instance.tables();
         let mut base = Vec::new();
@@ -717,20 +910,11 @@ impl<'a, F: PolyField> State<'a, F> {
             Some((plan, _)) => (0..tables.len()).map(|k| plan.lines.contains(&k)).collect(),
             None => vec![true; tables.len()],
         };
-        let bound = if vars == 0 {
-            tables
-                .iter()
-                .map(|table| SecretBuf::filled(table.single(), 1))
-                .collect()
-        } else {
-            let half = 1 << (vars - 1);
-            read.iter()
-                .map(|&read| match read {
-                    true => SecretBuf::with_capacity(half),
-                    false => SecretBuf::new(),
-                })
-                .collect()
-        };
+        let bound = tables
+            .iter()
+            .zip(&read)
+            .map(|(table, &read)| pool.intern(*table, read || vars == 0, n_max - vars))
+            .collect();
         let pad = n_max - vars;
         let mut first = [F::ZERO; NODES];
         let mut weighted_sum = F::ZERO;
@@ -765,7 +949,6 @@ impl<'a, F: PolyField> State<'a, F> {
             base,
             ext,
             terms,
-            read,
             vars,
             pad,
             weight,
@@ -777,7 +960,14 @@ impl<'a, F: PolyField> State<'a, F> {
 
     /// Adds `γ^i` times the instance's round polynomial at `0, 2, …, d` into `message`, for round
     /// `j` counted from 0.
-    fn add_round(&self, j: usize, degree: Degree, message: &mut [F], scratch: &mut Scratch<F>) {
+    fn add_round(
+        &self,
+        j: usize,
+        degree: Degree,
+        message: &mut [F],
+        scratch: &mut Scratch<F>,
+        pool: &Bindings<'_, F>,
+    ) {
         if j < self.pad {
             // The padded product is constant in x_1, …, x_pad, so with x_{j+1} = z and the
             // later padding variables summed, it is 2^{pad − j − 1}·S_i at every z.
@@ -792,11 +982,17 @@ impl<'a, F: PolyField> State<'a, F> {
         let sums = if j > self.pad {
             // Own round j − pad: the tables have 2^{vars − (j − pad)} entries left.
             let pairs = 0..1 << (self.vars - (j - self.pad) - 1);
+            let bound: Vec<_> = self
+                .bound
+                .iter()
+                .map(|&i| pool.tables[i].values.as_ref())
+                .collect();
             match &self.terms {
                 Some((plan, _)) => {
-                    degree.term_message_sums(self.bound.as_slice(), plan, pairs, scratch)
+                    let entries: Vec<_> = bound.iter().map(|&v| Entries::Ext(v)).collect();
+                    degree.term_message_sums(entries.as_slice(), plan, pairs, scratch)
                 }
-                None => degree.message_sums(&[] as &[&[F::Base]], &self.bound, pairs, scratch),
+                None => degree.message_sums(&[] as &[&[F::Base]], &bound, pairs, scratch),
             }
         } else if self.pad > 0 {
             // The first own round, computed at every node by `new`: drop p(1).
@@ -818,38 +1014,14 @@ impl<'a, F: PolyField> State<'a, F> {
         }
     }
 
-    /// Binds the instance's lowest unbound variable to `r` after round `j`, if the round was one
-    /// of its own: the first own round binds the borrowed tables that the rounds read into the
-    /// reserved ones, later rounds bind in place.
-    fn bind(&mut self, j: usize, r: F) {
-        let tables = self.tables.iter().zip(&mut self.bound).zip(&self.read);
-        if j == self.pad {
-            for ((table, bound), _) in tables.filter(|(_, read)| **read) {
-                match table.values {
-                    Values::Base(values) => kernel::bind_base(values, r, bound),
-                    Values::Ext(values) => kernel::bind_ext(values, r, bound),
-                }
-            }
-        } else if j > self.pad {
-            for ((_, bound), _) in tables.filter(|(_, read)| **read) {
-                kernel::bind_in_place(bound, r);
-            }
-        }
-    }
-
     /// Appends the tables' values at the instance's point `point`, public factors left out: the
     /// bound tables' single entries, and the others evaluated there.
-    fn final_evals(&self, point: &[F], out: &mut Vec<F>) {
-        for ((table, bound), &read) in self.tables.iter().zip(&self.bound).zip(&self.read) {
+    fn final_evals(&self, _point: &[F], out: &mut Vec<F>, pool: &Bindings<'_, F>) {
+        for (table, bound) in self.tables.iter().zip(&self.bound) {
             if table.public {
                 continue;
             }
-            let value = match (read || self.vars == 0, table.values) {
-                (true, _) => bound.first().copied(),
-                // A table of 2^n entries at n coordinates: the evaluation cannot fail.
-                (false, Values::Base(values)) => evaluate_base(values, point).ok(),
-                (false, Values::Ext(values)) => evaluate(values, point).ok(),
-            };
+            let value = pool.tables[*bound].values.first().copied();
             out.push(value.unwrap_or(F::ZERO));
         }
     }
@@ -892,6 +1064,8 @@ impl<'a, F: PolyField> State<'a, F> {
 /// term or a term with no factor, more factors than the degree or a factor that names no table,
 /// or a table's length is not a power of two or differs from its instance's first table's. The
 /// inputs are checked before the transcript moves.
+/// A computed relation instead declares a degree within the batch's bound and at most 62 own
+/// variables; invalid geometry is refused before its working state is created.
 pub fn prove_batch<F, T>(
     transcript: &mut T,
     protocol: Protocol,
@@ -987,6 +1161,113 @@ fn check_batch<F: PolyField>(
 }
 
 /// The rounds and the final evaluations of a checked batch, from its `γ` on.
+enum BatchState<'a, F: PolyField> {
+    Tables(State<'a, F>),
+    Computed {
+        state: Box<dyn ComputedState<F> + 'a>,
+        vars: usize,
+        pad: usize,
+        weight: F,
+        sum: SecretBuf<F>,
+    },
+}
+
+impl<'a, F: PolyField> BatchState<'a, F> {
+    fn new(
+        instance: &'a Instance<'a, F>,
+        vars: usize,
+        n_max: usize,
+        weight: F,
+        degree: Degree,
+        scratch: &mut Scratch<F>,
+        pool: &mut Bindings<'a, F>,
+    ) -> Self {
+        let Some(computed) = instance.computed else {
+            return Self::Tables(State::new(
+                instance, vars, n_max, weight, degree, scratch, pool,
+            ));
+        };
+        let state = computed.start();
+        let mut sum = SecretBuf::filled(F::ZERO, 2);
+        if n_max > vars {
+            if vars == 0 {
+                // A relation on no variable has no round. Its single value is obtained by
+                // its constant round extension, like a literal singleton table.
+                state.round(&[F::ZERO], &mut sum[..1]);
+            } else {
+                state.round(&[F::ZERO, F::ONE], &mut sum);
+            }
+            sum[0] = weight * (sum[0] + sum[1]);
+        }
+        Self::Computed {
+            state,
+            vars,
+            pad: n_max - vars,
+            weight,
+            sum,
+        }
+    }
+
+    fn vars(&self) -> usize {
+        match self {
+            Self::Tables(s) => s.vars,
+            Self::Computed { vars, .. } => *vars,
+        }
+    }
+
+    fn add_round(
+        &self,
+        j: usize,
+        degree: Degree,
+        message: &mut [F],
+        scratch: &mut Scratch<F>,
+        pool: &Bindings<'_, F>,
+    ) {
+        match self {
+            Self::Tables(s) => s.add_round(j, degree, message, scratch, pool),
+            Self::Computed {
+                state,
+                pad,
+                weight,
+                sum,
+                ..
+            } => {
+                if j < *pad {
+                    let value = sum[0].mul_by_base(padding_scale(*pad - j - 1));
+                    for v in message {
+                        *v += value;
+                    }
+                } else {
+                    let mut nodes = [F::ZERO; NODES];
+                    for (k, node) in nodes.iter_mut().enumerate().take(degree.get()).skip(1) {
+                        *node = F::from(F::Base::from_u64_reduced((k + 1) as u64));
+                    }
+                    let mut values = SecretBuf::filled(F::ZERO, degree.get());
+                    state.round(&nodes[..degree.get()], &mut values);
+                    for (v, &x) in message.iter_mut().zip(values.iter()) {
+                        *v += *weight * x;
+                    }
+                }
+            }
+        }
+    }
+
+    fn bind(&mut self, j: usize, r: F) {
+        match self {
+            Self::Tables(_) => {}
+            Self::Computed { state, pad, .. } if j >= *pad => state.bind(r),
+            _ => {}
+        }
+    }
+
+    fn final_evals(&self, point: &[F], out: &mut Vec<F>, pool: &Bindings<'_, F>) {
+        match self {
+            Self::Tables(s) => s.final_evals(point, out, pool),
+            Self::Computed { state, .. } => state.evaluations(out),
+        }
+    }
+}
+
 fn prove_checked<F, T>(
     transcript: &mut T,
     mut labels: Labels,
@@ -1002,10 +1283,38 @@ where
     let n_max = vars.iter().copied().max().unwrap_or(0);
     let mut scratch = Scratch::new();
     let mut weight = F::ONE;
+    let mut pool = Bindings::default();
     let mut states = Vec::with_capacity(instances.len());
-    for (instance, &n) in instances.iter().zip(&vars) {
-        states.push(State::new(instance, n, n_max, weight, nodes, &mut scratch));
+    let mut representatives: Vec<usize> = Vec::new();
+    let mut owners = Vec::with_capacity(instances.len());
+    let mut weights: Vec<F> = Vec::new();
+    let mut buckets: BTreeMap<_, Vec<usize>> = BTreeMap::new();
+    for (i, instance) in instances.iter().enumerate() {
+        let bucket = buckets.entry(instance.identity_bucket()).or_default();
+        let owner = bucket
+            .iter()
+            .copied()
+            .find(|&r| instance.same_relation(&instances[representatives[r]]));
+        let owner = owner.unwrap_or_else(|| {
+            representatives.push(i);
+            weights.push(F::ZERO);
+            bucket.push(weights.len() - 1);
+            weights.len() - 1
+        });
+        weights[owner] += weight;
+        owners.push(owner);
         weight *= gamma;
+    }
+    for (&i, &weight) in representatives.iter().zip(&weights) {
+        states.push(BatchState::new(
+            &instances[i],
+            vars[i],
+            n_max,
+            weight,
+            nodes,
+            &mut scratch,
+            &mut pool,
+        ));
     }
 
     let mut rounds = Vec::with_capacity(n_max);
@@ -1013,10 +1322,11 @@ where
     for j in 0..n_max {
         let mut message = vec![F::ZERO; nodes.get()];
         for state in &states {
-            state.add_round(j, nodes, &mut message, &mut scratch);
+            state.add_round(j, nodes, &mut message, &mut scratch, &pool);
         }
         transcript.absorb_message(labels.round(j), &message);
         let r = transcript.challenge(labels.challenge(j));
+        pool.bind(j, r);
         for state in &mut states {
             state.bind(j, r);
         }
@@ -1024,11 +1334,13 @@ where
         point.push(r);
     }
 
+    pool.finish(&point);
     let mut final_evals = Vec::new();
-    let mut evals = Vec::with_capacity(states.len());
-    for state in &states {
+    let mut evals = Vec::with_capacity(instances.len());
+    for owner in owners {
+        let state = &states[owner];
         let start = final_evals.len();
-        state.final_evals(&point[n_max - state.vars..], &mut final_evals);
+        state.final_evals(&point[n_max - state.vars()..], &mut final_evals, &pool);
         evals.push(start..final_evals.len());
     }
     transcript.absorb_message(labels.evals(), &final_evals);

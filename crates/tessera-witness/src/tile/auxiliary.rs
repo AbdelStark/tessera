@@ -166,6 +166,7 @@ impl Prepared {
         &self,
         tensor: TensorId,
         sums: &[i64],
+        slots: Option<&tessera_ir::BatchSlots>,
         output: usize,
         tile: &mut TileWitness,
     ) -> Result<(), WitnessError> {
@@ -174,17 +175,24 @@ impl Prepared {
         };
         let mut input = SecretBuf::try_with_capacity(sums.len())
             .map_err(|_| WitnessError::Memory { tensor })?;
+        let per_tok = slots.map_or(1, |s| (sums.len() / s.token_len() as usize).max(1));
+        let mut real = Vec::with_capacity(sums.len());
         let mut fits = true;
-        for &sum in sums {
-            let u = i128::from(sum) + i128::from(data.epsilon);
-            let valid = (u >= i128::from(data.epsilon)) & (u < 1 << 55);
-            fits &= valid;
-            input.push(core::hint::select_unpredictable(valid, u as i64, 0));
+        for (i, &sum) in sums.iter().enumerate() {
+            let is_real = slots.is_none_or(|s| s.is_real_row(i / per_tok));
+            real.push(is_real);
+            if is_real {
+                let u = i128::from(sum) + i128::from(data.epsilon);
+                let valid = (u >= i128::from(data.epsilon)) & (u < 1 << 55);
+                fits &= valid;
+                input.push(core::hint::select_unpredictable(valid, u as i64, 0));
+            } else {
+                input.push(0);
+            }
         }
         if !fits {
             return internal();
         }
-        let real = vec![true; sums.len()];
         let witness = data.gadget.witness(&input, &real)?;
         let root = witness
             .tensor(RsqrtColumn::Root)
@@ -222,7 +230,7 @@ impl Prepared {
                 input.len(),
                 rows,
                 &|term, i| match term {
-                    RsqrtTerm::RowSelector => Goldilocks::ONE,
+                    RsqrtTerm::RowSelector => Goldilocks::from_u64_reduced(u64::from(real[i])),
                     _ => Goldilocks::from_i64(
                         columns
                             .iter()
@@ -255,6 +263,7 @@ impl Prepared {
         tensor: TensorId,
         scores: &[i64],
         n: usize,
+        padded_keys: usize,
         valid: impl Fn(usize) -> usize,
         e: usize,
         r: usize,
@@ -264,7 +273,12 @@ impl Prepared {
             return internal();
         };
         let count = tile.shares[r].len();
-        if n == 0 || scores.len() != count * n || tile.shares[e].len() != scores.len() {
+        if n == 0
+            || padded_keys < n
+            || !padded_keys.is_power_of_two()
+            || scores.len() != count * n
+            || tile.shares[e].len() != scores.len()
+        {
             return internal();
         }
         let memory = |_| WitnessError::Memory { tensor };
@@ -294,8 +308,8 @@ impl Prepared {
                 values: lookup.per_position.then_some(Column::Share(e)),
             });
         }
-        let mut padded = SecretBuf::try_with_capacity(n.next_power_of_two()).map_err(memory)?;
-        padded.extend(core::iter::repeat_n(0, n.next_power_of_two()));
+        let mut padded = SecretBuf::try_with_capacity(padded_keys).map_err(memory)?;
+        padded.extend(core::iter::repeat_n(0, padded_keys));
         let mut fits = true;
         for (row, scores) in scores.chunks(n).enumerate() {
             padded[..n].copy_from_slice(scores);
@@ -411,17 +425,17 @@ mod tests {
         };
         for input in [i64::MIN, -1, (1 << 55) - 1, i64::MAX] {
             assert_eq!(
-                prepared.root_tile(TensorId(1), &[input], 0, &mut tile(512)),
+                prepared.root_tile(TensorId(1), &[input], None, 0, &mut tile(512)),
                 Err(WitnessError::Internal { rule: SCHEMA })
             );
         }
         assert_eq!(
-            prepared.root_tile(TensorId(1), &[0], 0, &mut tile(513)),
+            prepared.root_tile(TensorId(1), &[0], None, 0, &mut tile(513)),
             Err(WitnessError::Internal { rule: SAME })
         );
         let mut honest = tile(512);
         prepared
-            .root_tile(TensorId(1), &[0], 0, &mut honest)
+            .root_tile(TensorId(1), &[0], None, 0, &mut honest)
             .unwrap();
         assert_eq!(honest.gadget.len(), 3 + 1 + 12 * 10);
         assert_eq!(honest.lookups.len(), 6 + 1 + 12 * 10);
@@ -461,23 +475,23 @@ mod tests {
         };
         for (e, r) in [(3, 4), (4, 3)] {
             assert_eq!(
-                prepared.softmax_tile(TensorId(1), &[0], 1, |_| 1, 0, 1, &mut tile(e, r)),
+                prepared.softmax_tile(TensorId(1), &[0], 1, 1, |_| 1, 0, 1, &mut tile(e, r)),
                 Err(WitnessError::Internal { rule: SAME })
             );
         }
         for scores in [&[][..], &[0, 0][..]] {
             assert_eq!(
-                prepared.softmax_tile(TensorId(1), scores, 1, |_| 1, 0, 1, &mut tile(4, 4)),
+                prepared.softmax_tile(TensorId(1), scores, 1, 1, |_| 1, 0, 1, &mut tile(4, 4)),
                 Err(WitnessError::Internal { rule: SCHEMA })
             );
         }
         assert_eq!(
-            prepared.softmax_tile(TensorId(1), &[0], 0, |_| 1, 0, 1, &mut tile(4, 4)),
+            prepared.softmax_tile(TensorId(1), &[0], 0, 1, |_| 1, 0, 1, &mut tile(4, 4)),
             Err(WitnessError::Internal { rule: SCHEMA })
         );
         let mut honest = tile(4, 4);
         prepared
-            .softmax_tile(TensorId(1), &[0], 1, |_| 1, 0, 1, &mut honest)
+            .softmax_tile(TensorId(1), &[0], 1, 1, |_| 1, 0, 1, &mut honest)
             .unwrap();
         assert_eq!(honest.gadget.len(), 9);
         assert_eq!(honest.lookups.len(), 12);

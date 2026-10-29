@@ -126,9 +126,43 @@ fn memory_follows_what_is_decoded_not_what_is_declared() {
     assert_eq!(enough, Ok(count as usize));
 }
 
+fn owned_ascii_allocation_is_fallible_and_follows_validation_and_deadline_checks() {
+    let mut bytes = le(4097).to_vec();
+    bytes.extend([b'A'; 4097]);
+    let (short, allocated) = within(0, || decode(&bytes, &DecodeLimits::MESSAGE, Cursor::ascii));
+    assert_eq!(short, Err(DecodeError::new(ErrorCode::Memory, 0)));
+    assert_eq!(allocated, 0);
+    let (valid, allocated) = within(4097, || {
+        decode(&bytes, &DecodeLimits::MESSAGE, Cursor::ascii)
+    });
+    let text = valid.unwrap();
+    assert_eq!(text.len(), 4097);
+    assert!(text.bytes().all(|byte| byte == b'A'));
+    assert_eq!(allocated, 4097);
+    bytes[8 + 4096] = 0xff;
+    let (invalid, allocated) = within(0, || decode(&bytes, &DecodeLimits::MESSAGE, Cursor::ascii));
+    assert_eq!(
+        invalid,
+        Err(DecodeError::new(ErrorCode::Noncanonical, 8 + 4096))
+    );
+    assert_eq!(
+        allocated, 0,
+        "a late invalid byte is rejected before reserving the owned string"
+    );
+    let (expired, allocated) = within(0, || {
+        decode(&bytes, &DecodeLimits::MESSAGE, |c| {
+            c.set_deadline(std::time::Instant::now())?;
+            c.ascii()
+        })
+    });
+    assert_eq!(expired, Err(DecodeError::new(ErrorCode::Time, 0)));
+    assert_eq!(allocated, 0);
+}
+
 /// Runs on the process's only thread (`harness = false`): libtest would keep a thread of its own,
 /// whose allocations the process-wide cap counts against this test's budget (#501).
 fn main() {
     memory_follows_what_is_decoded_not_what_is_declared();
+    owned_ascii_allocation_is_fallible_and_follows_validation_and_deadline_checks();
     println!("memory_follows_what_is_decoded_not_what_is_declared: ok");
 }

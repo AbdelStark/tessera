@@ -115,3 +115,163 @@ fn compare<F: Field>(x: &[F], y: &[F], equal: F) -> F {
         below + same * lower
     })
 }
+
+/// `eq(r, index) = Π_j (r_j·b_j + (1 − r_j)·(1 − b_j))` at a public integer vertex `index`,
+/// evaluated without allocating.
+fn eq_index<F: Field>(r: &[F], index: usize) -> F {
+    r.iter().enumerate().fold(F::ONE, |acc, (j, &rj)| {
+        let bit = j < usize::BITS as usize && ((index >> j) & 1) == 1;
+        acc * if bit { rj } else { F::ONE - rj }
+    })
+}
+
+/// The number of request-slot coordinates `⌈log2 R⌉` above the `b` intra-slot coordinates
+/// (RFC-0071 'The slots'): `0` when `R ≤ 1`.
+fn request_vars(requests: usize) -> usize {
+    if requests <= 1 {
+        0
+    } else {
+        (requests - 1).ilog2() as usize + 1
+    }
+}
+
+/// `C_a(q, i) = Σ_{0 ≤ i' ≤ q' < a} eq(q, q')·eq(i, i')` over pairs of `n`-bit positions, for
+/// `0 ≤ a ≤ 2^n`: the multilinear extension of the causal prefix restricted to real queries
+/// `q' < a` within a slot (RFC-0071 'The selectors and the causal prefix').
+///
+/// Scan bits from the most significant (`n − 1`) down to `0`, tracking the four feasible prefix
+/// orderings `(cmp(i_hi, q_hi), cmp(q_hi, a_hi))` in `{=, <} × {=, <}`. Each step multiplies
+/// previous states by bilinear weights of degree at most one in `i_j` and in `q_j`, so the result
+/// is multilinear and equals `[i' ≤ q' ∧ q' < a]` on `{0, 1}^{2n}`. `a` is public (INV-ARCH-2).
+///
+/// # Errors
+///
+/// [`PolyError::PointLength`] when `q` and `i` differ in length; [`PolyError::BoundTooLarge`] when
+/// `a > 2^n`.
+pub fn causal_selector_bounded<F: Field>(q: &[F], i: &[F], bound: u64) -> Result<F, PolyError> {
+    same_length(q, i)?;
+    let vars = q.len();
+    if vars < 64 {
+        let cube = 1u64 << vars;
+        if bound > cube {
+            return Err(PolyError::BoundTooLarge { bound, vars });
+        }
+        if bound == cube {
+            return causal_selector(q, i);
+        }
+    }
+    if bound == 0 {
+        return Ok(F::ZERO);
+    }
+    let (mut eq_lt, mut lt_lt, mut eq_eq, mut lt_eq) = (F::ZERO, F::ZERO, F::ONE, F::ZERO);
+    for bit_idx in (0..vars).rev() {
+        let kc = i[bit_idx];
+        let qp = q[bit_idx];
+        let not_kc = F::ONE - kc;
+        let not_qp = F::ONE - qp;
+        let w00 = not_kc * not_qp;
+        let w01 = not_kc * qp;
+        let w11 = kc * qp;
+        let bound_bit = bit_idx < 64 && ((bound >> bit_idx) & 1) == 1;
+        let mut next_lt_lt = lt_lt + eq_lt * w01;
+        let mut next_eq_lt = eq_lt * (w00 + w11);
+        let (next_lt_eq, next_eq_eq) = if bound_bit {
+            next_lt_lt += lt_eq * not_qp;
+            next_eq_lt += eq_eq * w00;
+            (lt_eq * qp + eq_eq * w01, eq_eq * w11)
+        } else {
+            (lt_eq * not_qp, eq_eq * w00)
+        };
+        eq_lt = next_eq_lt;
+        lt_lt = next_lt_lt;
+        eq_eq = next_eq_eq;
+        lt_eq = next_lt_eq;
+    }
+    Ok(eq_lt + lt_lt)
+}
+
+/// The batched slot row selector `ψ̃(r_p, r_β) = Σ_{r < R} eq(r_β, r)·LT(r_p, n_r)` over a token
+/// axis of `R` slots of width `S = 2^{slot_bits}` (RFC-0071 'The selectors and the causal
+/// prefix').
+///
+/// `r_token` lists the `slot_bits` intra-slot position coordinates lowest, followed by
+/// `⌈log2 R⌉` request-slot coordinates (`0` coordinates when `R ≤ 1`, where this reduces to
+/// [`less_than`]).
+///
+/// # Errors
+///
+/// [`PolyError::PointLength`] when `r_token.len() != slot_bits + ⌈log2 R⌉`;
+/// [`PolyError::BoundTooLarge`] when any `n_r > 2^{slot_bits}`.
+pub fn slot_selector<F: Field>(
+    r_token: &[F],
+    slot_bits: usize,
+    lengths: &[u64],
+) -> Result<F, PolyError> {
+    let req_vars = request_vars(lengths.len());
+    let expected = slot_bits
+        .checked_add(req_vars)
+        .ok_or(PolyError::PointLength {
+            expected: usize::MAX,
+            found: r_token.len(),
+        })?;
+    if r_token.len() != expected {
+        return Err(PolyError::PointLength {
+            expected,
+            found: r_token.len(),
+        });
+    }
+    match lengths {
+        [] => Ok(F::ZERO),
+        [only] => less_than(r_token, *only),
+        many => {
+            let (r_p, r_beta) = r_token.split_at(slot_bits);
+            let mut sum = F::ZERO;
+            for (r, &n_r) in many.iter().enumerate() {
+                sum += eq_index(r_beta, r) * less_than(r_p, n_r)?;
+            }
+            Ok(sum)
+        }
+    }
+}
+
+/// The batched intra-slot causal selector
+/// `C̃((r_p, r_β), r_c) = Σ_{r < R} eq(r_β, r)·C_{n_r}(r_p, r_c)` (RFC-0071 'The selectors and the
+/// causal prefix'): compares a query's intra-slot position `r_p` against a key's `r_c` within one
+/// slot `r_β`, and vanishes on padded query rows (`p ≥ n_r` or `β ≥ R`).
+///
+/// # Errors
+///
+/// [`PolyError::PointLength`] when `r_token.len() != r_key.len() + ⌈log2 R⌉`;
+/// [`PolyError::BoundTooLarge`] when any `n_r > 2^{r_key.len()}`.
+pub fn batch_causal_selector<F: Field>(
+    r_token: &[F],
+    r_key: &[F],
+    lengths: &[u64],
+) -> Result<F, PolyError> {
+    let slot_bits = r_key.len();
+    let req_vars = request_vars(lengths.len());
+    let expected = slot_bits
+        .checked_add(req_vars)
+        .ok_or(PolyError::PointLength {
+            expected: usize::MAX,
+            found: r_token.len(),
+        })?;
+    if r_token.len() != expected {
+        return Err(PolyError::PointLength {
+            expected,
+            found: r_token.len(),
+        });
+    }
+    match lengths {
+        [] => Ok(F::ZERO),
+        [only] => causal_selector_bounded(r_token, r_key, *only),
+        many => {
+            let (r_p, r_beta) = r_token.split_at(slot_bits);
+            let mut sum = F::ZERO;
+            for (r, &n_r) in many.iter().enumerate() {
+                sum += eq_index(r_beta, r) * causal_selector_bounded(r_p, r_key, n_r)?;
+            }
+            Ok(sum)
+        }
+    }
+}

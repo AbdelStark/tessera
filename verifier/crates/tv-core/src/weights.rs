@@ -40,9 +40,11 @@ use crate::claims::{ClaimList, QuantPoint, WeightLayoutParams, WeightType};
 use crate::opening::{CombinedRow, OpeningError, multilinear};
 use tv_codec::WeightCommitmentPublic;
 use tv_field::{Fp, Fp2};
+#[cfg(test)]
 use tv_hash::column::column_digest;
+use tv_hash::column::column_digest_with_cancel;
 use tv_hash::hash;
-use tv_hash::merkle::{MultiproofError, verify_multiproof};
+use tv_hash::merkle::{MultiproofError, verify_multiproof_with_cancel};
 use tv_hash::{Digest, Domain, DomainHasher};
 
 /// A matrix in RFC-0012's declaration order, including the hidden channel parameters.
@@ -736,6 +738,41 @@ fn reserve<T>(size: usize) -> Result<Vec<T>, Error> {
     Ok(result)
 }
 impl Evaluated<'_> {
+    fn coefficients(
+        &self,
+        kind: usize,
+        coefficients: &mut Vec<Fp2>,
+        cancel: &mut dyn FnMut() -> bool,
+    ) -> Result<(), Error> {
+        let o = self.opening;
+        let l = o.layout;
+        coefficients.clear();
+        // The final row is proximity even when several claims alias evaluation row zero.
+        let claim = if kind.checked_add(1) == Some(self.combined.len()) {
+            None
+        } else {
+            o.claims.get(kind)
+        };
+        for position in 0..l.count {
+            crate::opening::poll(
+                cancel,
+                usize::try_from(position).map_err(|_| Error::Internal)?,
+            )
+            .map_err(|_| Error::Time)?;
+            // Structural coordinates for evaluation rows 0..m, dense answer positions for xi.
+            let c = match claim {
+                Some(claim) => {
+                    claim.gamma
+                        * eq_index(claim.row_point, l.row_at(position).ok_or(Error::Internal)?)
+                }
+                None => eq_index(o.xi_point, position),
+            };
+            coefficients.push(c);
+        }
+        crate::opening::poll(cancel, 0).map_err(|_| Error::Time)?;
+        Ok(())
+    }
+
     /// Check step11: shape, direct chain leaves and canonical multiproof, then consistency of
     /// all encoded combined rows at every distinct query. Queries are verifier-derived draws
     /// with replacement; proof columns occur once per distinct index in increasing order.
@@ -760,6 +797,9 @@ impl Evaluated<'_> {
         siblings: &[Digest],
         cancel: &mut impl FnMut() -> bool,
     ) -> Result<(), Error> {
+        if cancel() {
+            return Err(Error::Time);
+        }
         let o = self.opening;
         let l = o.layout;
         let matrix = l.matrix;
@@ -793,36 +833,27 @@ impl Evaluated<'_> {
         }
         let mut leaves = reserve(distinct.len())?;
         for (&j, col) in distinct.iter().zip(columns) {
-            leaves.push((j, column_digest(&l.commitment_id, j, l.row_block, col)));
+            leaves.push((
+                j,
+                column_digest_with_cancel(&l.commitment_id, j, l.row_block, col, &mut || {
+                    if cancel() { Err(Error::Time) } else { Ok(()) }
+                })?,
+            ));
         }
-        verify_multiproof(&o.root, n, &leaves, siblings).map_err(|error| match error {
-            MultiproofError::MissingSiblings { .. }
-            | MultiproofError::ExtraSiblings { .. }
-            | MultiproofError::RootMismatch => merkle,
-            _ => Error::Internal,
-        })?;
+        verify_multiproof_with_cancel(&o.root, n, &leaves, siblings, &mut *cancel).map_err(
+            |error| match error {
+                MultiproofError::Cancelled => Error::Time,
+                MultiproofError::MissingSiblings { .. }
+                | MultiproofError::ExtraSiblings { .. }
+                | MultiproofError::RootMismatch => merkle,
+                _ => Error::Internal,
+            },
+        )?;
         let mut coefficients = reserve(count)?;
         let mut codeword = reserve(self.n)?;
         let mut agreed = distinct.len();
         for (kind, row) in self.combined.iter().enumerate() {
-            coefficients.clear();
-            // The final row is proximity even when several claims alias evaluation row zero.
-            let claim = if kind.checked_add(1) == Some(self.combined.len()) {
-                None
-            } else {
-                o.claims.get(kind)
-            };
-            for position in 0..l.count {
-                // Structural coordinates for evaluation rows 0..m, dense answer positions for xi.
-                let c = match claim {
-                    Some(claim) => {
-                        claim.gamma
-                            * eq_index(claim.row_point, l.row_at(position).ok_or(Error::Internal)?)
-                    }
-                    None => eq_index(o.xi_point, position),
-                };
-                coefficients.push(c);
-            }
+            self.coefficients(kind, &mut coefficients, cancel)?;
             crate::opening::encode_with_cancel(row, self.k, self.n, &mut codeword, cancel)
                 .map_err(|e| match e {
                     OpeningError::Memory => Error::Memory,
@@ -830,10 +861,8 @@ impl Evaluated<'_> {
                     _ => Error::Internal,
                 })?;
             for (position, (&j, col)) in distinct.iter().zip(columns).enumerate().take(agreed) {
-                let expected = coefficients
-                    .iter()
-                    .zip(col)
-                    .fold(Fp2::ZERO, |v, (&c, &x)| v + c * x);
+                let expected =
+                    crate::opening::combine(&coefficients, col, cancel).map_err(|_| Error::Time)?;
                 let at = usize::try_from(j).map_err(|_| Error::Internal)?;
                 if codeword.get(at).copied().ok_or(Error::Internal)? != expected {
                     agreed = position;
@@ -857,6 +886,68 @@ impl Evaluated<'_> {
 #[cfg(test)]
 mod cancellation_tests {
     use super::*;
+    #[test]
+    fn weight_coefficients_cancel_after_progress_on_both_row_kinds() {
+        let layout = Layout {
+            matrix: Matrix::Embed,
+            log2_k: 0,
+            row_vars: 15,
+            count: 16385,
+            rows: Rows::Layers {
+                live: 16385,
+                stride: 32768,
+            },
+            commitment_id: [0; 32],
+            row_block: NonZeroU32::new(1).unwrap(),
+        };
+        let point = [Fp2::ZERO; 15];
+        let claims = [Claim {
+            column_point: &[],
+            row_point: &point,
+            gamma: Fp2::ONE,
+            value: Fp2::ZERO,
+        }];
+        let opening = Opening {
+            layout: &layout,
+            root: [0; 32],
+            claims: &claims,
+            xi_point: &point,
+        };
+        let combined = vec![
+            CombinedRow {
+                u: vec![Fp2::ZERO],
+                mask: vec![]
+            };
+            2
+        ];
+        let evaluated = Evaluated {
+            opening,
+            combined: &combined,
+            k: 1,
+            n: 2,
+        };
+        for kind in [0, 1] {
+            let mut coefficients = Vec::with_capacity(16385);
+            assert_eq!(
+                evaluated.coefficients(kind, &mut coefficients, &mut || false),
+                Ok(())
+            );
+            assert_eq!(coefficients[0], Fp2::ONE);
+            assert!(coefficients[1..].iter().all(|&x| x == Fp2::ZERO));
+            for (stop, written) in [(2, 4096), (4, 12288), (6, 16385)] {
+                let mut polls = 0;
+                assert_eq!(
+                    evaluated.coefficients(kind, &mut coefficients, &mut || {
+                        polls += 1;
+                        polls == stop
+                    }),
+                    Err(Error::Time)
+                );
+                assert_eq!(coefficients.len(), written);
+            }
+        }
+    }
+
     #[test]
     fn authenticated_weight_columns_propagate_transform_cancellation() {
         let layout = Layout {
@@ -908,6 +999,54 @@ mod cancellation_tests {
                 .unwrap()
                 .check_columns(&queries, &columns, &[]),
             Ok(())
+        );
+        let evaluated = check_evaluations(opening, &combined).unwrap();
+        for kind in 0..combined.len() {
+            let mut coefficients = Vec::with_capacity(1);
+            assert_eq!(
+                evaluated.coefficients(kind, &mut coefficients, &mut || false),
+                Ok(())
+            );
+            assert_eq!(coefficients, [Fp2::ONE]);
+            assert_eq!(
+                evaluated.coefficients(kind, &mut coefficients, &mut || true),
+                Err(Error::Time)
+            );
+        }
+        let wrong = Opening {
+            root: [1; 32],
+            ..opening
+        };
+        assert!(matches!(
+            check_evaluations(wrong, &combined)
+                .unwrap()
+                .check_columns(&queries, &columns, &[]),
+            Err(Error::MerklePath { .. })
+        ));
+        let mut polls = 0;
+        assert_eq!(
+            check_evaluations(wrong, &combined)
+                .unwrap()
+                .check_columns_with_cancel(&queries, &columns, &[], &mut || {
+                    polls += 1;
+                    polls == 3
+                }),
+            Err(Error::Time)
+        );
+        assert_eq!(polls, 3);
+        polls = 0;
+        assert_eq!(
+            check_evaluations(wrong, &combined)
+                .unwrap()
+                .check_columns_with_cancel(&queries, &columns, &[], &mut || {
+                    polls += 1;
+                    polls == 14
+                }),
+            Err(Error::Time)
+        );
+        assert_eq!(
+            polls, 14,
+            "deadline reaches Merkle authentication after four column chains"
         );
         for stop in [1, 3] {
             let mut polls = 0;

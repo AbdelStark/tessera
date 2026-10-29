@@ -61,6 +61,13 @@ pub enum SumcheckError {
     },
     /// The batch has no instance.
     NoInstances,
+    /// A computed relation exceeds the 62-variable front-padding scale domain.
+    ComputedVariables {
+        /// The instance, counted from zero.
+        instance: usize,
+        /// Its declared number of variables.
+        vars: usize,
+    },
     /// An instance has no table: a product of no table has no variables to sum over.
     NoTables {
         /// The instance, counted from 0 in the order given.
@@ -277,6 +284,10 @@ impl fmt::Display for SumcheckError {
                 write!(f, "a sumcheck has degree 1 to {max}, not {degree}")
             }
             Self::NoInstances => write!(f, "a batched sumcheck needs at least one instance"),
+            Self::ComputedVariables { instance, vars } => write!(
+                f,
+                "computed instance {instance} declares {vars} variables, above 62"
+            ),
             Self::NoTables { instance } => {
                 write!(f, "instance {instance} is a product of no table")
             }

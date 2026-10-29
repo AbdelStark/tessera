@@ -286,6 +286,8 @@ fn used_tables(selection: &Selection) -> Result<BTreeSet<TableId>, CompileError>
 fn shapes(
     lowering: &Lowering,
     selection: &Selection,
+    token_axes: &[Option<u8>],
+    nonzero: &[bool],
     sources: &[AdviceSource],
     attention: &tessera_pcs::Attention,
     block: Option<u32>,
@@ -298,20 +300,11 @@ fn shapes(
                 if column == 0 {
                     return Ok(TensorShape::Scores { block });
                 }
-                return Ok(dense([
-                    Axis::new(u64::from(attention.heads)),
-                    Axis {
-                        len: u64::from(attention.queries),
-                        real: u64::from(
-                            attention
-                                .positions
-                                .saturating_sub(block * attention.queries)
-                                .min(attention.queries),
-                        ),
-                    },
-                ]));
+                return Ok(TensorShape::Dense(
+                    attention.row_shape(block, Padding::Zero),
+                ));
             }
-            let tensor = match source {
+            let tensor_id = match source {
                 AdviceSource::Tensor(id) => Some(id),
                 AdviceSource::Auxiliary(node, _) => lowering
                     .graph
@@ -320,7 +313,17 @@ fn shapes(
                     .and_then(|n| n.outputs.first())
                     .copied(),
                 AdviceSource::GreedyMaximum(_) => {
-                    return Ok(dense([Axis::new(u64::from(positions(lowering)?))]));
+                    let n = u64::from(positions(lowering)?);
+                    return Ok(match &lowering.graph.slots {
+                        Some(slots) => TensorShape::Dense(DenseShape::with_slots(
+                            vec![Axis::new(n)],
+                            Padding::Zero,
+                            0,
+                            slots.slot_len,
+                            slots.lengths.clone(),
+                        )),
+                        None => dense([Axis::new(n)]),
+                    });
                 }
                 AdviceSource::Multiplicity(table) => {
                     let spec = selection
@@ -331,11 +334,85 @@ fn shapes(
                     return Ok(dense([Axis::new(table_rows(spec)?)]));
                 }
             }
-            .and_then(|id| lowering.graph.tensors.get(id.0 as usize))
             .ok_or_else(|| usage(METADATA))?;
-            Ok(dense(tensor.shape.iter().map(|&n| Axis::new(u64::from(n)))))
+            let tensor = lowering
+                .graph
+                .tensors
+                .get(tensor_id.0 as usize)
+                .ok_or_else(|| usage(METADATA))?;
+            let padding = match source {
+                AdviceSource::Tensor(id)
+                    if nonzero.get(id.0 as usize).copied().unwrap_or(false) =>
+                {
+                    Padding::Constants
+                }
+                _ => Padding::Zero,
+            };
+            let axes: Vec<Axis> = tensor
+                .shape
+                .iter()
+                .map(|&n| Axis::new(u64::from(n)))
+                .collect();
+            let tok_axis = token_axes
+                .get(tensor_id.0 as usize)
+                .copied()
+                .flatten()
+                .map(usize::from);
+            Ok(match (&lowering.graph.slots, tok_axis) {
+                (Some(slots), Some(axis)) => TensorShape::Dense(DenseShape::with_slots(
+                    axes,
+                    padding,
+                    axis,
+                    slots.slot_len,
+                    slots.lengths.clone(),
+                )),
+                _ => TensorShape::Dense(DenseShape::new(axes, padding)),
+            })
         })
         .collect()
+}
+
+/// Checks and returns the allocated advice rows of `requests` (`(prompt_len, output_len)` in batch
+/// order) under `claims`, including RFC-0053's runtime maximum and `Range` table (RFC-0071 'The
+/// maximum layout', RFC-0047).
+///
+/// # Errors
+/// `CompileError::Model` when the batch layout exceeds `2^32` rows or violates layout rules;
+/// `CompileError::Usage` for malformed request lengths or dimension overflow.
+pub fn check_batch_advice_rows(
+    claims: &ClaimList,
+    requests: &[(u32, u32)],
+) -> Result<u64, CompileError> {
+    if requests.is_empty() {
+        return Err(usage("a batch has at least one request"));
+    }
+    let lengths: Vec<u32> = requests
+        .iter()
+        .map(|&(prompt, output)| {
+            if prompt == 0 {
+                return Err(usage("a sequence has 1 to max_context positions"));
+            }
+            prompt
+                .checked_add(output)
+                .ok_or_else(|| usage("a sequence has 1 to max_context positions"))
+        })
+        .collect::<Result<_, _>>()?;
+    let public = PublicModel::of_claims(claims);
+    let lowering = crate::lower_batch_for_protocol(claims.protocol_version, public, &lengths)?;
+    let ranges = crate::analyze(&lowering.graph, &lowering.tables)?;
+    let selection = crate::select(
+        &lowering.graph,
+        &ranges,
+        &lowering.tables,
+        &claims.gadget_policy,
+    )?;
+    let runtime = RuntimePlan::derive_batch(&lowering, &selection, claims, requests)?;
+    allocated_runtime_rows(
+        &lowering,
+        runtime.selection(),
+        claims,
+        runtime.certificate().map(|c| (c.gadget, c.table)),
+    )
 }
 
 /// Count before expanding attention shares, including all skipped rows and gaps.
@@ -355,13 +432,27 @@ fn allocated_runtime_rows(
 ) -> Result<u64, CompileError> {
     let params = params(claims)?;
     let n = positions(lowering)?;
-    let attention = params.attention(n).map_err(pcs)?;
-    let mut counter = AdviceLayoutCounter::new(params, n).map_err(pcs)?;
+    let token_axes = crate::schedule::token_axes(lowering)?;
+    let nonzero = crate::schedule::tensors_nonzero_at_padding(&lowering.graph, &lowering.tables)?;
+    let (attention, mut counter) = match &lowering.graph.slots {
+        Some(slots) => (
+            params
+                .batch_attention(slots.slot_len, &slots.lengths)
+                .map_err(pcs)?,
+            AdviceLayoutCounter::new_batch(params, slots.slot_len, &slots.lengths).map_err(pcs)?,
+        ),
+        None => (
+            params.attention(n).map_err(pcs)?,
+            AdviceLayoutCounter::new(params, n).map_err(pcs)?,
+        ),
+    };
     counter
         .append(
             &shapes(
                 lowering,
                 selection,
+                &token_axes,
+                &nonzero,
                 &[AdviceSource::Tensor(lowering.tokens)],
                 &attention,
                 None,
@@ -382,7 +473,15 @@ fn allocated_runtime_rows(
         };
         counter
             .append(
-                &shapes(lowering, selection, &sources, &attention, block)?,
+                &shapes(
+                    lowering,
+                    selection,
+                    &token_axes,
+                    &nonzero,
+                    &sources,
+                    &attention,
+                    block,
+                )?,
                 repeats,
             )
             .map_err(pcs)?;
@@ -394,6 +493,8 @@ fn allocated_runtime_rows(
                 &shapes(
                     lowering,
                     selection,
+                    &token_axes,
+                    &nonzero,
                     &[AdviceSource::GreedyMaximum(gadget)],
                     &attention,
                     None,
@@ -409,6 +510,8 @@ fn allocated_runtime_rows(
                 &shapes(
                     lowering,
                     selection,
+                    &token_axes,
+                    &nonzero,
                     &[AdviceSource::Multiplicity(table)],
                     &attention,
                     None,
@@ -494,7 +597,15 @@ impl<'a> ModelAdviceLayout<'a> {
         let expected_rows = allocated_runtime_rows(lowering, selection, claims, greedy)?;
         let params = params(claims)?;
         let n = positions(lowering)?;
-        let attention = params.attention(n).map_err(pcs)?;
+        let token_axes = crate::schedule::token_axes(lowering)?;
+        let nonzero =
+            crate::schedule::tensors_nonzero_at_padding(&lowering.graph, &lowering.tables)?;
+        let attention = match &lowering.graph.slots {
+            Some(slots) => params
+                .batch_attention(slots.slot_len, &slots.lengths)
+                .map_err(pcs)?,
+            None => params.attention(n).map_err(pcs)?,
+        };
         let layers = LayerMap::new(lowering)?;
         let mut order = tiles(PublicModel::of_claims(claims), lowering, selection)?;
         if let Some((gadget, table)) = greedy {
@@ -549,13 +660,21 @@ impl<'a> ModelAdviceLayout<'a> {
                 values: shapes(
                     lowering,
                     selection,
+                    &token_axes,
+                    &nonzero,
                     &groups.last().ok_or_else(|| usage(METADATA))?.sources,
                     &attention,
                     tile.block.as_ref().map(|b| b.index),
                 )?,
             });
         }
-        let geometry = AdviceLayout::new(params, n, &descriptions).map_err(pcs)?;
+        let geometry = match &lowering.graph.slots {
+            Some(slots) => {
+                AdviceLayout::new_batch(params, slots.slot_len, &slots.lengths, &descriptions)
+                    .map_err(pcs)?
+            }
+            None => AdviceLayout::new(params, n, &descriptions).map_err(pcs)?,
+        };
         if geometry.allocated_rows() != expected_rows {
             return Err(usage(METADATA));
         }
@@ -612,7 +731,7 @@ impl<'a> ModelAdviceLayout<'a> {
         let range = self.columns[group].tiles.clone();
         let first = self.tiles.get(range.start).ok_or_else(|| usage(METADATA))?;
         let arity = if matches!(first.tile, Tile::Attention { .. }) {
-            self.full_shape(source)?
+            self.attention_full_shape(column, source)?
                 .iter()
                 .map(|&n| bits(n))
                 .sum::<u32>() as usize
@@ -650,6 +769,20 @@ impl<'a> ModelAdviceLayout<'a> {
             .ok_or_else(|| usage(METADATA))
     }
 
+    fn attention_full_shape(
+        &self,
+        column: usize,
+        source: AdviceSource,
+    ) -> Result<Vec<u32>, CompileError> {
+        let mut shape = self.full_shape(source)?.to_vec();
+        if column == 0
+            && let Some(last) = shape.last_mut()
+        {
+            *last = (*last).max(self.geometry.attention().padded);
+        }
+        Ok(shape)
+    }
+
     fn image<F: Field>(
         &self,
         tile: usize,
@@ -671,7 +804,8 @@ impl<'a> ModelAdviceLayout<'a> {
                 local.push(attention.padded);
                 origin.push(0);
             }
-            project(self.full_shape(source)?, &local, &origin, point)?
+            let full = self.attention_full_shape(column, source)?;
+            project(&full, &local, &origin, point)?
         } else {
             (point.to_vec(), F::ONE)
         };

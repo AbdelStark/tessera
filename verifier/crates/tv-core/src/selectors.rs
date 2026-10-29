@@ -152,6 +152,52 @@ pub fn causal(query: &[Fp2], key: &[Fp2], length: u64) -> Option<Fp2> {
     Some(equal + less)
 }
 
+/// `ψ̃` of RFC-0071 'The public selectors' on the token axis `(r_p, r_β)` of `slot_bits`
+/// intra-slot position coordinates followed by `⌈log2 R⌉` request coordinates:
+/// `Σ_{r < R} eq(r_β, r) · LT(r_p, n_r)`; `None` when `lengths` is empty, `point` has fewer than
+/// `slot_bits` coordinates, `R` passes the request cube, or any `n_r` passes `2^{slot_bits}`.
+pub fn slot_selector(point: &[Fp2], slot_bits: usize, lengths: &[u32]) -> Option<Fp2> {
+    if lengths.is_empty() {
+        return None;
+    }
+    let (pos, req) = point.split_at_checked(slot_bits)?;
+    let req_vars = u32::try_from(req.len()).ok()?;
+    if let Some(cube) = 1usize.checked_shl(req_vars)
+        && lengths.len() > cube
+    {
+        return None;
+    }
+    let mut sum = Fp2::ZERO;
+    for (r, &len) in lengths.iter().enumerate() {
+        let r_u64 = u64::try_from(r).ok()?;
+        sum += eq_index(req, r_u64) * lt(pos, u64::from(len))?;
+    }
+    Some(sum)
+}
+
+/// `C̃(query, key)` across batched request slots (RFC-0071 'The public selectors'):
+/// `Σ_{r < R} eq(r_β, r) · C̃_{n_r}(r_p, key)`, where `query = (r_p, r_β)` splits at `slot_bits`
+/// and `|key| = slot_bits`; `None` when `lengths` is empty, the points do not match `slot_bits`,
+/// `R` passes the request cube, or any `n_r` passes `2^{slot_bits}`.
+pub fn causal_slots(query: &[Fp2], key: &[Fp2], slot_bits: usize, lengths: &[u32]) -> Option<Fp2> {
+    if lengths.is_empty() || key.len() != slot_bits {
+        return None;
+    }
+    let (q_pos, q_req) = query.split_at_checked(slot_bits)?;
+    let req_vars = u32::try_from(q_req.len()).ok()?;
+    if let Some(cube) = 1usize.checked_shl(req_vars)
+        && lengths.len() > cube
+    {
+        return None;
+    }
+    let mut sum = Fp2::ZERO;
+    for (r, &len) in lengths.iter().enumerate() {
+        let r_u64 = u64::try_from(r).ok()?;
+        sum += eq_index(q_req, r_u64) * causal(q_pos, key, u64::from(len))?;
+    }
+    Some(sum)
+}
+
 /// `ψ̃` of RFC-0035 'The row selector' at a row point: `LT(rows, length)`, times
 /// `LT(heads, n_heads)` for per-head rows and `LT(layers, n_layers)` for rows stacked over
 /// layers; `None` when a bound passes its cube.
@@ -181,6 +227,19 @@ pub struct Rows {
     pub layers: Option<(usize, u64)>,
 }
 
+/// The rows of a gadget's committed values across batched request slots (RFC-0035, RFC-0071
+/// 'The public selectors'): the token axis's `(r_p, r_β)` coordinates lowest, then the heads',
+/// then the layers'.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SlottedRows<'a> {
+    /// Total token coordinates `b + ⌈log2 R⌉`, slot position bits `b`, and per-slot lengths.
+    pub tokens: (usize, usize, &'a [u32]),
+    /// The heads' variables and `n_heads`, for per-head rows.
+    pub heads: Option<(usize, u64)>,
+    /// The layers' variables and `n_layers`, for rows stacked over the layers.
+    pub layers: Option<(usize, u64)>,
+}
+
 /// The final value of RFC-0035's padding zero-check of a committed value `w` at the instance's
 /// point `point`, `r'`: `eq(zero, r')·(1 − ψ̃(r'))·w̃(r')`, `zero` being the instance's last
 /// coordinates of its stage's zero-check point and `w` its one evaluation. `None` when the points'
@@ -198,6 +257,31 @@ pub fn padding_zero_check(zero: &[Fp2], point: &[Fp2], rows: &Rows, w: Fp2) -> O
         rows.heads.map(|(_, count)| (heads, count)),
         rows.layers.map(|(_, count)| (layers, count)),
     )?;
+    Some(eq_points(zero, point)? * (Fp2::ONE - psi) * w)
+}
+
+/// [`padding_zero_check`] over batched request slots (RFC-0035, RFC-0071 'The public selectors').
+pub fn padding_zero_check_slots(
+    zero: &[Fp2],
+    point: &[Fp2],
+    rows: &SlottedRows<'_>,
+    w: Fp2,
+) -> Option<Fp2> {
+    let (tokens, rest) = point.split_at_checked(rows.tokens.0)?;
+    let (heads, rest) = rest.split_at_checked(rows.heads.map_or(0, |h| h.0))?;
+    let (layers, rest) = rest.split_at_checked(rows.layers.map_or(0, |l| l.0))?;
+    if !rest.is_empty() {
+        return None;
+    }
+    let mut psi = slot_selector(tokens, rows.tokens.1, rows.tokens.2)?;
+    for (sub, bound) in rows
+        .heads
+        .map(|(_, count)| (heads, count))
+        .into_iter()
+        .chain(rows.layers.map(|(_, count)| (layers, count)))
+    {
+        psi *= lt(sub, bound)?;
+    }
     Some(eq_points(zero, point)? * (Fp2::ONE - psi) * w)
 }
 
@@ -277,6 +361,144 @@ pub fn rotate_kernel(
     }
     let pair_eq = claim_b * point_b + (Fp2::ONE - claim_b) * (Fp2::ONE - point_b);
     Some(eq_points(claim_mid, point_mid)? * (pair_eq * cosines + (claim_b - point_b) * sines))
+}
+
+/// `Ẽ_r(r')` for `Rotate` across batched request slots (RFC-0037 'Rotate', RFC-0071 'The public
+/// selectors'): RoPE's constants depend on intra-slot position `p = τ mod S` and vanish on padded
+/// rows, evaluated in `O(n_max · d_head/2 + R · ⌈log2 R⌉)`.
+pub fn rotate_kernel_slots(
+    rope: &Rope,
+    slot_bits: usize,
+    lengths: &[u32],
+    middle_vars: usize,
+    claim: &[Fp2],
+    point: &[Fp2],
+) -> Option<Fp2> {
+    if lengths.is_empty() || claim.len() != point.len() {
+        return None;
+    }
+    let n_max = lengths.iter().copied().max()?;
+    if n_max > rope.positions() {
+        return None;
+    }
+    let half = rope.frequencies().len();
+    if !half.is_power_of_two() {
+        return None;
+    }
+    let freq_bits = usize::try_from(half.trailing_zeros()).ok()?;
+    let low = freq_bits.checked_add(1)?.checked_add(middle_vars)?;
+    if claim.len() < low {
+        return None;
+    }
+    let (claim_f, claim_rest) = claim.split_at_checked(freq_bits)?;
+    let (point_f, point_rest) = point.split_at_checked(freq_bits)?;
+    let (&claim_b, claim_rest) = claim_rest.split_first()?;
+    let (&point_b, point_rest) = point_rest.split_first()?;
+    let (claim_mid, claim_tok) = claim_rest.split_at_checked(middle_vars)?;
+    let (point_mid, point_tok) = point_rest.split_at_checked(middle_vars)?;
+    let (claim_p, claim_req) = claim_tok.split_at_checked(slot_bits)?;
+    let (point_p, point_req) = point_tok.split_at_checked(slot_bits)?;
+
+    let slot_vars = u32::try_from(slot_bits).ok()?;
+    if let Some(slot_cube) = 1u64.checked_shl(slot_vars)
+        && u64::from(n_max) > slot_cube
+    {
+        return None;
+    }
+    let req_vars = u32::try_from(claim_req.len()).ok()?;
+    if let Some(req_cube) = 1usize.checked_shl(req_vars)
+        && lengths.len() > req_cube
+    {
+        return None;
+    }
+
+    let n_max_usize = usize::try_from(n_max).ok()?;
+    let mut diff = Vec::new();
+    diff.try_reserve_exact(n_max_usize.checked_add(1)?).ok()?;
+    diff.resize(n_max_usize.checked_add(1)?, Fp2::ZERO);
+    for (r, &len) in lengths.iter().enumerate() {
+        if len > 0 {
+            let r_u64 = u64::try_from(r).ok()?;
+            let w_req = eq_index(claim_req, r_u64) * eq_index(point_req, r_u64);
+            *diff.get_mut(0)? += w_req;
+            *diff.get_mut(usize::try_from(len).ok()?)? -= w_req;
+        }
+    }
+
+    let frequency_weights = joint_eq(claim_f, point_f)?;
+    let position_weights = joint_eq_prefix(claim_p, point_p, n_max_usize)?;
+    let (mut cosines, mut sines) = (Fp2::ZERO, Fp2::ZERO);
+    let mut active_req = Fp2::ZERO;
+    for position in 0..n_max {
+        let idx = usize::try_from(position).ok()?;
+        active_req += *diff.get(idx)?;
+        let weight = active_req * *position_weights.get(idx)?;
+        if weight == Fp2::ZERO {
+            continue;
+        }
+        let (mut c_sum, mut s_sum) = (Fp2::ZERO, Fp2::ZERO);
+        for (frequency, &f_weight) in frequency_weights.iter().enumerate() {
+            let (c, s) = rope.pair(position, frequency)?;
+            c_sum += f_weight * signed(c);
+            s_sum += f_weight * signed(s);
+        }
+        cosines += weight * c_sum;
+        sines += weight * s_sum;
+    }
+    let pair_eq = claim_b * point_b + (Fp2::ONE - claim_b) * (Fp2::ONE - point_b);
+    Some(eq_points(claim_mid, point_mid)? * (pair_eq * cosines + (claim_b - point_b) * sines))
+}
+
+/// `eq(point, index)` for a Boolean vertex `index` on `{0, 1}^{|point|}` (LSB-first).
+pub(crate) fn eq_index(point: &[Fp2], index: u64) -> Fp2 {
+    let mut acc = Fp2::ONE;
+    for (k, &r) in point.iter().enumerate() {
+        if bit(index, k) {
+            acc *= r;
+        } else {
+            acc *= Fp2::ONE - r;
+        }
+    }
+    acc
+}
+
+/// First `count` entries of `eq(a, ·)·eq(b, ·)` in ascending index order, allocating at most
+/// `count` elements even when `2^{|a|}` is larger.
+fn joint_eq_prefix(a: &[Fp2], b: &[Fp2], count: usize) -> Option<Vec<Fp2>> {
+    if a.len() != b.len() {
+        return None;
+    }
+    if count == 0 {
+        return Some(Vec::new());
+    }
+    let last = count.checked_sub(1)?;
+    let mut table = Vec::new();
+    table.try_reserve_exact(count).ok()?;
+    table.push(Fp2::ONE);
+    let mut next = Vec::new();
+    next.try_reserve_exact(count).ok()?;
+    for (k, (&x, &y)) in a.iter().zip(b).enumerate().rev() {
+        let shifted = u32::try_from(k)
+            .ok()
+            .and_then(|shift| last.checked_shr(shift))
+            .unwrap_or(0);
+        let limit = shifted.checked_add(1)?;
+        let clear = (Fp2::ONE - x) * (Fp2::ONE - y);
+        let set = x * y;
+        next.clear();
+        for (u, &value) in table.iter().enumerate() {
+            let even = u.checked_mul(2)?;
+            if even < limit {
+                next.push(value * clear);
+            }
+            let odd = even.checked_add(1)?;
+            if odd < limit {
+                next.push(value * set);
+            }
+        }
+        core::mem::swap(&mut table, &mut next);
+    }
+    Some(table)
 }
 
 /// `eq(a, ·)·eq(b, ·)` over the cube of `|a| = |b|` variables, entry `x` for each index `x`:

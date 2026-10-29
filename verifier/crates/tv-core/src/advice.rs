@@ -9,7 +9,7 @@
 pub mod opening;
 
 use crate::claims::{ArchSpec, GadgetPolicy};
-use crate::lowering::{Graph, Kind, NodeId, Op, Role, TensorId};
+use crate::lowering::{Graph, Kind, NodeId, Op, Role, Slots, TensorId};
 use crate::selection::{Choice, Pattern, Selection};
 use crate::validation::{ClaimsError, GadgetId, StatementField};
 use tv_field::Fp2;
@@ -122,6 +122,223 @@ impl Domain {
     /// First entirely zero row, relative to this domain's base.
     pub fn zero_at(&self) -> u64 {
         self.zero_at
+    }
+}
+
+// The allocation rule shared by the layout builder and its allocation-free preflight.
+fn group_extent(
+    previous: u64,
+    rows: u64,
+    columns: u32,
+    repeats: u64,
+    attention: bool,
+) -> Result<(u64, u64, u64), ClaimsError> {
+    let base = aligned(previous, rows)?;
+    let size = if attention {
+        add(rows, u64::from(columns.saturating_sub(1)))?
+    } else {
+        mul(rows, u64::from(columns))?
+    };
+    let stride = aligned(size, rows)?;
+    let end = add(add(base, mul(repeats.saturating_sub(1), stride)?)?, size)?;
+    if end > MAX_ROWS {
+        return Err(invalid());
+    }
+    Ok((base, stride, end))
+}
+
+#[derive(Debug)]
+struct RowGroup {
+    dims: [u64; 4],
+    rank: usize,
+    columns: u32,
+    attention: bool,
+}
+#[derive(Debug)]
+struct RowTable {
+    rows: u64,
+    used: bool,
+    greedy: bool,
+}
+
+/// Compact claim-validation metadata for RFC-0071's allocation-free batch row check.
+#[derive(Debug)]
+pub(crate) struct BatchRows {
+    groups: Vec<RowGroup>,
+    tables: Vec<RowTable>,
+    config: Config,
+    greedy_width: Option<u8>,
+    greedy_gadget: GadgetId,
+    max_context: u32,
+}
+impl BatchRows {
+    pub(crate) fn derive(
+        layout: &Layout<'_>,
+        max_context: u32,
+        max_log2_rows: u8,
+    ) -> Result<Self, ClaimsError> {
+        let selection = layout.selection;
+        let graph = layout.graph;
+        let mut groups = Vec::new();
+        groups
+            .try_reserve_exact(layout.groups.len())
+            .map_err(|_| ClaimsError::Memory)?;
+        for group in &layout.groups {
+            if matches!(group.key, TileKey::Table(_)) {
+                continue;
+            }
+            groups.push(RowGroup {
+                dims: group.domain.dims,
+                rank: usize::from(group.domain.rank),
+                columns: group.columns,
+                attention: group.query.is_some(),
+            });
+        }
+        let logits = *graph
+            .nodes()
+            .last()
+            .and_then(|n| n.outputs().first())
+            .ok_or(ClaimsError::Internal)?;
+        let greedy_width = selection
+            .ranges
+            .get(usize::try_from(logits.0).map_err(|_| ClaimsError::Internal)?)
+            .and_then(crate::ranges::Interval::bounds)
+            .and_then(|(lo, hi)| crate::gadgets::greedy::range_bits(lo, hi))
+            .filter(|&width| width <= max_log2_rows);
+        let mut tables = Vec::new();
+        tables
+            .try_reserve_exact(
+                selection
+                    .tables
+                    .len()
+                    .checked_add(1)
+                    .ok_or(ClaimsError::Memory)?,
+            )
+            .map_err(|_| ClaimsError::Memory)?;
+        let mut found = false;
+        for table in &selection.tables {
+            let greedy = greedy_width.is_some_and(|bits| table.kind == (TableKind::Range { bits }));
+            found |= greedy;
+            let rows = match &table.kind {
+                TableKind::Requant { b, r_by_class, .. }
+                | TableKind::Silu { b, r_by_class, .. } => mul(
+                    u64::try_from(r_by_class.len()).map_err(|_| ClaimsError::Internal)?,
+                    power(u32::from(*b))?,
+                )?,
+                _ => power(u32::from(table.log2_rows))?,
+            };
+            tables.push(RowTable {
+                rows,
+                greedy,
+                used: layout
+                    .groups
+                    .iter()
+                    .any(|g| g.key == TileKey::Table(table.id)),
+            });
+        }
+        if !found && let Some(width) = greedy_width {
+            tables.push(RowTable {
+                rows: power(u32::from(width))?,
+                used: false,
+                greedy: true,
+            });
+        }
+        Ok(Self {
+            groups,
+            tables,
+            config: layout.config,
+            greedy_width,
+            greedy_gadget: GadgetId(
+                u32::try_from(graph.nodes().len()).map_err(|_| ClaimsError::Internal)?,
+            ),
+            max_context,
+        })
+    }
+
+    pub(crate) fn count(
+        &self,
+        requests: &[crate::protocol::RequestRef],
+        protocol: crate::sumcheck::Protocol,
+    ) -> Result<u64, ClaimsError> {
+        if requests.is_empty() {
+            return Err(invalid());
+        }
+        let mut n_max = 0u32;
+        let mut has_outputs = false;
+        for request in requests {
+            let n = request
+                .prompt_len
+                .checked_add(request.output_len)
+                .ok_or_else(invalid)?;
+            if request.prompt_len == 0 || n > self.max_context {
+                return Err(invalid());
+            }
+            n_max = n_max.max(n);
+            has_outputs |= request.output_len > 0;
+        }
+        if has_outputs && self.greedy_width.is_none() {
+            return Err(ClaimsError::StatementMismatch {
+                field: StatementField::Gadget {
+                    gadget: self.greedy_gadget,
+                },
+            });
+        }
+        let mut slot_bits = log(u64::from(n_max));
+        if requests.len() >= 2 && protocol == crate::sumcheck::Protocol::Two {
+            slot_bits = slot_bits.max(2);
+        }
+        let slot_len = power(slot_bits)?;
+        let count = u64::try_from(requests.len()).map_err(|_| invalid())?;
+        let token_len = if requests.len() == 1 {
+            u64::from(n_max)
+        } else {
+            mul(count, slot_len)?
+        };
+        // Graph token axes are u32 and their padded cube is representable by u32 (RFC-0071).
+        let padded = power(log(token_len))?;
+        if token_len > u64::from(u32::MAX) || padded > u64::from(u32::MAX) {
+            return Err(invalid());
+        }
+        let query = slot_len.min(u64::from(self.config.query_block));
+        let blocks = padded.checked_div(query).ok_or_else(invalid)?;
+        let head_group = self
+            .config
+            .heads
+            .checked_div(self.config.kv_heads)
+            .ok_or_else(invalid)?;
+        let mut rows = 0;
+        for group in &self.groups {
+            let mut dims = group.dims;
+            let (domain, repeats) = if group.attention {
+                (
+                    Domain::new(&[u64::from(head_group), query, slot_len], self.config.log_k)?,
+                    mul(u64::from(self.config.kv_heads), blocks)?,
+                )
+            } else {
+                *dims.first_mut().ok_or(ClaimsError::Internal)? = token_len;
+                (
+                    Domain::new(
+                        dims.get(..group.rank).ok_or(ClaimsError::Internal)?,
+                        self.config.log_k,
+                    )?,
+                    1,
+                )
+            };
+            rows = group_extent(rows, domain.rows, group.columns, repeats, group.attention)?.2;
+        }
+        // Per-request keys are virtual lookup columns. Only one maximum and the physical
+        // Range multiplicity domain allocate advice rows (RFC-0053, RFC-0071).
+        if has_outputs {
+            let domain = Domain::new(&[token_len], self.config.log_k)?;
+            rows = group_extent(rows, domain.rows, 1, 1, false)?.2;
+        }
+        for table in &self.tables {
+            if table.used || (has_outputs && table.greedy) {
+                let domain = Domain::new(&[table.rows], self.config.log_k)?;
+                rows = group_extent(rows, domain.rows, 1, 1, false)?.2;
+            }
+        }
+        Ok(rows)
     }
 }
 
@@ -261,8 +478,136 @@ impl Config {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct TokenRowMask<'a> {
+    lengths: &'a [u32],
+    slot_bits: u32,
+    col_tok_bits: u32,
+    row_tok_bits: u32,
+    shift: u32,
+    high_slices: u64,
+    outer_stride: u64,
+}
+
+impl<'a> TokenRowMask<'a> {
+    fn new(slots: &'a Slots, domain: &Domain, log_k: u8) -> Option<Option<Self>> {
+        let token_vars = slots.token_vars();
+        let slot_bits = slots.slot_bits();
+        let log_k = u32::from(log_k);
+        let inner_bits = domain.variables.checked_sub(token_vars)?;
+        let pos_0 = u32::try_from(
+            domain
+                .permutation()
+                .iter()
+                .position(|&b| u32::from(b) == inner_bits)?,
+        )
+        .ok()?;
+        let col_tok_bits = log_k.saturating_sub(pos_0).min(token_vars);
+        if col_tok_bits >= slot_bits {
+            return Some(None);
+        }
+        let row_tok_bits = token_vars.checked_sub(col_tok_bits)?;
+        let shift = pos_0.saturating_sub(log_k);
+        let low_mult = 1u64.checked_shl(shift)?;
+        let blocks_per_slice = 1u64.checked_shl(row_tok_bits)?;
+        let outer_stride = low_mult.checked_mul(blocks_per_slice)?;
+        let at_top = pos_0.checked_add(token_vars)? == domain.variables;
+        let high_slices = if at_top {
+            1
+        } else {
+            domain.zero_at.checked_div(outer_stride)?
+        };
+        Some(Some(Self {
+            lengths: slots.lengths(),
+            slot_bits,
+            col_tok_bits,
+            row_tok_bits,
+            shift,
+            high_slices,
+            outer_stride,
+        }))
+    }
+
+    fn is_zero_local(&self, local: u64) -> Option<bool> {
+        let mask = 1u64.checked_shl(self.row_tok_bits)?.checked_sub(1)?;
+        let tau_block = local.checked_shr(self.shift)? & mask;
+        let tau_lo = tau_block.checked_shl(self.col_tok_bits)?;
+        let slot_len = 1u64.checked_shl(self.slot_bits)?;
+        let beta = usize::try_from(tau_lo.checked_shr(self.slot_bits)?).ok()?;
+        let p_lo = tau_lo & slot_len.checked_sub(1)?;
+        let Some(&len) = self.lengths.get(beta) else {
+            return Some(true);
+        };
+        Some(p_lo >= u64::from(len))
+    }
+
+    fn committed_rows_per_column(&self) -> Option<u64> {
+        let low_mult = 1u64.checked_shl(self.shift)?;
+        let tok_per_row = 1u64.checked_shl(self.col_tok_bits)?;
+        let mut blocks = 0u64;
+        for &len in self.lengths {
+            blocks = blocks.checked_add(u64::from(len).div_ceil(tok_per_row))?;
+        }
+        self.high_slices.checked_mul(blocks)?.checked_mul(low_mult)
+    }
+
+    fn for_each_committed_row<E>(
+        &self,
+        base: u64,
+        mut f: impl FnMut(u64) -> Result<(), E>,
+    ) -> Result<Option<()>, E> {
+        let Some(low_mult) = 1u64.checked_shl(self.shift) else {
+            return Ok(None);
+        };
+        let Some(tok_per_row) = 1u64.checked_shl(self.col_tok_bits) else {
+            return Ok(None);
+        };
+        let Some(slot_blocks_shift) = self.slot_bits.checked_sub(self.col_tok_bits) else {
+            return Ok(None);
+        };
+        let Some(blocks_per_slot) = 1u64.checked_shl(slot_blocks_shift) else {
+            return Ok(None);
+        };
+        for hs in 0..self.high_slices {
+            let Some(slice_off) = hs.checked_mul(self.outer_stride) else {
+                return Ok(None);
+            };
+            let Some(slice_base) = base.checked_add(slice_off) else {
+                return Ok(None);
+            };
+            for (r, &len) in self.lengths.iter().enumerate() {
+                let Ok(r_u64) = u64::try_from(r) else {
+                    return Ok(None);
+                };
+                let Some(r_block_start) = r_u64.checked_mul(blocks_per_slot) else {
+                    return Ok(None);
+                };
+                let blocks_r = u64::from(len).div_ceil(tok_per_row);
+                for b_idx in 0..blocks_r {
+                    let Some(blk) = r_block_start.checked_add(b_idx) else {
+                        return Ok(None);
+                    };
+                    let Some(blk_off) = blk.checked_mul(low_mult) else {
+                        return Ok(None);
+                    };
+                    let Some(blk_base) = slice_base.checked_add(blk_off) else {
+                        return Ok(None);
+                    };
+                    for low in 0..low_mult {
+                        let Some(row) = blk_base.checked_add(low) else {
+                            return Ok(None);
+                        };
+                        f(row)?;
+                    }
+                }
+            }
+        }
+        Ok(Some(()))
+    }
+}
+
 #[derive(Debug)]
-struct Group {
+struct Group<'a> {
     key: TileKey,
     segment: u32,
     base: u64,
@@ -272,6 +617,7 @@ struct Group {
     columns: u32,
     domain: Domain,
     query: Option<Domain>,
+    token_mask: Option<TokenRowMask<'a>>,
 }
 
 /// Complete model geometry, borrowing only verifier-derived public metadata.
@@ -280,11 +626,15 @@ pub struct Layout<'a> {
     graph: &'a Graph,
     selection: &'a Selection,
     config: Config,
-    n: u32,
+    slots: Option<&'a Slots>,
+    single_len: [u32; 1],
+    slot_bits: u32,
+    token_vars: u32,
     query_block: u64,
+    blocks_per_slot: u64,
     blocks: u64,
     key_bits_in_row: u32,
-    groups: Vec<Group>,
+    groups: Vec<Group<'a>>,
     rows: u64,
 }
 
@@ -339,20 +689,41 @@ impl<'a> Layout<'a> {
         if !group.is_power_of_two() {
             return Err(invalid());
         }
-        let padded = power(log(u64::from(n)))?;
-        let query_block = padded.min(u64::from(config.query_block));
+        let batched = graph.slots().filter(|s| s.lengths().len() >= 2);
+        if batched.is_some() && n != graph.length() {
+            return Err(invalid());
+        }
+        let (slot_bits, slot_len, token_vars, padded_tokens) = if let Some(s) = batched {
+            (
+                s.slot_bits(),
+                u64::from(s.slot_len()),
+                s.token_vars(),
+                u64::from(s.padded_tokens()),
+            )
+        } else {
+            let bits = log(u64::from(n));
+            let padded = power(bits)?;
+            (bits, padded, bits, padded)
+        };
+        let query_block = slot_len.min(u64::from(config.query_block));
+        let blocks_per_slot = slot_len.checked_div(query_block).ok_or_else(invalid)?;
+        let blocks = padded_tokens.checked_div(query_block).ok_or_else(invalid)?;
         let available = u32::from(config.log_k)
             .checked_sub(log(group))
             .and_then(|x| x.checked_sub(log(query_block)))
             .ok_or_else(invalid)?;
-        let key_bits_in_row = log(padded).min(available);
+        let key_bits_in_row = slot_bits.min(available);
         let mut out = Self {
             graph,
             selection,
             config,
-            n,
+            slots: batched,
+            single_len: [n],
+            slot_bits,
+            token_vars,
             query_block,
-            blocks: padded.checked_div(query_block).ok_or_else(invalid)?,
+            blocks_per_slot,
+            blocks,
             key_bits_in_row,
             groups: Vec::new(),
             rows: 0,
@@ -397,9 +768,9 @@ impl<'a> Layout<'a> {
             }
             let segment = out.node_segment(id)?;
             if matches!(node.op(), Op::SoftmaxRow { .. }) {
-                let mut score = Domain::new(&[group, query_block, padded], config.log_k)?;
+                let mut score = Domain::new(&[group, query_block, slot_len], config.log_k)?;
                 let mut next = 0usize;
-                let high = log(padded);
+                let high = slot_bits;
                 let head_query_end = high
                     .checked_add(log(query_block))
                     .and_then(|x| x.checked_add(log(group)))
@@ -499,6 +870,39 @@ impl<'a> Layout<'a> {
         Ok(out)
     }
 
+    fn padded_token_is_zero(&self, key: TileKey) -> bool {
+        match key {
+            TileKey::Tokens | TileKey::GreedyMaximum(_) => true,
+            TileKey::Table(_) | TileKey::Attention(..) => false,
+            TileKey::Node(id) => match self.graph.node(id).map(crate::lowering::Node::op) {
+                Some(Op::Requant { lo, hi, .. }) => *lo <= 0 && 0 <= *hi,
+                Some(Op::TableMap { table }) => matches!(
+                    self.graph.table(*table).map(|t| &t.kind),
+                    Some(TableKind::Silu { .. })
+                ),
+                Some(
+                    Op::OneHot { .. }
+                    | Op::MatMulWeight { .. }
+                    | Op::ConstMul { .. }
+                    | Op::Add
+                    | Op::Reshape
+                    | Op::SumSquares { .. }
+                    | Op::RsqrtRow { .. }
+                    | Op::Mul { .. }
+                    | Op::Rotate { .. }
+                    | Op::Transpose { .. }
+                    | Op::Expand { .. }
+                    | Op::MatMulAct { .. },
+                ) => true,
+                _ => false,
+            },
+        }
+    }
+
+    fn slot_lengths(&self) -> &[u32] {
+        self.slots.map_or(&self.single_len, Slots::lengths)
+    }
+
     fn push(
         &mut self,
         key: TileKey,
@@ -508,17 +912,16 @@ impl<'a> Layout<'a> {
         columns: u32,
         repeats: u64,
     ) -> Result<(), ClaimsError> {
-        let base = aligned(self.rows, domain.rows)?;
-        let size = if query.is_some() {
-            add(domain.rows, u64::from(columns.saturating_sub(1)))?
+        let token_mask = if query.is_none()
+            && let Some(slots) = self.slots
+            && self.padded_token_is_zero(key)
+        {
+            TokenRowMask::new(slots, &domain, self.config.log_k).ok_or(ClaimsError::Internal)?
         } else {
-            mul(domain.rows, u64::from(columns))?
+            None
         };
-        let stride = aligned(size, domain.rows)?;
-        let end = add(add(base, mul(repeats.saturating_sub(1), stride)?)?, size)?;
-        if end > MAX_ROWS {
-            return Err(invalid());
-        }
+        let (base, stride, end) =
+            group_extent(self.rows, domain.rows, columns, repeats, query.is_some())?;
         self.groups.push(Group {
             key,
             segment,
@@ -529,6 +932,7 @@ impl<'a> Layout<'a> {
             columns,
             domain,
             query,
+            token_mask,
         });
         self.rows = end;
         Ok(())
@@ -737,41 +1141,40 @@ impl<'a> Layout<'a> {
         Ok(total)
     }
 
-    fn group_committed_rows(&self, group: &Group) -> Option<u64> {
+    fn group_committed_rows(&self, group: &Group<'_>) -> Option<u64> {
         let Some(query) = &group.query else {
-            return group
-                .domain
-                .zero_at
+            let per_column = match &group.token_mask {
+                Some(mask) => mask.committed_rows_per_column()?,
+                None => group.domain.zero_at,
+            };
+            return per_column
                 .checked_mul(u64::from(group.columns))?
                 .checked_mul(group.repeats);
         };
-        let valid = u64::from(self.n)
-            .checked_div(self.query_block)?
-            .checked_add(u64::from(
-                u64::from(self.n).checked_rem(self.query_block)? != 0,
-            ))?;
-        let prior = valid.checked_sub(1)?;
         let keys = 1u64.checked_shl(self.key_bits_in_row)?;
         let triangular = |n: u64| n.checked_mul(n.checked_add(1)?).map(|n| n / 2);
-        // RFC-0034: sum ceil(t*Q'/keys), then the final block's actual n-key prefix.
-        let prefix = if self.query_block >= keys {
-            triangular(prior)?.checked_mul(self.query_block.checked_div(keys)?)?
-        } else {
-            let blocks = keys.checked_div(self.query_block)?;
-            let whole = prior.checked_div(blocks)?;
-            blocks.checked_mul(triangular(whole)?)?.checked_add(
-                prior
-                    .checked_rem(blocks)?
-                    .checked_mul(whole.checked_add(1)?)?,
-            )?
-        };
-        let score = prefix.checked_add(u64::from(self.n).div_ceil(keys))?;
-        let auxiliary = valid
-            .checked_mul(query.zero_at)?
-            .checked_mul(u64::from(group.columns.checked_sub(1)?))?;
-        score
-            .checked_add(auxiliary)?
-            .checked_mul(group.repeats.checked_div(self.blocks)?)
+        let aux_cols = u64::from(group.columns.checked_sub(1)?);
+        let mut per_kv = 0u64;
+        for &n_r in self.slot_lengths() {
+            let valid = u64::from(n_r).div_ceil(self.query_block);
+            let prior = valid.checked_sub(1)?;
+            // RFC-0034 + RFC-0071: sum ceil(t*Q'/keys), then the slot's final block prefix.
+            let prefix = if self.query_block >= keys {
+                triangular(prior)?.checked_mul(self.query_block.checked_div(keys)?)?
+            } else {
+                let blocks = keys.checked_div(self.query_block)?;
+                let whole = prior.checked_div(blocks)?;
+                blocks.checked_mul(triangular(whole)?)?.checked_add(
+                    prior
+                        .checked_rem(blocks)?
+                        .checked_mul(whole.checked_add(1)?)?,
+                )?
+            };
+            let score = prefix.checked_add(u64::from(n_r).div_ceil(keys))?;
+            let auxiliary = valid.checked_mul(query.zero_at)?.checked_mul(aux_cols)?;
+            per_kv = per_kv.checked_add(score.checked_add(auxiliary)?)?;
+        }
+        per_kv.checked_mul(group.repeats.checked_div(self.blocks)?)
     }
     /// Variables in the full advice multilinear extension (RFC-0047).
     pub fn nu(&self) -> u32 {
@@ -857,10 +1260,11 @@ impl<'a> Layout<'a> {
             .ok_or(PointError::Source)?;
         let location = tile.location(column).ok_or(PointError::Source)?;
         let arity = if tile.group.query.is_some() {
-            let sequence = log(u64::from(self.n));
+            let sequence = self.token_vars;
+            let keys = if column == 0 { self.slot_bits } else { 0 };
             log(u64::from(self.config.heads))
                 .checked_add(sequence)
-                .and_then(|x| x.checked_add(if column == 0 { sequence } else { 0 }))
+                .and_then(|x| x.checked_add(keys))
                 .ok_or(PointError::Arity)?
         } else {
             location.domain.variables
@@ -938,7 +1342,14 @@ impl<'a> Layout<'a> {
                 Some(true)
             }
         } else {
-            Some(within.checked_rem(group.domain.rows)? >= group.domain.zero_at)
+            let local = within.checked_rem(group.domain.rows)?;
+            if local >= group.domain.zero_at {
+                Some(true)
+            } else if let Some(mask) = &group.token_mask {
+                mask.is_zero_local(local)
+            } else {
+                Some(false)
+            }
         }
     }
 }
@@ -951,7 +1362,7 @@ fn committed(kind: Kind) -> bool {
 #[derive(Clone, Copy, Debug)]
 pub struct Tile<'l, 'g> {
     layout: &'l Layout<'g>,
-    group: &'l Group,
+    group: &'l Group<'g>,
     repeat: u64,
 }
 impl Tile<'_, '_> {
@@ -995,22 +1406,32 @@ impl Tile<'_, '_> {
     pub fn columns(&self) -> u32 {
         self.group.columns
     }
+    fn slot_block_and_len(&self) -> Option<(u64, u32)> {
+        let block = self.repeat.checked_rem(self.layout.blocks)?;
+        let slot_idx = usize::try_from(block.checked_div(self.layout.blocks_per_slot)?).ok()?;
+        let local_block = block.checked_rem(self.layout.blocks_per_slot)?;
+        let n_r = self
+            .layout
+            .slot_lengths()
+            .get(slot_idx)
+            .copied()
+            .unwrap_or(0);
+        Some((local_block, n_r))
+    }
     fn query_zero(&self) -> bool {
-        self.repeat
-            .checked_rem(self.layout.blocks)
-            .unwrap_or(0)
-            .saturating_mul(self.layout.query_block)
-            >= u64::from(self.layout.n)
+        self.slot_block_and_len().is_none_or(|(local_block, n_r)| {
+            local_block.saturating_mul(self.layout.query_block) >= u64::from(n_r)
+        })
     }
     fn score_zero_at(&self) -> Option<u64> {
-        if self.query_zero() {
+        let (local_block, n_r) = self.slot_block_and_len()?;
+        if local_block.saturating_mul(self.layout.query_block) >= u64::from(n_r) {
             return Some(0);
         }
-        let block = self.repeat.checked_rem(self.layout.blocks)?;
-        let keys = block
+        let keys = local_block
             .checked_add(1)?
             .checked_mul(self.layout.query_block)?
-            .min(u64::from(self.layout.n));
+            .min(u64::from(n_r));
         Some(
             self.group
                 .domain
@@ -1049,7 +1470,7 @@ impl Tile<'_, '_> {
                 }
             }
         };
-        let (domain, offset, zero_at) = match &self.group.query {
+        let (domain, offset, zero_at, token_mask) = match &self.group.query {
             Some(query) if index > 0 => (
                 query,
                 self.group
@@ -1057,12 +1478,14 @@ impl Tile<'_, '_> {
                     .rows
                     .checked_add(u64::from(index.checked_sub(1)?))?,
                 if self.query_zero() { 0 } else { query.zero_at },
+                None,
             ),
-            Some(_) => (&self.group.domain, 0, self.score_zero_at()?),
+            Some(_) => (&self.group.domain, 0, self.score_zero_at()?, None),
             None => (
                 &self.group.domain,
                 u64::from(index).checked_mul(self.group.domain.rows)?,
                 self.group.domain.zero_at,
+                self.group.token_mask,
             ),
         };
         Some(Location {
@@ -1070,6 +1493,7 @@ impl Tile<'_, '_> {
             domain,
             base: self.rows().0.checked_add(offset)?,
             zero_at,
+            token_mask,
         })
     }
 }
@@ -1085,6 +1509,35 @@ pub struct Location<'a> {
     pub base: u64,
     /// First public-zero row relative to `base`; equal to domain rows if none.
     pub zero_at: u64,
+    token_mask: Option<TokenRowMask<'a>>,
+}
+
+impl Location<'_> {
+    pub(crate) fn is_zero_local(&self, local: u64) -> Option<bool> {
+        if local >= self.zero_at {
+            return Some(true);
+        }
+        match &self.token_mask {
+            Some(mask) => mask.is_zero_local(local),
+            None => Some(false),
+        }
+    }
+
+    pub(crate) fn for_each_committed_row<E>(
+        &self,
+        mut f: impl FnMut(u64) -> Result<(), E>,
+    ) -> Result<Option<()>, E> {
+        if let Some(mask) = &self.token_mask {
+            return mask.for_each_committed_row(self.base, f);
+        }
+        let Some(end) = self.base.checked_add(self.zero_at) else {
+            return Ok(None);
+        };
+        for row in self.base..end {
+            f(row)?;
+        }
+        Ok(Some(()))
+    }
 }
 
 /// Failure to map a public claim; no secret values are attached.
@@ -1116,7 +1569,7 @@ pub struct ClaimImage {
 #[must_use = "all weighted images must be included in the original claim's opening sum"]
 pub struct ClaimImages<'l, 'g, 'p> {
     layout: &'l Layout<'g>,
-    group: &'l Group,
+    group: &'l Group<'g>,
     column: u32,
     source: Source,
     point: &'p [Fp2],
@@ -1149,12 +1602,16 @@ impl ClaimImages<'_, '_, '_> {
         let Some(local) = row.checked_sub(location.base) else {
             return Ok(Fp2::ZERO);
         };
-        if local >= location.zero_at {
+        if location.is_zero_local(local).ok_or(PointError::Source)? {
             return Ok(Fp2::ZERO);
         }
-        let sequence = log(u64::from(self.layout.n));
+        let sequence = self.layout.token_vars;
         let queries = log(self.layout.query_block);
-        let keys = if self.column == 0 { sequence } else { 0 };
+        let keys = if self.column == 0 {
+            self.layout.slot_bits
+        } else {
+            0
+        };
         let attention = self.group.query.is_some();
         let mut coefficient = Fp2::ONE;
         let factor = |coordinate: usize, bit: u64| -> Result<Fp2, PointError> {
@@ -1240,7 +1697,7 @@ impl ClaimImages<'_, '_, '_> {
         let mut count = 0usize;
         let mut weight = Fp2::ONE;
         if self.group.query.is_some() {
-            let sequence = log(u64::from(self.layout.n));
+            let sequence = self.layout.token_vars;
             let queries = log(self.layout.query_block);
             let heads = log(u64::from(self.layout.config.heads));
             let group = self
@@ -1250,7 +1707,12 @@ impl ClaimImages<'_, '_, '_> {
                 .checked_div(self.layout.config.kv_heads)
                 .ok_or(PointError::Source)?;
             let low_heads = log(u64::from(group));
-            let query_start = if self.column == 0 { sequence } else { 0 };
+            let key_coords = if self.column == 0 {
+                self.layout.slot_bits
+            } else {
+                0
+            };
+            let query_start = key_coords;
             let head_start = query_start.checked_add(sequence).ok_or(PointError::Arity)?;
             let fixed_query = repeat
                 .checked_rem(self.layout.blocks)
@@ -1258,7 +1720,6 @@ impl ClaimImages<'_, '_, '_> {
             let fixed_head = repeat
                 .checked_div(self.layout.blocks)
                 .ok_or(PointError::Source)?;
-            let key_coords = if self.column == 0 { sequence } else { 0 };
             for index in (0..key_coords)
                 .chain(query_start..query_start.checked_add(queries).ok_or(PointError::Arity)?)
                 .chain(head_start..head_start.checked_add(low_heads).ok_or(PointError::Arity)?)
@@ -1398,5 +1859,54 @@ mod tests {
             Err(invalid())
         );
         assert_eq!(layout.rows(), 0);
+    }
+}
+
+#[cfg(test)]
+mod batch_count_tests {
+    use super::*;
+    #[test]
+    fn batch_preflight_keeps_the_inclusive_allocated_row_ceiling() {
+        let template = BatchRows {
+            groups: vec![RowGroup {
+                dims: [1, MAX_ROWS / 2, 0, 0],
+                rank: 2,
+                columns: 1,
+                attention: false,
+            }],
+            tables: vec![],
+            config: Config {
+                log_k: 0,
+                segments: 1,
+                query_block: 1,
+                heads: 1,
+                kv_heads: 1,
+                limb_bits: 8,
+            },
+            greedy_width: Some(1),
+            greedy_gadget: GadgetId(0),
+            max_context: 4,
+        };
+        let mut request = crate::protocol::RequestRef {
+            request_id: 0,
+            session_id: [0; 16],
+            prompt_len: 2,
+            output_len: 0,
+        };
+        assert_eq!(
+            template.count(
+                core::slice::from_ref(&request),
+                crate::sumcheck::Protocol::One
+            ),
+            Ok(MAX_ROWS)
+        );
+        request.prompt_len = 3; // Rounding time to four doubles the allocation beyond the ceiling.
+        assert_eq!(
+            template.count(
+                core::slice::from_ref(&request),
+                crate::sumcheck::Protocol::One
+            ),
+            Err(invalid())
+        );
     }
 }
