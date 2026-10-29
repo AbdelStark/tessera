@@ -6,6 +6,7 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- A private mdBook documentation artifact with the specification, RFCs, guides and separate Rust API references, built and link-checked in CI with tier-B API doctests ([#176](https://github.com/AbdelStark/tessera/issues/176)).
 - Prover-side Live directory and optional mutually authenticated TLS 1.3 transport APIs, with bounded length-prefixed envelopes, absolute per-message deadlines and failure termination ([#179](https://github.com/AbdelStark/tessera/issues/179), RFC-0014).
 - Tag-triggered draft release workflow and dry runs, with two clean container builds per Linux verifier architecture, byte comparisons, SHA-256 release notes and a scripted second-builder procedure ([#178](https://github.com/AbdelStark/tessera/issues/178), 09 §9).
 - `audit batch --plan` and sampled proving split oversized runtime advice layouts with the same slot-class packing rule; a request that cannot fit alone is refused (RFC-0071, #551).

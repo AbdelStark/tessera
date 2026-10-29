@@ -65,6 +65,8 @@ Each is a security property or a merge-blocking gate; breaking one is a bug even
 
 One issue, one branch, one pull request; the `issue-workflow` skill has the loop, [CONTRIBUTING.md](CONTRIBUTING.md) the rules it follows: DCO sign-off on every commit, a changelog entry per release train, the review rules and the RFC process.
 
+The [documentation build](docs/documentation.md) stages canonical Markdown, builds both Rust API references in fresh target directories, runs tier-B doctests and checks the assembled site's links. CI uploads a private artifact without hosting it.
+
 ### Agent skills and workflows
 
 `.agents/` is the single source of truth for skills and workflows (mirrored via relative symlinks into `.claude/` and `.codex/`, checked by `cargo xtask lint`). Load the matching skill before starting work:

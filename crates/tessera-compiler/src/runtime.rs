@@ -768,7 +768,9 @@ impl TemperaturePlan {
     }
 }
 
-/// Canonical committed columns of one mixture [`OneSidedLog2`](RFC-0017) row in allocation order.
+/// Canonical committed columns of one mixture
+/// [`OneSidedLog2`](https://github.com/AbdelStark/tessera/blob/main/docs/rfcs/RFC-0017-scoring.md)
+/// row in allocation order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Log2AdviceColumn {
     /// `m_t ∈ {0, 1}` (`0` when `eps_log2 == 0`), the match indicator bit.

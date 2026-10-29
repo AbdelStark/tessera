@@ -3,6 +3,31 @@
 //! Claim-list validation and lowering, range re-derivation, schedule derivation and every proof
 //! check, run in the fixed order of RFC-0019.
 //!
+//! # Judging an envelope
+//!
+//! Obtain the claim list and expected statement independently of the proof. The
+//! caller owns their trust anchors and the [`VerifierConfig`] resource policy.
+//! Only [`Verdict::Accept`] certifies: both a rejection and an inability to judge
+//! leave the statement uncertified (04 §1). A component check is not a verdict.
+//!
+//! ```no_run
+//! use tv_core::{VerifierConfig, Verdict, verify_non_interactive_bytes};
+//! use tv_core::claims::ClaimList;
+//! use tv_core::protocol::PublicStatement;
+//!
+//! fn certifies(
+//!     claims: &ClaimList,
+//!     expected: &PublicStatement,
+//!     envelope: &[u8],
+//!     config: &VerifierConfig,
+//! ) -> bool {
+//!     matches!(
+//!         verify_non_interactive_bytes(claims, expected, envelope, config),
+//!         Verdict::Accept(_)
+//!     )
+//! }
+//! ```
+//!
 //! This version holds the sumcheck checks of RFC-0019 'Check order' steps 7 and 8: the rounds
 //! of a sumcheck, batched instances with front-padding, and the levels of the leaf stage, where
 //! product forests and LogUp fraction trees run together (RFC-0010 'Multilinear extensions',
