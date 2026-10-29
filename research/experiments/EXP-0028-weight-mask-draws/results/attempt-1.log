@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "/Users/abdel/dev/tessera/research/experiments/EXP-0028-weight-mask-draws/audit.py", line 323, in <module>
+    main()
+    ~~~~^^
+  File "/Users/abdel/dev/tessera/research/experiments/EXP-0028-weight-mask-draws/audit.py", line 216, in main
+    geometry.append(geometry_record(case['name'], rel, case['arch'], case['channels'], kw, exp))
+                    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/abdel/dev/tessera/research/experiments/EXP-0028-weight-mask-draws/audit.py", line 84, in geometry_record
+    a = channels_geometry(arch, channels, kw, True)
+  File "/Users/abdel/dev/tessera/research/experiments/EXP-0028-weight-mask-draws/audit.py", line 55, in channels_geometry
+    positions = sorted({(NAMES.index(c['matrix']), c['layer']) for c in channels})
+                         ~~~~~~~~~~~^^^^^^^^^^^^^
+ValueError: list.index(x): x not in list

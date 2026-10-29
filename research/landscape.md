@@ -186,3 +186,63 @@ IDEA-0040 / [EXP-0027](experiments/EXP-0027-batched-mask-opening/README.md), fro
 | Zero knowledge of the batching view, toy protocol over F65537 | candidate 0 of 300 draws distinguishable; bare batching distinguishable on 100 of 100 protocol-like draws | E0, exact linear algebra |
 | Cheating acceptance, F65537 | 366 of 10^6 (predicted 381.4) and 421 of 2·10^6 (427.2), under `(N + 2m + 1)/q` | E0, Monte Carlo |
 | The revealed functionals' rank | `2m`, the structural maximum, for protocol-like `C` on every draw over F65537 and Goldilocks; `2m − j` on sub-cube supports, `m + 1` on single `eq` claims | E0, exact |
+
+
+## Weight-mask draw accounting (2026-10-29)
+
+[SUR-0016](surveys/SUR-0016-weight-mask-draw-cost.md), [E0-SUR16]: **conditional E0
+arithmetic**, not a GPU measurement or a validated alternative masking protocol. The
+RFC example has 461,310 total rows, 49,144 blinders and 412,166 data rows, common width
+2^20, P_W=2^16, and 72 reserved base rows (nine single-claim matrices and e_CP=7).
+The tighter ChannelParams layout and an actual compiled per-matrix inventory remain
+separate. No scoreboard or performance claim changes.
+
+| Quantity | Accepted bytes / scenario | Evidence |
+|---|---:|---|
+| Every row's encoding masks | 241,859,297,280 | E0 |
+| Every blinding row's values | 412,249,751,552 | E0 |
+| Current full-support draw | 654,109,048,832 | E0 |
+| Data-mask subtotal | 216,093,687,808 | E0; incomplete per-proof cost alone |
+| Reserved rows' masks and values | 641,728,512 | E0 |
+| Hypothetical selected-only support | 216,735,416,320 | E0; #394 must establish support/security |
+| All encoding masks plus reserved values | 242,463,277,056 | E0; different support assumption |
+| Full/selected-only draw time at a hypothetical 530 GB/s output rate | 1.234168016664151 / 0.408934747773585 GPU-s | E0 sensitivity; RFC-0004's rate is implied by an assumed 30 ps/element and 16 bytes, not a measured XOF rate |
+| Existing 0.24 GPU-s core plus full-support proxy | 1.474168016664151 GPU-s | E0 scenario, excluding setup/rejection/folding/repeated generation |
+| Isolated counted-model weight-term increase, contexts 1K/4K/16K/128K | about 0.110 / 0.108 / 0.101 / 0.066 in mu | E0 sensitivity, not a complete Protocol Two forecast |
+| Ideal expected candidate-word expansion for exact Goldilocks rejection | 2^64/p, about 1.0000000002328306 | E0 expectation, not a deterministic resource cap |
+
+XOF blocks contain 64 output bytes per compression ([B3XofDraft24], [B3XofCode26]).
+Selected-only/full-support byte ratio is about 0.331 (E0), with no security-approved
+saving. Secret-store cost is a full read of the reached values plus transfers/folding;
+no effective store bandwidth or H100 stream throughput was measured.
+
+
+## Complete weight-draw audit (2026-10-29)
+
+[EXP-0028](experiments/EXP-0028-weight-mask-draws/README.md), **E0 only**, validates
+its frozen finite accounting domain: 14 geometry records (five model/eight opening
+fixtures and tight 405B), 3,671 accounting cases, 25,576 per-matrix judgments and
+28,500 independent replay checks. Ten behavioral accounting faults and eleven reader
+corruptions are caught, each with a passing control. These are research controls,
+not production mutants or security proofs.
+
+| Conditional 405B case | Data rows | Full support accepted bytes | Selected-only | All masks / selected values |
+|---|---:|---:|---:|---:|
+| Tight: 56 channel rows | 411,340 | 653,675,986,944 | 216,302,354,432 | 242,030,215,168 |
+| Historical: 882 channel rows | 412,166 | 654,109,048,832 | 216,735,416,320 | 242,463,277,056 |
+
+Both have 411,284 weight data rows and 49,144 blinders under e_CP=7. At a hypothetical
+530e9 accepted B/s, the tight FULL / SELECTED / MASK-ALL-SELECTED-VALUES cases cost
+1.2333509187622642 / 0.40811764987169813 / 0.45666078333584903 GPU-s. The saved record
+also computes rational scenarios at 100 and 1000 GB/s. None is a measured rate.
+No change to a scoreboard, security result or production qualification follows.
+
+
+Draft [RFC-0075](../docs/rfcs/RFC-0075-weight-mask-cost.md) proposes full-support bounded
+GPU regeneration as the planning default, retaining stored P5 columns. Under the
+historical 654,109,048,832-byte envelope and explicitly unmeasured 530e9 effective B/s
+scenario, total weight-work target is `0.24 + B/530e9`, about 1.474 GPU-s; re-plan above
+`0.5 + B/530e9`, about 1.734 GPU-s, or if the separate original core gate fails.
+These are E0 proposed budgets, not measured costs or an accepted protocol decision.
+No source/default chart or security score changes. Actual bounded draw/consumer work
+must be measured on H100, with secret rejection counts excluded from production reports.

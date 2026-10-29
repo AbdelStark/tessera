@@ -145,8 +145,38 @@ fn a_grouped_proof_counts_the_group_pass_and_the_merge_pass_once_each() {
     assert_eq!(proof.round1.leaf_groups, protocol::LeafGroups::NONE);
     assert_eq!((passes(&samples, "p2"), passes(&samples, "p2b")), (1, 0));
 
-    // One byte short of it: the stage in groups, one group pass and one merge pass.
-    let budget = fits.resident_bytes().unwrap() - 1;
+    // A small stage shortfall now takes windows before leaf groups (RFC-0055).
+    let window_budget = fits.resident_bytes().unwrap() - 1;
+    let windowed = Prover::new(&compiled.plan, &model, &mut state, config(window_budget))
+        .unwrap()
+        .plan(&batch)
+        .unwrap();
+    assert!(windowed.stage_windows().iter().any(|s| s.cut > 0));
+    assert_eq!(windowed.leaf_groups(), protocol::LeafGroups::NONE);
+    let (_, samples) = prove(&mut state, window_budget);
+    let expected: usize = windowed.stage_windows().iter().map(|s| s.fold_passes).sum();
+    assert_eq!(passes(&samples, "p3b"), expected as u64);
+    assert_eq!((passes(&samples, "p2"), passes(&samples, "p2b")), (1, 0));
+
+    // Find the first feasible budget that can use one group bit; the stage working sets are
+    // now priced separately, so a one-byte total shortfall no longer forces leaf grouping.
+    let (mut low, mut high) = (0, fits.resident_bytes().unwrap());
+    while high - low > 1 {
+        let middle = low + (high - low) / 2;
+        let plan = Prover::new(&compiled.plan, &model, &mut state, config(middle))
+            .unwrap()
+            .plan(&batch)
+            .unwrap();
+        let groups = plan.leaf_groups();
+        let feasible = plan.resident_bytes().is_some_and(|bytes| bytes <= middle)
+            && u16::from(groups.token_bits) + u16::from(groups.layer_bits) <= 1;
+        if feasible {
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    let budget = high;
     let grouped = Prover::new(&compiled.plan, &model, &mut state, config(budget))
         .unwrap()
         .plan(&batch)

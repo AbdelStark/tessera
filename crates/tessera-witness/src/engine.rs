@@ -228,6 +228,41 @@ impl<'a> Engine<'a> {
         Ok(witness)
     }
 
+    /// Regenerate every model tensor from the original witness's token input. Weights and
+    /// all other model inputs are read anew, and every node is executed again (RFC-0055 P3/P3b).
+    /// The transient token copy is a clearing `Secret`, never a plain returned value.
+    ///
+    /// # Errors
+    /// As [`Self::run`], or `Internal` if the original witness lacks its canonical token input.
+    #[allow(clippy::disallowed_methods)]
+    pub fn regenerate(
+        &self,
+        model: &IntegerModel,
+        original: &Witness,
+    ) -> Result<Witness, WitnessError> {
+        let lowering = self.require_lowering()?;
+        let input = original
+            .tensor(lowering.tokens)
+            .ok_or(WitnessError::Internal {
+                rule: "regeneration has the original token input",
+            })?;
+        let mut tokens = Secret::new(Vec::new());
+        tokens
+            .expose_secret_mut()
+            .try_reserve_exact(input.len())
+            .map_err(|_| WitnessError::Memory {
+                tensor: lowering.tokens,
+            })?;
+        for &value in input.iter() {
+            tokens
+                .expose_secret_mut()
+                .push(u32::try_from(value).map_err(|_| WitnessError::Internal {
+                    rule: "a regenerated token is a canonical 32-bit identifier",
+                })?);
+        }
+        self.run(model, &tokens)
+    }
+
     /// Evaluates the graph on sealed [`SecretGraphInputs`], keeping raw keys, salts and tokens
     /// inside their [`Secret`] across crate boundaries (05 §3 OBS-1).
     ///
@@ -1230,4 +1265,54 @@ pub(crate) fn check(tensor: TensorId, values: &[i64], range: IntRange) -> Result
         return Err(WitnessError::Range { tensor });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod window_regeneration_tests {
+    use super::*;
+    use tessera_codec::{DecodeLimits, envelope, schema};
+
+    #[test]
+    fn regeneration_reruns_nodes_and_reloads_model_inputs_instead_of_copying_a_witness() {
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/vectors/models");
+        let index: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(root.join("models.json")).unwrap()).unwrap();
+        let entry = index["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["name"] == "tiny-2-servable")
+            .unwrap();
+        let model: IntegerModel = envelope::open(
+            &std::fs::read(root.join(entry["file"].as_str().unwrap())).unwrap(),
+            &schema::INTEGER_MODEL,
+            DecodeLimits::INTEGER_MODEL,
+        )
+        .unwrap();
+        let lowering =
+            tessera_compiler::lower(tessera_compiler::PublicModel::of(&model), 3).unwrap();
+        let engine = Engine::new(&lowering).unwrap();
+        let tokens = Secret::new(vec![1, 2, 3]);
+        let expected = engine.run(&model, &tokens).unwrap();
+        let mut poisoned = engine.run(&model, &tokens).unwrap();
+        for (i, values) in poisoned.tensors.iter_mut().enumerate() {
+            if i != lowering.tokens.0 as usize {
+                values.fill(i64::MAX);
+            }
+        }
+        let regenerated = engine.regenerate(&model, &poisoned).unwrap();
+        assert_eq!(regenerated.tensors.len(), expected.tensors.len());
+        for (i, (actual, expected)) in regenerated
+            .tensors
+            .iter()
+            .zip(&expected.tensors)
+            .enumerate()
+        {
+            assert!(
+                actual[..] == expected[..],
+                "regenerated tensor {i} must be recomputed"
+            );
+        }
+    }
 }

@@ -1,0 +1,4 @@
+Frozen UTC: 2026-10-28T23:15:57Z
+SHA-256: 84daac07b9dfcf96d1d3d2648515bd304df1441ad3763d1bf255668b18631be9
+Source: README.md
+Metadata label corrected before implementation; no experiment code or run exists.

@@ -41,6 +41,8 @@ The proof multiplier for a model at context `S` (source §5):
 
 The re-plan thresholds are the go/no-go rule of [RFC-0020](../rfcs/RFC-0020-cost-model.md#decision-rule).
 
+**Draft amendment ([RFC-0075](../rfcs/RFC-0075-weight-mask-cost.md#initial-405b-scenario-and-revised-budget), in effect only on acceptance).** Protocol Two's complete weight work includes mask/blinder regeneration even when its P5 answers are stored. The row above remains the core/source weight-pass gate: target 0.24 GPU-s, re-plan above 0.5. For one full-support draw generation with stored codeword answers, add `B_full/R_ref` to both total-work thresholds, while continuing to apply the core gate separately. The historical 405B envelope has `B_full = 654,109,048,832` accepted bytes; at the explicitly hypothetical `R_ref = 530e9` effective accepted B/s, the complete target is about 1.474 GPU-s and the total re-plan threshold about 1.734 GPU-s. The tight 56-row ChannelParams layout draws 653,675,986,944 bytes. These are E0 scenarios, not measured XOF rates or a complete Protocol Two forecast. A fallback P5, repeated generation, different inventory or storage strategy requires explicit additional accounting/re-fit. The model's `W` is the complete total, with measured all-inclusive work counted once. RFC-0075 chooses bounded regeneration without a new raw secret store and credits no blinder-exclusion saving pending #394; all #145 security prerequisites remain.
+
 ## 3. End-to-end targets (Llama-3.1-405B, one 8×H100 node)
 
 Projected from the source (§8) with source unit costs and source commitment counts:

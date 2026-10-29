@@ -2,19 +2,22 @@
 
 //! A CPU proof's pass plan (RFC-0018 'Pass structure', 'Memory scheduler').
 //!
-//! The CPU backend computes the witness once, in P1, and keeps it resident: P2 to P5 read it
-//! back, and nothing streams. Its plan is therefore the passes it runs and the bytes it keeps
-//! resident, which must fit the budget before P1 starts, or the proof fails with
-//! `ERR-RES-MEMORY` before any commitment. A leaf stage larger than the budget takes RFC-0054's
-//! token groups: the plan then holds one group's lookup trees at a time, and runs the merge's
-//! pass, P2b, after the group pass.
+//! P1 keeps a canonical witness for commitments and openings. A reduction stage that exceeds
+//! its working-set budget uses RFC-0055 grids over regenerated tensor recipes, then P3b folds;
+//! RFC-0056 caps each window at eight own variables. Resident matrix/native operands remain
+//! charged in full. The next stage's grid is prepared before the current stage's splits.
 //!
-//! The resident bytes are charged per cell, [`PassPlan::BYTES_PER_CELL`] each, beside the weight
-//! commitment's. A counting allocator measures 32 to 34 bytes per cell over every conformance
-//! proof, and `tests/cpu_api` holds every measured peak between the plan and a quarter of it.
+//! The plan must fit before P1, or the proof returns `ERR-RES-MEMORY` before any commitment.
+//! RFC-0054 leaf groups reduce the resident lookup-tree cells when stages alone cannot fit.
+//! The cell floor, [`PassPlan::BYTES_PER_CELL`], reserves the cached witness, regenerated witness
+//! scratch and the other proof phases beside the weight commitment; stage grids, construction
+//! scratch and folded tables are charged separately. Counting-allocator regressions check the
+//! whole proof peak under both resident and forced-window budgets. This CPU path retains a
+//! resident witness floor; it does not claim to stream the entire model on arbitrary hardware.
 
 pub use tessera_codec::metrics::Pass;
 use tessera_protocol::LeafGroups;
+use tessera_sumcheck::{WindowMemory, WindowShape};
 
 /// The cells a CPU proof keeps resident, each counted at its padded size.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -46,10 +49,14 @@ pub struct PassPlan {
     cells: Cells,
     weight_bytes: u64,
     leaf_groups: LeafGroups,
+    stage_shapes: Vec<Vec<WindowShape>>,
+    stage_windows: Vec<WindowMemory>,
 }
 
 impl PassPlan {
-    /// The bytes charged per resident cell: about twice the measured 32 to 34.
+    /// The bytes charged per resident cell: the measured 32 to 34, up to 16 for a regenerated
+    /// witness and its scratch, and margin. Stage grids/folded tables are charged separately.
+    /// This floor is unchanged by window selection.
     pub const BYTES_PER_CELL: u64 = 64;
 
     /// The plan of a proof of `stages` stages, the leaf stage included, over `cells`, beside a
@@ -64,7 +71,89 @@ impl PassPlan {
             cells,
             weight_bytes,
             leaf_groups: LeafGroups::NONE,
+            stage_shapes: Vec::new(),
+            stage_windows: Vec::new(),
         }
+    }
+
+    pub(crate) fn staged(
+        mut self,
+        shapes: Vec<Vec<WindowShape>>,
+    ) -> Result<Self, super::ProverError> {
+        self.stage_windows = shapes
+            .iter()
+            .map(|s| {
+                if s.is_empty() {
+                    Ok(WindowMemory {
+                        cut: 0,
+                        fold_passes: 0,
+                        working_bytes: 0,
+                    })
+                } else {
+                    WindowMemory::for_cut(s, 0, 16).map_err(|_| Self::memory())
+                }
+            })
+            .collect::<Result<_, _>>()?;
+        self.stage_shapes = shapes;
+        Ok(self)
+    }
+
+    fn memory() -> super::ProverError {
+        super::ProverError::Resource(tessera_codec::error::ErrorCode::ResMemory)
+    }
+
+    fn base_bytes(&self) -> Option<u64> {
+        self.cells
+            .total()?
+            .checked_mul(Self::BYTES_PER_CELL)?
+            .checked_add(self.weight_bytes)
+    }
+
+    /// Fit stages before P1; the conservative cell floor reserves the regenerated witness,
+    /// and the maximum live grid/fold working set is charged separately.
+    pub(crate) fn for_budget(
+        mut self,
+        budget: super::MemoryBudget,
+    ) -> Result<Self, super::ProverError> {
+        if self.check(budget).is_ok() {
+            return Ok(self);
+        }
+        let available = budget
+            .host
+            .checked_sub(self.base_bytes().ok_or_else(Self::memory)?)
+            .ok_or_else(Self::memory)?;
+        self.stage_windows = self
+            .stage_shapes
+            .iter()
+            .map(|s| {
+                if s.is_empty() {
+                    Ok(WindowMemory {
+                        cut: 0,
+                        fold_passes: 0,
+                        working_bytes: 0,
+                    })
+                } else {
+                    WindowMemory::select(s, available, 16).map_err(|_| Self::memory())
+                }
+            })
+            .collect::<Result<_, _>>()?;
+        let mut passes = vec![Pass::P1, Pass::P2];
+        if self.leaf_groups != LeafGroups::NONE {
+            passes.push(Pass::P2b);
+        }
+        for stage in self.stage_windows.iter().skip(1) {
+            passes.push(Pass::P3);
+            passes.extend(core::iter::repeat_n(Pass::P3b, stage.fold_passes));
+        }
+        passes.extend([Pass::P4, Pass::P5]);
+        self.passes = passes;
+        self.check(budget)?;
+        Ok(self)
+    }
+
+    /// Per-stage global round cuts. Zero uses the resident stage prover.
+    pub fn stage_windows(&self) -> &[WindowMemory] {
+        &self.stage_windows
     }
 
     /// The plan with its leaf stage in the token groups `groups` (RFC-0054): `lookups`, its
@@ -94,13 +183,16 @@ impl PassPlan {
         self.cells
     }
 
-    /// The bytes the proof keeps resident: [`Self::BYTES_PER_CELL`] per cell and the weight
-    /// commitment's, or `None` on overflow.
+    /// The charged peak: [`Self::BYTES_PER_CELL`] per cell, the weight commitment and the
+    /// largest stage's grid/fold working set, or `None` on overflow.
     pub fn resident_bytes(&self) -> Option<u64> {
-        self.cells
-            .total()?
-            .checked_mul(Self::BYTES_PER_CELL)?
-            .checked_add(self.weight_bytes)
+        self.base_bytes()?.checked_add(
+            self.stage_windows
+                .iter()
+                .map(|s| s.working_bytes)
+                .max()
+                .unwrap_or(0),
+        )
     }
 
     /// Whether the plan fits `budget`; `ERR-RES-MEMORY` if not, or if its size overflows.
@@ -117,6 +209,66 @@ impl PassPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stage_working_sets_select_windows_and_count_each_capped_fold() {
+        let cells = Cells {
+            tensors: 1 << 24,
+            ..Cells::default()
+        };
+        let shapes = vec![
+            Vec::new(),
+            vec![
+                WindowShape {
+                    vars: 24,
+                    tables: 2,
+                    delta: 2,
+                    windowable: true,
+                },
+                WindowShape {
+                    vars: 10,
+                    tables: 4,
+                    delta: 3,
+                    windowable: false,
+                },
+            ],
+        ];
+        let resident = PassPlan::new(2, cells, 100).staged(shapes).unwrap();
+        let base = (1u64 << 24) * 64 + 100;
+        assert_eq!(
+            resident.resident_bytes(),
+            Some(base + resident.stage_windows()[1].working_bytes)
+        );
+        let budget = super::super::MemoryBudget {
+            host: base + (2 << 20),
+        };
+        assert!(resident.resident_bytes().unwrap() > budget.host);
+        let window = resident.clone().for_budget(budget).unwrap();
+        assert_eq!(window.stage_windows()[1].cut, 9);
+        assert_eq!(window.stage_windows()[1].fold_passes, 2);
+        assert_eq!(
+            window.passes(),
+            [
+                Pass::P1,
+                Pass::P2,
+                Pass::P3,
+                Pass::P3b,
+                Pass::P3b,
+                Pass::P4,
+                Pass::P5
+            ]
+        );
+        assert_eq!(
+            window.resident_bytes(),
+            Some(base + window.stage_windows()[1].working_bytes)
+        );
+        assert!(window.resident_bytes().unwrap() <= budget.host);
+        assert!(
+            resident
+                .for_budget(super::super::MemoryBudget { host: base - 1 })
+                .is_err()
+        );
+    }
 
     #[test]
     fn a_proof_runs_each_pass_once_and_p3_once_per_reduction_stage() {
