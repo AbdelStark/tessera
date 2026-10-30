@@ -1,0 +1,23 @@
+Benchmarking canonical-ordinary-rows/3
+Benchmarking canonical-ordinary-rows/3: Warming up for 1.0000 s
+Benchmarking canonical-ordinary-rows/3: Collecting 10 samples in estimated 2.0340 s (1705 iterations)
+Benchmarking canonical-ordinary-rows/3: Analyzing
+canonical-ordinary-rows/3
+                        time:   [1.0504 ms 1.0722 ms 1.1198 ms]
+
+Benchmarking canonical-ordinary-rows/8
+Benchmarking canonical-ordinary-rows/8: Warming up for 1.0000 s
+Benchmarking canonical-ordinary-rows/8: Collecting 10 samples in estimated 2.0530 s (990 iterations)
+Benchmarking canonical-ordinary-rows/8: Analyzing
+canonical-ordinary-rows/8
+                        time:   [2.1571 ms 2.2338 ms 2.3497 ms]
+
+Benchmarking canonical-ordinary-rows/16
+Benchmarking canonical-ordinary-rows/16: Warming up for 1.0000 s
+Benchmarking canonical-ordinary-rows/16: Collecting 10 samples in estimated 2.1749 s (660 iterations)
+Benchmarking canonical-ordinary-rows/16: Analyzing
+canonical-ordinary-rows/16
+                        time:   [3.4443 ms 3.4661 ms 3.4842 ms]
+Found 2 outliers among 10 measurements (20.00%)
+  2 (20.00%) low mild
+

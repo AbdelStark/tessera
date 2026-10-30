@@ -1,0 +1,29 @@
+Benchmarking canonical-ordinary-rows/3
+Benchmarking canonical-ordinary-rows/3: Warming up for 1.0000 s
+Benchmarking canonical-ordinary-rows/3: Collecting 10 samples in estimated 2.0015 s (2530 iterations)
+Benchmarking canonical-ordinary-rows/3: Analyzing
+canonical-ordinary-rows/3
+                        time:   [731.91 µs 775.28 µs 808.93 µs]
+                        change: [-34.722% -32.042% -29.152%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 10 measurements (20.00%)
+  2 (20.00%) high mild
+
+Benchmarking canonical-ordinary-rows/8
+Benchmarking canonical-ordinary-rows/8: Warming up for 1.0000 s
+Benchmarking canonical-ordinary-rows/8: Collecting 10 samples in estimated 2.0429 s (1705 iterations)
+Benchmarking canonical-ordinary-rows/8: Analyzing
+canonical-ordinary-rows/8
+                        time:   [1.0511 ms 1.0628 ms 1.0889 ms]
+                        change: [-56.627% -54.386% -52.049%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+Benchmarking canonical-ordinary-rows/16
+Benchmarking canonical-ordinary-rows/16: Warming up for 1.0000 s
+Benchmarking canonical-ordinary-rows/16: Collecting 10 samples in estimated 2.0813 s (1210 iterations)
+Benchmarking canonical-ordinary-rows/16: Analyzing
+canonical-ordinary-rows/16
+                        time:   [1.7702 ms 1.7969 ms 1.8152 ms]
+                        change: [-49.188% -48.371% -47.504%] (p = 0.00 < 0.05)
+                        Performance has improved.
+

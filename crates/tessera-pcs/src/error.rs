@@ -270,6 +270,8 @@ pub enum PcsError {
         /// The entries or values given.
         found: usize,
     },
+    /// Public source-axis metadata could not be reserved for a streamed advice row.
+    LayoutMemory,
     /// A matrix whose committed rows hold more values than a buffer can.
     TooLarge {
         /// The committed rows.
@@ -559,6 +561,7 @@ impl fmt::Display for PcsError {
                 "{} holds {expected} values, not {found}",
                 what(*matrix, *layer, *channels)
             ),
+            Self::LayoutMemory => f.write_str("public source-axis metadata does not fit in memory"),
             Self::TooLarge { rows, row_len } => write!(
                 f,
                 "{rows} committed rows of {row_len} values each do not fit in memory"

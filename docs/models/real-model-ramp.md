@@ -201,6 +201,13 @@ not observed peak RAM; the actual proof attempt above still stopped at the leaf
 guard. This experiment neither adopts RFC-0076 nor discharges a complete
 soundness budget, fidelity or proof obligation.
 
+The ordinary advice adapter now uses one reusable clearing field row and public
+source-index metadata proportional to tensor rank ([measurement and tests](../../crates/tessera-prover/benches/advice-rows/README.md)).
+PCS already consumes streamed rows. This removes the adapter's whole padded
+column allocation; source tiles and other prover state still have their own
+lifetimes. The conservative planner charges above remain unchanged while
+[#629](https://github.com/AbdelStark/tessera/issues/629) tracks the complete memory model.
+
 After that blocker is resolved, proving must use the real token artifact and independent
 request/manifest context described by the [exact CLI flow](../testing/exact-cli.md).
 The ordinary independently built verifier then needs caller-trusted statement and weight

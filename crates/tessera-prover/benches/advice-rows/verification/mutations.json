@@ -1,0 +1,167 @@
+{
+  "complete": true,
+  "sources": {
+    "pcs": "af3c5621dcc63fc1201e836624640ab9b5f557f6508f073ab2178e8417e53599",
+    "prover": "12aef4c357ec0ffcb35eac52f60b95586041a999fdfd3c7eb43a4ad50139d1de"
+  },
+  "commands": {
+    "pcs": [
+      "cargo",
+      "test",
+      "-p",
+      "tessera-pcs",
+      "--test",
+      "source_rows",
+      "--locked"
+    ],
+    "prover": [
+      "cargo",
+      "test",
+      "-p",
+      "tessera-prover",
+      "--lib",
+      "advice::tests",
+      "--locked"
+    ]
+  },
+  "runs": [
+    {
+      "name": "original-pcs",
+      "exit_code": 0,
+      "status": "passed",
+      "log_sha256": "0b5647b7e26fb8f690e9cf0fd47d853cd2727903450b3cbc5d3899479a371e27"
+    },
+    {
+      "name": "original-prover",
+      "exit_code": 0,
+      "status": "passed",
+      "log_sha256": "4cd7f95af1e1b404d36c1e2f0bbb4882f248217389499e82c1e7bef9a4bb38e0"
+    },
+    {
+      "name": "dense-axis-order",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "d3171c728caed586824fee2d902bfa0acb1f1e7ae4459c181efe558e50efb81e"
+    },
+    {
+      "name": "score-query-shift",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "2042cb39d5c3b4578c65fbe3d1994ba00f4eb45084ae2b0888a8f68efad5f5c9"
+    },
+    {
+      "name": "score-key-high-bits",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "8b067c6e3c05671f859d0f05667c1d7d77442ad0117477836cfee6f3bbbc42e1"
+    },
+    {
+      "name": "source-rank",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "9e7a76a18c3cf702c9c5b68862dafa528fd9be37d8b0fc2fa257a99446e9cb68"
+    },
+    {
+      "name": "natural-stride",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "75a262607782fa90f5615a7ac1878bdd1e101152c87be534976dfac93959242e"
+    },
+    {
+      "name": "metadata-reservation",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "45bdb4dc164980dc34393034ee23b349d35c82ff6b3c2be4daba1994e281b31d"
+    },
+    {
+      "name": "source-padding",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "9ad595b4ccde74706982bf628fa676a4cef34f2083ceb969f73d59e840e389c9"
+    },
+    {
+      "name": "tensor-row-offset",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "bab91cc94c3d77aaeef50526b04bdeb4cdc8bec86c967d210430f04f3f420ed5"
+    },
+    {
+      "name": "row-end-bound",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "971388f9d8d3f4aef93805fcc0be8a408f3e8faf7a228924939ce8e27ff90dae"
+    },
+    {
+      "name": "source-axis-bound",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "9ca5a4cc47e50a3a00b1b05eac516d0060223eabf9889939cd3ffa015c9b637e"
+    },
+    {
+      "name": "trailing-row-padding",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "833eb56a3a389b81c055a63bdc098883c9b6f9e0b32d05a631a7f86d013aae54"
+    },
+    {
+      "name": "row-zeroing",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "5c20a9d7e0ab4bfedf86ddab7fa5fe6f51069eb0ab6394b014dac301ba235e40"
+    },
+    {
+      "name": "row-order",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "a2e7080fa9e9e5785a970949757e42686e188ec53abc2515e26874e1429b117f"
+    },
+    {
+      "name": "source-index",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "c471c0dea0b2faa3ca1c57006f17502874a7c79c7464affaf46bf011c0b0602b"
+    },
+    {
+      "name": "field-sign",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "237ec417b64ed22d7eef6170e0e427291d45dcc44db622d492529294471dbded"
+    },
+    {
+      "name": "sink-error",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "81d9c54333f199d42de3a374be95d9c6cb4f3c7643c8b8a73e8ebc33e56aa3fd"
+    },
+    {
+      "name": "row-lifetime",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "732769d289a1bd01abbd3b3cc7aaf65540ddc41ff2f5906b4a82b0b239fc4ee6"
+    },
+    {
+      "name": "field-allocation-per-row",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "6e536cd000910ea3e0b92d3f40fe16215712629164b538bf7db3a7edbed48e5c"
+    },
+    {
+      "name": "whole-column-allocation",
+      "exit_code": 101,
+      "status": "killed",
+      "log_sha256": "445d434b8899a679f9c73309e855bfb59715a1bd8a523bc9a721edd433881e58"
+    },
+    {
+      "name": "restored-pcs",
+      "exit_code": 0,
+      "status": "passed",
+      "log_sha256": "b1ba5f2486d8d364c2d68efdf23dc5d9c97c3e395256e5da3a0235d5aaa11d33"
+    },
+    {
+      "name": "restored-prover",
+      "exit_code": 0,
+      "status": "passed",
+      "log_sha256": "1300bc7f1de6d97f56acb09f18aa932673a30b9eaddb634c9aa15903df5012a7"
+    }
+  ]
+}

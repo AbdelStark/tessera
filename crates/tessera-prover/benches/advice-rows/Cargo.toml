@@ -1,0 +1,26 @@
+[package]
+name = "tessera-advice-row-bench"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+autobins = false
+
+# Benchmark statistics stay outside both production dependency graphs.
+[workspace]
+
+[dependencies]
+criterion = { version = "=0.5.1", default-features = false }
+allocation-counter = "0.8"
+tessera-codec = { path = "../../../tessera-codec" }
+tessera-field = { path = "../../../tessera-field" }
+tessera-ir = { path = "../../../tessera-ir" }
+tessera-compiler = { path = "../../../tessera-compiler" }
+tessera-prover = { path = "../.." }
+tessera-protocol = { path = "../../../tessera-protocol" }
+tessera-witness = { path = "../../../tessera-witness" }
+
+[[bench]]
+name = "advice_rows"
+path = "src/main.rs"
+harness = false

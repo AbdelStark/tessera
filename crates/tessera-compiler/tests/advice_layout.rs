@@ -504,6 +504,46 @@ fn every_model_source_location_point_zero_row_and_segment_matches_the_oracle() {
                     image.push(if fixed == 0 { Fp2::ZERO } else { Fp2::ONE });
                 }
                 assert_eq!(placement.point(&natural).unwrap(), image);
+                if !matches!(source, AdviceSource::Multiplicity(_)) {
+                    // Invert the frozen oracle's bit permutation, independently of locate().
+                    // Sample each ordinary source's first/middle/last row and column, including
+                    // padding. No allocation scales with the source's tensor size.
+                    let shape: Vec<u32> = value[1]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|d| u32::try_from(d.as_u64().unwrap()).unwrap())
+                        .collect();
+                    let covered = 1usize << placement.vars().min(u32::from(k));
+                    for row in [0, placement.row_count() / 2, placement.row_count() - 1] {
+                        for col in [0, covered / 2, covered - 1] {
+                            let stored = (u128::from(row) << k) | col as u128;
+                            let mut natural_index = 0u128;
+                            for (stored_bit, &natural_bit) in permutation.iter().enumerate() {
+                                natural_index |= ((stored >> stored_bit) & 1) << natural_bit;
+                            }
+                            let mut stride = 1usize;
+                            let mut flat = 0usize;
+                            let mut padding = false;
+                            for &len in shape.iter().rev() {
+                                let bits = len.next_power_of_two().trailing_zeros();
+                                let coordinate = (natural_index & ((1u128 << bits) - 1)) as usize;
+                                natural_index >>= bits;
+                                padding |= coordinate >= len as usize;
+                                flat += coordinate * stride;
+                                stride *= len as usize;
+                            }
+                            assert_eq!(
+                                placement
+                                    .row_indices(placement.first_row() + row, &shape)
+                                    .unwrap()
+                                    .nth(col),
+                                Some((!padding).then_some(flat))
+                            );
+                        }
+                    }
+                }
+
                 if !matches!(actual.tile, Tile::Attention { .. }) {
                     let images = mapped
                         .claim(source, &natural)
