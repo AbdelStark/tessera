@@ -20,6 +20,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Share canonical integer tensor reads between witness tiles and reduction stages, with signed borrowed INT8 weights, owned clearing checkpoint tensors and canonical batch-token copies; run tensor and request-slot regressions in CI (RFC-0018, [#641](https://github.com/AbdelStark/tessera/issues/641)). CPU driver admission and the resident-cell floor remain unchanged pending complete phase accounting.
+
 - Accept common-family Protocol One Requant selection and its explicit one-time unreleased compatibility decision; actual real-model proofs remain pending (RFC-0076, [#619](https://github.com/AbdelStark/tessera/issues/619), parent #617).
 
 - Full pinned Llama-3.1-8B calibration metadata, all 16 existing-policy scale preflights and one fixed diagnostic INT8 artifact with complete readback/Rust geometry checks, with private statistics and weights outside the checkout; no fidelity or real-proof claim (RFC-0005/0025/0038, [#633](https://github.com/AbdelStark/tessera/issues/633)).

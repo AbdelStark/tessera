@@ -10,7 +10,137 @@ use allocation_counter::measure;
 use common::{conformance, lowered};
 use tessera_codec::Secret;
 use tessera_ir::TensorId;
-use tessera_witness::{Checkpoints, Engine, Regenerator, WitnessError};
+use tessera_witness::{
+    CheckpointTensors, Checkpoints, Engine, Regenerator, Resident, TensorSource, WitnessError,
+};
+
+#[test]
+fn tile_sources_refuse_missing_or_misshaped_borrowed_weights_before_reading_tiles() {
+    struct Malformed<'a> {
+        source: &'a CheckpointTensors<'a>,
+        target: TensorId,
+        missing: bool,
+        short: bool,
+        wide: Option<&'a [i64]>,
+    }
+    impl TensorSource for Malformed<'_> {
+        fn values(&self, tensor: TensorId) -> Option<&[i64]> {
+            if tensor == self.target {
+                self.wide
+            } else {
+                self.source.values(tensor)
+            }
+        }
+        fn int8_values(&self, tensor: TensorId) -> Option<&[i8]> {
+            let values = self.source.int8_values(tensor)?;
+            if tensor != self.target {
+                return Some(values);
+            }
+            if self.missing {
+                None
+            } else if self.short {
+                Some(&values[..values.len() - 1])
+            } else {
+                Some(values)
+            }
+        }
+    }
+    let fixture = &conformance()[0];
+    let (lowering, selection) = lowered(&fixture.model, 3);
+    let engine = Engine::new(&lowering).unwrap();
+    let tokens = Secret::new(vec![0, 1, 2]);
+    let checkpoints = Checkpoints::new(&engine, &fixture.model, &tokens).unwrap();
+    let source = CheckpointTensors::new(&engine, &fixture.model, &tokens, &checkpoints).unwrap();
+    let target = lowering.graph.weights[0].1;
+    Resident::from_tensors(&engine, &selection, &fixture.model, &source).unwrap();
+    // An invalid wide representation must not fall back to the borrowed representation.
+    for (missing, short, wide) in [
+        (true, false, None),
+        (false, true, None),
+        (false, false, Some(&[0i64][..])),
+    ] {
+        let malformed = Malformed {
+            source: &source,
+            target,
+            missing,
+            short,
+            wide,
+        };
+        assert_eq!(
+            Resident::from_tensors(&engine, &selection, &fixture.model, &malformed).err(),
+            Some(WitnessError::Usage {
+                rule: "the witness is the first pass of the engine's lowering",
+            })
+        );
+    }
+}
+
+#[test]
+fn the_cache_owns_every_nonweight_and_borrows_original_int8_weights() {
+    for fixture in conformance() {
+        for n in [1, 3, 17] {
+            let (lowering, _) = lowered(&fixture.model, n);
+            let engine = Engine::new(&lowering)
+                .unwrap()
+                .threads(NonZeroUsize::new(1).unwrap());
+            let tokens = Secret::new((0..n).map(|i| i % fixture.model.arch.vocab).collect());
+            let first = engine.run(&fixture.model, &tokens).unwrap();
+            let checkpoints = Checkpoints::new(&engine, &fixture.model, &tokens).unwrap();
+            let mut cache = None;
+            let built = measure(|| {
+                cache = Some(
+                    CheckpointTensors::new(&engine, &fixture.model, &tokens, &checkpoints).unwrap(),
+                );
+            });
+            let cache = cache.unwrap();
+            assert_eq!(
+                built.bytes_current,
+                (cache.storage_bytes().unwrap() - size_of::<CheckpointTensors<'_>>()) as i64,
+                "retained cache allocation accounting"
+            );
+            // Network rounds can outlive all construction inputs except the borrowed model.
+            drop(checkpoints);
+            drop(tokens);
+            drop(engine);
+            for tensor in &lowering.graph.tensors {
+                if let Some(&(weight, _)) = lowering
+                    .graph
+                    .weights
+                    .iter()
+                    .find(|(_, id)| *id == tensor.id)
+                {
+                    assert!(cache.values(tensor.id).is_none(), "no widened weight cache");
+                    let bytes = cache.int8_values(tensor.id).unwrap();
+                    let original = fixture
+                        .model
+                        .weights
+                        .iter()
+                        .find(|w| w.ty == weight.ty && w.layer == weight.layer)
+                        .unwrap();
+                    assert!(std::ptr::eq(bytes.as_ptr(), original.data.as_ptr()));
+                    assert_eq!(bytes.len(), first.tensor(tensor.id).unwrap().len());
+                    assert!(
+                        bytes
+                            .iter()
+                            .zip(first.tensor(tensor.id).unwrap().iter())
+                            .all(|(&byte, &wide)| i64::from(byte) == wide)
+                    );
+                } else {
+                    assert!(cache.int8_values(tensor.id).is_none());
+                    assert_eq!(
+                        cache.values(tensor.id).unwrap(),
+                        &first.tensor(tensor.id).unwrap()[..],
+                        "{} n={n}, tensor {:?}",
+                        fixture.name,
+                        tensor.id
+                    );
+                }
+            }
+            assert!(cache.values(TensorId(u32::MAX)).is_none());
+            assert!(cache.int8_values(TensorId(u32::MAX)).is_none());
+        }
+    }
+}
 
 #[test]
 fn every_tensor_matches_the_resident_engine_and_only_the_result_survives() {

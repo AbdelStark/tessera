@@ -195,6 +195,36 @@ impl<'a> Engine<'a> {
         self.run_tokens(model, tokens, true)
     }
 
+    /// Retain a clearing copy of the canonical token tensor for later checkpoint replays.
+    /// Input sequences concatenate real requests, as in [`Self::run_batch`]; slot gaps are
+    /// inserted as zero tokens. The copy borrows nothing from the caller's secret buffer.
+    ///
+    /// # Errors
+    /// As [`Self::run_batch`] for token count, range and allocation failures. This does not
+    /// execute the model or validate a recorded continuation's greedy certificate.
+    #[allow(clippy::disallowed_methods)]
+    pub fn canonical_batch_tokens(
+        &self,
+        model: &IntegerModel,
+        tokens: &Secret<Vec<u32>>,
+    ) -> Result<Secret<Vec<u32>>, WitnessError> {
+        let lowering = self.require_lowering()?;
+        let input = self.token_input(lowering, model, tokens, true)?;
+        let mut copy = Secret::new(Vec::new());
+        copy.expose_secret_mut()
+            .try_reserve_exact(input.len())
+            .map_err(|_| WitnessError::Memory {
+                tensor: lowering.tokens,
+            })?;
+        for &value in input.iter() {
+            copy.expose_secret_mut()
+                .push(u32::try_from(value).map_err(|_| WitnessError::Internal {
+                    rule: "canonical tokens are 32-bit identifiers",
+                })?);
+        }
+        Ok(copy)
+    }
+
     fn run_tokens(
         &self,
         model: &IntegerModel,

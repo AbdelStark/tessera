@@ -895,3 +895,95 @@ fn one_layer_schedules_and_original_opening_claims_agree_independently() {
         }
     }
 }
+
+/// RFC-0018: borrowed INT8 weights and checkpoint-owned tensors must supply every original
+/// stage claim under both the resident field-table path and regenerated windows.
+#[test]
+fn checkpoint_tensor_stages_match_resident_messages_and_independent_verifier() {
+    use tessera_witness::{CheckpointTensors, Checkpoints};
+    for name in MODELS {
+        let (model, tokens) = conformance(name);
+        let seed = tokens.len() as u64 * 7919 + name.len() as u64;
+        let n = tokens.len() as u32;
+        let reference = prove_model(&model, tokens.clone(), seed);
+        let schedule = derive_schedule(&reference.lowering).unwrap();
+        let side = verifier_side(name, n);
+        let engine = Engine::new(&reference.lowering).unwrap();
+        let tokens = Secret::new(tokens);
+        let checkpoints = Checkpoints::new(&engine, &model, &tokens).unwrap();
+        let cache = CheckpointTensors::new(&engine, &model, &tokens, &checkpoints).unwrap();
+        // Llama padding is zero, but the wrapper must preserve the borrowed weight hook.
+        let padded = tessera_prover::PaddedWitness::new(
+            &reference.lowering.graph,
+            &reference.lowering.tables,
+            &cache,
+        )
+        .unwrap();
+        for requested in [0usize, 1, 4, usize::MAX] {
+            let cuts: Vec<_> = schedule
+                .stages
+                .iter()
+                .enumerate()
+                .map(|(k, stage)| {
+                    let cut = if requested == usize::MAX {
+                        k % 2
+                    } else {
+                        requested
+                    };
+                    cut.min(stage.rounds.saturating_sub(1) as usize)
+                })
+                .collect();
+            let mut regenerate = || {
+                CheckpointTensors::new(&engine, &model, &tokens, &checkpoints).map_err(|_| {
+                    tessera_prover::StageError::Internal {
+                        rule: "the conformance cache regenerates",
+                    }
+                })
+            };
+            let mut t = transcript();
+            let mut prover = StageProver::new(&reference.lowering, &schedule, &padded);
+            let leaf = prover.leaf(&reference.points).unwrap();
+            assert_eq!(leaf, reference.leaf);
+            t.absorb_message(
+                "test/leaf",
+                &leaf.iter().flatten().copied().collect::<Vec<_>>(),
+            );
+            let leaf_splits = prover.leaf_splits(&mut t).unwrap();
+            assert_eq!(leaf_splits, reference.leaf_splits);
+            let mut stages = Vec::new();
+            for (k, &cut) in cuts.iter().enumerate().skip(1) {
+                stages.push(
+                    prover
+                        .prove_stage_windowed(
+                            &mut t,
+                            k as u16,
+                            cut,
+                            cuts.get(k + 1).copied().unwrap_or(0),
+                            &mut regenerate,
+                        )
+                        .unwrap_or_else(|e| panic!("{name}, stage{k}, cut{cut}: {e}")),
+                );
+            }
+            assert_eq!(stages, reference.stages, "{name}, requested{requested}");
+            assert_eq!(prover.pool(), reference.pool);
+            let mut actual = messages(&reference);
+            actual.leaf_splits = tv_fp2s(&leaf_splits);
+            actual.stages = stages.iter().map(tv_stage).collect();
+            let verified = check(&side, &reference, &actual).unwrap();
+            for (claim, value) in verified.pool.iter().zip(&reference.pool) {
+                assert_eq!(claim.value, tv_fp2(value.unwrap()));
+                assert_eq!(from_witness(&side, &reference, claim), value.unwrap());
+            }
+            let stage = &side.schedule.stages()[0];
+            let value = &mut actual.stages[0].sumcheck.rounds[0][0];
+            *value = changed(*value);
+            assert_eq!(
+                check(&side, &reference, &actual).unwrap_err().rejection(),
+                Some(SumcheckRejection {
+                    stage: stage.index,
+                    round: stage.rounds as u32
+                })
+            );
+        }
+    }
+}

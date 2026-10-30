@@ -121,6 +121,35 @@ fn batched_witness_isolates_slots_zeros_padded_rows_and_refuses_nonzero_padded_t
     assert_eq!(slots.slot_len, 8);
     let engine = Engine::new(&lowering).expect("batch engine");
     let packed = pack_batch_tokens(slots.slot_len, &[req0, req1, req2]);
+    let canonical = {
+        let concatenated = Secret::new([req0, req1, req2].concat());
+        engine
+            .canonical_batch_tokens(&fixture.model, &concatenated)
+            .expect("owned canonical tokens")
+    };
+    let copied = engine
+        .run(&fixture.model, &canonical)
+        .expect("retained token replay");
+    assert!(
+        copied
+            .tensor(lowering.tokens)
+            .unwrap()
+            .iter()
+            .zip(&packed)
+            .all(|(&a, &b)| a == i64::from(b))
+    );
+    for bad in [vec![0; 9], vec![fixture.model.arch.vocab; 10]] {
+        let bad = Secret::new(bad);
+        let info = allocation_counter::measure(|| {
+            assert_eq!(
+                engine.canonical_batch_tokens(&fixture.model, &bad).err(),
+                Some(WitnessError::Usage {
+                    rule: "concatenated batch tokens match real request lengths and vocabulary",
+                })
+            );
+        });
+        assert_eq!((info.count_total, info.bytes_max), (0, 0));
+    }
     let batch_logits = engine
         .run(&fixture.model, &Secret::new(packed.clone()))
         .expect("batch run")
@@ -262,6 +291,8 @@ fn check_batch_runtime_equivalence(
     let engine = Engine::new(&lowering).expect("engine");
     let first = engine.run(model, &tokens).expect("first pass");
     let checkpoints = Checkpoints::new(&engine, model, &tokens).expect("checkpoints");
+    let cached = tessera_witness::CheckpointTensors::new(&engine, model, &tokens, &checkpoints)
+        .expect("nonweight checkpoint cache");
     for q in [1u32, 2, 4, 512] {
         let policy = GadgetPolicy {
             query_block: q,
@@ -281,6 +312,8 @@ fn check_batch_runtime_equivalence(
             RuntimePlan::derive_batch(&lowering, &batch_sel, &claims, requests).expect("runtime");
         let advice = ModelAdviceLayout::runtime(&lowering, &runtime, &claims).expect("advice");
         let resident = Resident::runtime(&engine, &runtime, model, &first).expect("resident");
+        let borrowed = Resident::runtime_from_tensors(&engine, &runtime, model, &cached)
+            .expect("borrowed INT8 source");
         let regenerator =
             Regenerator::runtime(&engine, &runtime, model, &tokens, &checkpoints).expect("regen");
         if q == 1 {
@@ -297,6 +330,12 @@ fn check_batch_runtime_equivalence(
             let rt = resident.tile(tile).expect("resident tile");
             let gt = regenerator.tile(tile).expect("regenerator tile");
             assert_same_tile(&rt, &gt, &format!("protocol={protocol} q={q} tile={idx}"));
+            let bt = borrowed.tile(tile).expect("borrowed INT8 tile");
+            assert_same_tile(
+                &rt,
+                &bt,
+                &format!("borrowed protocol={protocol} q={q} tile={idx}"),
+            );
         }
     }
 }

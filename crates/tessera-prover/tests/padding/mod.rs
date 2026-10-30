@@ -707,3 +707,86 @@ fn the_padded_tables_refuse_what_rfc_0072_does_not_admit() {
          padded positions: RFC-0035's row relations take a padded row's input as 0"
     );
 }
+
+/// A ragged INT8 weight must still pad correctly when another operand contains AesSbox(0).
+#[test]
+fn borrowed_int8_weights_preserve_nonzero_lookup_padding_and_stage_messages() {
+    struct Borrowed<'a> {
+        witness: &'a Witness,
+        tensor: TensorId,
+        weight: SecretBuf<i8>,
+    }
+    impl WitnessSource for Borrowed<'_> {
+        fn values(&self, tensor: TensorId) -> Option<&[i64]> {
+            (tensor != self.tensor)
+                .then(|| self.witness.tensor(tensor))
+                .flatten()
+                .map(|v| &v[..])
+        }
+        fn int8_values(&self, tensor: TensorId) -> Option<&[i8]> {
+            (tensor == self.tensor).then_some(&self.weight[..])
+        }
+    }
+    let (graph, inputs) = case(|g, s, inputs| {
+        let weight = WeightRef {
+            ty: WeightType::Q,
+            layer: 0,
+        };
+        let w = g.weight(weight, 3, 3).unwrap();
+        inputs.push(w);
+        (
+            one(g, Op::MatMulWeight { weight }, &[s, w], virt(&[4, 3])),
+            vec![4, 3],
+        )
+    });
+    let tables = tables();
+    let witness = Engine::for_graph(&graph, &tables)
+        .unwrap()
+        .evaluate(random_inputs(&graph, &inputs, 0x0641_8A55))
+        .unwrap();
+    let tensor = graph.weights[0].1;
+    let borrowed = Borrowed {
+        witness: &witness,
+        tensor,
+        weight: witness
+            .tensor(tensor)
+            .unwrap()
+            .iter()
+            .map(|&v| i8::try_from(v).unwrap())
+            .collect(),
+    };
+    assert!(borrowed.weight.iter().any(|&v| v < 0));
+    let original = PaddedWitness::new(&graph, &tables, &witness).unwrap();
+    let padded = PaddedWitness::new(&graph, &tables, &borrowed).unwrap();
+    let sbox = graph.nodes[0].outputs[0];
+    assert_eq!(padded.padded(sbox).unwrap()[3], 0x63);
+    for spec in &graph.tensors {
+        assert_eq!(padded.padded(spec.id), original.padded(spec.id));
+    }
+    let schedule = derive_graph_schedule(&graph, &tables, &[], None).unwrap();
+    let points = leaf_points(&schedule, 0x0641_8A55);
+    let (reference, original_pool) = prove_graph(&graph, &tables, &schedule, &original, &points);
+    let (proof, pool) = prove_graph(&graph, &tables, &schedule, &padded, &points);
+    assert_eq!(proof.leaf, reference.leaf);
+    assert_eq!(proof.leaf_splits, reference.leaf_splits);
+    assert_eq!(proof.stages, reference.stages);
+    assert_eq!(pool, original_pool);
+    let statement = PublicOf::new(&graph, &[]);
+    let verified = verify_public(
+        &graph,
+        &tables,
+        &schedule,
+        &proof,
+        &points,
+        Publics {
+            values: &statement,
+            shift: Shift::Extension,
+            kernel: Kernel::Closed,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        verified,
+        pool.iter().map(|v| v.unwrap()).collect::<Vec<_>>()
+    );
+}

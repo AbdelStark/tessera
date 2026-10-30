@@ -24,7 +24,7 @@ use crate::multiplicity::Multiplicities;
 use crate::replay::{Replay, Rows};
 use crate::structure::{Core, Structure};
 use crate::tile::{Gadgets, Target};
-use crate::{Checkpoints, Engine, TileWitness, Witness, WitnessError};
+use crate::{Checkpoints, Engine, TensorSource, TileWitness, Witness, WitnessError};
 
 /// A source of a sequence's witness, by tile (RFC-0018 'Pass structure', RFC-0010 'Stages'): the
 /// passes after the first regenerate the parts of the witness they need, tile by tile, instead of
@@ -261,7 +261,7 @@ impl WitnessSource for Regenerator<'_> {
 pub struct Resident<'a> {
     structure: Structure<'a>,
     gadgets: Gadgets,
-    witness: &'a Witness,
+    witness: &'a dyn TensorSource,
 }
 
 /// Shows the shapes: the graph's tensors.
@@ -286,6 +286,23 @@ impl<'a> Resident<'a> {
         witness: &'a Witness,
     ) -> Result<Self, WitnessError> {
         let mut source = Self::new(engine, runtime.selection(), model, witness)?;
+        crate::runtime::configure(&source.structure, runtime, &mut source.gadgets)?;
+        Ok(source)
+    }
+
+    /// Read runtime tiles from complete integer tensors whose model weights can stay INT8.
+    /// Values and canonical padding are the same as [`Self::runtime`]; this source neither
+    /// executes nodes nor caches an additional tensor representation.
+    ///
+    /// # Errors
+    /// As [`Self::from_tensors`], or `Usage` for inconsistent runtime metadata.
+    pub fn runtime_from_tensors(
+        engine: &'a Engine<'a>,
+        runtime: &RuntimePlan,
+        model: &IntegerModel,
+        witness: &'a dyn TensorSource,
+    ) -> Result<Self, WitnessError> {
+        let mut source = Self::from_tensors(engine, runtime.selection(), model, witness)?;
         crate::runtime::configure(&source.structure, runtime, &mut source.gadgets)?;
         Ok(source)
     }
@@ -322,13 +339,49 @@ impl<'a> Resident<'a> {
         witness: &'a Witness,
     ) -> Result<Self, WitnessError> {
         let structure = Structure::new(engine, &model.arch)?;
-        let graph = structure.graph();
-        let whole = witness.len() == graph.tensors.len()
-            && graph.tensors.iter().enumerate().all(|(t, spec)| {
-                witness
-                    .tensor(TensorId(t as u32))
-                    .is_some_and(|values| values.len() == elements(&spec.shape))
+        if witness.len() != structure.graph().tensors.len() {
+            return Err(WitnessError::Usage {
+                rule: "the witness is the first pass of the engine's lowering",
             });
+        }
+        Self::build(structure, selection, model, witness)
+    }
+
+    /// Cut canonical tiles from all graph tensors, borrowing model weights as INT8 when no
+    /// `i64` representation is supplied. Every declared tensor must have its real shape; an
+    /// `i64` representation takes precedence when both are supplied.
+    ///
+    /// # Errors
+    /// `Usage` for a missing or misshaped tensor; otherwise as [`Self::new`].
+    pub fn from_tensors(
+        engine: &'a Engine<'a>,
+        selection: &Selection,
+        model: &IntegerModel,
+        witness: &'a dyn TensorSource,
+    ) -> Result<Self, WitnessError> {
+        Self::build(
+            Structure::new(engine, &model.arch)?,
+            selection,
+            model,
+            witness,
+        )
+    }
+
+    fn build(
+        structure: Structure<'a>,
+        selection: &Selection,
+        model: &IntegerModel,
+        witness: &'a dyn TensorSource,
+    ) -> Result<Self, WitnessError> {
+        let whole = structure.graph().tensors.iter().all(|spec| {
+            let expected = elements(&spec.shape);
+            match witness.values(spec.id) {
+                Some(values) => values.len() == expected,
+                None => witness
+                    .int8_values(spec.id)
+                    .is_some_and(|values| values.len() == expected),
+            }
+        });
         if !whole {
             return Err(WitnessError::Usage {
                 rule: "the witness is the first pass of the engine's lowering",
@@ -343,9 +396,18 @@ impl<'a> Resident<'a> {
     }
 
     fn values(&self, tensor: TensorId) -> Result<&'a [i64], WitnessError> {
+        self.witness.values(tensor).ok_or(WitnessError::Internal {
+            rule: "the first pass holds every tensor",
+        })
+    }
+
+    fn input(&self, tensor: TensorId) -> Result<Operand<'a>, WitnessError> {
+        if let Some(values) = self.witness.values(tensor) {
+            return Ok(Operand::Values(values));
+        }
         self.witness
-            .tensor(tensor)
-            .map(|values| &values[..])
+            .int8_values(tensor)
+            .map(Operand::Weight)
             .ok_or(WitnessError::Internal {
                 rule: "the first pass holds every tensor",
             })
@@ -412,7 +474,7 @@ impl WitnessSource for Resident<'_> {
                 let inputs = node
                     .inputs
                     .iter()
-                    .map(|&t| self.values(t).map(Operand::Values))
+                    .map(|&t| self.input(t))
                     .collect::<Result<Vec<_>, _>>()?;
                 let outputs = node
                     .outputs

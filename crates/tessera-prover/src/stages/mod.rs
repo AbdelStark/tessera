@@ -125,32 +125,7 @@ impl NativeProver for NoNative {
     }
 }
 
-/// The witness a stage proves over: every tensor's values, true integers, flat and row-major.
-/// They are secret-class (05 §3): a source lends them, by reference and for a call.
-pub trait WitnessSource {
-    /// The values of `tensor`, or `None` when the witness lacks it.
-    fn values(&self, tensor: TensorId) -> Option<&[i64]>;
-
-    /// The values of `tensor` over its padded shape, each axis padded to a power of two, flat
-    /// and row-major over that shape: the stage tables' layout, the last axis's index the lowest
-    /// bits (RFC-0011 rule 1). `None`, the default, for a source of the real positions alone,
-    /// whose padded positions the stage tables take as 0 (RFC-0072 'Padded positions'). That is
-    /// right for every tensor but those a lookup non-zero at padding reaches, which
-    /// [`PaddedWitness`] computes over any source, and the stage prover refuses a source that
-    /// lacks them. A source that returns them makes the stage tables hold them, as a prover that
-    /// commits its padded positions does.
-    fn padded(&self, tensor: TensorId) -> Option<&[i64]> {
-        let _ = tensor;
-        None
-    }
-}
-
-/// The CPU engine's witness, every tensor in memory.
-impl WitnessSource for tessera_witness::Witness {
-    fn values(&self, tensor: TensorId) -> Option<&[i64]> {
-        self.tensor(tensor).map(|buffer| &buffer[..])
-    }
-}
+pub use tessera_witness::TensorSource as WitnessSource;
 
 /// A reduction stage's messages (RFC-0036 'StageProof'): its sumcheck, then the values of the
 /// claims it splits.
