@@ -59,6 +59,8 @@ class _Source:
 
 
 def _config_text(path: Path) -> str:
+    if not path.is_file():
+        raise ArchitectureError("checkpoint has no regular config.json")
     with path.open("rb") as stream:
         raw = stream.read(_CONFIG_LIMIT + 1)
     if len(raw) > _CONFIG_LIMIT:
@@ -187,6 +189,7 @@ def _copy_exact(reader: BinaryIO, writer: BinaryIO, size: int) -> None:
         if writer.write(block) != len(block):
             raise OSError("incomplete checkpoint write")
         remaining -= len(block)
+        del block
 
 
 def _private(path: Path) -> BinaryIO:
@@ -231,6 +234,7 @@ def _equal(left: _Slice, right: _Slice) -> None:
             if len(first) != size or first != second:
                 raise ArchitectureError("prepared bytes differ from source")
             remaining -= size
+            del first, second  # Release the old pair before the next two reads allocate (#623).
 
 
 def verify(source: Path, prepared: Path) -> _Report:

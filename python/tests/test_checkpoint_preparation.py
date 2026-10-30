@@ -346,3 +346,83 @@ def test_cli_errors_do_not_echo_private_exception_payloads(
     assert result["error"]["code"] == (
         "ERR-RES-IO" if isinstance(error, OSError) else "ERR-INTERNAL"
     )
+
+
+def test_comparison_releases_previous_chunks_before_allocating_the_next_pair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a, b = tmp_path / "a.bytes", tmp_path / "b.bytes"
+    payload = bytes(range(256)) * 8
+    a.write_bytes(payload)
+    b.write_bytes(payload)
+    live, peak = 0, 0
+    original = cast(Callable[..., Any], Path.open)
+
+    class Chunk(bytes):
+        def __new__(cls, data: bytes) -> "Chunk":
+            nonlocal live, peak
+            value = super().__new__(cls, data)
+            live += 1
+            peak = max(live, peak)
+            return value
+
+        def __del__(self) -> None:
+            nonlocal live
+            live -= 1
+
+    class Reader:
+        def __init__(self, stream: Any) -> None:
+            self.stream = stream
+
+        def __enter__(self) -> "Reader":
+            return self
+
+        def __exit__(self, *args: Any) -> None:
+            self.stream.close()
+
+        def seek(self, offset: int) -> int:
+            return self.stream.seek(offset)
+
+        def read(self, size: int) -> bytes:
+            return Chunk(self.stream.read(size))
+
+    def tracked(path: Path, *args: Any, **kwargs: Any) -> Any:
+        stream = original(path, *args, **kwargs)
+        return Reader(stream) if path in (a, b) else stream
+
+    monkeypatch.setattr(Path, "open", tracked)
+    monkeypatch.setattr(preparation, "_CHUNK", 97)
+    # Track returned chunk lifetimes, separately from the independent read-size guard.
+    preparation._equal(  # pyright: ignore[reportPrivateUsage]
+        preparation._Slice(a, 0, len(payload)),  # pyright: ignore[reportPrivateUsage]
+        preparation._Slice(b, 0, len(payload)),  # pyright: ignore[reportPrivateUsage]
+    )
+    assert peak <= 2
+    assert live == 0
+
+
+@pytest.mark.parametrize("kind", ["directory", "fifo"])
+def test_nonregular_config_is_refused_before_opening_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    source = source_at(tmp_path / "source")
+    config = source / "config.json"
+    config.unlink()
+    if kind == "directory":
+        config.mkdir()
+    else:
+        os.mkfifo(config, 0o600)
+    original = cast(Callable[..., Any], Path.open)
+
+    def guarded(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path == config:
+            pytest.fail(
+                "a nonregular configuration must be rejected before a potentially blocking open"
+            )
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", guarded)
+    out = tmp_path / "prepared"
+    with pytest.raises(ArchitectureError, match=r"regular config\.json"):
+        preparation.materialize(source, out)
+    assert not out.exists()

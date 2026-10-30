@@ -90,18 +90,22 @@ a new D and its correctly bound provenance through the pipeline.
 
 ## Actual preparation evidence
 
-On Apple M1 Max/64 GiB, Python 3.13.18 and the locked CPU environment, one actual 1B
-conversion wrote 2,996,965,376 bytes of tensor payload in 16.403 seconds and reached
-371,851,264 bytes peak process RSS. This includes Python/library imports and excludes
+On Apple M1 Max/64 GiB, Python 3.13.18 and the locked CPU environment, the actual 1B
+conversion writes 2,996,965,376 bytes of tensor payload. The initial run took 16.403 seconds
+and reached 371,851,264 bytes peak process RSS; a repeat after the chunk-release correction
+took 17.253 seconds and reached 356,679,680 bytes. These include Python/library imports and exclude
 OS file-cache memory. It is a single component observation under concurrent model/fuzz
 work, not a throughput or whole-pipeline qualification. Live tensor-data comparison
 scratch is at most two 1 MiB chunks, beside checked public headers and placement metadata.
+A lifetime-counting regression found four simultaneous returned chunks before explicit
+release was added; it now bounds the live pair, separately from the read-size guard.
+The observed process-RSS difference is not credited as a qualified memory reduction.
 
 The complete earlier conversion and new output both match the same original tensor bits,
 including the explicit head. Hugging Face loaded all expected parameters from source and
 prepared checkpoints without missing, unexpected or mismatched keys. Two public teacher-
-forcing probes produced byte-identical BF16 logits; that run took 15.028 seconds and
-reached 2,966,814,720 bytes peak RSS. It is finite BF16 equivalence evidence, not integer
+forcing probes produced byte-identical BF16 logits, repeated after the chunk-release fix.
+This is finite BF16 equivalence evidence, not integer
 fidelity, alpha selection, a full-context benchmark or a proof. An initial probe stopped
 at an overly specific test assumption (`missing_keys` is a set in this loader); its
 diagnostic was retained, and the corrected check requires all three key sets to be empty.
@@ -110,15 +114,17 @@ Adversarial tests cover both sharded and single-file inputs, signed-zero/NaN pay
 long decimals, escaped/nested/duplicate keys, each changed tensor/config/tokenizer input,
 unsafe existing external shards, malformed ranges/dtypes, bounded reads, source changes,
 private permissions, failed writes, native loader discovery and redacted CLI errors.
-All 456 Python cases pass locally, including 27 preparation cases and the existing
+All 459 Python cases pass locally, including 30 preparation cases and the existing
 conformance traces; strict types and formatting pass. The unchanged Exp-core timing gate
 ran with only the two own model computations temporarily paused, and both resumed in a
-`finally` block. Fuzz workers stayed active. Thirteen meaningful planted source faults
+`finally` block. Fuzz workers stayed active. Fifteen meaningful planted source faults
 fail assertions, with passing no-op/restored controls: lossy numeric config; global boolean
 replacement; skipped whole-config comparison; duplicate config acceptance; omitted byte
 equality; skipped original tensors; unbounded copy reads; unbounded comparison reads;
 omitted source-identity check; public file modes; ambiguous single-file discovery; leaked
-exception payload; and unchecked external shard paths.
+exception payload; unchecked external shard paths; retained comparison chunks; and
+opening nonregular configurations. All faults were repeated against the final source,
+with passing original/restored controls. The source is restored byte for byte afterward.
 
 ## Calibration and integer model
 
