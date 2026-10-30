@@ -1,0 +1,126 @@
+{
+  "scope": "controlled full-statistics 8B lifetime probe; no integer inference, full alpha selection, fidelity or proof",
+  "label": "candidate",
+  "outcome": "candidate-reached-integer-boundary",
+  "reference_windows": 1,
+  "full_requested_preflight_strengths": [
+    "1/2"
+  ],
+  "full_prior_16_case_preflight": "PR634",
+  "statistics_digest": "432dbac32234d087655e013698e0f955be3188090848ed1090d645838a0198f8",
+  "selection_digest": "8c7f3d086b03487c1f4503b9e1967470c70b90f4407b589a86900246e824fc52",
+  "source_sha256": {
+    "integer_model.py": "8f6932335032c1830b7a6f8c7c4311f9129a13da7086d7d383b5dd90efd4bf60",
+    "checkpoint.py": "ebd6c8b80c6a56a6da3dd23a8be933b534a921ce26ffec58c3f261cd58a859c0",
+    "tce.py": "e8ef69d99a4a44b88d7ffaa76339eba36f651fd33a97a3a76147d310b9dd04e9",
+    "log.py": "5317cdba89634ed17751ba9c053cce81021a0ace81fc18098e94c1425753c3cf",
+    "scales.py": "e3283e0b33f152f9f6982db55293f9cb9f6418ab38501f755993efc4ed7adfbb",
+    "_wide.py": "a2409f9d0cf21c42d77a13b87515bd2a8a635022c74942f37208a60f4802febd",
+    "arch.py": "66ca9ea61c3db13d3fe9f64dce495631e64b6af71427d141ba2843fbf3bb9fa6",
+    "__init__.py": "c979858e1f9a856c5512a4fa4af33a8c0a875496facbd9892c9bf53d08e665d6",
+    "assemble.py": "fe7a2668bf07ab041c42842fc5713285a6a28cbab34f2b4a47c6111d909b7331",
+    "_streaming.py": "a881bdee4e81eebbeb0c2eb8473bb545fc7c9595e0cb93780582b3765c1962b0",
+    "capture.py": "a904facf2f828b854533e566652073f1536244b66663ad1d263630c072ce609c",
+    "cli.py": "fcba16f1c20abef13f81e440bc588b2a96e078efc07f35df0b359fd7c798b4e2",
+    "fidelity.py": "d708b9a3da078c4489757e0fdcbe93bea3b07d5f66a8a7398e78102a8d591ceb",
+    "reference.py": "6d5064d51ed5e52a454ed67ff9579097be89c40ecbd5d3e0383d6cd961038479",
+    "tables.py": "0e1828e5a0bf91fd264361f5c9483bfcd2fdb53df10a88e647f9a3bddc241f4e",
+    "errors.py": "204b1f575308ce2df69e3e647afa02c22cc86247c4206c032c16abc4a8e654e8",
+    "migration.py": "cc6911b27813fa04ffb00d86eb00fbdb9e21fc7bba63282f8741a9e641b47293",
+    "_integer_matmul.py": "f28782bf55321d13882080dbb51099eca233a5b6a3bc8900044e776041dca82d",
+    "__main__.py": "47a98845127f26c2a5e7573960defae3a99826acad33cb49b709159545e2f214",
+    "calibration.py": "f0f770df494caca7bb334d77fb33f56e5a1d4eb3059e2a2962a1a258e3b7841f"
+  },
+  "script_sha256": "47fdadc93e2b3b15e5d55bac18f3d4a1e4db97ffb410ff47cf8dde879b50dd67",
+  "artifact": {
+    "bytes": 8032307955,
+    "envelope_digest": "e0408c73164ae09647726775462985302b8668b797ab94aac6ce282f8ce5ab59",
+    "sha256": "364c633550d773e4c14d8be98c5a81fd859a2cd9a417a07d5c391d155286f1ca",
+    "matches_prechange_fixed_D": true
+  },
+  "events": [
+    {
+      "pid": 17139,
+      "stage": "checking-inputs",
+      "seconds": 0.003271499997936189,
+      "process_peak_rss_bytes": 338067456,
+      "mps_allocated_bytes": 0,
+      "mps_driver_bytes": 393216
+    },
+    {
+      "pid": 17139,
+      "stage": "drawing-original-windows",
+      "seconds": 0.058326875005150214,
+      "process_peak_rss_bytes": 385515520,
+      "mps_allocated_bytes": 0,
+      "mps_driver_bytes": 393216
+    },
+    {
+      "pid": 17139,
+      "stage": "constructing-candidate",
+      "seconds": 44.0998166250065,
+      "process_peak_rss_bytes": 2342371328,
+      "mps_allocated_bytes": 0,
+      "mps_driver_bytes": 393216,
+      "preflight": true,
+      "bf16_models_live": 0
+    },
+    {
+      "pid": 17139,
+      "stage": "constructing-candidate",
+      "seconds": 130.50813862500945,
+      "process_peak_rss_bytes": 30035787776,
+      "mps_allocated_bytes": 0,
+      "mps_driver_bytes": 393216,
+      "preflight": false,
+      "bf16_models_live": 0
+    },
+    {
+      "pid": 17139,
+      "stage": "loading-bf16",
+      "seconds": 224.85571066700504,
+      "process_peak_rss_bytes": 30035787776,
+      "mps_allocated_bytes": 0,
+      "mps_driver_bytes": 393216,
+      "migration_maps_live": 0
+    },
+    {
+      "pid": 17139,
+      "stage": "bf16-loaded",
+      "seconds": 240.7717525420012,
+      "process_peak_rss_bytes": 30035787776,
+      "mps_allocated_bytes": 16073105920,
+      "mps_driver_bytes": 16114909184
+    },
+    {
+      "pid": 17139,
+      "stage": "bf16-window-returned",
+      "seconds": 301.4648437080032,
+      "process_peak_rss_bytes": 30035787776,
+      "mps_allocated_bytes": 16073122304,
+      "mps_driver_bytes": 19571277824,
+      "reference_windows": 1
+    },
+    {
+      "pid": 17139,
+      "stage": "checking-fixed-D",
+      "seconds": 301.4661892080039,
+      "process_peak_rss_bytes": 30035787776,
+      "mps_allocated_bytes": 16073122304,
+      "mps_driver_bytes": 19571277824
+    },
+    {
+      "pid": 17139,
+      "stage": "complete",
+      "seconds": 315.2894121670106,
+      "process_peak_rss_bytes": 30035787776,
+      "mps_allocated_bytes": 0,
+      "mps_driver_bytes": 19470614528,
+      "outcome": "candidate-reached-integer-boundary"
+    }
+  ],
+  "all_bf16_models_and_migration_maps_released": true,
+  "memory_scope": "Darwin peak process RSS and event samples of per-process MPS allocated/driver bytes; not a whole-run device peak or before/after speedup",
+  "mps_memory_fraction": 0.5,
+  "seconds": 315.2898963750049
+}

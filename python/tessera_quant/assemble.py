@@ -108,6 +108,9 @@ def quantize(
 
     def divergence(alpha: Fraction) -> float:
         rows: list[torch.Tensor] = []
+        # RFC-0005: construction scratch is gone before the BF16 model/window is resident.
+        # Complete preflight above still precedes every held-out forward (#625).
+        d = assembled(quantized(alpha), alpha)
         with closing(
             iter_reference_logits(model, held_out, calib.calibration.seed, device)
         ) as refs:
@@ -120,9 +123,7 @@ def quantize(
                         "the reference yields one row block per window"
                     ) from None
 
-            # Start the BF16 model before reading transformed checkpoint groups, as before.
-            reference: torch.Tensor | None = next_reference()
-            d = assembled(quantized(alpha), alpha)
+            reference: torch.Tensor | None = None
             # Avoid chain/zip retaining the first window or a previously yielded pair.
             for window in held_out:
                 if reference is None:
