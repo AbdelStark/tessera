@@ -6,6 +6,9 @@
 use core::alloc::Layout;
 use core::fmt;
 
+mod bounded;
+pub use bounded::{BoundedTree, PreparedTreeBatch};
+
 use tessera_codec::{Secret, Zeroize};
 use tessera_poly::PolyField;
 
@@ -870,7 +873,110 @@ where
 mod tests {
     use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
 
-    use super::{FractionTree, LeafNumerators};
+    use super::{FractionTree, LeafNumerators, Numerators};
+
+    #[test]
+    fn regenerated_fraction_rows_match_every_original_level() {
+        use crate::{FractionTreeRows, FractionTreeSource, WindowError};
+        use core::{cell::Cell, num::NonZeroUsize};
+
+        struct Source<'a> {
+            n: &'a [Fp],
+            d: &'a [Fp2],
+            height: usize,
+            largest: Cell<usize>,
+        }
+        impl FractionTreeSource<Fp2> for Source<'_> {
+            fn height(&self) -> usize {
+                self.height
+            }
+            fn read(&self, first: usize, n: &mut [Fp2], d: &mut [Fp2]) -> Result<(), WindowError> {
+                self.largest.set(self.largest.get().max(n.len()));
+                for (out, &value) in n.iter_mut().zip(&self.n[first..first + d.len()]) {
+                    *out = Fp2::from(value);
+                }
+                d.copy_from_slice(&self.d[first..first + d.len()]);
+                Ok(())
+            }
+        }
+        for height in 0..=8 {
+            let count = 1 << height;
+            let n: Vec<Fp> = (0..count)
+                .map(|j| Fp::from_u64_reduced((5 * j + 2) as u64))
+                .collect();
+            let d: Vec<Fp2> = (0..count)
+                .map(|j| {
+                    if j % 7 == 0 {
+                        Fp2::ZERO
+                    } else {
+                        fp2((j + 1) as u64, (3 * j + 2) as u64)
+                    }
+                })
+                .collect();
+            let original =
+                FractionTree::<Fp2>::new(height, LeafNumerators::Base(&n), |j| d[j]).unwrap();
+            for chunk in [1, 2, 3, 17, 256] {
+                let source = Source {
+                    n: &n,
+                    d: &d,
+                    height,
+                    largest: Cell::new(0),
+                };
+                let rows =
+                    FractionTreeRows::new(&source, NonZeroUsize::new(chunk).unwrap(), u64::MAX)
+                        .unwrap();
+                assert_eq!(rows.root().unwrap(), original.root());
+                for depth in 0..=height {
+                    let expected: Vec<(Fp2, Fp2)> = if depth == 0 {
+                        vec![original.root()]
+                    } else {
+                        let level = &original.levels[depth];
+                        (0..1 << depth)
+                            .map(|j| {
+                                let at = j / 2;
+                                let n = match &level.numerators {
+                                    Numerators::Unit => Fp2::ONE,
+                                    Numerators::Base(n) => {
+                                        Fp2::from(if j & 1 == 0 { n.even[at] } else { n.odd[at] })
+                                    }
+                                    Numerators::Ext(n) => {
+                                        if j & 1 == 0 {
+                                            n.even[at]
+                                        } else {
+                                            n.odd[at]
+                                        }
+                                    }
+                                };
+                                let d = if j & 1 == 0 {
+                                    level.denominators.even[at]
+                                } else {
+                                    level.denominators.odd[at]
+                                };
+                                (n, d)
+                            })
+                            .collect()
+                    };
+                    // Roots alone miss a permutation: compare each ordered internal node too.
+                    for first in (0..expected.len()).step_by(5) {
+                        let len = 5.min(expected.len() - first);
+                        let mut found_n = tessera_codec::SecretBuf::filled(Fp2::ZERO, len);
+                        let mut found_d = tessera_codec::SecretBuf::filled(Fp2::ZERO, len);
+                        rows.read_level(depth, first, &mut found_n, &mut found_d)
+                            .unwrap();
+                        for j in 0..len {
+                            assert_eq!(
+                                (found_n[j], found_d[j]),
+                                expected[first + j],
+                                "height={height}, chunk={chunk}, depth={depth}, row={}",
+                                first + j
+                            );
+                        }
+                    }
+                }
+                assert!(source.largest.get() <= chunk.min(count));
+            }
+        }
+    }
 
     type Fp = Goldilocks;
     type Fp2 = GoldilocksExt2;

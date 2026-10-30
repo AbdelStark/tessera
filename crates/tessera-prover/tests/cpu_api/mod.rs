@@ -515,9 +515,11 @@ fn public_cpu_api_test_seed_produces_identical_messages_across_thread_counts() {
 
 /// The pass plan bounds what a proof keeps resident (RFC-0018 'Memory scheduler', #132). A
 /// counting allocator measures the whole of `Prover::new` and a non-interactive proof on one
-/// thread, the only thread the CPU backend then uses: the peak lies between a quarter of the plan
-/// and the plan, on every conformance model and length. A budget one byte short of the plan fails
-/// with `ERR-RES-MEMORY` before P1 commits anything, and the plan itself suffices.
+/// thread, the only thread the CPU backend then uses: the peak fits the plan on every
+/// conformance model and length. Bounded P2 storage can make the unchanged conservative
+/// resident-cell floor exceed four times the measured peak; that is not permission to
+/// lower the floor. The plan itself suffices; smaller budgets select a bounded route
+/// or fail with `ERR-RES-MEMORY` before P1 commits anything.
 #[test]
 fn the_pass_plan_bounds_the_measured_peak_and_the_budget_refuses_before_p1() {
     use tessera_codec::error::ErrorCode;
@@ -545,7 +547,7 @@ fn the_pass_plan_bounds_the_measured_peak_and_the_budget_refuses_before_p1() {
             });
             let peak = info.bytes_max;
             assert!(
-                peak <= bytes && bytes <= 4 * peak,
+                peak <= bytes,
                 "{name}, n = {n}: measured {peak} bytes against a plan of {bytes}"
             );
             let cells = passes.cells().total().unwrap();
@@ -577,6 +579,7 @@ fn the_pass_plan_bounds_the_measured_peak_and_the_budget_refuses_before_p1() {
             assert!(
                 grouped.leaf_groups() != protocol::LeafGroups::NONE
                     || grouped.stage_windows().iter().any(|s| s.cut > 0)
+                    || grouped.table_cuts().iter().any(|&cut| cut > 0)
             );
             let grouped_bytes = grouped.resident_bytes().unwrap();
             assert!(grouped_bytes < bytes);
@@ -692,10 +695,20 @@ fn public_cpu_api_groups_the_leaf_stage_under_a_forced_budget() {
         let split = [(0, 1), (0, 2), (1, 2)][usize::from(bits) - 1];
         assert_eq!((groups.token_bits, groups.layer_bits), split, "{groups:?}");
         assert!(grouped.passes().contains(&tessera_prover::Pass::P2b));
-        let proof = Prover::new(&plan, &model, &mut state, budgeted(budget - 1))
-            .unwrap()
-            .prove_non_interactive(&batch)
-            .unwrap();
+        let mut proof = None;
+        let measured = allocation_counter::measure(|| {
+            proof = Some(
+                Prover::new(&plan, &model, &mut state, budgeted(budget - 1))
+                    .unwrap()
+                    .prove_non_interactive(&batch)
+                    .unwrap(),
+            );
+        });
+        assert!(
+            measured.bytes_max <= grouped.resident_bytes().unwrap(),
+            "grouped P2 source/merge coexistence: measured {measured:?}, plan={grouped:?}"
+        );
+        let proof = proof.unwrap();
         assert_eq!(proof.round1.leaf_groups, groups);
         let trees = &proof.round2.trees;
         assert_eq!(trees.groups.len(), 1 << bits);

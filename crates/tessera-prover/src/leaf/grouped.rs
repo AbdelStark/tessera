@@ -263,9 +263,22 @@ fn group_columns<S: Copy + Eq>(
     tables: &[TableColumns<Goldilocks>],
     witness: &[Vec<SiteTensors<'_, S>>],
 ) -> Result<GroupColumns, LeafError> {
+    group_columns_from(stage, grouped, h, layout, witness, |id| {
+        Ok(columns(tables, id)?.tuples())
+    })
+}
+
+fn group_columns_from<'a, S: Copy + Eq>(
+    stage: &LeafLayout<S>,
+    grouped: &GroupedLayout,
+    h: usize,
+    layout: &GroupLayout,
+    witness: &[Vec<SiteTensors<'_, S>>],
+    rows: impl Fn(tessera_tables::TableId) -> Result<Tuples<'a, Goldilocks>, LeafError>,
+) -> Result<GroupColumns, LeafError> {
     let mut out = Vec::with_capacity(layout.instances().len());
     for instance in layout.instances() {
-        let rows = columns(tables, instance.table)?.tuples();
+        let rows = rows(instance.table)?;
         let source = |block: &Block, x: u64| grouped.source(h, block, x);
         let (keys, values) = lookup_columns(stage, instance, rows, witness, source)?;
         out.push((instance.table, keys, values));
@@ -409,11 +422,88 @@ where
     S: Copy + Eq,
     T: SumcheckTranscript<GoldilocksExt2> + ?Sized,
 {
+    prove_grouped(
+        transcript,
+        stage,
+        grouped,
+        GroupTables::Resident {
+            tables,
+            multiplicities,
+        },
+        witness,
+        forests,
+        mode,
+    )
+}
+
+/// CPU grouped route with generated public rows and canonical P1 count tiles.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_grouped_leaf_bounded<S, T>(
+    transcript: &mut T,
+    stage: &LeafLayout<S>,
+    grouped: &GroupedLayout,
+    tables: &[super::table_source::GeneratedCounts],
+    witness: &[Vec<SiteTensors<'_, S>>],
+    forests: &[StageForest<'_>],
+    mode: MergeMode,
+    budget: tessera_logup::TableBatchBudget,
+) -> Result<ProvenGroupedLeaf, LeafError>
+where
+    S: Copy + Eq,
+    T: SumcheckTranscript<GoldilocksExt2> + ?Sized,
+{
+    prove_grouped(
+        transcript,
+        stage,
+        grouped,
+        GroupTables::Generated { tables, budget },
+        witness,
+        forests,
+        mode,
+    )
+}
+
+enum GroupTables<'a> {
+    Resident {
+        tables: &'a [TableColumns<Goldilocks>],
+        multiplicities: &'a [&'a [Goldilocks]],
+    },
+    Generated {
+        tables: &'a [super::table_source::GeneratedCounts],
+        budget: tessera_logup::TableBatchBudget,
+    },
+}
+impl GroupTables<'_> {
+    fn rows(&self, id: tessera_tables::TableId) -> Result<Tuples<'_, Goldilocks>, LeafError> {
+        match self {
+            Self::Resident { tables, .. } => Ok(columns(tables, id)?.tuples()),
+            Self::Generated { tables, .. } => {
+                Ok(super::table_source::source(tables, id)?.padding())
+            }
+        }
+    }
+}
+
+fn prove_grouped<S, T>(
+    transcript: &mut T,
+    stage: &LeafLayout<S>,
+    grouped: &GroupedLayout,
+    tables: GroupTables<'_>,
+    witness: &[Vec<SiteTensors<'_, S>>],
+    forests: &[StageForest<'_>],
+    mode: MergeMode,
+) -> Result<ProvenGroupedLeaf, LeafError>
+where
+    S: Copy + Eq,
+    T: SumcheckTranscript<GoldilocksExt2> + ?Sized,
+{
     check_witness(stage, witness)?;
     if grouped.groups().bits() == 0 {
         return internal("an ungrouped stage keeps RFC-0010's messages (prepare_leaf)");
     }
-    if multiplicities.len() != stage.instances().len() {
+    if let GroupTables::Resident { multiplicities, .. } = &tables
+        && multiplicities.len() != stage.instances().len()
+    {
         return internal("one multiplicity column per instance of the stage");
     }
     let g_t = u32::from(grouped.groups().token_bits);
@@ -504,24 +594,8 @@ where
     for h in 0..grouped.count() {
         let layout = grouped.group(h)?;
         let (tokens, layers) = (layout.tokens(), layout.layers());
-        let columns_h = group_columns(stage, grouped, h, &layout, tables, witness)?;
-        let instances = columns_h
-            .iter()
-            .map(|(table, keys, values)| {
-                let k = stage
-                    .instances()
-                    .iter()
-                    .position(|i| i.table == *table)
-                    .ok_or(LeafError::Internal {
-                        rule: "a group's instances are the stage's",
-                    })?;
-                Ok(LogUpInstance::new(
-                    columns(tables, *table)?.tuples(),
-                    Tuples::new(keys, values.as_deref()),
-                    multiplicities[k],
-                ))
-            })
-            .collect::<Result<Vec<_>, LeafError>>()?;
+        let columns_h =
+            group_columns_from(stage, grouped, h, &layout, witness, |id| tables.rows(id))?;
         let shares = forests
             .iter()
             .map(|forest| forest_share(forest, g_t, g_l, tokens, layers))
@@ -531,20 +605,66 @@ where
             .zip(forests)
             .map(|(share, forest)| Forest::new(share, forest.height as usize))
             .collect();
-        let mut schedule: Vec<TreeId> = (0..instances.len()).map(TreeId::Lookup).collect();
+        let mut schedule: Vec<TreeId> = (0..columns_h.len()).map(TreeId::Lookup).collect();
         schedule.extend((0..group_forests.len()).map(TreeId::Forest));
         let index = u32::try_from(h).map_err(|_| LeafError::Internal {
             rule: "a group index fits 32 bits",
         })?;
-        let proven = prove_group(
-            transcript,
-            index,
-            alpha,
-            beta,
-            &instances,
-            &group_forests,
-            &schedule,
-        )?;
+        let proven = match &tables {
+            GroupTables::Resident { multiplicities, .. } => {
+                let instances = columns_h
+                    .iter()
+                    .map(|(table, keys, values)| {
+                        let k = stage
+                            .instances()
+                            .iter()
+                            .position(|i| i.table == *table)
+                            .ok_or(LeafError::Internal {
+                                rule: "a group's instances are the stage's",
+                            })?;
+                        Ok(LogUpInstance::new(
+                            tables.rows(*table)?,
+                            Tuples::new(keys, values.as_deref()),
+                            multiplicities[k],
+                        ))
+                    })
+                    .collect::<Result<Vec<_>, LeafError>>()?;
+                prove_group(
+                    transcript,
+                    index,
+                    alpha,
+                    beta,
+                    &instances,
+                    &group_forests,
+                    &schedule,
+                )?
+            }
+            GroupTables::Generated {
+                tables: generated, ..
+            } => {
+                let instances = columns_h
+                    .iter()
+                    .map(|(table, keys, values)| {
+                        super::table_source::source(generated, *table)?.check_keys(keys)?;
+                        let rows = tables.rows(*table)?;
+                        Ok(tessera_logup::LookupInstance {
+                            lookups: Tuples::new(keys, values.as_deref()),
+                            padding_key: rows.keys[0],
+                            padding_value: rows.values.map(|v| v[0]),
+                        })
+                    })
+                    .collect::<Result<Vec<_>, LeafError>>()?;
+                tessera_logup::prove_lookup_group(
+                    transcript,
+                    index,
+                    alpha,
+                    beta,
+                    &instances,
+                    &group_forests,
+                    &schedule,
+                )?
+            }
+        };
         let point = level_point(proven.levels());
 
         // The split: each tensor at `P_h` outside `S` and at the group's bits on `S`.
@@ -646,17 +766,32 @@ where
 
     // The table batch: every table tree, its multiplicities counting every group. Its lookups
     // enter no tree; row 0's tuple stands for them.
-    let table_instances = stage
-        .instances()
-        .iter()
-        .zip(multiplicities)
-        .map(|(instance, &m)| {
-            let rows = columns(tables, instance.table)?.tuples();
-            let row_0 = Tuples::new(&rows.keys[..1], rows.values.map(|v| &v[..1]));
-            Ok(LogUpInstance::new(rows, row_0, m))
-        })
-        .collect::<Result<Vec<_>, LeafError>>()?;
-    let table_batch = prove_table_batch(transcript, alpha, beta, &table_instances)?;
+    let table_batch = match &tables {
+        GroupTables::Resident { multiplicities, .. } => {
+            let instances = stage
+                .instances()
+                .iter()
+                .zip(*multiplicities)
+                .map(|(instance, &m)| {
+                    let rows = tables.rows(instance.table)?;
+                    let row_0 = Tuples::new(&rows.keys[..1], rows.values.map(|v| &v[..1]));
+                    Ok(LogUpInstance::new(rows, row_0, m))
+                })
+                .collect::<Result<Vec<_>, LeafError>>()?;
+            prove_table_batch(transcript, alpha, beta, &instances)?
+        }
+        GroupTables::Generated { tables, budget } => {
+            let sources = stage
+                .instances()
+                .iter()
+                .map(|instance| {
+                    Ok(super::table_source::source(tables, instance.table)?
+                        as &dyn tessera_logup::TableSource<Goldilocks>)
+                })
+                .collect::<Result<Vec<_>, LeafError>>()?;
+            tessera_logup::prove_table_batch_bounded(transcript, alpha, beta, &sources, *budget)?
+        }
+    };
 
     // The merge, the pass P2b counts (RFC-0054 'Pass structure').
     let merge_started = std::time::Instant::now();

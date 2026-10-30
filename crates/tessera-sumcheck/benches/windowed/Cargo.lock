@@ -457,6 +457,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-logup"
+version = "0.1.0"
+dependencies = [
+ "tessera-codec",
+ "tessera-field",
+ "tessera-poly",
+ "tessera-sumcheck",
+]
+
+[[package]]
 name = "tessera-poly"
 version = "0.1.0"
 dependencies = [
@@ -482,6 +492,7 @@ dependencies = [
  "tessera-codec",
  "tessera-field",
  "tessera-hash",
+ "tessera-logup",
  "tessera-sumcheck",
 ]
 

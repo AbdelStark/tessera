@@ -15,6 +15,7 @@ mod backend;
 mod error;
 mod plan;
 mod random;
+mod table_plan;
 pub use error::ProverError;
 pub use plan::{Cells, Pass, PassPlan};
 pub use tessera_hash::Mode;

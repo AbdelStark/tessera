@@ -77,6 +77,22 @@ pub struct GeneratedTable {
 }
 
 impl GeneratedTable {
+    /// Complete owned storage including this descriptor, the generated core's capacity,
+    /// and any class-shift capacity. Logical row count is not physical allocation.
+    pub fn storage_bytes(&self) -> Option<usize> {
+        let classes = match &self.spec.kind {
+            TableKind::Requant { r_by_class, .. } | TableKind::Silu { r_by_class, .. } => {
+                r_by_class.capacity()
+            }
+            _ => 0,
+        };
+        self.core
+            .capacity()
+            .checked_mul(size_of::<i64>())?
+            .checked_add(classes)?
+            .checked_add(size_of::<Self>())
+    }
+
     /// The table of `kind` with index `id`: its parameters checked against RFC-0008 'Table
     /// specifications', its core generated, and its `log2_rows` and digest computed.
     ///

@@ -103,10 +103,16 @@ mod error;
 mod groups;
 mod instance;
 mod prover;
+mod streaming;
 
 pub use error::{Column, LogUpError};
 pub use groups::{
-    LookupClaims, ProvenGroup, ProvenTables, begin_groups, prove_group, prove_table_batch,
+    LookupClaims, LookupInstance, ProvenGroup, ProvenTables, begin_groups, prove_group,
+    prove_lookup_group, prove_table_batch,
 };
 pub use instance::{LogUpInstance, Tuples, multiplicities};
 pub use prover::{InstanceClaims, ProvenLogUp, TreeId, prove_logup};
+pub use streaming::{
+    BoundedLogUpError, StreamingInstance, TABLE_BATCH_CONSTRUCTION_BYTES_PER_TREE,
+    TableBatchBudget, TableSource, prove_logup_bounded, prove_table_batch_bounded,
+};

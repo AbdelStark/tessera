@@ -491,6 +491,74 @@ pub fn prepare_leaf<'tr, S: Copy + Eq, T: SumcheckTranscript<GoldilocksExt2> + ?
     })
 }
 
+/// CPU table streaming with canonical P1 counts. Only lookup columns are materialized;
+/// generated rows/counts remain borrowed through the complete mixed tree batch.
+pub(crate) fn prepare_leaf_bounded<
+    'tr,
+    S: Copy + Eq,
+    T: SumcheckTranscript<GoldilocksExt2> + ?Sized,
+>(
+    transcript: &'tr mut T,
+    layout: &LeafLayout<S>,
+    tables: &[super::table_source::GeneratedCounts],
+    witness: &[Vec<SiteTensors<'_, S>>],
+    forests: &[Forest<'_, GoldilocksExt2>],
+    mut budget: tessera_logup::TableBatchBudget,
+) -> Result<PreparedLeaf<'tr, T>, LeafError> {
+    use super::table_source::source;
+    use tessera_logup::{StreamingInstance, prove_logup_bounded};
+    check_witness(layout, witness)?;
+    let mut lookups = Vec::with_capacity(layout.instances().len());
+    for instance in layout.instances() {
+        let table = source(tables, instance.table)?;
+        let rows = table.padding();
+        let columns = lookup_columns(layout, instance, rows, witness, |_, x| Some(x))?;
+        table.check_keys(&columns.0)?;
+        lookups.push(columns);
+    }
+    let bytes = lookups
+        .iter()
+        .try_fold(
+            lookups.capacity() as u64
+                * size_of::<(SecretBuf<Goldilocks>, Option<SecretBuf<Goldilocks>>)>() as u64,
+            |total, (k, v)| {
+                total.checked_add(
+                    (k.capacity() + v.as_ref().map_or(0, SecretBuf::capacity)) as u64
+                        * size_of::<Goldilocks>() as u64,
+                )
+            },
+        )
+        .ok_or(LeafError::Memory)?;
+    budget.source_bytes = budget
+        .source_bytes
+        .checked_add(bytes)
+        .ok_or(LeafError::Memory)?;
+    let instances = layout
+        .instances()
+        .iter()
+        .zip(&lookups)
+        .map(|(instance, (keys, values))| {
+            Ok(StreamingInstance {
+                table: source(tables, instance.table)?,
+                lookups: Tuples::new(keys, values.as_deref()),
+            })
+        })
+        .collect::<Result<Vec<_>, LeafError>>()?;
+    let mut schedule = layout.trees();
+    schedule.extend((0..forests.len()).map(TreeId::Forest));
+    let logup = prove_logup_bounded(transcript, &instances, forests, &schedule, budget)?;
+    let point = leaf_point(&logup);
+    let splits = split_values(layout, &point, witness)?;
+    Ok(PreparedLeaf {
+        inner: ProvenLeaf {
+            logup,
+            point,
+            splits,
+        },
+        transcript,
+    })
+}
+
 /// Proves the LogUp part of the leaf stage over `layout` and its split, on `transcript`
 /// (RFC-0045, RFC-0008 'Fraction tree', RFC-0037 'Splits'):
 ///

@@ -361,6 +361,7 @@ mod contract;
 mod elementwise;
 mod error;
 mod forest;
+mod fraction_rows;
 mod kernel;
 mod level;
 mod linear;
@@ -380,6 +381,7 @@ pub use claim::Claim;
 pub use elementwise::{Elementwise, ElementwiseShape, ElementwiseTables, Input, zero_check_point};
 pub use error::SumcheckError;
 pub use forest::{Forest, ProvenForests, ProvenLevel, check_forests, prove_forests};
+pub use fraction_rows::{FractionTreeRows, FractionTreeSource};
 pub use linear::{Linear, LinearClaim, LinearInput, LinearTerm, Placement};
 pub use matmul::{
     MatMulAct, MatMulActClaims, MatMulActShape, MatMulActTables, MatMulWeight, MatMulWeightClaims,
@@ -406,6 +408,6 @@ pub use terms::Term;
 pub use tessera_poly::MAX_DEGREE;
 pub use transcript::SumcheckTranscript;
 pub use trees::{
-    FractionClaim, FractionTree, LeafNumerators, LevelClaim, ProvenTreeLevel, ProvenTrees, Tree,
-    prove_trees, prove_trees_in,
+    BoundedTree, FractionClaim, FractionTree, LeafNumerators, LevelClaim, PreparedTreeBatch,
+    ProvenTreeLevel, ProvenTrees, Tree, prove_trees, prove_trees_in,
 };

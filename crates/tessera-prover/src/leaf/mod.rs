@@ -53,10 +53,13 @@ mod groups;
 mod layout;
 mod model;
 mod model_witness;
+pub(crate) mod table_source;
 pub use graph::GraphLeafWitness;
 pub use model::ModelColumn;
 pub use model_witness::ModelWitness;
 mod prove;
+pub(crate) use grouped::prove_grouped_leaf_bounded;
+pub(crate) use prove::prepare_leaf_bounded;
 
 use core::fmt;
 
@@ -145,6 +148,21 @@ impl From<GadgetError> for LeafError {
 impl From<LogUpError> for LeafError {
     fn from(error: LogUpError) -> Self {
         Self::LogUp(error)
+    }
+}
+
+impl From<tessera_logup::BoundedLogUpError> for LeafError {
+    fn from(error: tessera_logup::BoundedLogUpError) -> Self {
+        use tessera_logup::BoundedLogUpError as E;
+        use tessera_sumcheck::WindowError as W;
+        match error {
+            E::LogUp(error) => Self::LogUp(error),
+            E::Window(W::Allocation) => Self::Memory,
+            E::Window(W::Shape(rule)) => Self::Internal { rule },
+            E::Window(W::Source) => Self::Internal {
+                rule: "the canonical generated table/count source is available and immutable",
+            },
+        }
     }
 }
 
