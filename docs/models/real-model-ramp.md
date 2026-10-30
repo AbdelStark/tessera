@@ -4,6 +4,10 @@ This is the preparation path for the 1–10B integrity work, tracked in
 [#617](https://github.com/AbdelStark/tessera/issues/617). **No certifying real-model proof
 has been generated or independently verified yet.** Synthetic `test-small` proofs certify
 nothing. Protocol One is non-hiding; this work establishes no zero-knowledge claim.
+The current [reference verifier](../verifier/reference-cli.md) also reports
+`anchor_verified=false`: model-proof acceptance does not bind the tokens to signed
+recorded frames. That binding remains tracked by
+[#150](https://github.com/AbdelStark/tessera/issues/150).
 
 ## Pinned checkpoints
 
@@ -163,10 +167,18 @@ fatal. On this checkpoint all four `servable`/`pot` candidates are infeasible;
 `servable`/`affine` admits 1/2 and 3/5 and refuses 7/10 and 4/5. This construction
 check does not measure KL or establish which admissible strength is best.
 The proper-provenance diagnostic D uses a fixed admissible affine alpha of 1/2; it is
-not selected as best and is not fidelity-qualified. Its original full 64-window held-out
-evaluation remains running. Complete 8B calibration remains running too. Do not reuse
-their reports with newly sharded checkpoint digests. Preparation and candidate preflight
-do not establish RFC-0005's fidelity gates.
+not selected as best and is not fidelity-qualified. Its full 64-window diagnostic
+completed over 131,072 positions: mean per-position KL was 2.535801116590834 nats,
+with 68,310.43 seconds elapsed and 24,077,451,264 bytes peak RSS. The 20 imported
+Python module hashes were verified against launch revision
+`25068847449cad874bfab062a7f7b411930b23e3`; the checkout revision reported at
+completion is not the run's source revision. This is a legacy fixed-candidate
+diagnostic, not all-alpha selection or the complete RFC-0005 fidelity evaluation.
+
+The 8B run completed its 512-window calibration and fixed-candidate construction;
+its complete held-out strength selection remains running. Do not reuse these
+reports with newly sharded checkpoint digests. Preparation, candidate preflight
+and the fixed diagnostic do not establish RFC-0005's fidelity gates.
 
 ## Proving and independent verification
 
@@ -189,11 +201,30 @@ proof. The following one-prompt/one-continuation `prove` attempt returned exit 7
 > a site's real layers read the same tensors over the same axes
 
 The public per-layer Requant selections disagree at one template site. The existing
-guard stays in place. [Draft RFC-0076 / PR #620](https://github.com/AbdelStark/tessera/pull/620)
-proposes a remedy; its non-author maintainer review and acceptance decision remain
-required before adoption. See [#617](https://github.com/AbdelStark/tessera/issues/617) for
-the exact public reproduction and remaining implementation/count/proof obligations.
+guard stays in place. [RFC-0076 / PR #620](https://github.com/AbdelStark/tessera/pull/620)
+is accepted under explicit maintainer authorization, with additional non-author
+review waived and no independent approval claimed. Both workspaces now derive
+common families for incompatible Protocol One sites. See [#617](https://github.com/AbdelStark/tessera/issues/617)
+for the exact public reproduction and remaining count/proof obligations.
 No actual memory refusal was observed in that attempt; do not relabel the leaf failure.
+
+The unchanged fixed 1B D recompiles under ordinary release NI-100, B=32 and
+Q=512 in 1,020.29 seconds, with 6,497,910,784 bytes peak RSS. A separate release
+diagnostic using only the independent verifier's crates validates those claims,
+matches the two-position runtime catalog and constructs the complete split/leaf
+geometry: 60 tables, 17 split sites, 59 split instances, 6,960 split values,
+30 leaf levels and three stages. It takes 87.06 seconds and 150,175,744 bytes
+peak RSS. This passes the formerly failing structural guard; it is neither
+proof acceptance nor the complete soundness-budget check.
+
+The subsequent ordinary release `prove` retry uses the unchanged D and token
+artifact and a declared 16 GiB budget. It exits 20 with `ERR-RES-MEMORY` after
+2,535.58 seconds, with 8,345,141,248 bytes peak RSS, and writes no proof. This
+is a prover resource refusal; peak RSS below the declared budget does not
+justify removing the conservative reservation or demonstrate physical exhaustion.
+An independent recount of this compiled runtime matches the earlier experiment's
+two-position tensor, lookup, used-table and advice cell totals below. Its advice
+charge uses 8,758 committed rows; 9,129 allocated rows include public zeros.
 
 A separate [complete runtime sizing experiment](../../research/experiments/EXP-0030-real-runtime-sizing/README.md)
 uses the same public fixed-candidate metadata and the proposed common-family plans

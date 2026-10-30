@@ -141,7 +141,7 @@ use super::{
 };
 use crate::{
     AdviceSource, CompileError, Lowering, ModelAdviceLayout, PublicModel, Selection, analyze,
-    lower, select,
+    lower, select_model,
 };
 
 type Fp2 = GoldilocksExt2;
@@ -1794,10 +1794,10 @@ pub fn check_readings(
 ) -> Result<Vec<MaskReport>, CompileError> {
     let lowering = lower(PublicModel::of_claims(claims), length)?;
     let ranges = analyze(&lowering.graph, &lowering.tables)?;
-    let selection = select(
-        &lowering.graph,
+    let selection = select_model(
+        claims.protocol_version,
+        &lowering,
         &ranges,
-        &lowering.tables,
         &claims.gadget_policy,
     )?;
     let natives = model_natives(&lowering, request)?;

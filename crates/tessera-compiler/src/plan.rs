@@ -31,7 +31,8 @@ use tessera_ir::{ClaimList, CommitmentClass, Graph, Node, NodeKind, Op, OpClass,
 
 use crate::schedule::LayerMap;
 use crate::{
-    CompileError, Lowering, PublicModel, Selection, analyze, claim_list_for_protocol, lower, select,
+    CompileError, Lowering, PublicModel, Selection, analyze, claim_list_for_protocol, lower,
+    select_model,
 };
 
 /// A `query_block` that is not a power of two: RFC-0007 step 6 refuses its claim list as `Layout`
@@ -329,7 +330,7 @@ pub fn tiles(
 /// - [`CompileError::Usage`] for a claim list whose `query_block` is not a power of two, or that is
 ///   not the one [`claim_list_for_protocol`] emits for `model` under the claim list's own protocol
 ///   version, gadget policy, layout and parameter set;
-/// - the errors of [`lower`] and [`select`], for a model or a gadget policy they refuse;
+/// - the errors of [`lower`] and [`select_model`], for a model or a gadget policy they refuse;
 /// - [`CompileError::Schedule`] for a lowering whose layers are not one template.
 pub fn plan(model: PublicModel<'_>, claims: &ClaimList) -> Result<ExecutionPlan, CompileError> {
     let policy = &claims.gadget_policy;
@@ -338,7 +339,6 @@ pub fn plan(model: PublicModel<'_>, claims: &ClaimList) -> Result<ExecutionPlan,
     // Ids do not depend on the length: one position lowers the graph of every length.
     let lowering = lower(model, 1)?;
     let ranges = analyze(&lowering.graph, &lowering.tables)?;
-    let selection = select(&lowering.graph, &ranges, &lowering.tables, policy)?;
     if claims.protocol_version != tessera_ir::PROTOCOL_VERSION
         && claims.protocol_version != tessera_ir::PROTOCOL_VERSION_2
     {
@@ -346,6 +346,7 @@ pub fn plan(model: PublicModel<'_>, claims: &ClaimList) -> Result<ExecutionPlan,
             rule: NOT_THE_MODELS,
         });
     }
+    let selection = select_model(claims.protocol_version, &lowering, &ranges, policy)?;
     if claim_list_for_protocol(
         claims.protocol_version,
         model,

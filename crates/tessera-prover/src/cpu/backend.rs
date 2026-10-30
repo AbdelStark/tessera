@@ -333,7 +333,7 @@ impl<'a> CpuBackend<'a> {
         let n = lowering.graph.tensors[lowering.tokens.0 as usize].shape[0];
         let ranges = compiler::analyze(&lowering.graph, &lowering.tables)?;
         let selected =
-            compiler::select(&lowering.graph, &ranges, &lowering.tables, &c.gadget_policy)?;
+            compiler::select_model(c.protocol_version, &lowering, &ranges, &c.gadget_policy)?;
         let runtime = RuntimePlan::derive_batch(&lowering, &selected, c, &requests)?;
         let layers = LayerMap::new(&lowering)?;
         let leaf = LeafLayout::runtime(&lowering, &layers, &runtime, c)?;

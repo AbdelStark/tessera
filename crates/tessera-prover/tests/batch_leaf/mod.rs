@@ -19,10 +19,10 @@ fn check_batch(requests: [(u32, u32); 3], lengths: [u32; 3]) {
     p.lowering = tessera_compiler::lower_batch(PublicModel::of(&model), &lengths).unwrap();
     p.layers = LayerMap::new(&p.lowering).unwrap();
     let ranges = analyze(&p.lowering.graph, &p.lowering.tables).unwrap();
-    p.selection = select(
-        &p.lowering.graph,
+    p.selection = select_model(
+        p.claims.protocol_version,
+        &p.lowering,
         &ranges,
-        &p.lowering.tables,
         &p.claims.gadget_policy,
     )
     .unwrap();

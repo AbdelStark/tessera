@@ -4,6 +4,8 @@
 
 use std::collections::HashSet;
 
+mod uniform;
+
 use tv_field::Fp;
 use tv_tables::{TableError, TableId, TableKind, TableSpec};
 
@@ -167,6 +169,9 @@ struct Tables<'a> {
     added: Vec<(Key, u8)>,
     seen: HashSet<Key>,
     capture: bool,
+    // RFC-0076: resolve abstract requests before assigning any auxiliary ids.
+    deferred: bool,
+    pending: Vec<Vec<Key>>,
     trace: Vec<Vec<(TableId, Key, u8)>>,
 }
 
@@ -175,6 +180,15 @@ impl Tables<'_> {
         let rows = key.log2_rows(id)?;
         if rows > max_bits {
             return Err(gadget(id));
+        }
+        if self.deferred {
+            let requests = self
+                .pending
+                .get_mut(usize::try_from(id.0).map_err(|_| ClaimsError::Memory)?)
+                .ok_or(ClaimsError::Internal)?;
+            requests.try_reserve(1).map_err(|_| ClaimsError::Memory)?;
+            requests.push(key);
+            return Ok(());
         }
         if self.seen.contains(&key) || self.base.iter().any(|t| key.matches(&t.kind)) {
             if self.capture {
@@ -606,6 +620,8 @@ fn walk(
         added: Vec::new(),
         seen: HashSet::new(),
         capture,
+        deferred: true,
+        pending: Vec::new(),
         trace: Vec::new(),
     };
     let mut next = 0u32;
@@ -622,7 +638,21 @@ fn walk(
                 .map_err(|_| ClaimsError::Memory)?;
             tables.trace.push(Vec::new());
         }
+        tables
+            .pending
+            .try_reserve(1)
+            .map_err(|_| ClaimsError::Memory)?;
+        tables.pending.push(Vec::new());
         check_gadget(graph, node, &ranges, policy, id, &mut tables)?;
+    }
+    uniform::apply(graph, &ranges, policy.max_log2_rows, &mut tables.pending)?;
+    tables.deferred = false;
+    for index in 0..tables.pending.len() {
+        let requests = core::mem::take(tables.pending.get_mut(index).ok_or(ClaimsError::Internal)?);
+        let id = GadgetId(u32::try_from(index).map_err(|_| ClaimsError::Memory)?);
+        for key in requests {
+            tables.intern(key, policy.max_log2_rows, id)?;
+        }
     }
     Ok((ranges, tables))
 }
@@ -1026,6 +1056,8 @@ mod tests {
                 added: Vec::new(),
                 seen: HashSet::new(),
                 capture: true,
+                deferred: false,
+                pending: Vec::new(),
                 trace: vec![Vec::new()],
             };
             rsqrt_ranges(width, policy, GadgetId(0), &mut tables).unwrap();
@@ -1072,6 +1104,8 @@ mod tests {
                 added: Vec::new(),
                 seen: HashSet::new(),
                 capture: false,
+                deferred: false,
+                pending: Vec::new(),
                 trace: Vec::new(),
             };
             assert!(matches!(
@@ -1092,6 +1126,8 @@ mod tests {
             added: Vec::new(),
             seen: HashSet::new(),
             capture: false,
+            deferred: false,
+            pending: Vec::new(),
             trace: Vec::new(),
         };
         select_requant(
@@ -1121,6 +1157,8 @@ mod tests {
                 added: Vec::new(),
                 seen: HashSet::new(),
                 capture: false,
+                deferred: false,
+                pending: Vec::new(),
                 trace: Vec::new(),
             };
             let mut policy = GadgetPolicy {
@@ -1146,6 +1184,8 @@ mod tests {
             added: Vec::new(),
             seen: HashSet::new(),
             capture: false,
+            deferred: false,
+            pending: Vec::new(),
             trace: Vec::new(),
         };
         let mut policy = GadgetPolicy {
@@ -1227,6 +1267,8 @@ mod tests {
             added: Vec::new(),
             seen: HashSet::new(),
             capture: false,
+            deferred: false,
+            pending: Vec::new(),
             trace: Vec::new(),
         };
         assert_eq!(
@@ -1330,6 +1372,8 @@ mod tests {
             added: Vec::new(),
             seen: HashSet::new(),
             capture: false,
+            deferred: false,
+            pending: Vec::new(),
             trace: Vec::new(),
         };
         check_gadget(graph, node, ranges, policy, id, &mut tables)
@@ -1477,6 +1521,8 @@ mod tests {
             added: Vec::new(),
             seen: HashSet::new(),
             capture: false,
+            deferred: false,
+            pending: Vec::new(),
             trace: Vec::new(),
         };
         assert_eq!(
@@ -1517,6 +1563,8 @@ mod tests {
                 added: Vec::new(),
                 seen: HashSet::new(),
                 capture: true,
+                deferred: false,
+                pending: Vec::new(),
                 trace: vec![Vec::new()],
             };
             let half = 1i128 << (bits - 1);
@@ -1560,6 +1608,8 @@ mod tests {
             added: Vec::new(),
             seen: HashSet::new(),
             capture: true,
+            deferred: false,
+            pending: Vec::new(),
             trace: vec![Vec::new()],
         };
         let policy = GadgetPolicy {

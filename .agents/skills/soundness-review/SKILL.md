@@ -47,6 +47,7 @@ Read the change twice: as a malicious prover (ADV-P) with a large grinding budge
 ## Gadgets (RFC-0009)
 - Every committed value upstream of the logits has exactly one passing witness. The change carries an alternative-witness test for each gadget it touches.
 - Gadget preconditions (such as `s ≤ r − 1`) are checked at claim-list validation, by the verifier, from public data.
+- When canonical selection widens a gadget's key envelope, derive lookup offsets and source bindings from the final selected table widths. Keep the original analyzed integer range and test both binding consumers; using its old width with the new tables changes the represented key (RFC-0076, #617).
 - A range argument counts every term of the quantities it compares. A packed class term `2^b·c` multiplies a key's range by the class count `n`, so a split identity compares values up to `n·2^b`, not `2^b`. RFC-0009 Lemma 2's split dropped that term, which let `RequantSplit` wrap at `n = 4, b = 62` (#118).
 
 ## Zero knowledge (RFC-0013)

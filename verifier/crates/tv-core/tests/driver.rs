@@ -435,8 +435,12 @@ fn live_round1_keeps_the_session_clock_and_checks_before_revealing() {
         );
         assert!(observer.seen);
         if kind == CheckKind::Claims {
-            // Expiry is caught in the work phase, before transcript/seed handling.
-            assert_eq!(observer.last, Some(CheckKind::Statement));
+            // Claims validation can itself consume the remaining clock. Either
+            // work-phase expiry must precede transcript/seed handling.
+            assert!(matches!(
+                observer.last,
+                Some(CheckKind::Claims | CheckKind::Statement)
+            ));
         }
         inconclusive(
             live.on_round1(&p.round1, &share).unwrap_err(),

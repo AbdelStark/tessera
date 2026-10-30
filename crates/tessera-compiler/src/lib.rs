@@ -69,7 +69,7 @@ pub use runtime::{
     cdf_columns_and_requests, log2_columns_and_requests, vocab_exp_scale,
 };
 pub use schedule::{StageSchedule, derive_graph_schedule, derive_schedule};
-pub use select::{Gadget, Selection, select};
+pub use select::{Gadget, Selection, select, select_model};
 
 /// The three outputs of compiling `D` (RFC-0006 'Outputs', RFC-0029): the public
 /// [`tessera_ir::ClaimList`], the private [`ExecutionPlan`], and the public [`CommitmentReport`].
@@ -130,7 +130,7 @@ pub fn compile_for_protocol(
     let positions = 16.min(model.arch.max_context).max(1);
     let lowering = lower(public, positions)?;
     let ranges = analyze(&lowering.graph, &lowering.tables)?;
-    let selection = select(&lowering.graph, &ranges, &lowering.tables, policy)?;
+    let selection = select_model(protocol_version, &lowering, &ranges, policy)?;
     let claims =
         claim_list_for_protocol(protocol_version, public, &selection, policy, layout, params)?;
     let execution_plan = plan(public, &claims)?;

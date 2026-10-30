@@ -400,10 +400,10 @@ pub fn check_batch_advice_rows(
     let public = PublicModel::of_claims(claims);
     let lowering = crate::lower_batch_for_protocol(claims.protocol_version, public, &lengths)?;
     let ranges = crate::analyze(&lowering.graph, &lowering.tables)?;
-    let selection = crate::select(
-        &lowering.graph,
+    let selection = crate::select_model(
+        claims.protocol_version,
+        &lowering,
         &ranges,
-        &lowering.tables,
         &claims.gadget_policy,
     )?;
     let runtime = RuntimePlan::derive_batch(&lowering, &selection, claims, requests)?;

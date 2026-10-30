@@ -17,7 +17,7 @@ use tessera_codec::error::{ErrorCode, TesseraError};
 use tessera_codec::{Ascii, Public, envelope, schema};
 use tessera_compiler::{
     CommitmentReport, CompileError, ExecutionPlan, PublicModel, analyze, check_plan, lower, report,
-    select,
+    select_model,
 };
 use tessera_ir::{GadgetPolicy, IntegerModel, ParamSetId};
 use tessera_protocol::ParamSet;
@@ -115,10 +115,10 @@ pub(crate) fn counts_from_plan(path: &Path) -> Result<Counts, TesseraError> {
     let positions = 16.min(plan.claims.arch.max_context).max(1);
     let lowering = lower(public, positions).map_err(compile_error)?;
     let ranges = analyze(&lowering.graph, &lowering.tables).map_err(compile_error)?;
-    let selection = select(
-        &lowering.graph,
+    let selection = select_model(
+        plan.claims.protocol_version,
+        &lowering,
         &ranges,
-        &lowering.tables,
         &plan.claims.gadget_policy,
     )
     .map_err(compile_error)?;

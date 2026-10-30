@@ -226,7 +226,7 @@ opening groups and claims must be re-derived from the final runtime geometry.
 Keep the root zero-denominator/fraction checks, multiplicities below `P`,
 within-column and cross-column batching, and every final-evaluation/opening debt.
 No relation may be skipped because its new auxiliary is absent at another site.
-The existing complete RFC-0014 budget must pass before acceptance. Old model
+The existing complete RFC-0014 budget must pass before proof acceptance. Old model
 presets, selected-site subtotals and the finite experiment cannot establish
 that budget. A failure must refuse; no target or proof-of-work requirement is
 relaxed by this RFC.

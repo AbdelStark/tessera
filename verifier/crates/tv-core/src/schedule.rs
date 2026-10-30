@@ -1010,7 +1010,7 @@ impl Layout {
     }
 
     /// Node `position` of layer `layer`.
-    fn node_id(&self, layer: u32, position: u32) -> Result<NodeId, ScheduleError> {
+    pub(crate) fn node_id(&self, layer: u32, position: u32) -> Result<NodeId, ScheduleError> {
         let offset = layer
             .checked_mul(self.len)
             .and_then(|o| o.checked_add(position))
@@ -1023,7 +1023,7 @@ impl Layout {
     }
 
     /// The layer and position of a node inside the layers, or `None` outside them.
-    fn position(&self, node: NodeId) -> Option<(u32, u32)> {
+    pub(crate) fn position(&self, node: NodeId) -> Option<(u32, u32)> {
         let offset = node.0.checked_sub(self.template_start)?;
         let layer = offset.checked_div(self.len)?;
         let position = offset.checked_rem(self.len)?;

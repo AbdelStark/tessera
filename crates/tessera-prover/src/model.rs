@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use tessera_compiler::schedule::{Claim, NodeRef, Part, Site, Source};
 use tessera_compiler::{
     CompileError, Lowering, ModelAdviceLayout, PublicModel, RuntimePlan, Selection, StageSchedule,
-    analyze, derive_schedule, lower, select,
+    analyze, derive_schedule, lower, select_model,
 };
 use tessera_ir::{ClaimList, Op, TableId};
 use tessera_pcs::{WeightLayout, WeightMatrix as Matrix, WeightShapes};
@@ -308,10 +308,10 @@ fn public_model(claims: &ClaimList, n: u32) -> Result<(Lowering, Selection), Com
     }
     let lowering = lower(PublicModel::of_claims(claims), n)?;
     let ranges = analyze(&lowering.graph, &lowering.tables)?;
-    let selection = select(
-        &lowering.graph,
+    let selection = select_model(
+        claims.protocol_version,
+        &lowering,
         &ranges,
-        &lowering.tables,
         &claims.gadget_policy,
     )?;
     if selection.tables != claims.tables {

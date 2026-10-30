@@ -395,8 +395,9 @@ pub fn snapshot(c: &ClaimList, n: u32) -> Value {
     let low = lower(PublicModel::of_claims(c), n).expect("compiler lowering");
     let q = derive_schedule(&low).expect("compiler stage schedule");
     let ranges = analyze(&low.graph, &low.tables).expect("compiler range analysis");
-    let selected = tessera_compiler::select(&low.graph, &ranges, &low.tables, &c.gadget_policy)
-        .expect("compiler gadget choices");
+    let selected =
+        tessera_compiler::select_model(c.protocol_version, &low, &ranges, &c.gadget_policy)
+            .expect("compiler gadget choices");
     let g = &low.graph;
     let mut producers = vec![None; g.tensors.len()];
     for node in &g.nodes {

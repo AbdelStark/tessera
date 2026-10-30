@@ -229,10 +229,10 @@ fn artifacts() -> BTreeMap<String, Vec<u8>> {
     )
     .unwrap();
     let ranges = tessera_compiler::analyze(&lowering.graph, &lowering.tables).unwrap();
-    let selected = tessera_compiler::select(
-        &lowering.graph,
+    let selected = tessera_compiler::select_model(
+        compiled.plan.claims.protocol_version,
+        &lowering,
         &ranges,
-        &lowering.tables,
         &compiled.plan.claims.gadget_policy,
     )
     .unwrap();
