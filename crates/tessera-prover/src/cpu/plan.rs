@@ -51,6 +51,7 @@ pub struct PassPlan {
     leaf_groups: LeafGroups,
     stage_shapes: Vec<Vec<WindowShape>>,
     stage_windows: Vec<WindowMemory>,
+    table_plan: Option<super::table_plan::TablePlan>,
 }
 
 impl PassPlan {
@@ -73,6 +74,7 @@ impl PassPlan {
             leaf_groups: LeafGroups::NONE,
             stage_shapes: Vec::new(),
             stage_windows: Vec::new(),
+            table_plan: None,
         }
     }
 
@@ -102,6 +104,29 @@ impl PassPlan {
         super::ProverError::Resource(tessera_codec::error::ErrorCode::ResMemory)
     }
 
+    pub(super) fn tables(mut self, plan: super::table_plan::TablePlan) -> Self {
+        self.table_plan = Some(plan);
+        self
+    }
+
+    fn table_reservation(&self) -> Option<u64> {
+        self.cells
+            .table_rows
+            .checked_add(self.cells.lookups)?
+            .checked_mul(Self::BYTES_PER_CELL)
+    }
+
+    pub(super) fn table_plan(&self) -> Option<&super::table_plan::TablePlan> {
+        self.table_plan.as_ref()
+    }
+
+    /// Planned upper bounds on streamed global table rounds per level. The table engine
+    /// may need fewer rounds when its actual capacities are below the public reservation.
+    /// Table streaming regenerates no model witness.
+    pub fn table_cuts(&self) -> &[usize] {
+        self.table_plan.as_ref().map_or(&[], |p| &p.cuts)
+    }
+
     fn base_bytes(&self) -> Option<u64> {
         self.cells
             .total()?
@@ -109,8 +134,8 @@ impl PassPlan {
             .checked_add(self.weight_bytes)
     }
 
-    /// Fit stages before P1; the conservative cell floor reserves the regenerated witness,
-    /// and the maximum live grid/fold working set is charged separately.
+    /// Fit reduction stages and the complete table batch before P1. The cell floor remains;
+    /// P2 uses its named table/lookup reservation and charges any excess separately.
     pub(crate) fn for_budget(
         mut self,
         budget: super::MemoryBudget,
@@ -122,6 +147,15 @@ impl PassPlan {
             .host
             .checked_sub(self.base_bytes().ok_or_else(Self::memory)?)
             .ok_or_else(Self::memory)?;
+        if let Some(plan) = self.table_plan.take() {
+            self.table_plan = Some(
+                plan.select(
+                    available
+                        .checked_add(self.table_reservation().ok_or_else(Self::memory)?)
+                        .ok_or_else(Self::memory)?,
+                )?,
+            );
+        }
         self.stage_windows = self
             .stage_shapes
             .iter()
@@ -183,15 +217,21 @@ impl PassPlan {
         self.cells
     }
 
-    /// The charged peak: [`Self::BYTES_PER_CELL`] per cell, the weight commitment and the
-    /// largest stage's grid/fold working set, or `None` on overflow.
+    /// The charged peak: the unchanged cell floor and weight commitment, plus the larger
+    /// reduction working set or table-batch excess over its named floor reservation.
+    /// Returns `None` on overflow.
     pub fn resident_bytes(&self) -> Option<u64> {
+        let table_extra = self.table_plan.as_ref().map_or(0, |p| {
+            p.working_bytes
+                .saturating_sub(self.table_reservation().unwrap_or(0))
+        });
         self.base_bytes()?.checked_add(
             self.stage_windows
                 .iter()
                 .map(|s| s.working_bytes)
                 .max()
-                .unwrap_or(0),
+                .unwrap_or(0)
+                .max(table_extra),
         )
     }
 

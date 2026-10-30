@@ -136,8 +136,8 @@ The weights' codewords are fixed for an epoch, so their rows are answered from a
 
 Budgets per device and host come from `ProverConfig.memory_budget`. The planner assigns tiles, token groups, windows and streaming decisions before P1 (RFC-0054, RFC-0055, RFC-0057) so that no allocation fails mid-proof; an infeasible plan fails fast with `ERR-RES-MEMORY` before `Round1`.
 
-- **The CPU reference's plan** (`tessera_prover::PassPlan`, `Prover::plan`) lists its passes and keeps its whole proof resident: every graph tensor's entries, lookups, table rows and advice entries.
-  - **The charge.** It charges 64 bytes per cell and the weight commitment's own bytes. A counting allocator measures 32 to 34 bytes per cell over the conformance proofs, and a test holds each measured peak within the plan and above a quarter of it.
+- **The CPU reference's plan** (`tessera_prover::PassPlan`, `Prover::plan`) lists its passes and retains a conservative resident-cell floor for graph tensors, lookups, table rows and advice entries, even when generated table fractions stream.
+  - **The charge.** The floor remains 64 bytes per cell plus the weight commitment's own bytes; any P2 working set beyond its reserved portion is additional. Earlier resident conformance proofs measured 32 to 34 bytes per cell. Counting-allocator tests hold every measured peak within its plan and check refusal before P1. Streaming can use less than a quarter of the reservation; there is no minimum-utilization requirement. The [table-batch allocation model](../perf/v0.3/table-batch-memory.md) records the component bounds and measurements; whole-model qualification remains separate.
   - **The limit.** A proof whose plan exceeds the budget takes token groups (RFC-0054): the plan then holds its largest group's lookup trees in place of the stage's, and runs the merge's pass, P2b, after P2. The fewest group bits that fit win. A proof that no grouping fits fails before P1 with `ERR-RES-MEMORY`.
 - **Pass counters.** The run manifest records every pass and its time as `tessera_passes_total{pass}` and `tessera_pass_seconds{pass}` ([05 §4](../spec/05-observability.md#4-metrics)).
 

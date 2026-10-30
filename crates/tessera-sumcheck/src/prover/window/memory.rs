@@ -54,6 +54,22 @@ impl WindowMemory {
         cut: usize,
         element_bytes: usize,
     ) -> Result<Self, WindowError> {
+        Self::with_window_vars(shapes, cut, element_bytes, MAX_WINDOW_VARS)
+    }
+
+    /// Charge the same complete working sets with a smaller grid width, including
+    /// RFC-0054 one-round table streaming. The width is between one and eight.
+    pub fn with_window_vars(
+        shapes: &[WindowShape],
+        cut: usize,
+        element_bytes: usize,
+        window_vars: usize,
+    ) -> Result<Self, WindowError> {
+        if !(1..=MAX_WINDOW_VARS).contains(&window_vars) {
+            return Err(WindowError::Shape(
+                "a grid covers one through eight own variables",
+            ));
+        }
         let rounds = shapes.iter().map(|s| s.vars).max().unwrap_or(0);
         if shapes.is_empty()
             || element_bytes == 0
@@ -71,7 +87,7 @@ impl WindowMemory {
             .filter(|s| active(s))
             .map(|s| rounds - s.vars)
             .min();
-        let first_boundary = first_padding.map_or(0, |p| cut.min(p + MAX_WINDOW_VARS));
+        let first_boundary = first_padding.map_or(0, |p| cut.min(p + window_vars));
         let mut retained = vec![0u64; shapes.len()];
         let mut live = 0;
         let mut peak = 0;
@@ -88,7 +104,7 @@ impl WindowMemory {
             let next = if boundary == 0 {
                 first_boundary
             } else {
-                (boundary + MAX_WINDOW_VARS).min(cut)
+                (boundary + window_vars).min(cut)
             };
             for (index, shape) in shapes.iter().enumerate() {
                 if boundary != 0 && !active(shape) {
@@ -131,7 +147,7 @@ impl WindowMemory {
         }
         Ok(Self {
             cut,
-            fold_passes: first_padding.map_or(0, |p| (cut - p).div_ceil(MAX_WINDOW_VARS)),
+            fold_passes: first_padding.map_or(0, |p| (cut - p).div_ceil(window_vars)),
             working_bytes: add(mul(peak, element_bytes as u64)?, metadata)?,
         })
     }

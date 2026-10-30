@@ -369,8 +369,15 @@ impl Fixture {
                 loop {
                     let p = producer.child.try_wait().unwrap();
                     let v = verifier.child.try_wait().unwrap();
-                    for status in [p, v].into_iter().flatten() {
-                        assert!(status.success(), "Live peer failed: {status}");
+                    for (status, process) in [(p, &producer), (v, &verifier)] {
+                        if let Some(status) = status {
+                            assert!(
+                                status.success(),
+                                "Live peer failed: {status}\nstdout: {}\nstderr: {}",
+                                fs::read_to_string(&process.stdout).unwrap(),
+                                fs::read_to_string(&process.stderr).unwrap()
+                            );
+                        }
                     }
                     if p.is_some() && v.is_some() {
                         break;

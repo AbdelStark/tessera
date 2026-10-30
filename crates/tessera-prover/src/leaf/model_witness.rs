@@ -29,11 +29,12 @@ struct Trees {
 
 /// The current model's padded lookup sources and Softmax forests, in clearing buffers.
 /// Virtual columns have no advice positions and remain native reduction obligations.
-/// This resident CPU adapter materializes the leaf columns; tree streaming is #134.
+/// This CPU adapter materializes lookup columns and forest leaves. Public table rows,
+/// canonical counts and table fraction levels stream separately (RFC-0054, #637).
 /// Its debug form shows only counts. Values are lent under the same borrower rules as
 /// `TileWitness` (05 §3, OBS-1/6).
 pub struct ModelWitness {
-    // shortcut: materialize CPU leaf columns; add bounded tree streaming under #134.
+    // Lookup source columns remain resident; table streaming does not replace these buffers.
     columns: Vec<Vec<Vec<Column>>>,
     forests: Vec<Trees>,
     maximum: Option<(tessera_ir::GadgetId, SecretBuf<i64>)>,

@@ -39,6 +39,11 @@ pub struct MultiplicityColumn {
 }
 
 impl MultiplicityColumn {
+    /// The canonical table identity whose committed counts this column contains.
+    pub fn table(&self) -> TableId {
+        self.table
+    }
+
     /// Logical row count, including public power-of-two table padding.
     pub fn rows(&self) -> u64 {
         self.rows

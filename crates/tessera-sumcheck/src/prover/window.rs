@@ -488,6 +488,7 @@ pub struct PreparedWindow<F: PolyField> {
     degree: usize,
     rounds: usize,
     cut: usize,
+    window_vars: usize,
 }
 
 impl<F: PolyField> PreparedWindow<F> {
@@ -501,6 +502,26 @@ impl<F: PolyField> PreparedWindow<F> {
         instances: Vec<WindowInstance<F>>,
         cut: usize,
     ) -> Result<Self, WindowError> {
+        Self::with_window_vars(source, protocol, degree, instances, cut, MAX_WINDOW_VARS)
+    }
+
+    /// Prepare grids with between one and eight own variables per pass.
+    /// One-variable grids implement RFC-0054's round-by-round table streaming;
+    /// the ordinary reduction-stage constructor retains eight-variable windows.
+    /// Geometry and source failures have the same semantics as [`Self::new`].
+    pub fn with_window_vars<S: WindowSource<F> + ?Sized>(
+        source: &mut S,
+        protocol: Protocol,
+        degree: usize,
+        instances: Vec<WindowInstance<F>>,
+        cut: usize,
+        window_vars: usize,
+    ) -> Result<Self, WindowError> {
+        if !(1..=MAX_WINDOW_VARS).contains(&window_vars) {
+            return Err(WindowError::Shape(
+                "a grid covers one through eight own variables",
+            ));
+        }
         if protocol != Protocol::One {
             return Err(WindowError::Shape("masked windowing is not implemented"));
         }
@@ -541,7 +562,7 @@ impl<F: PolyField> PreparedWindow<F> {
             .filter(|s| s.windowed && cut > rounds - s.vars)
             .map(|s| rounds - s.vars)
             .min();
-        let first_boundary = first_padding.map_or(0, |p| cut.min(p + MAX_WINDOW_VARS));
+        let first_boundary = first_padding.map_or(0, |p| cut.min(p + window_vars));
         source.regenerate(WindowPass::Prepare)?;
         let mut states = Vec::with_capacity(instances.len());
         for mut spec in instances {
@@ -563,6 +584,7 @@ impl<F: PolyField> PreparedWindow<F> {
             degree,
             rounds,
             cut,
+            window_vars,
         })
     }
 
@@ -574,7 +596,7 @@ impl<F: PolyField> PreparedWindow<F> {
     /// Emit the unchanged RFC-0010 round/final-evaluation messages. The source is regenerated
     /// once after each window, and the next grid is accumulated in that same P3b pass.
     pub fn prove<T, S>(
-        mut self,
+        self,
         transcript: &mut T,
         prefix: Prefix,
         source: &mut S,
@@ -585,6 +607,26 @@ impl<F: PolyField> PreparedWindow<F> {
     {
         let mut labels = Labels::new(prefix);
         let gamma = transcript.challenge(labels.gamma());
+        self.prove_with_gamma(transcript, prefix, source, gamma)
+    }
+
+    /// Prove using the batching challenge already drawn by the caller.
+    ///
+    /// The caller must draw gamma at `<prefix>/gamma` before constructing dependent
+    /// relations. Tree levels then draw lambda, as RFC-0014 requires. This method
+    /// never squeezes gamma again; round/challenge/evaluation labels are unchanged.
+    pub fn prove_with_gamma<T, S>(
+        mut self,
+        transcript: &mut T,
+        prefix: Prefix,
+        source: &mut S,
+        gamma: F,
+    ) -> Result<ProvenBatch<F>, WindowError>
+    where
+        T: SumcheckTranscript<F> + ?Sized,
+        S: WindowSource<F> + ?Sized,
+    {
+        let mut labels = Labels::new(prefix);
         let mut rounds = Vec::with_capacity(self.rounds);
         let mut point = Vec::with_capacity(self.rounds);
         let mut boundary = self
@@ -593,7 +635,7 @@ impl<F: PolyField> PreparedWindow<F> {
             .filter(|s| s.spec.windowed)
             .map(|s| self.rounds - s.spec.vars)
             .min()
-            .map_or(0, |p| self.cut.min(p + MAX_WINDOW_VARS));
+            .map_or(0, |p| self.cut.min(p + self.window_vars));
         for j in 0..self.rounds {
             let mut message = vec![F::ZERO; self.degree];
             let mut weight = F::ONE;
@@ -624,7 +666,7 @@ impl<F: PolyField> PreparedWindow<F> {
             point.push(r);
             if boundary != 0 && j + 1 == boundary {
                 source.regenerate(WindowPass::Fold(boundary))?;
-                let next = (boundary + MAX_WINDOW_VARS).min(self.cut);
+                let next = (boundary + self.window_vars).min(self.cut);
                 for state in &mut self.states {
                     if state.spec.windowed {
                         let padding = self.rounds - state.spec.vars;

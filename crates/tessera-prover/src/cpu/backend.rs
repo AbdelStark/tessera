@@ -1,21 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use super::*;
+use crate::leaf::table_source::GeneratedCounts;
 use crate::leaf::{
     GroupedClaims, GroupedLayout, LeafClaims, LeafLayout, MergeMode, ModelColumn, ModelWitness,
-    ProvenGroupedLeaf, ProvenLeaf, SPLIT_LABEL, grouped_multiplicities, prepare_leaf,
-    prove_grouped_leaf, token, tokens,
+    ProvenGroupedLeaf, ProvenLeaf, SPLIT_LABEL, prepare_leaf_bounded, prove_grouped_leaf_bounded,
+    token, tokens,
 };
 use crate::native::{ModelNativePlan, ModelNativeProver};
 use compiler::{Lowering, ModelAdviceLayout, RuntimePlan, schedule::LayerMap};
-use tessera_field::{Goldilocks as G, GoldilocksExt2 as F};
-use tessera_gadgets::TableColumns;
+use tessera_field::GoldilocksExt2 as F;
 use tessera_ir::{ClaimList, StageId};
 use tessera_sumcheck::SumcheckTranscript;
 use tessera_tables::{GeneratedTable, Table as _};
+use tessera_witness::WitnessSource as _;
 use tessera_witness::{Engine, Resident, Witness};
 
 use super::plan::{Cells, Pass, PassPlan};
+use super::table_plan::{CHUNK_ROWS, TablePlan};
 
 pub(super) struct Unit {
     lowering: Lowering,
@@ -27,6 +29,9 @@ pub(super) struct Unit {
     groups: protocol::LeafGroups,
     grouped: Option<GroupedLayout>,
     windows: Vec<usize>,
+    table_allowance: u64,
+    table_retained: u64,
+    forest_bytes: u64,
 }
 /// A proven leaf stage: in one batch, or in token groups with its atom splits.
 enum Leaf {
@@ -60,6 +65,7 @@ fn plan_groups(
     layers: &LayerMap,
     tokens: u32,
     budget: MemoryBudget,
+    selection: &compiler::Selection,
 ) -> Result<(PassPlan, Option<GroupedLayout>), ProverError> {
     if let Ok(fit) = plan.clone().for_budget(budget) {
         return Ok((fit, None));
@@ -91,7 +97,11 @@ fn plan_groups(
             }
             lookups = lookups.max(held);
         }
-        let candidate = plan.clone().grouped(groups, lookups);
+        let candidate = plan.clone().grouped(groups, lookups).tables(TablePlan::new(
+            leaf,
+            selection,
+            Some(&grouped),
+        )?);
         if let Ok(fit) = candidate.for_budget(budget) {
             return Ok((fit, Some(grouped)));
         }
@@ -382,8 +392,19 @@ impl<'a> CpuBackend<'a> {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let plan = PassPlan::new(native.schedule().stages.len(), cells, weight_memory(c)?)
-            .staged(shapes)?;
-        let (plan, grouped) = plan_groups(plan, &leaf, &layers, n, prepared.cfg.memory_budget)?;
+            .staged(shapes)?
+            .tables(TablePlan::new(&leaf, runtime.selection(), None)?);
+        let (plan, grouped) = plan_groups(
+            plan,
+            &leaf,
+            &layers,
+            n,
+            prepared.cfg.memory_budget,
+            runtime.selection(),
+        )?;
+        let table = plan.table_plan().ok_or_else(memory)?;
+        let (table_allowance, table_retained, forest_bytes) =
+            (table.working_bytes, table.retained, table.forests);
         Ok((
             Unit {
                 lowering,
@@ -394,6 +415,9 @@ impl<'a> CpuBackend<'a> {
                 groups: plan.leaf_groups(),
                 grouped,
                 windows: plan.stage_windows().iter().map(|s| s.cut).collect(),
+                table_allowance,
+                table_retained,
+                forest_bytes,
             },
             plan,
         ))
@@ -430,6 +454,8 @@ impl<'a> CpuBackend<'a> {
         let u = &d.unit;
         let c = &p.plan.claims;
         let advice = ModelAdviceLayout::runtime(&u.lowering, &u.runtime, c)?;
+        let leaf_stage = span!(DEBUG, "stage", id = 0u16).entered();
+        let leaf_started = Instant::now();
         let engine = Engine::new(&u.lowering)?.threads(p.threads);
         let source = u.source(&engine, p.model, &d.witness)?;
         let actual = ModelWitness::new(
@@ -449,7 +475,7 @@ impl<'a> CpuBackend<'a> {
                     .collect();
             }
         }
-        let tables: Vec<TableColumns<G>> = u
+        let tables: Vec<GeneratedCounts> = u
             .leaf
             .instances()
             .iter()
@@ -465,20 +491,41 @@ impl<'a> CpuBackend<'a> {
                     .map_err(|_| internal("selected table regenerates"))?;
                 metrics::lookups(i.table.0, i.entries);
                 metrics::table_rows(i.table.0, generated.row_count());
-                TableColumns::new(&generated)
-                    .map_err(|e| ProverError::Leaf(crate::LeafError::Gadget(e)))
+                let tile = advice.tiles().iter().find(|tile| matches!(tile.tile, compiler::Tile::Table { table } if table == i.table.0))
+                    .ok_or_else(|| internal("the advice plan has each leaf table's canonical count tile"))?;
+                GeneratedCounts::new(generated, source.tile(tile)?).map_err(ProverError::Leaf)
             })
             .collect::<Result<_, _>>()?;
+        // `bytes()` includes each used descriptor; charge the vector's unused slots too.
+        let unused = (tables.capacity() - tables.len())
+            .checked_mul(size_of::<GeneratedCounts>())
+            .and_then(|n| u64::try_from(n).ok())
+            .ok_or_else(memory)?;
+        let source_bytes = tables.iter().try_fold(
+            u.table_retained
+                .checked_add(u.forest_bytes)
+                .and_then(|n| n.checked_add(unused))
+                .ok_or_else(memory)?,
+            |total, table| {
+                total
+                    .checked_add(table.bytes()?)
+                    .ok_or(crate::LeafError::Memory)
+            },
+        )?;
+        let table_budget = tessera_logup::TableBatchBudget {
+            allowance: u.table_allowance,
+            source_bytes,
+            chunk_rows: NonZeroUsize::new(CHUNK_ROWS).ok_or_else(memory)?,
+        };
         let tensors = actual.tensors();
         let forests = actual.forests();
         metrics::product_leaves(forests.iter().map(|f| f.len() as u64).sum());
-        let leaf_stage = span!(DEBUG, "stage", id = 0u16).entered();
-        let leaf_started = Instant::now();
         let mut stages = crate::StageProver::new(&u.lowering, u.native.schedule(), &d.witness);
         let schedule = u.native.schedule();
         let leaf = match &u.grouped {
             None => {
-                let lookup = prepare_leaf(tr, &u.leaf, &tables, &tensors, &forests)?;
+                let lookup =
+                    prepare_leaf_bounded(tr, &u.leaf, &tables, &tensors, &forests, table_budget)?;
                 let points: Vec<_> = schedule.stages[0]
                     .claims
                     .iter()
@@ -488,18 +535,16 @@ impl<'a> CpuBackend<'a> {
                 Leaf::Stage(lookup.finish(&stages.leaf_split_values()?)?)
             }
             Some(grouped) => {
-                let multiplicities = grouped_multiplicities(&u.leaf, grouped, &tables, &tensors)?;
-                let committed: Vec<&[G]> = multiplicities.iter().map(|m| &m[..]).collect();
-                let proven = prove_grouped_leaf(
+                let proven = prove_grouped_leaf_bounded(
                     tr,
                     &u.leaf,
                     grouped,
                     &tables,
                     &tensors,
-                    &committed,
                     &actual.stage_forests(),
                     // RFC-0054 'Pass structure': the merge's table rounds, then P2b.
                     MergeMode::TwoPass { j_star: None },
+                    table_budget,
                 )?;
                 // RFC-0037's claims on each gadget input and on the logits, at their tensors'
                 // merged points (RFC-0054 'The stage's outputs').
@@ -552,6 +597,8 @@ impl<'a> CpuBackend<'a> {
             groups = u.grouped.as_ref().map_or(1, GroupedLayout::count);
             "stage {id}: in {groups} groups"
         );
+        // No generated table core or count tile survives P2 into reduction stages.
+        drop(tables);
         metrics::stage(0, leaf_started.elapsed());
         metrics::phase(metrics::Phase::Stage, leaf_started.elapsed());
         metrics::pass(Pass::P2, leaf_started.elapsed());

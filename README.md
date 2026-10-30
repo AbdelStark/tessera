@@ -9,8 +9,9 @@ reproduces preparation, and records the current real-proof and qualification blo
 
 The CPU route compiles a model, commits its weights, proves one or several requests,
 and checks the result with the [independent verifier CLI](docs/verifier/reference-cli.md).
-It supports NI and directory Live sessions. The pass planner can select leaf groups
-and regenerated reduction-stage windows using conservative memory estimates.
+It supports NI and directory Live sessions. The pass planner can select leaf groups,
+generated table/count chunks and regenerated reduction-stage windows using
+conservative memory estimates. Lookup columns and Softmax forests remain resident.
 Computed score rounds serve the ordinary single-request route; slotted batches and
 windowed native relations retain their materialized representation.
 
@@ -33,11 +34,6 @@ in the [telemetry guide](docs/telemetry.md). The prover protocol library exposes
 [Live directory and optional mTLS transports](docs/live-transports.md), with host-owned
 sockets and identity configuration. The independent verifier's mTLS route remains
 [#181](https://github.com/AbdelStark/tessera/issues/181); end-to-end CLI Live uses a directory.
-
-For recorder placement, TLS boundaries and serving-engine conformance, start with the [integration guide](docs/integration.md).
-Optional metrics and collector export are described in the [telemetry guide](docs/telemetry.md).
-The prover protocol library exposes [Live directory and optional mTLS transports](docs/live-transports.md),
-with host-owned sockets and identity configuration. The CLI's Live interface remains directory-based.
 
 ## Specification
 

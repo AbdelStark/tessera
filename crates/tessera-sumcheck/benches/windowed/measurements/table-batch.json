@@ -1,0 +1,189 @@
+{
+  "schema": "table-batch-measurement/1",
+  "recorded_utc": "2026-10-30T12:21:42.924137+00:00",
+  "scope": "complete generated table batch; one synthetic public valued table, roots/all levels/clearing included; test-small/1 is non-certifying; no model throughput or memory qualification",
+  "environment": {
+    "cpu": "Apple M1 Max",
+    "memory_bytes": 68719476736,
+    "os": "macOS15.6.1",
+    "rustc": "1.95.0 (59807616e 2026-04-14)",
+    "criterion": "0.5.1",
+    "sample_size": 10,
+    "warm_up_seconds": 1,
+    "measurement_target_seconds": 3,
+    "contention": "live1B/8B evaluation jobs and repository checks were active"
+  },
+  "chunk_rows": 256,
+  "before_reader_sha256": "07088cda1773a8a7e7434a8e2e4d4c93c8c54505793c38de119b4301ea65d14c",
+  "after_reader_sha256": "644e3ec5ffde37f61c2c291d41320e6e208be84501d8893504d7bb4952553b05",
+  "benchmark_sha256": "895250bf9a318c33fe650586d66680eaaa5a6c7a7156569cc0855ef86050db2d",
+  "benchmark_note": "The first baseline emitted an unused Field import warning; that import was removed before the after run. No benchmark computation changed.",
+  "cases": [
+    {
+      "rows": 16384,
+      "before": {
+        "source_reads": 66880,
+        "proof_digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+        "mean_ns": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 120421991.49333334,
+            "upper_bound": 121259991.97666669
+          },
+          "point_estimate": 120789736.13333336,
+          "standard_error": 216181.59861076227
+        },
+        "samples": {
+          "sampling_mode": "Flat",
+          "iters": [
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0
+          ],
+          "times": [
+            363846542.0,
+            367609125.0,
+            361288584.0,
+            362346041.0,
+            362857667.0,
+            362380042.0,
+            361726292.0,
+            360669333.0,
+            361080917.0,
+            359887541.0
+          ]
+        }
+      },
+      "after": {
+        "source_reads": 3648,
+        "proof_digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+        "mean_ns": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 67728590.87678573,
+            "upper_bound": 71420297.87011904
+          },
+          "point_estimate": 69477247.88567461,
+          "standard_error": 944023.0765435537
+        },
+        "samples": {
+          "sampling_mode": "Linear",
+          "iters": [
+            1.0,
+            2.0,
+            3.0,
+            4.0,
+            5.0,
+            6.0,
+            7.0,
+            8.0,
+            9.0,
+            10.0
+          ],
+          "times": [
+            66670042.0,
+            132675000.0,
+            198660000.0,
+            267035916.0,
+            346522500.0,
+            438882958.0,
+            494383625.0,
+            552909917.0,
+            640076375.0,
+            754747292.0
+          ]
+        }
+      }
+    },
+    {
+      "rows": 65536,
+      "before": {
+        "source_reads": 269568,
+        "proof_digest": "d99349bb7f6b62d7d1bf036166711663f5f02f3a3cb7bce45f2b945b631b5d88",
+        "mean_ns": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 535947233.0,
+            "upper_bound": 553400506.2175001
+          },
+          "point_estimate": 544049408.1,
+          "standard_error": 4510420.704319925
+        },
+        "samples": {
+          "sampling_mode": "Flat",
+          "iters": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "times": [
+            573315583.0,
+            562669125.0,
+            558317375.0,
+            538413500.0,
+            542381916.0,
+            535545208.0,
+            532761083.0,
+            532484916.0,
+            531372042.0,
+            533233333.0
+          ]
+        }
+      },
+      "after": {
+        "source_reads": 16640,
+        "proof_digest": "d99349bb7f6b62d7d1bf036166711663f5f02f3a3cb7bce45f2b945b631b5d88",
+        "mean_ns": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 307332974.7275,
+            "upper_bound": 313957979.3
+          },
+          "point_estimate": 310340166.6,
+          "standard_error": 1700407.5005753965
+        },
+        "samples": {
+          "sampling_mode": "Flat",
+          "iters": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "times": [
+            313071917.0,
+            311575750.0,
+            309969292.0,
+            312615542.0,
+            309081166.0,
+            309315375.0,
+            304360750.0,
+            323687583.0,
+            304266625.0,
+            305457666.0
+          ]
+        }
+      }
+    }
+  ]
+}

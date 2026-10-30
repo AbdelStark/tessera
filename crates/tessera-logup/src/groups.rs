@@ -24,12 +24,12 @@ use core::fmt;
 use tessera_field::Field;
 use tessera_poly::PolyField;
 use tessera_sumcheck::{
-    Claim, Forest, FractionClaim, LevelClaim, ProvenTreeLevel, SumcheckTranscript, Tree, TreeScope,
-    check_forests, prove_trees_in,
+    Claim, Forest, FractionClaim, FractionTree, LeafNumerators, LevelClaim, ProvenTreeLevel,
+    SumcheckTranscript, Tree, TreeScope, check_forests, prove_trees_in,
 };
 
-use crate::prover::{lookup_tree, table_tree, value_at};
-use crate::{LogUpError, LogUpInstance, TreeId};
+use crate::prover::{compress, lookup_tree, table_tree, tree, value_at};
+use crate::{Column, LogUpError, LogUpInstance, TreeId, Tuples};
 
 /// The grouped stage's challenges `α` and `β`, under `logup/alpha` and `logup/beta`, with
 /// `logup/roots` and `logup/values` then absorbed empty (RFC-0014 'Transcript schedule', row 4
@@ -186,11 +186,130 @@ where
     check_forests(forests)?;
     let (lookup_positions, forest_positions) =
         group_positions(schedule, instances.len(), forests.len())?;
-
-    let mut built = instances
+    let lookup_instances: Vec<_> = instances
+        .iter()
+        .map(|instance| LookupInstance {
+            lookups: instance.lookups,
+            padding_key: instance.table.keys[0],
+            padding_value: instance.table.values.map(|v| v[0]),
+        })
+        .collect();
+    let built = instances
         .iter()
         .map(|instance| lookup_tree(instance, alpha, beta).map(Some))
         .collect::<Result<Vec<_>, _>>()?;
+    prove_group_with_trees(
+        transcript,
+        group,
+        alpha,
+        beta,
+        &lookup_instances,
+        forests,
+        schedule,
+        built,
+        lookup_positions,
+        forest_positions,
+    )
+}
+
+/// One group's lookup-only input. The public padding tuple is table row 0; there is
+/// no dummy table or multiplicity column. The actual table/count batch is proven later.
+pub struct LookupInstance<'a, B> {
+    /// Lookup tuples in canonical leaf order.
+    pub lookups: Tuples<'a, B>,
+    /// The original table's public row-0 key.
+    pub padding_key: B,
+    /// The original table's public row-0 value; absent exactly for a table without values.
+    pub padding_value: Option<B>,
+}
+
+/// Prove a group's resident lookup trees/forests without materializing public table
+/// columns or any multiplicity conversion (RFC-0054). The caller still owes the full
+/// generated table/count batch, grouped identity, leaf merge and commitment openings.
+///
+/// # Errors
+/// Invalid lookup columns, forests or schedule before transcript movement; tree errors
+/// preserve the resident engine's error type.
+pub fn prove_lookup_group<F, T>(
+    transcript: &mut T,
+    group: u32,
+    alpha: F,
+    beta: F,
+    instances: &[LookupInstance<'_, F::Base>],
+    forests: &[Forest<'_, F>],
+    schedule: &[TreeId],
+) -> Result<ProvenGroup<F>, LogUpError>
+where
+    F: PolyField,
+    T: SumcheckTranscript<F> + ?Sized,
+{
+    for (k, instance) in instances.iter().enumerate() {
+        if instance.lookups.is_empty() {
+            return Err(LogUpError::NoLookups { instance: k });
+        }
+        if instance.lookups.has_values() != instance.padding_value.is_some() {
+            return Err(LogUpError::ValuesMismatch { instance: k });
+        }
+        if let Some(values) = instance.lookups.values
+            && values.len() != instance.lookups.len()
+        {
+            return Err(LogUpError::ColumnLength {
+                instance: k,
+                column: Column::LookupValues,
+                len: values.len(),
+                expected: instance.lookups.len(),
+            });
+        }
+    }
+    check_forests(forests)?;
+    let (lookup_positions, forest_positions) =
+        group_positions(schedule, instances.len(), forests.len())?;
+    let built = instances
+        .iter()
+        .map(|instance| {
+            let padding = alpha - compress(beta, instance.padding_key, instance.padding_value);
+            tree(
+                instance.lookups,
+                crate::instance::ceil_log2(instance.lookups.len()),
+                LeafNumerators::Unit,
+                alpha,
+                beta,
+                padding,
+            )
+            .map(Some)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    prove_group_with_trees(
+        transcript,
+        group,
+        alpha,
+        beta,
+        instances,
+        forests,
+        schedule,
+        built,
+        lookup_positions,
+        forest_positions,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_group_with_trees<F, T>(
+    transcript: &mut T,
+    group: u32,
+    alpha: F,
+    beta: F,
+    instances: &[LookupInstance<'_, F::Base>],
+    forests: &[Forest<'_, F>],
+    schedule: &[TreeId],
+    mut built: Vec<Option<FractionTree<F>>>,
+    lookup_positions: Vec<usize>,
+    forest_positions: Vec<usize>,
+) -> Result<ProvenGroup<F>, LogUpError>
+where
+    F: PolyField,
+    T: SumcheckTranscript<F> + ?Sized,
+{
     let mut roots = Vec::with_capacity(2 * instances.len());
     let mut scheduled = Vec::with_capacity(schedule.len());
     for (position, &id) in schedule.iter().enumerate() {
@@ -228,11 +347,7 @@ where
         let instance = &instances[k];
         let lookup: FractionClaim<F> = fraction(position)?;
         let value = instance.lookups.values.map(|column| {
-            let padding = instance
-                .table
-                .values
-                .and_then(|v| v.first().copied())
-                .unwrap_or(F::Base::ZERO);
+            let padding = instance.padding_value.unwrap_or(F::Base::ZERO);
             value_at(column, padding, &lookup.point)
         });
         if let Some(v) = value {
@@ -275,9 +390,9 @@ where
 /// The table batch's proven trees: its roots, its levels and each instance's multiplicity claim.
 #[must_use]
 pub struct ProvenTables<F> {
-    roots: Vec<F>,
-    levels: Vec<ProvenTreeLevel<F>>,
-    multiplicities: Vec<Claim<F>>,
+    pub(crate) roots: Vec<F>,
+    pub(crate) levels: Vec<ProvenTreeLevel<F>>,
+    pub(crate) multiplicities: Vec<Claim<F>>,
 }
 
 impl<F> ProvenTables<F> {

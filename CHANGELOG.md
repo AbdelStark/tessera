@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Stream generated LogUp table/count sources through the CPU prover's ordinary and grouped leaf batches under checked P2 reservations, preserving proof messages and the conservative cell floor while removing dense table-column and negated-count construction (RFC-0008/0054, [#637](https://github.com/AbdelStark/tessera/issues/637)).
+
 - Finish each admitted integer candidate's construction before loading its BF16 held-out reference, separating float64 migration scratch from reference model/window residency while preserving preflight, full-window KL reduction and strength selection (RFC-0005, [#635](https://github.com/AbdelStark/tessera/issues/635)).
 
 - Stream ordinary CPU advice through one reused clearing field row with rank-sized source-index metadata, preserving canonical padding and P1/P4/P5 rows without changing the memory-plan charges (RFC-0011/0047/0050, [#630](https://github.com/AbdelStark/tessera/issues/630)).

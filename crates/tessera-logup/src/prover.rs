@@ -80,14 +80,14 @@ impl<F> fmt::Debug for InstanceClaims<F> {
 /// later stages and openings owe, and a caller that drops them accepts what nothing checked.
 #[must_use]
 pub struct ProvenLogUp<F> {
-    alpha: F,
-    beta: F,
-    roots: Vec<F>,
-    levels: Vec<ProvenTreeLevel<F>>,
-    values: Vec<F>,
-    leaf_claims: Vec<LevelClaim<F>>,
-    claims: Vec<InstanceClaims<F>>,
-    forest_claims: Vec<Claim<F>>,
+    pub(crate) alpha: F,
+    pub(crate) beta: F,
+    pub(crate) roots: Vec<F>,
+    pub(crate) levels: Vec<ProvenTreeLevel<F>>,
+    pub(crate) values: Vec<F>,
+    pub(crate) leaf_claims: Vec<LevelClaim<F>>,
+    pub(crate) claims: Vec<InstanceClaims<F>>,
+    pub(crate) forest_claims: Vec<Claim<F>>,
 }
 
 impl<F> ProvenLogUp<F> {
@@ -157,15 +157,15 @@ impl<F> fmt::Debug for ProvenLogUp<F> {
 }
 
 /// Each tree's position in a valid schedule.
-struct Positions {
-    lookup: Vec<usize>,
-    table: Vec<usize>,
-    forest: Vec<usize>,
+pub(crate) struct Positions {
+    pub(crate) lookup: Vec<usize>,
+    pub(crate) table: Vec<usize>,
+    pub(crate) forest: Vec<usize>,
 }
 
 /// The positions of the trees in `schedule`, or the first check it fails: one entry per tree of
 /// `instances` instances and `forests` forests, each naming a tree no earlier entry names.
-fn check_schedule(
+pub(crate) fn check_schedule(
     schedule: &[TreeId],
     instances: usize,
     forests: usize,
@@ -207,7 +207,7 @@ pub(crate) fn compress<F: PolyField>(beta: F, key: F::Base, value: Option<F::Bas
 
 /// The fraction tree over `count` leaves `(·, α − compress(pair x))` of `pairs` padded to
 /// `2^height` leaves with `α − t_0`, numerators `numerators`.
-fn tree<F: PolyField>(
+pub(crate) fn tree<F: PolyField>(
     pairs: Tuples<'_, F::Base>,
     height: usize,
     numerators: LeafNumerators<'_, F::Base>,

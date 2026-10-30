@@ -14,9 +14,15 @@ criterion = { version = "=0.5.1", default-features = false }
 tessera-codec = { path = "../../../tessera-codec" }
 tessera-field = { path = "../../../tessera-field" }
 tessera-hash = { path = "../../../tessera-hash" }
+tessera-logup = { path = "../../../tessera-logup" }
 tessera-sumcheck = { path = "../.." }
 
 [[bench]]
 name = "windowed"
 path = "src/main.rs"
+harness = false
+
+[[bench]]
+name = "table-batch"
+path = "src/table_batch.rs"
 harness = false

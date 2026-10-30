@@ -12,6 +12,90 @@ use crate::{Instance, Table, prove_batch};
 
 type F = GoldilocksExt2;
 
+#[test]
+fn one_round_windows_and_supplied_gamma_preserve_the_literal_transcript() {
+    for width in [1, 2, MAX_WINDOW_VARS] {
+        let (mut source, relations) = specs(&[(7, 2, true, 2), (3, 1, true, 1), (0, 1, false, 0)]);
+        let eqs = eq_tables(&relations);
+        let mut literal_transcript = Transcript::new(&context());
+        let expected = prove_batch(
+            &mut literal_transcript,
+            Protocol::One,
+            Prefix::Tree(5),
+            3,
+            &literal(&source, &relations, &eqs),
+        )
+        .unwrap();
+        let prepared =
+            PreparedWindow::with_window_vars(&mut source, Protocol::One, 3, relations, 4, width)
+                .unwrap();
+        let mut actual_transcript = Transcript::new(&context());
+        // A tree caller owns gamma, then lambda, before it builds dependent relations.
+        // This API must never squeeze gamma twice.
+        let gamma = actual_transcript.challenge_fp2("tree/5/gamma");
+        let actual = prepared
+            .prove_with_gamma(&mut actual_transcript, Prefix::Tree(5), &mut source, gamma)
+            .unwrap();
+        assert_eq!(actual.proof().rounds, expected.proof().rounds);
+        assert_eq!(actual.proof().final_evals, expected.proof().final_evals);
+        assert_eq!(actual.point(), expected.point());
+        assert_eq!(
+            actual_transcript.challenge_fp2("after"),
+            literal_transcript.challenge_fp2("after")
+        );
+        let folded: Vec<_> = source
+            .passes
+            .iter()
+            .filter_map(|p| match p {
+                WindowPass::Fold(at) => Some(*at),
+                WindowPass::Prepare => None,
+            })
+            .collect();
+        let expected_folds: Vec<_> = (width..4).step_by(width).chain([4]).collect();
+        assert_eq!(folded, expected_folds);
+        let shapes = [WindowShape {
+            vars: 7,
+            tables: 3,
+            delta: 2,
+            windowable: true,
+        }];
+        let charged = WindowMemory::with_window_vars(&shapes, 4, size_of::<F>(), width).unwrap();
+        assert_eq!(charged.fold_passes, 4usize.div_ceil(width));
+    }
+}
+
+#[test]
+fn invalid_round_window_width_is_refused_before_a_source_pass() {
+    for width in [0, MAX_WINDOW_VARS + 1, usize::MAX] {
+        let (mut source, relations) = specs(&[(3, 2, true, 2)]);
+        let result =
+            PreparedWindow::with_window_vars(&mut source, Protocol::One, 3, relations, 1, width);
+        assert!(matches!(
+            result,
+            Err(WindowError::Shape(
+                "a grid covers one through eight own variables"
+            ))
+        ));
+        assert!(source.passes.is_empty());
+        assert_eq!(
+            WindowMemory::with_window_vars(
+                &[WindowShape {
+                    vars: 3,
+                    tables: 3,
+                    delta: 2,
+                    windowable: true
+                }],
+                1,
+                size_of::<F>(),
+                width
+            ),
+            Err(WindowError::Shape(
+                "a grid covers one through eight own variables"
+            ))
+        );
+    }
+}
+
 fn fp(n: u64) -> F {
     F::from(Goldilocks::from_u64_reduced(n))
 }
