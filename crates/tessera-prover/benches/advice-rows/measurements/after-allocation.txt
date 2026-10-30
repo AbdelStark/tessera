@@ -1,0 +1,3 @@
+positions=3 peak_bytes=56787 allocated_bytes=1677562 allocations=8168
+positions=8 peak_bytes=65592 allocated_bytes=2006924 allocations=10212
+positions=16 peak_bytes=79680 allocated_bytes=2574828 allocations=13531

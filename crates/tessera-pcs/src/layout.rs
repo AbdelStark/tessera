@@ -647,6 +647,18 @@ enum Geometry {
     },
 }
 
+/// One natural source axis reconstructed from public storage bits. Score keys have two
+/// fragments; all other axes have only the low fragment. Never holds witness data.
+struct SourceAxis {
+    len: usize,
+    stride: usize,
+    shift: u32,
+    mask: u128,
+    high_shift: u32,
+    high_mask: u128,
+    low_bits: u32,
+}
+
 /// Where one tensor lies in `Ã` (RFC-0011 rules 2 to 4).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Placement {
@@ -753,6 +765,117 @@ impl Placement {
             _ => F::ZERO,
         }));
         Ok(point)
+    }
+
+    /// Natural row-major source indices for the tensor-covered columns of `row`.
+    /// `shape` is the source's public, unpadded shape in natural axis order. Each item is
+    /// `Some(index)` for an element of that shape or `None` for per-axis length padding.
+    ///
+    /// The iterator covers `min(k, 2^n_X)` columns, starting at column zero. A caller supplies
+    /// zero for the remainder of a row when the tensor is smaller than `k`. Scalar tensors
+    /// therefore yield one item. A zero-length source axis yields only padding. The caller
+    /// still follows [`Self::nonzero`] for structural/causal/slot zero rows; this mapping does
+    /// not replace that public schedule or the witness's computed padding values.
+    ///
+    /// Only axis metadata is allocated, proportional to rank and independent of tensor rows.
+    /// No witness values influence the mapping (INV-PCS-1, RFC-0047, RFC-0034).
+    ///
+    /// # Errors
+    /// [`PcsError::ElementAxes`] for a rank mismatch, [`PcsError::ElementRange`] for a source
+    /// axis larger than its padded domain, or [`PcsError::LayoutData`] for a row outside this
+    /// placement, a source product that overflows `usize`, or [`PcsError::LayoutMemory`] for a failed metadata reservation.
+    pub fn row_indices(
+        &self,
+        row: u64,
+        shape: &[u32],
+    ) -> Result<impl ExactSizeIterator<Item = Option<usize>>, PcsError> {
+        let bad = |rule| PcsError::LayoutData { rule };
+        let local_row = row
+            .checked_sub(self.first_row)
+            .filter(|&r| r < self.row_count())
+            .ok_or_else(|| bad("source row lies inside its tensor placement"))?;
+        let rank = match &self.geometry {
+            Geometry::Dense { axes, .. } => axes.len(),
+            Geometry::Scores { .. } => 3,
+        };
+        if shape.len() != rank {
+            return Err(PcsError::ElementAxes {
+                expected: rank,
+                found: shape.len(),
+            });
+        }
+        let mut axes = Vec::new();
+        axes.try_reserve_exact(rank)
+            .map_err(|_| PcsError::LayoutMemory)?;
+        for &len in shape {
+            axes.push(SourceAxis {
+                len: len as usize,
+                stride: 0,
+                shift: 0,
+                mask: 0,
+                high_shift: 0,
+                high_mask: 0,
+                low_bits: 0,
+            });
+        }
+        match &self.geometry {
+            Geometry::Dense {
+                axes: domain,
+                order,
+            } => {
+                let mut shift = 0;
+                for &axis in order.iter().rev() {
+                    let bits = domain[axis].bits();
+                    axes[axis].shift = shift;
+                    axes[axis].mask = (1u128 << bits) - 1;
+                    shift += bits;
+                }
+            }
+            &Geometry::Scores {
+                key_bits,
+                key_vars,
+                query_vars,
+                head_vars,
+            } => {
+                // RFC-0034: storage low-to-high is i_lo, q, h, i_hi.
+                axes[0].shift = key_bits + query_vars;
+                axes[0].mask = (1u128 << head_vars) - 1;
+                axes[1].shift = key_bits;
+                axes[1].mask = (1u128 << query_vars) - 1;
+                axes[2].mask = (1u128 << key_bits) - 1;
+                axes[2].high_shift = key_bits + query_vars + head_vars;
+                axes[2].high_mask = (1u128 << (key_vars - key_bits)) - 1;
+                axes[2].low_bits = key_bits;
+            }
+        }
+        // An empty source has no addressable elements. Its otherwise unused trailing
+        // strides need not fit usize (notably on a 32-bit host); every result is padding.
+        let mut stride = usize::from(!shape.contains(&0));
+        for (axis, a) in axes.iter_mut().enumerate().rev() {
+            let capacity = (a.mask + 1) * (a.high_mask + 1);
+            if a.len as u128 > capacity {
+                return Err(PcsError::ElementRange { axis });
+            }
+            a.stride = stride;
+            stride = stride
+                .checked_mul(a.len)
+                .ok_or_else(|| bad("source shape product fits usize"))?;
+        }
+        let start = u128::from(local_row) << self.log2_k;
+        let count = 1usize
+            .checked_shl(self.vars.min(self.log2_k))
+            .ok_or_else(|| bad("source row width fits usize"))?;
+        Ok((0..count).map(move |column| {
+            let index = start + column as u128;
+            axes.iter().try_fold(0usize, |flat, a| {
+                let coordinate = (((index >> a.shift) & a.mask)
+                    | (((index >> a.high_shift) & a.high_mask) << a.low_bits))
+                    as usize;
+                // Each coordinate is below its source length; the checked source product
+                // above bounds every offset and sum. Branches depend on public indices only.
+                (coordinate < a.len).then(|| flat + coordinate * a.stride)
+            })
+        }))
     }
 
     /// The row and column of `Ã` that hold the element at `coords`, one coordinate per natural

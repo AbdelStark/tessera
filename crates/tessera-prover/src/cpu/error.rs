@@ -40,13 +40,15 @@ impl ProverError {
             Self::Stage(e) => e.code(),
             Self::Opening(e) => e.code(),
             Self::Resource(e) => *e,
-            Self::Pcs(pcs::PcsError::TooLarge { .. }) => ErrorCode::ResMemory,
+            Self::Pcs(pcs::PcsError::TooLarge { .. } | pcs::PcsError::LayoutMemory) => {
+                ErrorCode::ResMemory
+            }
             Self::Advice(crate::advice::Error::Memory) => ErrorCode::ResMemory,
             Self::Advice(crate::advice::Error::Witness(e)) => e.code(),
             Self::Advice(crate::advice::Error::Opening(e)) => e.code(),
-            Self::Advice(crate::advice::Error::Pcs(pcs::PcsError::TooLarge { .. })) => {
-                ErrorCode::ResMemory
-            }
+            Self::Advice(crate::advice::Error::Pcs(
+                pcs::PcsError::TooLarge { .. } | pcs::PcsError::LayoutMemory,
+            )) => ErrorCode::ResMemory,
             Self::Pcs(_) | Self::Advice(_) => ErrorCode::Internal,
         }
     }
