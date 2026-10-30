@@ -1,0 +1,16 @@
+{
+  "exit_code": 0,
+  "seconds": 267.2790379160142,
+  "peak_child_rss_bytes": 16067952640,
+  "binary_sha256": "fe8bcf90c45ce22242f228fa2a355a3e7aada81b34608d9d94058cee42804283",
+  "params": "ni-100",
+  "max_log2_rows": 32,
+  "query_block": 512,
+  "scope": "actual fixed 8B compilation attempt; no proof or fidelity verdict",
+  "model_artifact_sha256": "364c633550d773e4c14d8be98c5a81fd859a2cd9a417a07d5c391d155286f1ca",
+  "output_sha256": {
+    "commitment-report.json": "a9687c4902e11b3e5ec842f524062ceb5705fe1be110e311c2dc2082f312fa6f",
+    "claims.tcl": "49d7ec4609b6d940f1eb44c42d3cd4e87a3957f6d64cf2975187faa97a2fbc1b",
+    "plan.tep": "f3e69f4c0eb895575906c0eff91556786fbbffd3f7755f66e43cc93bb77feadf"
+  }
+}

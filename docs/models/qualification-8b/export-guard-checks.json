@@ -36,5 +36,6 @@
       "guard_disabled_is_detected": true
     }
   ],
-  "runner_sha256": "4c7973942ce8466e279a058dccfb8a63757ffa484530c3f6696145257b96a235"
+  "runner_sha256": "4c7973942ce8466e279a058dccfb8a63757ffa484530c3f6696145257b96a235",
+  "test_runner_sha256": "bb61e8a13c1e6b65f773bd8254f0a2b72ad9eb84bc2b0f91a6671d3017587831"
 }

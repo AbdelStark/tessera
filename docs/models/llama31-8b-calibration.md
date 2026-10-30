@@ -113,7 +113,18 @@ receipt on envelope digest/length, architecture/profile, every matrix's
 dimensions and all checkpoint/selection/statistics identities. The
 [Rust invocation receipt](qualification-8b/rust-inspect-receipt.json) pins the
 CLI binary hash. This checks the Rust artifact decoder; it is not an independent
-proof-verifier verdict or a completed graph compilation.
+proof-verifier verdict.
+
+A subsequent real `tessera compile` at `ni-100`, `max_log2_rows=32` and
+`query_block=512` completed with exit 0 in 267.279 seconds and peak child RSS
+16,067,952,640 bytes. It wrote `claims.tcl`, `plan.tep` and
+`commitment-report.json`. The [compile receipt](qualification-8b/compile-receipt.json)
+pins all three output hashes, the unchanged D hash and the pre-existing release
+CLI's binary hash. Compilation/codec behavior is unchanged by the advice-row
+adapter change in PR #632; this binary is not credited with that new adapter.
+The generated report also contains source-scenario cost projections; those are
+not measured proving/GPU performance. Compilation alone does not exercise the
+runtime leaf-layout guard, allocate a proof's resident state or produce a proof.
 
 No candidate weights or activation maxima are published. This artifact is a
 fixed-strength diagnostic: all-admissible-strength held-out selection, the
@@ -142,6 +153,13 @@ PYTHONPATH=python "$TESSERA_PYTHON" docs/models/qualification-8b/export_fixed.py
   --preflight /tmp/tessera-8b-preflight-replay/preflight-results.json \
   --output /tmp/tessera-8b-export-replay
 target/debug/tessera inspect /tmp/tessera-8b-export-replay/candidate-alpha-1of2.d --json
+target/release/tessera compile \
+  --model /tmp/tessera-8b-export-replay/candidate-alpha-1of2.d --params ni-100 \
+  --max-log2-rows 32 --query-block 512 --out-dir /tmp/tessera-8b-compiled-replay
+PYTHONPATH=python "$TESSERA_PYTHON" docs/models/qualification-8b/check_export_guards.py \
+  --calibration "$TESSERA_CALIBRATION_DIR" \
+  --preflight /tmp/tessera-8b-preflight-replay/preflight-results.json \
+  --output /tmp/tessera-8b-export-guard-replay
 ```
 
 The independent [calibration audit](qualification-8b/verify_calibration.py) uses
@@ -173,7 +191,10 @@ construction, with no artifact written. A valid-receipt control reached the
 model-construction boundary; disabling each targeted guard in turn made its
 exact-rule assertion fail (6/6 runtime guard mutations caught). The
 [guard-check receipt](qualification-8b/export-guard-checks.json) pins the tested
-export-runner hash. These test qualification metadata checks, not proof acceptance.
+export-runner and [test-runner](qualification-8b/check_export_guards.py) hashes.
+These test qualification metadata checks, not proof acceptance. Every fault starts
+from the otherwise valid complete receipt, so a different invalid field cannot
+conceal a missing guard.
 
 These scripts are qualification evidence for #633. The production `quantize`
 pipeline still performs all-admissible-strength held-out selection; this explicit
