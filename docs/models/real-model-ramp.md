@@ -22,6 +22,11 @@ tensors; materializing its head produces 147 tensors and 1,498,482,688 logical p
 That increase counts an explicit copy of the tied embedding, not newly trained parameters.
 The 8B source has 291 tensors. No model weights or tokenizer data are redistributed here.
 
+The [full 8B calibration and preflight evidence](llama31-8b-calibration.md)
+records the completed 512 × 2048 capture and all 16 existing-policy candidates.
+Eleven candidates satisfy the scale/table bounds; this is preparation evidence,
+with no completed held-out strength selection, fidelity gate or real-model proof.
+
 From the repository root, choose an artifact directory outside the checkout:
 
 ```sh

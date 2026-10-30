@@ -1,0 +1,1595 @@
+{
+  "schema": "tessera.calibration/1",
+  "tessera_quant": "0.1.0",
+  "architecture": {
+    "family": "LlamaV3",
+    "layers": 32,
+    "d_model": 4096,
+    "d_ff": 14336,
+    "heads": 32,
+    "kv_heads": 8,
+    "d_head": 128,
+    "vocab": 128256
+  },
+  "dataset": {
+    "name": "allenai/c4",
+    "config": "en",
+    "split": "validation",
+    "revision": "1588ec454efa1a09f29cd18ddd04fe05fc8653a2",
+    "files": [
+      "en/c4-validation.00000-of-00008.json.gz",
+      "en/c4-validation.00001-of-00008.json.gz",
+      "en/c4-validation.00002-of-00008.json.gz",
+      "en/c4-validation.00003-of-00008.json.gz",
+      "en/c4-validation.00004-of-00008.json.gz",
+      "en/c4-validation.00005-of-00008.json.gz",
+      "en/c4-validation.00006-of-00008.json.gz",
+      "en/c4-validation.00007-of-00008.json.gz"
+    ]
+  },
+  "seed": 0,
+  "sequences": 512,
+  "held_out": 64,
+  "tokens_per_sequence": 2048,
+  "selection_digest": "8c7f3d086b03487c1f4503b9e1967470c70b90f4407b589a86900246e824fc52",
+  "statistics_digest": "432dbac32234d087655e013698e0f955be3188090848ed1090d645838a0198f8",
+  "points": [
+    {
+      "name": "layers.0.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.0.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.0.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.0.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.0.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.0.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.0.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.0.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.0.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.0.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.0.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.0.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.1.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.1.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.1.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.1.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.1.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.1.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.1.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.1.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.1.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.1.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.1.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.1.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.2.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.2.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.2.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.2.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.2.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.2.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.2.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.2.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.2.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.2.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.2.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.2.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.3.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.3.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.3.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.3.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.3.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.3.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.3.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.3.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.3.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.3.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.3.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.3.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.4.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.4.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.4.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.4.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.4.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.4.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.4.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.4.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.4.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.4.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.4.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.4.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.5.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.5.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.5.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.5.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.5.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.5.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.5.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.5.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.5.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.5.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.5.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.5.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.6.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.6.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.6.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.6.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.6.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.6.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.6.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.6.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.6.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.6.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.6.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.6.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.7.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.7.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.7.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.7.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.7.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.7.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.7.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.7.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.7.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.7.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.7.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.7.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.8.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.8.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.8.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.8.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.8.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.8.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.8.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.8.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.8.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.8.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.8.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.8.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.9.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.9.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.9.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.9.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.9.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.9.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.9.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.9.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.9.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.9.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.9.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.9.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.10.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.10.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.10.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.10.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.10.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.10.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.10.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.10.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.10.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.10.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.10.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.10.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.11.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.11.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.11.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.11.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.11.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.11.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.11.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.11.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.11.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.11.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.11.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.11.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.12.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.12.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.12.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.12.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.12.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.12.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.12.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.12.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.12.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.12.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.12.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.12.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.13.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.13.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.13.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.13.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.13.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.13.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.13.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.13.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.13.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.13.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.13.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.13.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.14.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.14.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.14.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.14.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.14.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.14.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.14.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.14.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.14.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.14.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.14.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.14.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.15.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.15.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.15.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.15.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.15.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.15.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.15.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.15.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.15.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.15.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.15.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.15.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.16.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.16.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.16.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.16.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.16.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.16.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.16.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.16.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.16.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.16.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.16.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.16.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.17.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.17.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.17.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.17.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.17.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.17.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.17.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.17.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.17.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.17.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.17.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.17.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.18.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.18.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.18.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.18.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.18.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.18.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.18.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.18.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.18.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.18.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.18.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.18.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.19.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.19.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.19.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.19.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.19.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.19.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.19.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.19.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.19.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.19.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.19.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.19.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.20.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.20.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.20.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.20.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.20.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.20.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.20.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.20.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.20.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.20.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.20.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.20.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.21.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.21.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.21.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.21.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.21.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.21.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.21.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.21.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.21.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.21.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.21.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.21.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.22.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.22.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.22.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.22.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.22.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.22.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.22.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.22.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.22.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.22.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.22.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.22.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.23.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.23.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.23.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.23.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.23.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.23.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.23.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.23.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.23.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.23.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.23.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.23.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.24.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.24.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.24.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.24.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.24.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.24.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.24.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.24.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.24.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.24.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.24.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.24.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.25.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.25.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.25.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.25.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.25.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.25.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.25.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.25.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.25.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.25.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.25.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.25.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.26.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.26.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.26.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.26.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.26.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.26.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.26.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.26.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.26.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.26.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.26.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.26.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.27.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.27.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.27.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.27.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.27.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.27.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.27.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.27.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.27.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.27.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.27.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.27.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.28.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.28.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.28.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.28.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.28.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.28.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.28.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.28.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.28.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.28.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.28.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.28.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.29.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.29.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.29.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.29.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.29.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.29.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.29.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.29.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.29.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.29.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.29.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.29.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.30.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.30.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.30.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.30.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.30.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.30.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.30.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.30.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.30.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.30.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.30.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.30.h",
+      "channels": 14336
+    },
+    {
+      "name": "layers.31.attn_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.31.attn_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.31.q",
+      "channels": 4096
+    },
+    {
+      "name": "layers.31.k",
+      "channels": 1024
+    },
+    {
+      "name": "layers.31.v",
+      "channels": 1024
+    },
+    {
+      "name": "layers.31.attn_out",
+      "channels": 4096
+    },
+    {
+      "name": "layers.31.mlp_input",
+      "channels": 4096
+    },
+    {
+      "name": "layers.31.mlp_norm",
+      "channels": 4096
+    },
+    {
+      "name": "layers.31.gate",
+      "channels": 14336
+    },
+    {
+      "name": "layers.31.up",
+      "channels": 14336
+    },
+    {
+      "name": "layers.31.silu",
+      "channels": 14336
+    },
+    {
+      "name": "layers.31.h",
+      "channels": 14336
+    },
+    {
+      "name": "final.input",
+      "channels": 4096
+    },
+    {
+      "name": "final.norm",
+      "channels": 4096
+    }
+  ],
+  "environment": {
+    "device": "mps",
+    "batch_size": 1,
+    "deterministic_algorithms": true,
+    "python": "3.13.18",
+    "libraries": {
+      "torch": "2.14.1",
+      "transformers": "5.20.1",
+      "safetensors": "0.8.0",
+      "numpy": "2.5.4",
+      "blake3": "1.0.11"
+    }
+  }
+}

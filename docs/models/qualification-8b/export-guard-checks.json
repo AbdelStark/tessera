@@ -1,0 +1,40 @@
+{
+  "scope": "fixed-export public qualification receipt guards; not proof verifier tests",
+  "valid_input_reaches_model_boundary": true,
+  "isolated_corruptions_rejected": 6,
+  "runtime_guard_mutants_caught": 6,
+  "no_model_constructed_or_artifact_written": true,
+  "cases": [
+    {
+      "case": "changed-source",
+      "exact_failed_rule": "preflight source differs",
+      "guard_disabled_is_detected": true
+    },
+    {
+      "case": "incomplete",
+      "exact_failed_rule": "complete preflight required",
+      "guard_disabled_is_detected": true
+    },
+    {
+      "case": "duplicate-profile-mode",
+      "exact_failed_rule": "preflight profile/mode coverage differs",
+      "guard_disabled_is_detected": true
+    },
+    {
+      "case": "duplicate-strength",
+      "exact_failed_rule": "preflight strength coverage differs",
+      "guard_disabled_is_detected": true
+    },
+    {
+      "case": "inconsistent-outcomes",
+      "exact_failed_rule": "preflight outcomes differ",
+      "guard_disabled_is_detected": true
+    },
+    {
+      "case": "wrong-report-digest",
+      "exact_failed_rule": "calibration report differs",
+      "guard_disabled_is_detected": true
+    }
+  ],
+  "runner_sha256": "4c7973942ce8466e279a058dccfb8a63757ffa484530c3f6696145257b96a235"
+}

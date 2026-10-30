@@ -1,0 +1,17 @@
+{
+  "state": "verified-complete",
+  "source": "NousResearch/Meta-Llama-3.1-8B",
+  "model_revision": "1f47e50cdbe801ad8a5174156ec3a0655108fb9f",
+  "dataset_revision": "1588ec454efa1a09f29cd18ddd04fe05fc8653a2",
+  "sequences": 512,
+  "tokens_per_sequence": 2048,
+  "held_out": 64,
+  "statistics_bytes": 21593544,
+  "statistics_digest": "432dbac32234d087655e013698e0f955be3188090848ed1090d645838a0198f8",
+  "statistics_sha256": "606b6d02bfd5b553e9ed05763819d4998fe7223c33bc2fb79bfe48e433a5b721",
+  "report_sha256": "93382568df77ce3546fed03f88e9377df58383beedebe4efc9a459f1bebaa318",
+  "points": 386,
+  "channels": 2695168,
+  "private_file_modes": "0600",
+  "scope": "complete BF16 calibration capture and artifact consistency; not alpha selection, fidelity or proof"
+}
