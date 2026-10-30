@@ -10,6 +10,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Frozen E0 experiment for complete real-1B runtime/planner sizing before another proof attempt; no production selection or proof capability change (EXP-0030, [#627](https://github.com/AbdelStark/tessera/issues/627)).
+
 - A repository tool for bounded, bit-preserving BF16 tied-head checkpoint preparation, with exact configuration lexemes, checked shards, private staged output and complete streaming verification; the [real-model ramp guide](docs/models/real-model-ramp.md) pins the 1B/8B sources and records the unresolved real-proof and fidelity obligations (RFC-0005, TB-5, [#623](https://github.com/AbdelStark/tessera/issues/623)).
 
 - Complete claim-validation and NI-driver fuzz targets, declared tamper-case seeds and a pinned CPU-time campaign runner; the 24 CPU-hour release result remains pending until its report is recorded ([#185](https://github.com/AbdelStark/tessera/issues/185), SP-8, RFC-0019).
