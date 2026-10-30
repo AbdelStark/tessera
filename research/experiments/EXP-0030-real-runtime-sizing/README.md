@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `planned` |
+| Status | `done: validated` |
 | Idea | [IDEA-0041](../../ideas/IDEA-0041-uniform-requant.md), already triaged and finite-E0 validated; follow-up for [#627](https://github.com/AbdelStark/tessera/issues/627) / #617 |
 | Evidence level | E0: exact public geometry and charged planner bytes, not measured resident memory |
 | Hardware | Apple M1 Max, 64 GiB unified memory; CPU metadata only, no timing criterion |
@@ -101,22 +101,94 @@ experimental build can contaminate ordinary validation. Keep all result logs.
 
 ## Results
 
-Not run. Raw outputs will be under `results/`; no memory-floor number is credited yet.
+**E0, primary, charged metadata quantities.** All nine real cases and the
+unchanged tiny control completed. Every baseline real case reproduced the exact
+leaf refusal before metadata injection. All algorithm-source restoration and
+untouched-guard checks passed. The separate integer audit agrees on every saved
+case and catches ten isolated accounting corruptions; original/restored controls
+pass. The raw JSON is losslessly compressed (30,954,860 to 1,201,273 bytes).
+
+Each row below applies identically to B=30,31,32 on this fixed candidate:
+
+| Positions | Tensor cells | Lookup-tree cells | Used table rows | Advice cells | Zero-lookup base floor (bytes) | Resident plan peak (bytes) |
+|---|---:|---:|---:|---:|---:|---:|
+| 2 | 1,514,951,816 | 3,434,752 | 5,536,481,870 | 36,733,714,432 | 2,814,533,396,320 | 2,814,903,721,648 |
+| 512 | 2,961,852,416 | 962,854,912 | 5,536,481,870 | 36,796,628,992 | 2,911,161,566,560 | 3,062,420,989,584 |
+| 2,048 | 10,537,656,320 | 5,662,834,688 | 5,536,481,870 | 49,073,356,800 | 4,181,723,596,128 | 5,143,204,545,168 |
+
+The original planner returns exactly `ERR-RES-MEMORY` at every tested real
+budget: 16, 64, 256 and 1,024 GiB. The counterfactual zero-lookup floors are
+2.559803, 2.647686 and 3.803255 TiB at 2, 512 and 2,048 positions, respectively.
+The actual unwindowed charged peaks are 2.560140, 2.785256 and 4.677717 TiB.
+These are byte counts divided by 2^40, not measured resident memory.
+
+At two positions, NI-100's advice layout has 8,758 nonzero rows, each charged at
+its full width of 4,194,304 field cells: 36,733,714,432 advice cells. At 64 bytes
+per cell this contributes 2,350,957,723,648 bytes to the base charge. Table rows
+contribute 354,334,839,680 bytes, graph tensors 96,956,916,224 bytes, and the
+separate original weight working-set charge is 12,283,916,768 bytes. The terms
+sum exactly to the zero-lookup floor of 2,814,533,396,320 bytes.
+
+The tiny canonical control was also evaluated with the *named NI-100 layout*:
+its zero-lookup floor is 465,528,360,736 bytes, and its original planner fits
+1,024 GiB. This is a layout/control observation; it is not a tiny proof run.
+The hand case has the exact 1,664-byte boundary required by registration.
+
+Evidence: [counts](results/counts.json.gz), [independent audit and corruptions](results/audit.json),
+[execution/source receipt](results/run-receipt.json), [environment/input hashes](results/environment.json),
+and [raw run](results/run.log). The first compile exposed two private metadata
+methods; the following setup had a wrong module path. Both failures are retained
+([compile](results/initial-build-run.log), [setup](results/initial-visibility-setup.log)).
+Adding scratch visibility resolved them; no criterion, guard or algorithm changed.
+The reused scratch target is separate from ordinary validation targets.
 
 ## Analysis
 
-This measures a frozen candidate's charged metadata geometry. It neither makes
-that candidate canonical nor proves every allocation bound. A planner charge is
-not observed RSS. Any counterfactual grouping floor must remain labeled as such.
+The adapter reads only the already-public fixed-alpha=1/2 diagnostic candidate's
+ClaimList and EXP-0029 plans. Its underlying 1B model is not yet alpha-selected
+or fidelity-qualified. These results must be recomputed for a final chosen D.
+They do not describe every 1B/8B model or the projected 405B GPU backend.
+
+This is a complete *current CPU planner* cell count at the frozen public
+candidate metadata, including exact-greedy runtime requests, native stages,
+canonical first-use table finalization and every original weight term. It is
+not a complete soundness budget: opening groups and the full runtime calculator,
+independent verifier implementation and acceptance remain owed. It does not
+adopt draft RFC-0076 or produce a canonical usable candidate ClaimList.
+
+The grouping lower bound is strict: the existing `PassPlan::grouped` replaces
+only lookup cells; stage windows leave the cell base unchanged. Even giving
+that term the impossible ideal value zero and charging no stage working memory
+cannot reach any tested real budget. Thus the present grouping/window choices
+cannot make this frozen candidate fit the 64 GiB host's current CPU plan.
+
+This is **not** an observed out-of-memory event or a physical impossibility
+result. The original actual proof attempt still failed at its leaf-layout guard,
+before this experimental candidate's resource plan. The 64-byte cell reserve
+and full advice-row charges are conservative allocations in the current CPU
+contract. A different, validated memory schedule may require much less memory.
+Original public table-generator cores used by lowering are retained unchanged;
+the adapter allocates no full logical table or witness. WindowMemory's internal
+allocation formula remains source-pinned producer evidence, not independently
+proved by the Python recount.
 
 ## Verdict
 
-Pending; `planned`. No production capability, G-4 pass or performance credit.
+`validated` for the frozen E0 resource hypothesis: all required cases and
+recounts pass, all ten accounting corruptions are caught, and every real
+zero-lookup floor exceeds 64 GiB. No production capability, complete G-4,
+physical peak, performance or hiding credit follows.
 
 ## Follow-ups
 
-If validated, use the exact dominant charged terms to choose the next prover
-memory/scheduling unit or hardware requirement; keep the separate RFC review
-and complete-budget obligations. A measured whole proof is still required.
-An H100 run would address a separately implemented GPU backend; no CPU byte
-count predicts its speed or establishes GPU feasibility.
+The next real-model implementation decision is a memory plan that addresses
+advice rows, table trees and resident tensors together, validated on complete
+NI-100 proofs. Current grouping/windows alone are insufficient. Retain canonical
+artifacts, every opening/range/read check and an actual-count soundness budget;
+any changed parameter or canonical layout needs the repository's review/RFC
+process. Keep the independent RFC-0076 acceptance and implementation obligations.
+Do not repeat the unchanged long real proof attempt expecting table-policy or
+leaf grouping choices alone to solve this planner refusal.
+
+An H100 run requires an implemented GPU backend and its separate resource model;
+these CPU charges provide neither GPU feasibility nor a speed projection.

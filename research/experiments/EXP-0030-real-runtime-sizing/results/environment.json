@@ -1,0 +1,10 @@
+{
+  "cpu": "Apple M1 Max",
+  "host_memory_bytes": 68719476736,
+  "python": "3.15.2",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "inputs_sha256": {
+    "research/experiments/EXP-0029-uniform-requant/real-1b-claims.tcl": "af7d31a9e853cde6fdf4e2a8a195e6d312ae3ae6fc2fdb2e8700cb963ab3d5aa",
+    "research/experiments/EXP-0029-uniform-requant/results/layout-plans.tsv": "ead57bd4b08b94e5ba4e44f33264684a9772fba68b01c000440404259062c279"
+  }
+}

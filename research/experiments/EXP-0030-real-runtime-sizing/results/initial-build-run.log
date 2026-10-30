@@ -1,0 +1,71 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling find-msvc-tools v0.1.15
+   Compiling libc v0.2.191
+   Compiling shlex v2.0.1
+   Compiling quote v1.0.47
+   Compiling cc v1.10.0
+   Compiling cfg-if v1.0.5
+   Compiling blake3 v1.8.7
+   Compiling getrandom v0.3.4
+   Compiling once_cell v1.21.4
+   Compiling zeroize v1.9.1
+   Compiling arrayvec v0.7.8
+   Compiling tracing-core v0.1.36
+   Compiling syn v3.0.9
+   Compiling pin-project-lite v0.2.17
+   Compiling constant_time_eq v0.4.2
+   Compiling tracing v0.1.44
+   Compiling zmij v1.0.23
+   Compiling serde_core v1.0.229
+   Compiling tessera-codec-derive v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-codec-derive)
+   Compiling tessera-codec v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-codec)
+   Compiling serde_json v1.0.154
+   Compiling tessera-field v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-field)
+   Compiling tessera-hash v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-hash)
+   Compiling tessera-poly v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-poly)
+   Compiling tessera-tables v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-tables)
+   Compiling tessera-sumcheck v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-sumcheck)
+   Compiling tessera-pcs v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-pcs)
+   Compiling tessera-ir v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-ir)
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling getrandom v0.4.3
+   Compiling tessera-compiler v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-compiler)
+   Compiling tessera-logup v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-logup)
+   Compiling tessera-protocol v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-protocol)
+   Compiling tessera-gadgets v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-gadgets)
+   Compiling tessera-witness v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-witness)
+   Compiling tessera-prover v0.1.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-prover)
+   Compiling real-runtime-sizing v0.0.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/research/experiments/EXP-0030-real-runtime-sizing)
+error[E0624]: method `window_shapes` is private
+   --> probe.rs:162:26
+    |
+162 |                   metadata.window_shapes(stage as u16, |tag| native.window_shape(tag))
+    |                            ^^^^^^^^^^^^^ private method
+    |
+   ::: /var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-prover/src/stages/stream.rs:917:5
+    |
+917 | /     pub(crate) fn window_shapes(
+918 | |         &self,
+919 | |         k: u16,
+920 | |         native: impl Fn(u32) -> Result<tessera_sumcheck::WindowShape, StageError>,
+921 | |     ) -> Result<Vec<tessera_sumcheck::WindowShape>, StageError> {
+    | |_______________________________________________________________- private method defined here
+
+error[E0624]: method `window_shape` is private
+   --> probe.rs:162:67
+    |
+162 |                   metadata.window_shapes(stage as u16, |tag| native.window_shape(tag))
+    |                                                                     ^^^^^^^^^^^^ private method
+    |
+   ::: /var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/crates/tessera-prover/src/native.rs:368:5
+    |
+368 | /     pub(crate) fn window_shape(
+369 | |         &self,
+370 | |         tag: u32,
+371 | |     ) -> Result<tessera_sumcheck::WindowShape, StageError> {
+    | |__________________________________________________________- private method defined here
+
+For more information about this error, try `rustc --explain E0624`.
+error: could not compile `real-runtime-sizing` (bin "real-runtime-sizing") due to 2 previous errors

@@ -190,6 +190,17 @@ required before adoption. See [#617](https://github.com/AbdelStark/tessera/issue
 the exact public reproduction and remaining implementation/count/proof obligations.
 No actual memory refusal was observed in that attempt; do not relabel the leaf failure.
 
+A separate [complete runtime sizing experiment](../../research/experiments/EXP-0030-real-runtime-sizing/README.md)
+uses the same public fixed-candidate metadata and the proposed common-family plans
+in an isolated scratch adapter. The unchanged CPU planner charges a zero-lookup
+base floor of 2.56 TiB at two positions and 3.80 TiB at 2,048 positions (E0); all
+nine policy/length cases refuse tested budgets through 1 TiB. Current advice-row,
+table-tree and tensor charges therefore require further memory work before this
+64 GiB host can follow that CPU plan. These are conservative planner charges,
+not observed peak RAM; the actual proof attempt above still stopped at the leaf
+guard. This experiment neither adopts RFC-0076 nor discharges a complete
+soundness budget, fidelity or proof obligation.
+
 After that blocker is resolved, proving must use the real token artifact and independent
 request/manifest context described by the [exact CLI flow](../testing/exact-cli.md).
 The ordinary independently built verifier then needs caller-trusted statement and weight

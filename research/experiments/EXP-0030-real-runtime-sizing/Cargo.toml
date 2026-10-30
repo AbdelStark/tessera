@@ -1,0 +1,26 @@
+[package]
+name = "real-runtime-sizing"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "real-runtime-sizing"
+path = "probe.rs"
+
+[dependencies]
+serde_json = "1"
+tessera-codec = { path = "../../../crates/tessera-codec" }
+tessera-compiler = { path = "../../../crates/tessera-compiler" }
+tessera-ir = { path = "../../../crates/tessera-ir" }
+tessera-prover = { path = "../../../crates/tessera-prover" }
+tessera-tables = { path = "../../../crates/tessera-tables" }
+tessera-sumcheck = { path = "../../../crates/tessera-sumcheck" }
+
+[profile.release]
+opt-level = 1
+codegen-units = 16
+lto = false
