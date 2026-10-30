@@ -149,6 +149,12 @@ ClaimList and EXP-0029 plans. Its underlying 1B model is not yet alpha-selected
 or fidelity-qualified. These results must be recomputed for a final chosen D.
 They do not describe every 1B/8B model or the projected 405B GPU backend.
 
+`ModelAdviceLayout::runtime` executes the same `allocated_runtime_rows`
+counter used by the early batch-advice guard, then checks the constructed
+layout against that counter. Thus supplying the candidate selection directly
+does not omit its allocation bound; the ordinary early wrapper would reselect
+the unchanged baseline and cannot validate unadopted candidate catalogs.
+
 This is a complete *current CPU planner* cell count at the frozen public
 candidate metadata, including exact-greedy runtime requests, native stages,
 canonical first-use table finalization and every original weight term. It is
