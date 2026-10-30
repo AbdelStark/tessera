@@ -346,7 +346,7 @@ def evaluate_fidelity(model: IntegerModel, reference: FloatModel, spec: EvalSpec
 ```
 
 - **The calibration set** comes from `tessera_quant.calibration.draw`, which defines it exactly from a seed and the documents ([RFC-0005](../rfcs/RFC-0005-integer-model.md#calibration) 'Calibration'). Its held-out split serves `quantize`.
-- **`quantize` chooses the migration strength** among `alphas`: the one whose `D` diverges least from the BF16 reference on the held-out split ([RFC-0005](../rfcs/RFC-0005-integer-model.md#calibration)). `D` runs through `run_reference` for this. It records the strength and its sources in `Provenance`.
+- **`quantize` chooses the migration strength** among admissible `alphas`: the one whose `D` diverges least from the BF16 reference on the held-out split, with the smallest strength winning a tie ([RFC-0005](../rfcs/RFC-0005-integer-model.md#calibration)). It preflights every candidate against the unchanged scale/table bounds before any held-out evaluation, releasing each candidate before constructing the next. If none is admissible, it returns `ERR-QUANT-CALIB`; invalid input and scoring errors remain fatal. `D` runs through `run_reference` for KL. It records the strength and its sources in `Provenance`.
 - **`export`** writes `D` as a secret artifact and returns the envelope's digest.
 - **`evaluate_fidelity`** measures RFC-0005's metrics with their intervals, on an `EvalSpec`: the perplexity documents and the agreement prompts as token sequences with their data identities, the reference continuation's length, and the calibration's document hashes, which no evaluation document may share. Its report is `tessera.fidelity/1`.
 

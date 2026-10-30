@@ -14,6 +14,7 @@ deterministic algorithms.
 """
 
 import platform
+from collections.abc import Callable, Mapping
 from contextlib import closing
 from fractions import Fraction
 from importlib.metadata import version
@@ -26,9 +27,14 @@ import torch
 
 from tessera_quant._streaming import transformed_checkpoint
 from tessera_quant.arch import ArchSpec
-from tessera_quant.capture import CalibrationResult, iter_reference_logits
+from tessera_quant.capture import CalibrationResult, iter_reference_logits, points
 from tessera_quant.checkpoint import FloatModel
-from tessera_quant.errors import CalibrationError, TesseraQuantError, UsageError
+from tessera_quant.errors import (
+    CalibrationError,
+    QuantizationInfeasibleError,
+    TesseraQuantError,
+    UsageError,
+)
 from tessera_quant.integer_model import (
     INTEGER_MODEL,
     CalibrationIdentity,
@@ -67,8 +73,9 @@ def quantize(
 ) -> IntegerModel:
     """The integer model `D` of `model`, calibrated by `calib` (02 §4).
 
-    The migration strength is the one of `alphas` whose `D` diverges least from the BF16 reference
-    on the held-out split, the smallest of equal ones (RFC-0005 'Calibration'). With `affine`
+    The migration strength is the admissible one of `alphas` whose `D` diverges least from the
+    BF16 reference on the held-out split, the smallest of equal ones (RFC-0005 'Calibration').
+    All candidates are preflighted before evaluation, retaining only their strengths. With `affine`
     scales, every weight that can take them does (RFC-0025): Q, K and V, and in `servable` O, up
     and down too.
 
@@ -84,6 +91,7 @@ def quantize(
             "the migration strength is chosen on the held-out split: it is empty"
         )
     arch = model.arch
+    _check_statistics(arch, calib.statistics.maxima)
     # The files are hashed once, before their tensors are read.
     checkpoint = checkpoint_digests(model)
     maxima = calib.statistics.maxima
@@ -130,8 +138,44 @@ def quantize(
         # Retain only one scalar per position, preserving the original final mean's order.
         return float(torch.cat(rows).mean())
 
-    alpha = select_alpha(divergence, alphas)
+    admissible = _admissible_alphas(quantized, alphas)
+    alpha = select_alpha(divergence, admissible)
     return assembled(quantized(alpha), alpha)
+
+
+def _check_statistics(arch: ArchSpec, maxima: Mapping[str, torch.Tensor]) -> None:
+    """Reject malformed original statistics before any candidate can be omitted."""
+    expected = points(arch)
+    if set(maxima) != set(expected):
+        raise CalibrationError("the statistics have exactly the quantization points")
+    for name, channels in expected.items():
+        values = maxima[name]
+        if (
+            values.shape != (channels,)
+            or not bool(torch.isfinite(values).all())
+            or not bool((values >= 0).all())
+            or not bool((values > 0).any())
+        ):
+            raise CalibrationError(f"{name}: statistics are finite nonnegative channel maxima")
+
+
+def _admissible_alphas(
+    build: Callable[[Fraction], Quantized], candidates: tuple[Fraction, ...]
+) -> tuple[Fraction, ...]:
+    """Preflight only derived bounds, releasing each candidate and exception immediately."""
+    if not candidates:
+        raise TesseraQuantError("alpha is chosen among at least one candidate")
+    admissible: list[Fraction] = []
+    for alpha in sorted(candidates):
+        try:
+            # Do not bind the result or exception: both can own model-sized allocations.
+            build(alpha)
+        except QuantizationInfeasibleError:
+            continue
+        admissible.append(alpha)
+    if not admissible:
+        raise CalibrationError("no migration strength satisfies the scale/table bounds")
+    return tuple(admissible)
 
 
 def check_options(profile: str, scales: str) -> Profile:

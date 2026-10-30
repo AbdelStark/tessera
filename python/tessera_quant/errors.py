@@ -39,6 +39,15 @@ class CalibrationError(TesseraQuantError):
     code = "ERR-QUANT-CALIB"
 
 
+class QuantizationInfeasibleError(CalibrationError):
+    """A candidate cannot satisfy the fixed scale/table bounds (`ERR-QUANT-CALIB`).
+
+    Only derived admissibility checks raise this subclass. Malformed statistics, checkpoint
+    errors, non-finite divergence and resource failures must never be converted to it. Alpha
+    preflight may omit this candidate; scoring or reconstruction failures still propagate.
+    """
+
+
 class CodecError(TesseraQuantError):
     """Bytes outside the Tessera Canonical Encoding (RFC-0003), or a value too large to read back.
 
