@@ -100,7 +100,7 @@ convention = "google"
 "tessera_quant/tce.py" = ["D102"]
 
 [tool.pyright]
-include = ["tessera_quant", "tests"]
+include = ["tessera_quant", "tests", "tools"]
 pythonVersion = "3.11"
 typeCheckingMode = "strict"
 

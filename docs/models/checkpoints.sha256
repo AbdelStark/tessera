@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+# Weight-file SHA-256 from the pinned Hugging Face LFS metadata (2026-10-30).
+68a2e4be76fa709455a60272fba8e512c02d81c46e6c671cc9449e374fd6809a  llama-3.2-1b/model.safetensors
+f8b9704ab09cdeb097aa4a0a24bca96f906eec36bad63ab495bc21475058601b  llama-3.1-8b/model-00001-of-00004.safetensors
+c28b25e7541751056ee126627e007f8d4288319733285e9f7b17b9ff6eb313f0  llama-3.1-8b/model-00002-of-00004.safetensors
+d8e9504dd4e4a146d484c52a97584ec14dac92237c46b064934af67a85e7d383  llama-3.1-8b/model-00003-of-00004.safetensors
+e4486f35c040f683f7d790354f66c169c109eb9fa0954a4a35d7c458a108405d  llama-3.1-8b/model-00004-of-00004.safetensors

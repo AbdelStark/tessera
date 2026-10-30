@@ -4,6 +4,9 @@ Tessera targets proofs that a committed integer language model `D` produced a re
 
 **Status:** pre-release CPU reference implementation. Synthetic tiny-model tests exercise exact-greedy proofs through the public API and real command-line tools. Protocol/1 is non-hiding, `test-small/1` certifies nothing, and production audits and frontier performance remain unqualified.
 
+The [real-model ramp guide](docs/models/real-model-ramp.md) pins the 1B/8B checkpoints,
+reproduces preparation, and records the current real-proof and qualification blockers.
+
 The CPU route compiles a model, commits its weights, proves one or several requests,
 and checks the result with the [independent verifier CLI](docs/verifier/reference-cli.md).
 It supports NI and directory Live sessions. The pass planner can select leaf groups
