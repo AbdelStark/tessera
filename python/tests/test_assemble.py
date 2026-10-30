@@ -41,6 +41,7 @@ from tessera_quant import (
     TesseraQuantError,
     assemble,
     calibrate,
+    capture,
     export,
     import_checkpoint,
     quantize,
@@ -429,46 +430,47 @@ def test_streamed_d_is_byte_identical_to_eager_d(
     )
 
 
-def test_bf16_reference_runs_before_scoring_float64_checkpoint_read(
+def test_candidate_construction_and_bf16_model_lifetimes_do_not_overlap(
     calibrated: tuple[FloatModel, CalibrationResult], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     model, calib = calibrated
     original_read = FloatModel.tensor
-    original_reference = assemble.iter_reference_logits
-    original_preflight = getattr(assemble, "_admissible_alphas")  # noqa: B009
-    reference_ran = False
-    in_reference = False
-    in_preflight = False
+    original_model = capture.reference_model
+    original_transform = assemble.transformed_checkpoint
+    models: list[weakref.ReferenceType[Any]] = []
+    maps: list[weakref.ReferenceType[Any]] = []
+    loading = False
 
-    def preflight(*args: Any, **kwargs: Any) -> Any:
-        nonlocal in_preflight
-        in_preflight = True
+    def transformed(*args: Any, **kwargs: Any) -> Any:
+        gc.collect()
+        assert all(ref() is None for ref in models), "BF16 model overlaps candidate scratch"
+        found = original_transform(*args, **kwargs)
+        maps.extend(weakref.ref(part) for part in found)
+        return found
+
+    def reference(*args: Any, **kwargs: Any) -> Any:
+        nonlocal loading
+        gc.collect()
+        assert all(ref() is None for ref in maps), "migration maps survived into BF16 loading"
+        loading = True
         try:
-            return original_preflight(*args, **kwargs)
+            llama = original_model(*args, **kwargs)
         finally:
-            in_preflight = False
-
-    def reference(*args: object, **kwargs: object) -> Generator[torch.Tensor, None, None]:
-        nonlocal reference_ran, in_reference
-        in_reference = True
-        with closing(
-            original_reference(model, calib.calibration.held_out, calib.calibration.seed)
-        ) as refs:
-            for result in refs:
-                in_reference = False
-                reference_ran = True
-                yield result
-                in_reference = True
-        in_reference = False
+            loading = False
+        models.append(weakref.ref(llama))
+        return llama
 
     def read(self: FloatModel, name: str) -> torch.Tensor:
-        assert in_preflight or in_reference or reference_ran, "scoring read before the reference"
+        assert loading or all(ref() is None for ref in models), "BF16 model overlaps float64 reads"
         return original_read(self, name)
 
     monkeypatch.setattr(FloatModel, "tensor", read)
-    monkeypatch.setattr(assemble, "_admissible_alphas", preflight)
-    monkeypatch.setattr(assemble, "iter_reference_logits", reference)
-    quantize(model, calib, alphas=(Fraction(3, 5),))
+    monkeypatch.setattr(assemble, "transformed_checkpoint", transformed)
+    monkeypatch.setattr(capture, "reference_model", reference)
+    quantize(model, calib)
+    gc.collect()
+    assert len(models) == len(ALPHAS)
+    assert all(ref() is None for ref in models + maps)
 
 
 def _probe_candidates(

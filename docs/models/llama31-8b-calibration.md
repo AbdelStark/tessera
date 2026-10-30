@@ -7,6 +7,10 @@ backend or a certifying model proof. The real-proof obligations in
 [#617](https://github.com/AbdelStark/tessera/issues/617) and
 [#629](https://github.com/AbdelStark/tessera/issues/629) remain.
 
+The [scoring residency follow-up](scoring-residency.md) separates candidate
+construction from BF16 model/window loading and records the controlled real-8B
+boundary probe and full-strength selection runner.
+
 ## Source and calibration
 
 The source is `NousResearch/Meta-Llama-3.1-8B` at immutable revision

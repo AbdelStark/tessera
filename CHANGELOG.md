@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Finish each admitted integer candidate's construction before loading its BF16 held-out reference, separating float64 migration scratch from reference model/window residency while preserving preflight, full-window KL reduction and strength selection (RFC-0005, [#635](https://github.com/AbdelStark/tessera/issues/635)).
+
 - Stream ordinary CPU advice through one reused clearing field row with rank-sized source-index metadata, preserving canonical padding and P1/P4/P5 rows without changing the memory-plan charges (RFC-0011/0047/0050, [#630](https://github.com/AbdelStark/tessera/issues/630)).
 
 - Preflight migration strengths against the existing scale/table bounds before held-out evaluation, then minimize KL over admissible candidates without masking malformed input, scoring or resource errors; reject all-infeasible calibration before BF16 and release each candidate before constructing the next (RFC-0005, [#625](https://github.com/AbdelStark/tessera/issues/625)).
