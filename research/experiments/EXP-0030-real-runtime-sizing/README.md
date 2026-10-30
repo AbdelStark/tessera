@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `running` |
+| Status | `done: validated` |
 | Idea | [IDEA-0041](../../ideas/IDEA-0041-uniform-requant.md), already triaged and finite-E0 validated; follow-up for [#627](https://github.com/AbdelStark/tessera/issues/627) / #617 |
 | Evidence level | E0: exact public geometry and charged planner bytes, not measured resident memory |
 | Hardware | Apple M1 Max, 64 GiB unified memory; CPU metadata only, no timing criterion |
@@ -101,7 +101,7 @@ experimental build can contaminate ordinary validation. Keep all result logs.
 
 ## Results
 
-**Initial complete run: E0, primary, charged metadata quantities.** All nine real cases and the
+**E0, primary, charged metadata quantities.** All nine real cases and the
 unchanged tiny control completed. Every baseline real case reproduced the exact
 leaf refusal before metadata injection. All algorithm-source restoration and
 untouched-guard checks passed. The separate integer audit agrees on every saved
@@ -140,7 +140,11 @@ and [raw run](results/run.log). The first compile exposed two private metadata
 methods; the following setup had a wrong module path. Both failures are retained
 ([compile](results/initial-build-run.log), [setup](results/initial-visibility-setup.log)).
 Adding scratch visibility resolved them; no criterion, guard or algorithm changed.
-The reused scratch target is separate from ordinary validation targets.
+The reused scratch target is separate from ordinary validation targets. CI then
+rejected the original nonstandard module import ([log](results/initial-ci-policy.log)).
+The corrected adapter uses a normal `mod candidate` and pins its helper bodies
+to EXP-0029. Its full replay is byte-identical to the original complete run;
+no policy exception, guard or numerical criterion changed.
 
 ## Analysis
 
@@ -180,12 +184,12 @@ proved by the Python recount.
 
 ## Verdict
 
-The initial complete run is `validated` for the frozen E0 resource hypothesis: all required cases and
+`validated` for the frozen E0 resource hypothesis: all required cases and
 recounts pass, all ten accounting corruptions are caught, and every real
 zero-lookup floor exceeds 64 GiB. No production capability, complete G-4,
-physical peak, performance or hiding credit follows. A final complete replay with a
-policy-compliant normal module boundary is running before merge; the initial
-CI import failure and complete-run receipts are preserved.
+physical peak, performance or hiding credit follows. The complete policy-compliant normal-module replay produces byte-identical
+records and repeats all ten successful corruption controls. The initial CI
+import failure and complete-run receipts are preserved.
 
 ## Follow-ups
 

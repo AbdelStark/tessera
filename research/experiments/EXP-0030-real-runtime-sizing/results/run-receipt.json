@@ -75,5 +75,17 @@
     "crates/tessera-prover/src/native.rs": "d25f17c8307f53ffec2f8297588cd8e66f02066689b12e513c1c3391dea350f8",
     "crates/tessera-prover/src/stages/stream.rs": "5066ca90bff32c3a7438200ddf62e04818e85add14ac8b75747266951101d64e",
     "crates/tessera-prover/src/cpu/plan.rs": "fa2525a73243d2d869707d3dcb01e7407ee080495d3cdd0374d9be8f11e97894"
-  }
+  },
+  "command": [
+    "cargo",
+    "run",
+    "--release",
+    "--offline",
+    "--locked",
+    "--manifest-path",
+    "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/research/experiments/EXP-0030-real-runtime-sizing/Cargo.toml"
+  ],
+  "exit_code": 0,
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "all_algorithm_sources_preserved": true
 }

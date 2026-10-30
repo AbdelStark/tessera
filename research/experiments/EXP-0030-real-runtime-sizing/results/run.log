@@ -5,3 +5,13 @@
    Compiling real-runtime-sizing v0.0.0 (/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/research/experiments/EXP-0030-real-runtime-sizing)
     Finished `release` profile [optimized] target(s) in 1m 04s
      Running `/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/target/release/real-runtime-sizing`
+n=2 B=30 floor=2814533396320 peak=2814903721648
+n=2 B=31 floor=2814533396320 peak=2814903721648
+n=2 B=32 floor=2814533396320 peak=2814903721648
+n=512 B=30 floor=2911161566560 peak=3062420989584
+n=512 B=31 floor=2911161566560 peak=3062420989584
+n=512 B=32 floor=2911161566560 peak=3062420989584
+n=2048 B=30 floor=4181723596128 peak=5143204545168
+n=2048 B=31 floor=4181723596128 peak=5143204545168
+n=2048 B=32 floor=4181723596128 peak=5143204545168
+complete public runtime records written; no witness or proof created
