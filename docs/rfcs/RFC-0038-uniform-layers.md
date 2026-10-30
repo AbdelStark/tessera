@@ -10,6 +10,8 @@
   - [RFC-0022](RFC-0022-saturating-residual.md#proposed-design) 'Proposed Design': a residual site takes one route in every layer.
 - Origin: [#348](https://github.com/AbdelStark/tessera/issues/348)
 
+- Amended by: [RFC-0076](RFC-0076-uniform-requant-families.md), which defines common-family Protocol One model Requant selection.
+
 ## Summary
 
 RFC-0037 stacks the layers of a lowered graph as one template, node for node. The claim list rescales each site of each layer on its own: a site is `pot` with one to four classes, or `affine` (RFC-0007, RFC-0025). The lowering follows those choices, so layers rescaled differently lower to different nodes, and their graph has no stage schedule. This RFC makes the claim list rescale every layer's sites alike, and gives the quantizer two exact transformations that meet the rule without changing `D`.

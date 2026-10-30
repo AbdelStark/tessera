@@ -251,6 +251,7 @@ must be measured on H100, with secret rejection counts excluded from production 
 
 [#617](https://github.com/AbdelStark/tessera/issues/617) records the actual 1B candidate’s failed proof preparation: at B=31/32 its MLP residual selects one Wide and fifteen Split gadgets; B=30 selects two Wide and fourteen Split. The synthetic two-layer derivative also fails the existing read-role guard. These are E0 public metadata observations, not successful proofs or performance figures. [EXP-0029](experiments/EXP-0029-uniform-requant/README.md) is done: validated in its frozen E0 scope: 154,900 sites, 4,590,008 integer/field cases, 9,881,680 rejected auxiliary perturbations and ten caught source faults. Unchanged production leaf code accepts candidate public layouts at all three required policies (sixteen real layers, 6,895 split values), and the tiny case (two layers, 1,029 split values). No production adoption, full proof, global G-4, hiding or performance result is credited.
 
+Accepted [RFC-0076](../docs/rfcs/RFC-0076-uniform-requant-families.md) promotes the finite result with an E0 mathematical mechanism argument and exact public selection/finalization rules. The maintainer adopted its one-time compatibility exception and waived the additional non-author review; no independent approval is claimed. Actual complete counts/budget and real-model proofs are not established. No cost-model input or performance projection changes.
 
 ## Real-model CPU planner sizing (2026-10-30)
 

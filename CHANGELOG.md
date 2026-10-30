@@ -16,6 +16,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Accept common-family Protocol One Requant selection and its explicit one-time unreleased compatibility decision; implementation and actual real-model proofs remain pending (RFC-0076, [#619](https://github.com/AbdelStark/tessera/issues/619), parent #617).
+
 - Full pinned Llama-3.1-8B calibration metadata, all 16 existing-policy scale preflights and one fixed diagnostic INT8 artifact with complete readback/Rust geometry checks, with private statistics and weights outside the checkout; no fidelity or real-proof claim (RFC-0005/0025/0038, [#633](https://github.com/AbdelStark/tessera/issues/633)).
 
 - Complete E0 real-1B runtime/planner sizing: the current CPU zero-lookup floor is 2.56–3.80 TiB over nine cases, with independent recount and ten corruptions caught; no production selection, measured peak or proof capability change (EXP-0030, [#627](https://github.com/AbdelStark/tessera/issues/627)).

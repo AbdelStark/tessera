@@ -6,6 +6,8 @@
 - Target milestone: v0.3
 - Amended by: [RFC-0022](RFC-0022-saturating-residual.md) ('RsqrtRow': the root's range check), [RFC-0024](RFC-0024-wide-requantization.md) ('RequantWide'), [RFC-0028](RFC-0028-balanced-split.md) ('RequantSplit': the split point), [RFC-0030](RFC-0030-masked-exponentials.md) ('SoftmaxRow': every position looked up, the leaf claims' reduction, Lemma 5), [RFC-0035](RFC-0035-padded-rows.md) ('RsqrtRow', 'SoftmaxRow', 'OneHot', 'InverseCdf': the row selector `ψ` on padded rows), [RFC-0050](RFC-0050-gadget-advice-columns.md) ('BigIntCompare' and 'RsqrtRow': canonical auxiliary columns, range requests and exact counts), [RFC-0058](RFC-0058-inverse-cdf-columns.md) ('InverseCdf': the partition's bound, the integers' limbs, the committed values, range requests and exact counts), [RFC-0071](RFC-0071-request-slots.md) ('SoftmaxRow': in a batch, keys within the query's request)
 
+- Amended by: [RFC-0076](RFC-0076-uniform-requant-families.md), which defines common-family Protocol One model Requant selection.
+
 ## Summary
 
 A gadget is a constraint pattern that pins a committed value to the unique result of a non-arithmetic operation. This RFC specifies every gadget used upstream of the logits and in scoring: `Requant1`, `RequantSplit`, `RequantWide`, `NonNeg`, `BigIntCompare`, `SoftmaxRow` (max certificate and reciprocal bracket), `RsqrtRow`, `OneHot`, `Argmax` and `InverseCdf`. For each: committed values, lookups, sumcheck relations, cost, and a uniqueness lemma with its proof. Uniqueness upstream of the logits is the soundness rule the whole statement rests on (source §6, principle 5).

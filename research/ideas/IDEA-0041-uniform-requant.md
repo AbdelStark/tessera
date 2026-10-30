@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `validated` |
+| Status | `promoted` |
 | Origin | [#617](https://github.com/AbdelStark/tessera/issues/617): real 1B public geometry and a two-layer synthetic reproduction |
 | Lever | Correctness/coverage of stacked leaf reads; `C_lin`, `K_lin`, table rows may increase |
 | Spec surfaces | RFC-0006 selection; RFC-0045 same reads; RFC-0050 auxiliary layout. Canonical table/advice changes require a superseding RFC before adoption. |
@@ -64,15 +64,17 @@ production adoption. No CPU/GPU throughput projection is made.
 
 | Property | Effect | Pass |
 |---|---|---|
-| G-4 | Existing relations only; complete actual sizes/budget must be derived after integration | unknown: finite experiment first; no acceptance credit |
-| SP-3 | Same requant result; retain range, rounding, class-packing and 62-bit limits | unknown: exact/alternative-witness experiment first |
+| G-4 | Same relation degrees/error formulas; actual changed counts and complete budget remain mandatory | pass at mechanism scope by RFC-0076 N5; no full-model budget claim |
+| SP-3 | Wider public key envelopes retain uniqueness/value and zero padding | pass at mechanism scope by RFC-0076 N1–N4 and EXP-0029; production tests/review owed |
 | G-5 | Scope Protocol One, already non-hiding; Protocol Two canonical selection unchanged/refused until its separate review | pass for this scope; no hiding claim |
 | SP-6 | Public specification first, future independent implementations; no shared code | pass for experiment; independent implementation still required |
 | Hash commitments | No change to primitive, binding or setup assumptions | pass |
 
-Unknown rows block RFC promotion until settled within their stated scope. A
-finite E0 pass will not approve a production verifier or establish G-4 for a
-complete proof.
+The mechanism rows are settled by the explicit mathematical argument in draft
+[RFC-0076](../../docs/rfcs/RFC-0076-uniform-requant-families.md#security-argument),
+not by finite sampling alone. Draft promotion is not acceptance. Actual-count
+budget checks, independent implementation and genuine non-author review remain
+mandatory; no complete-proof G-4 or production verifier approval is inferred.
 
 ## Prior rejection check
 
@@ -126,7 +128,7 @@ full proof resources and independent review remain separate.
 
 | Gain | Confidence | Cost | Priority |
 |---|---|---|---|
-| 0 credited performance gain | 0.3 pending experiment | l: canonical selection/RFC and independent implementation | 0; authorized correctness prerequisite |
+| 0 credited performance gain | 0.6: existing lemmas and finite experiment; non-author review pending | l: canonical selection/RFC and independent implementation | 0; authorized correctness prerequisite |
 
 ## Decision and links
 
@@ -144,6 +146,15 @@ proof follows. Security gate unknowns remain: next write/review the exact
 mechanism and complete count/budget obligations before RFC promotion, then
 independently implement only an accepted rule.
 
+## Promotion (2026-10-29)
+
+Draft [RFC-0076](../../docs/rfcs/RFC-0076-uniform-requant-families.md) gives the
+complete public selection/finalization rule, N1–N6 mathematical argument and
+one-time unreleased Protocol One compatibility proposal. This resolves the
+mechanism-level unknown rows without claiming actual runtime-budget success.
+[#619](https://github.com/AbdelStark/tessera/issues/619) tracks the RFC decision;
+#617 retains the production/real-proof deliverable. No reviewer approval or
+implementation is asserted. Performance priority remains zero credited gain.
 
 ## Complete runtime sizing follow-up (2026-10-30)
 
@@ -151,6 +162,13 @@ independently implement only an accepted rule.
 separate E0 resource hypothesis on the fixed 1B candidate: the current CPU
 zero-lookup base floor is 2.56–3.80 TiB over nine policy/length pairs. All ten
 saved-record corruptions are caught. This leaves the finite common-family
-result validated and G-4 unknown; it does not approve draft RFC-0076. Complete
+result validated and the full-model G-4 unknown; it does not establish production readiness. Complete
 memory scheduling, original opening counts, the actual full budget, independent
 implementation/review, fidelity and real proof acceptance remain owed.
+
+## Acceptance decision (2026-10-30)
+
+RFC-0076 is accepted under explicit maintainer authorization, including its narrow
+unreleased Protocol One compatibility exception and a waiver of the additional
+non-author review. No independent approval is claimed. Production implementation,
+actual counts/budget, fidelity and real-model proof acceptance remain owed in #617.
