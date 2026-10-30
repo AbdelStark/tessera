@@ -4,6 +4,10 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ## [Unreleased]
 
+### Fixed
+
+- Preflight migration strengths against the existing scale/table bounds before held-out evaluation, then minimize KL over admissible candidates without masking malformed input, scoring or resource errors; reject all-infeasible calibration before BF16 and release each candidate before constructing the next (RFC-0005, [#625](https://github.com/AbdelStark/tessera/issues/625)).
+
 ### Added
 
 - A repository tool for bounded, bit-preserving BF16 tied-head checkpoint preparation, with exact configuration lexemes, checked shards, private staged output and complete streaming verification; the [real-model ramp guide](docs/models/real-model-ramp.md) pins the 1B/8B sources and records the unresolved real-proof and fidelity obligations (RFC-0005, TB-5, [#623](https://github.com/AbdelStark/tessera/issues/623)).

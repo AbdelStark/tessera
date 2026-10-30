@@ -21,7 +21,7 @@ import gc
 import math
 import stat
 import weakref
-from collections.abc import Generator, Mapping
+from collections.abc import Callable, Generator, Mapping
 from contextlib import closing
 from dataclasses import fields, is_dataclass, replace
 from enum import Enum
@@ -429,14 +429,24 @@ def test_streamed_d_is_byte_identical_to_eager_d(
     )
 
 
-def test_bf16_reference_runs_before_any_float64_checkpoint_read(
+def test_bf16_reference_runs_before_scoring_float64_checkpoint_read(
     calibrated: tuple[FloatModel, CalibrationResult], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     model, calib = calibrated
     original_read = FloatModel.tensor
     original_reference = assemble.iter_reference_logits
+    original_preflight = getattr(assemble, "_admissible_alphas")  # noqa: B009
     reference_ran = False
     in_reference = False
+    in_preflight = False
+
+    def preflight(*args: Any, **kwargs: Any) -> Any:
+        nonlocal in_preflight
+        in_preflight = True
+        try:
+            return original_preflight(*args, **kwargs)
+        finally:
+            in_preflight = False
 
     def reference(*args: object, **kwargs: object) -> Generator[torch.Tensor, None, None]:
         nonlocal reference_ran, in_reference
@@ -452,9 +462,227 @@ def test_bf16_reference_runs_before_any_float64_checkpoint_read(
         in_reference = False
 
     def read(self: FloatModel, name: str) -> torch.Tensor:
-        assert in_reference or reference_ran, "the full checkpoint was read before the reference"
+        assert in_preflight or in_reference or reference_ran, "scoring read before the reference"
         return original_read(self, name)
 
     monkeypatch.setattr(FloatModel, "tensor", read)
+    monkeypatch.setattr(assemble, "_admissible_alphas", preflight)
     monkeypatch.setattr(assemble, "iter_reference_logits", reference)
     quantize(model, calib, alphas=(Fraction(3, 5),))
+
+
+def _probe_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+    refuse: Callable[[Fraction, int], bool],
+) -> list[tuple[str, Fraction | None]]:
+    """Track actual candidate allocations and inject only the requested construction fault."""
+    from tessera_quant.errors import QuantizationInfeasibleError
+
+    original_transform = assemble.transformed_checkpoint
+    original_choose = assemble.choose
+    original_refs = assemble.iter_reference_logits
+    events: list[tuple[str, Fraction | None]] = []
+    live: list[weakref.ReferenceType[np.ndarray[Any, Any]]] = []
+    counts: dict[Fraction, int] = {}
+    current = ALPHAS[0]
+
+    def transformed(*args: Any, **kwargs: Any) -> Any:
+        nonlocal current
+        assert not any(ref() is not None for ref in live), "candidate weights overlap"
+        current = args[2]
+        counts[current] = counts.get(current, 0) + 1
+        events.append(("build", current))
+        return original_transform(*args, **kwargs)
+
+    def choose(*args: Any, **kwargs: Any) -> Any:
+        if refuse(current, counts[current]):
+            # The exception's traceback owns an allocation too: retaining it between
+            # candidates would violate the same bound as retaining a successful D.
+            partial = np.zeros(8, dtype=np.int8)
+            live.append(weakref.ref(partial))
+            raise QuantizationInfeasibleError("a candidate's derived shift lies in [1, 63]")
+        q = original_choose(*args, **kwargs)
+        live.append(weakref.ref(q.weights[0].data))
+        return q
+
+    def references(*args: Any, **kwargs: Any) -> Generator[torch.Tensor, None, None]:
+        events.append(("reference", None))
+        with closing(original_refs(*args, **kwargs)) as refs:
+            yield from refs
+
+    monkeypatch.setattr(assemble, "transformed_checkpoint", transformed)
+    monkeypatch.setattr(assemble, "choose", choose)
+    monkeypatch.setattr(assemble, "iter_reference_logits", references)
+    return events
+
+
+@pytest.mark.parametrize("blocked", [ALPHAS[:1], ALPHAS[1:3], ALPHAS[-1:], ALPHAS[::2]])
+def test_only_admissible_candidates_are_scored_after_complete_preflight(
+    calibrated: tuple[FloatModel, CalibrationResult],
+    monkeypatch: pytest.MonkeyPatch,
+    blocked: tuple[Fraction, ...],
+) -> None:
+    model, calib = calibrated
+    valid = tuple(alpha for alpha in ALPHAS if alpha not in blocked)
+    alone = {alpha: quantize(model, calib, alphas=(alpha,)) for alpha in valid}
+    scores = {alpha: divergence(model, calib, d) for alpha, d in alone.items()}
+    best = min(valid, key=lambda alpha: scores[alpha])
+    events = _probe_candidates(monkeypatch, lambda alpha, count: alpha in blocked)
+    chosen = quantize(model, calib, alphas=tuple(reversed(ALPHAS)))
+    assert events[: len(ALPHAS)] == [("build", alpha) for alpha in ALPHAS]
+    assert sum(kind == "reference" for kind, _ in events) == len(valid)
+    assert [alpha for kind, alpha in events[len(ALPHAS) :] if kind == "build"] == [
+        *valid,
+        best,
+    ]
+    assert chosen.provenance.alpha == best
+    assert encode(INTEGER_MODEL.codec, chosen) == encode(INTEGER_MODEL.codec, alone[best])
+
+
+def test_no_admissible_candidate_never_starts_the_reference(
+    calibrated: tuple[FloatModel, CalibrationResult], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model, calib = calibrated
+    events = _probe_candidates(monkeypatch, lambda alpha, count: True)
+    with pytest.raises(CalibrationError, match="no migration strength") as caught:
+        quantize(model, calib)
+    assert caught.value.code == "ERR-QUANT-CALIB"
+    assert events == [("build", alpha) for alpha in ALPHAS]
+
+
+@pytest.mark.parametrize("build_number", [2, 3])
+def test_an_admitted_candidate_failing_during_scoring_or_reconstruction_is_fatal(
+    calibrated: tuple[FloatModel, CalibrationResult],
+    monkeypatch: pytest.MonkeyPatch,
+    build_number: int,
+) -> None:
+    from tessera_quant.errors import QuantizationInfeasibleError
+
+    model, calib = calibrated
+    _probe_candidates(monkeypatch, lambda alpha, count: count == build_number)
+    with pytest.raises(QuantizationInfeasibleError, match="derived shift"):
+        quantize(model, calib, alphas=ALPHAS[:1])
+
+
+@pytest.mark.parametrize("error", [CalibrationError, TesseraQuantError, OSError, MemoryError])
+def test_preflight_never_converts_input_internal_or_resource_errors_to_a_skipped_alpha(
+    calibrated: tuple[FloatModel, CalibrationResult],
+    monkeypatch: pytest.MonkeyPatch,
+    error: type[Exception],
+) -> None:
+    model, calib = calibrated
+    calls: list[bool] = []
+
+    def fail(*args: Any, **kwargs: Any) -> Any:
+        calls.append(True)
+        raise error("public input failure")
+
+    def no_reference(*args: Any, **kwargs: Any) -> Any:
+        pytest.fail("a reference ran before preflight finished")
+
+    monkeypatch.setattr(assemble, "choose", fail)
+    monkeypatch.setattr(assemble, "iter_reference_logits", no_reference)
+    with pytest.raises(error, match="public input failure"):
+        quantize(model, calib)
+    assert calls == [True]
+
+
+@pytest.mark.parametrize("damage", ["missing", "shape", "nan", "inf", "zero", "negative"])
+def test_bad_statistics_are_fatal_even_when_candidates_would_be_infeasible(
+    calibrated: tuple[FloatModel, CalibrationResult],
+    monkeypatch: pytest.MonkeyPatch,
+    damage: str,
+) -> None:
+    model, calib = calibrated
+    maxima = dict(calib.statistics.maxima)
+    name = "final.norm"  # Late point: an early shift refusal must not conceal its damage.
+    values = maxima[name].clone()
+    if damage == "missing":
+        del maxima[name]
+    elif damage == "shape":
+        maxima[name] = values[:-1]
+    else:
+        values[0] = {"nan": math.nan, "inf": math.inf, "zero": 0.0, "negative": -1.0}[damage]
+        maxima[name] = torch.zeros_like(values) if damage == "zero" else values
+    damaged = replace(calib, statistics=replace(calib.statistics, maxima=maxima))
+    events = _probe_candidates(monkeypatch, lambda alpha, count: True)
+    with pytest.raises(CalibrationError, match="statistics") as caught:
+        quantize(model, damaged)
+    assert caught.value.code == "ERR-QUANT-CALIB"
+    assert not events
+
+
+def test_empty_candidates_keep_the_existing_error_without_any_build_or_reference(
+    calibrated: tuple[FloatModel, CalibrationResult], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model, calib = calibrated
+    events = _probe_candidates(monkeypatch, lambda alpha, count: False)
+    with pytest.raises(TesseraQuantError, match="at least one candidate"):
+        quantize(model, calib, alphas=())
+    assert not events
+
+
+def test_equal_scores_choose_the_smallest_admissible_alpha_and_preserve_duplicates(
+    calibrated: tuple[FloatModel, CalibrationResult], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model, calib = calibrated
+    candidates = (ALPHAS[2], ALPHAS[1], ALPHAS[0], ALPHAS[1])
+    events = _probe_candidates(monkeypatch, lambda alpha, count: alpha == ALPHAS[0])
+
+    def equal_scores(r: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
+        return torch.zeros(r.shape[0])
+
+    monkeypatch.setattr(assemble, "kl_rows", equal_scores)
+    chosen = quantize(model, calib, alphas=candidates)
+    assert events[:4] == [("build", alpha) for alpha in sorted(candidates)]
+    assert chosen.provenance.alpha == ALPHAS[1]
+    assert sum(kind == "reference" for kind, _ in events) == 3
+
+
+@pytest.mark.parametrize("failure", ["nan", "shape", "resource"])
+def test_scoring_failures_remain_fatal_after_successful_preflight(
+    calibrated: tuple[FloatModel, CalibrationResult],
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    model, calib = calibrated
+    _probe_candidates(monkeypatch, lambda alpha, count: False)
+
+    def bad_reference(*args: Any, **kwargs: Any) -> Generator[torch.Tensor, None, None]:
+        if failure == "resource":
+            raise MemoryError("reference allocation")
+        for window in calib.calibration.held_out:
+            yield torch.full(
+                (len(window.tokens), model.arch.vocab + int(failure == "shape")),
+                math.nan if failure == "nan" else 0.0,
+            )
+
+    monkeypatch.setattr(assemble, "iter_reference_logits", bad_reference)
+    error = MemoryError if failure == "resource" else TesseraQuantError
+    with pytest.raises(
+        error, match={"nan": "not finite", "shape": "same shape", "resource": "allocation"}[failure]
+    ):
+        quantize(model, calib, alphas=ALPHAS[:1])
+
+
+@pytest.mark.parametrize(
+    ("profile", "scales"),
+    [("servable", "pot"), ("servable", "affine"), ("minimal", "pot"), ("minimal", "affine")],
+)
+def test_all_valid_preflight_preserves_previous_canonical_model_bytes(
+    calibrated: tuple[FloatModel, CalibrationResult],
+    monkeypatch: pytest.MonkeyPatch,
+    profile: Literal["servable", "minimal"],
+    scales: Literal["pot", "affine"],
+) -> None:
+    model, calib = calibrated
+    found = quantize(model, calib, profile=profile, scales=scales)
+
+    def no_preflight(
+        build: Callable[[Fraction], Any], candidates: tuple[Fraction, ...]
+    ) -> tuple[Fraction, ...]:
+        return candidates
+
+    monkeypatch.setattr(assemble, "_admissible_alphas", no_preflight)
+    previous = quantize(model, calib, profile=profile, scales=scales)
+    assert encode(INTEGER_MODEL.codec, found) == encode(INTEGER_MODEL.codec, previous)

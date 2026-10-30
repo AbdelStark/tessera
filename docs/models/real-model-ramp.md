@@ -151,13 +151,17 @@ separate installation choice ([Python setup](../../python/README.md#setup)). The
 no Metal proof backend.
 
 **This command is an entry point, not evidence of a completed real-model run.** The
-current 1B calibration completed at the full 512-window size, but the ordinary alpha
-selection path aborts on an infeasible candidate among the four prescribed strengths.
+current 1B calibration completed at the full 512-window size. Alpha selection now
+preflights every prescribed strength before held-out evaluation and scores only those
+that satisfy the unchanged scale/table bounds. Invalid input and scoring errors remain
+fatal. On this checkpoint all four `servable`/`pot` candidates are infeasible;
+`servable`/`affine` admits 1/2 and 3/5 and refuses 7/10 and 4/5. This construction
+check does not measure KL or establish which admissible strength is best.
 The proper-provenance diagnostic D uses a fixed admissible affine alpha of 1/2; it is
 not selected as best and is not fidelity-qualified. Its original full 64-window held-out
 evaluation remains running. Complete 8B calibration remains running too. Do not reuse
-their reports with newly sharded checkpoint digests. Preparation does not resolve this
-alpha-selection workflow gap or establish RFC-0005's fidelity gates.
+their reports with newly sharded checkpoint digests. Preparation and candidate preflight
+do not establish RFC-0005's fidelity gates.
 
 ## Proving and independent verification
 

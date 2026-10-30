@@ -797,3 +797,45 @@ def test_the_epsilon_term_rounds_up_only_what_is_not_whole(pipeline: dict[Profil
     exact = replace(ARCH, rms_eps=Fraction(1, 1 << 20))
     term = choose(exact, Profile.Servable, weights, maxima).quant.public.rms_eps_int
     assert term == ARCH.d_model * Fraction(1, 1 << 20) * Fraction(4) ** -e_res
+
+
+@pytest.mark.parametrize("constraint", ["shift", "affine", "silu"])
+def test_only_derived_candidate_bounds_have_the_infeasibility_subtype(
+    pipeline: dict[Profile, Any], constraint: str
+) -> None:
+    from tessera_quant.errors import QuantizationInfeasibleError
+
+    weights, maxima, _ = pipeline[Profile.Servable]
+    weights, maxima = dict(weights), dict(maxima)
+    affine: list[str] = []
+    if constraint == "shift":
+        maxima["final.norm"] = maxima["final.norm"] * 2.0**-100
+        message = "the final norm: a shift"
+    elif constraint == "affine":
+        name = "model.layers.0.mlp.down_proj.weight"
+        weights[name] = weights[name].clone()
+        weights[name][0] *= 2.0**-80
+        affine = [f"model.layers.{layer}.mlp.down_proj.weight" for layer in range(ARCH.n_layers)]
+        message = "multipliers fit 16 bits"
+    else:
+        name = "model.layers.0.mlp.gate_proj.weight"
+        weights[name] = weights[name] * 2.0**100
+        message = "no Silu table"
+    with pytest.raises(QuantizationInfeasibleError, match=message) as caught:
+        choose(ARCH, Profile.Servable, weights, maxima, affine=affine)
+    assert caught.value.code == "ERR-QUANT-CALIB"
+
+
+@pytest.mark.parametrize("e", [-63, 64])
+def test_score_rational_representation_bounds_are_candidate_infeasibility(e: int) -> None:
+    from tessera_quant import scales
+    from tessera_quant.errors import QuantizationInfeasibleError
+
+    score_scale = getattr(scales, "_score_scale")  # noqa: B009
+    # sqrt(4) = 2 exactly: the rational is 2^(e-1). Its adjacent boundary fits,
+    # while these need either denominator 2^64 or positive numerator 2^63.
+    neighbor = e + 1 if e < 0 else e - 1
+    assert score_scale(neighbor, 4) == Fraction(2) ** (neighbor - 1)
+    with pytest.raises(QuantizationInfeasibleError, match="rational of 64 bits") as caught:
+        score_scale(e, 4)
+    assert caught.value.code == "ERR-QUANT-CALIB"

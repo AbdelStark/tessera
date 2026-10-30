@@ -51,7 +51,7 @@ import numpy as np
 import torch
 
 from tessera_quant.arch import ArchSpec
-from tessera_quant.errors import CalibrationError, TesseraQuantError
+from tessera_quant.errors import CalibrationError, QuantizationInfeasibleError, TesseraQuantError
 from tessera_quant.integer_model import (
     ChannelParams,
     EmbedPoint,
@@ -146,8 +146,9 @@ def choose(
     `affine` names, by their Hugging Face names, the weights quantized in `affine` mode.
 
     Raises:
-        CalibrationError: for a maximum that is not finite and positive, a shift outside
-            `[1, 63]`, or a SiLU input exponent no table allows (`ERR-QUANT-CALIB`).
+        CalibrationError: for missing, non-finite or degenerate statistics (`ERR-QUANT-CALIB`).
+        QuantizationInfeasibleError: for derived shifts, multipliers, score rationals or SiLU
+            scales outside the fixed bounds (also `ERR-QUANT-CALIB`).
         TesseraQuantError: for a weight named in `affine` that cannot take it.
     """
     return _Quantizer(arch, profile, weights, maxima, frozenset(affine)).run()
@@ -403,7 +404,7 @@ class _Quantizer:
             r += 1
         multipliers = [round(f * 2**r) for f in factors]
         if not 1 <= r <= 63 or min(multipliers) < 1:
-            raise CalibrationError(
+            raise QuantizationInfeasibleError(
                 "an affine site's multipliers fit 16 bits and one shift in [1, 63]"
             )
         self.tensors.append(_tensor(ty, layer, q))
@@ -440,7 +441,9 @@ class _Quantizer:
             in_exp += 1
         shifts = [in_exp - e_y2 - e for e in exponents]
         if not (-64 <= in_exp <= 0 and 1 <= 63 - in_exp + e_a <= 126 and max(classes(in_exp)) < b):
-            raise CalibrationError(f"layer {layer}: no Silu table takes the gate's scales")
+            raise QuantizationInfeasibleError(
+                f"layer {layer}: no Silu table takes the gate's scales"
+            )
         self._classes(WeightType.Gate, layer, LayerPoint(layer, Site.Silu), shifts)
         return in_exp
 
@@ -483,7 +486,7 @@ class _Quantizer:
 
     def _shift(self, r: int, what: str) -> int:
         if not 1 <= r <= 63:
-            raise CalibrationError(f"{what}: a shift lies in [1, 63]")
+            raise QuantizationInfeasibleError(f"{what}: a shift lies in [1, 63]")
         return r
 
     def _act(self, name: str) -> int:
@@ -547,14 +550,14 @@ def _score_scale(e: int, d_head: int) -> Fraction:
     The rational is `2^e * n / 2^m`, `n` the integer nearest `2^m / sqrt(d_head)`.
 
     Raises:
-        CalibrationError: when the rational leaves the claim list's 64 bits.
+        QuantizationInfeasibleError: when the rational leaves the claim list's 64 bits.
     """
     # round(2^m / sqrt(d)) = floor((isqrt(4^(m+1) // d) + 1) / 2), m = _SCORE_BITS.
     m = _SCORE_BITS
     numerator = (math.isqrt((1 << (2 * m + 2)) // d_head) + 1) // 2
     scale = Fraction(numerator, 1 << m) * Fraction(2) ** e
     if scale.numerator >= 1 << 63 or scale.denominator >= 1 << 64:
-        raise CalibrationError("a score scale fits a rational of 64 bits")
+        raise QuantizationInfeasibleError("a score scale fits a rational of 64 bits")
     return scale
 
 
