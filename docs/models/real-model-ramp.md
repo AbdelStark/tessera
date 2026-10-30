@@ -210,8 +210,16 @@ The ordinary advice adapter now uses one reusable clearing field row and public
 source-index metadata proportional to tensor rank ([measurement and tests](../../crates/tessera-prover/benches/advice-rows/README.md)).
 PCS already consumes streamed rows. This removes the adapter's whole padded
 column allocation; source tiles and other prover state still have their own
-lifetimes. The conservative planner charges above remain unchanged while
+lifetimes. The conservative resident-cell floor above remains unchanged while
 [#629](https://github.com/AbdelStark/tessera/issues/629) tracks the complete memory model.
+
+The CPU leaf stage also reads generated table fractions and their exact committed
+counts through bounded chunks in both ordinary and grouped proofs
+([allocation model and tests](../perf/v0.3/table-batch-memory.md),
+[#637](https://github.com/AbdelStark/tessera/issues/637)). Generator cores, count
+backing storage, resident lookup/forest trees and retained merge data remain
+charged. This removes full table-column and fraction-level allocations; it does
+not lower the resident-cell floor or demonstrate that a real model fits.
 
 After that blocker is resolved, proving must use the real token artifact and independent
 request/manifest context described by the [exact CLI flow](../testing/exact-cli.md).

@@ -1,10 +1,12 @@
-# Bounded table batch: allocation model (#637, implementation in progress)
+# Bounded table batch: allocation model (#637)
 
-This is the implementation allocation/lifetime plan for accepted RFC-0054 table
-streaming. It does not change admission charges, demonstrate a real-model proof,
-or discharge #629's other phases. All counts below are public geometry, not RSS.
+This records the allocation/lifetime model and implementation evidence for accepted
+RFC-0054 table streaming. The original resident-cell floor remains, with excess P2
+working storage charged separately. It demonstrates no real-model proof and does
+not discharge #629's other phases. Geometry bounds below are distinct from measured
+heap peaks and timings.
 
-## Existing allocations and lifetimes
+## Resident baseline allocations and lifetimes
 
 For table `i`, let `T_i = 2^h_i` include row-0 table padding, `b = size_of(Base)`
 and `e = size_of(Ext)`. Both scalar fields are exact, with `b=8`, `e=16` over
@@ -12,7 +14,7 @@ Goldilocks/Fp2. Generator cores and multiplicity backing storage are separate.
 
 | Buffer | Payload bound | Lifetime / owner |
 | --- | --- | --- |
-| Public table columns | `b*T_i` keys, plus `b*T_i` for valued tables | `TableColumns`, retained through P2 and currently through the enclosing Round2 scope |
+| Public table columns | `b*T_i` keys, plus `b*T_i` for valued tables | `TableColumns`, retained through P2 and the enclosing Round2 scope in the resident baseline |
 | Dense field multiplicities | `b*T_i` | leaf/group adapter, alongside the table batch |
 | Temporary negated counts | `b*T_i` | `table_tree` construction, overlaps the new tree and all previous trees |
 | Fraction leaf level | `(b+e)*T_i` | `FractionTree::new`, survives until its final level proof |
@@ -30,7 +32,7 @@ instance-at-a-time constructor still retains the sum of preceding tree payloads.
 Changing that loop alone does not bound the batch. `g=0` also needs streamed table
 trees within the mixed lookup/table/forest batch (RFC-0054 'The table batch').
 
-## Intended bounded ownership
+## Bounded ownership
 
 1. A source descriptor identifies the immutable public generated rows and the
    already committed multiplicities. Multiplicity physical capacity remains
@@ -60,7 +62,7 @@ allocation errors stop the computation; an errored pass is discarded. Root zero
 denominators, identity checks, row-0 padding, multiplicity claims and the exact
 number of levels/rounds are unchanged. No value-dependent row omission is allowed.
 
-## Remaining obligations before this component is qualified
+## Acceptance checklist recorded before implementation
 
 - Implement and independently compare every regenerated node/level, not roots alone:
   the fraction-root operation is commutative, so root equality misses a leaf reorder.
@@ -76,7 +78,7 @@ number of levels/rounds are unchanged. No value-dependent row omission is allowe
 - Keep #629/#617 open for the complete witness, advice, native/weight/opening
   lifetimes, actual soundness budget, canonical-selection decision and real proof.
 
-## Current component implementation (unmerged)
+## Bounded component implementation
 
 `FractionTreeRows` regenerates every ordered level node, not only the commutative
 root, with a clearing binary-carry stack. `PreparedTreeBatch` keeps the complete
@@ -176,8 +178,8 @@ scratch. The planted fault used 2,097,152 bytes and failed that assertion.
 The revised isolated campaign caught 7/7 compiled faults: parent arithmetic,
 child parity, partner-buffer capacity, count sign, value compression, omitted
 root absorption, and omitted early fixed-allowance refusal. Both unchanged and
-restored controls passed. These checks cover the current library component;
-they do not substitute for the remaining native-source/CPU fault cases.
+restored controls passed. These library checks complement the native-source/CPU
+campaigns below.
 A supplemental malformed-column case also caught omission of the lookup-value
 length check, with unchanged/restored controls. The combined campaigns cover
 eight planted faults; the complete component suites passed 194 tests (one long
@@ -340,12 +342,15 @@ CARGO_TARGET_DIR=/tmp/tessera-table-bench cargo bench --locked \
   --bench table-batch -- --baseline before
 ```
 
-The unchanged canary CLI test now passes in 70.26 seconds overall: both NI/Live
+The first post-optimization canary CLI run passed in 70.26 seconds overall: both NI/Live
 proofs in both log formats, independent verifier acceptance, expected rejection
 controls, and the complete redaction scan. The JSON runs spent 11.133 and
 18.385 seconds between P1 and leaf-stage completion. The 30-second message
-deadline and every acceptance/redaction assertion remain unchanged. These tests
-still use non-certifying parameters; final workspace/CI validation remains pending.
+deadline and every acceptance/redaction assertion remain unchanged. After the
+reservation correction, the freshly built CLI passed the same suite in 51.86
+seconds, with four independent accepting reports. These tests still use
+non-certifying parameters. Workspace and CI gate results are recorded in the
+pull request.
 
 ### Remaining real-model work
 
