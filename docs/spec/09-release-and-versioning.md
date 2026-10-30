@@ -3,7 +3,7 @@
 - Status: Accepted for v1 planning
 - Governs: version numbers, protocol and schema evolution, deprecation, changelog, contribution workflow, licensing, supported platforms, reproducible builds
 
-- Proposed exception: draft [RFC-0076](../rfcs/RFC-0076-uniform-requant-families.md#compatibility-decision) requests a one-time unreleased Protocol One canonical-selection refinement; the current version rules remain in force until acceptance.
+- One-time exception: [RFC-0076](../rfcs/RFC-0076-uniform-requant-families.md#compatibility-decision) adopts an unreleased Protocol One canonical-selection refinement; all other version rules remain in force.
 
 ## 1. What is versioned
 

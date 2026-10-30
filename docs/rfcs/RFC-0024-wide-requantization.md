@@ -11,7 +11,7 @@
   - [00 §9](../spec/00-overview.md#9-risks) RISK-2: the `minimal` profile's upper bound, and the projections that follow from it.
 - Origin: [#292](https://github.com/AbdelStark/tessera/issues/292)
 
-- Proposed amendment: draft [RFC-0076](RFC-0076-uniform-requant-families.md) defines common-family Protocol One model Requant selection; in effect only on acceptance.
+- Amended by: [RFC-0076](RFC-0076-uniform-requant-families.md), which defines common-family Protocol One model Requant selection.
 
 ## Summary
 

@@ -10,7 +10,7 @@
   - [RFC-0022](RFC-0022-saturating-residual.md#proposed-design) 'Proposed Design': a residual site takes one route in every layer.
 - Origin: [#348](https://github.com/AbdelStark/tessera/issues/348)
 
-- Proposed amendment: draft [RFC-0076](RFC-0076-uniform-requant-families.md) defines common-family Protocol One model Requant selection; in effect only on acceptance.
+- Amended by: [RFC-0076](RFC-0076-uniform-requant-families.md), which defines common-family Protocol One model Requant selection.
 
 ## Summary
 

@@ -162,6 +162,13 @@ implementation is asserted. Performance priority remains zero credited gain.
 separate E0 resource hypothesis on the fixed 1B candidate: the current CPU
 zero-lookup base floor is 2.56–3.80 TiB over nine policy/length pairs. All ten
 saved-record corruptions are caught. This leaves the finite common-family
-result validated and the full-model G-4 unknown; it does not approve draft RFC-0076. Complete
+result validated and the full-model G-4 unknown; it does not establish production readiness. Complete
 memory scheduling, original opening counts, the actual full budget, independent
 implementation/review, fidelity and real proof acceptance remain owed.
+
+## Acceptance decision (2026-10-30)
+
+RFC-0076 is accepted under explicit maintainer authorization, including its narrow
+unreleased Protocol One compatibility exception and a waiver of the additional
+non-author review. No independent approval is claimed. Production implementation,
+actual counts/budget, fidelity and real-model proof acceptance remain owed in #617.

@@ -1,11 +1,11 @@
 # RFC-0076: One Requantization Family per Layer Site
 
-- Status: Draft. No rule below takes effect before acceptance.
+- Status: Accepted (2026-10-30); production implementation tracked by #617.
 - Authors: @AbdelStark
 - Created: 2026-10-29
 - Target milestone: v0.3
 - Origin: [#619](https://github.com/AbdelStark/tessera/issues/619), parent [#617](https://github.com/AbdelStark/tessera/issues/617)
-- Supersedes on acceptance, only in the scope below:
+- Supersedes, only in the scope below:
   - [RFC-0006](RFC-0006-compiler-ir.md#gadget-selection), [RFC-0024](RFC-0024-wide-requantization.md#selection): canonical model Requant selection;
   - [RFC-0007](RFC-0007-claim-list.md#verifier-validation): step 5's public re-derivation of that selection;
   - [RFC-0009](RFC-0009-gadgets.md#requantsplit): Split/Wide applicability, not their lookup relations or uniqueness lemmas;
@@ -184,7 +184,7 @@ scratch visibility overlay is not a production implementation.
 ### Security argument
 
 All statements below are E0 deductions from the cited gadget lemmas. They are
-the draft's self-review, not independent approval or measured global security.
+the author's self-review, not independent approval or measured global security.
 
 **N1: A wider envelope does not change the key.** Since `b'_i>=b_i`, the original
 true integer `z_i` lies in the widened signed interval. Neither its graph nor
@@ -255,20 +255,30 @@ mask, revealed evaluation or hiding assertion.
 | Secrets and robustness | N6 and typed refusal; bounded public grouping and checked arithmetic, clearing/redaction tests at integration |
 | Zero knowledge | Not claimed; Protocol Two behavior unchanged |
 | Anchors, audit coins, ledgers, refresh and scoring | Unchanged; no new identities, decisions or messages on those surfaces |
-| Whole implementation and non-author review | Not completed by this draft; mandatory before production adoption |
+| Whole implementation | Pending #617; production conformance and adversarial gates remain mandatory |
+| Additional non-author maintainer review | Waived by the maintainer for this work; no independent approval is claimed |
 
 ### Compatibility decision
 
-This RFC proposes a **one-time exception** to 02 §1 / 09 §3 solely for this
-unreleased Protocol One canonical-selection refinement. It does not grant a
-general pre-release version waiver. No GitHub release exists as checked on
-2026-10-29; implementation must recheck the release state before landing. This GitHub
-inventory is not a waiver for publication through another channel; verify the
-release history before using the exception.
+The maintainer authorizes a **one-time exception** to 02 §1 / 09 §3 solely for
+this unreleased Protocol One canonical-selection refinement. It does not grant a
+general pre-release version waiver. Keep the current protocol/schema/parameter
+identifiers under this exception.
 
-If accepted before the first release supporting Protocol One, keep its current
-protocol/schema/parameter identifiers. For a complete model whose sites are all
-already compatible, preserve selections, table ids, advice placement and artifact
+On 2026-10-30 the maintainer explicitly instructed the project agent to stop
+requesting review and approved autonomous completion of the project. This is
+recorded as the maintainer's acceptance decision and waiver of the additional
+non-author review for this work, not as an independent review. The mathematical
+self-review and all implementation soundness/conformance gates remain required.
+
+Publication checks on 2026-10-30 found no Git tags or GitHub releases. The
+repository is public; the workspace still has `publish = false` and the Python
+package declares `Private :: Do Not Upload`. This inventory is not evidence
+about every possible distribution channel. The exception is an explicit
+maintainer decision for this unreleased rule, not an inference from an empty
+release list. Implementation must recheck publication state before landing.
+
+For a complete model whose sites are all already compatible, preserve selections, table ids, advice placement and artifact
 bytes. If any site is promoted, auxiliary ids/placements at other sites may move
 under the canonical first-use order. Previously compiled incompatible
 claim lists/plans must be regenerated from the same `D`. Their old table lists
@@ -277,10 +287,9 @@ silently translate, relabel or bypass validation. Revalidate any existing weight
 artifact against its actual new plan; unchanged weight-root reuse is not assumed.
 Record this refinement and pinned implementation revision in the first release.
 
-If a supporting release exists first, this exception is unavailable: normal
+If a supporting release precedes implementation, this exception is unavailable: normal
 02/09 versioning applies and a superseding version decision is required before
-implementation. A merged draft or passing experiment does not authorize an
-implementation against either policy. Protocol Two remains unchanged throughout.
+implementation. Protocol Two remains unchanged throughout.
 
 ## Alternatives Considered
 
@@ -298,8 +307,8 @@ implementation against either policy. Protocol Two remains unchanged throughout.
    correctly refused it. Production finalization builds all metadata together.
 8. Assign a new protocol version immediately: valid under normal policy; the
    explicit narrow exception above avoids reinterpreting any released format
-   while preserving every previously compatible plan. Review must decide this
-   exception before adoption; it is not inferred from an empty release list.
+   while preserving every previously compatible plan. The maintainer explicitly
+   adopted this exception; it is not inferred from an empty release list.
 
 ## Drawbacks
 
@@ -311,10 +320,9 @@ implemented twice and tested across protocols, lengths and degenerate axes.
 
 ## Migration / Rollout
 
-1. Review the mathematical argument and compatibility exception through the RFC
-   process, including a genuine non-author maintainer review under 09 §6.
-2. Accept the decision before production adoption; conditional references alone
-   change no accepted behavior.
+1. Record the mathematical self-review and the maintainer acceptance/limited
+   review waiver above. No independent approval is claimed.
+2. Merge this accepted decision before production implementation.
 3. Implement complete compiler selection/finalization without a public mutable
    lookup cache. Keep fragment and Protocol Two paths unchanged.
 4. Independently implement verifier grouping/derivation from this specification,
@@ -337,7 +345,7 @@ unchanged/restored controls. Candidate layouts pass the unchanged tiny and
 real-public constructors at `B=30,31,32`. These are not global soundness,
 performance, independent-verifier or full-proof results.
 
-Production tests must additionally cover:
+Production tests must also cover:
 
 - Exact old bytes/ids/layouts for every unchanged conformance model and Protocol
   Two path; no dependency on request length, slot packing or prover hints.
@@ -357,10 +365,9 @@ Production tests must additionally cover:
 
 ## Open Questions
 
-No selection formula is left to implementer choice. The decision gates are
-non-author review of N1–N6 and the one-time compatibility exception. Production
-counts, resource feasibility, fidelity and full proofs remain integration
-deliverables; this draft does not assert their success.
+No selection formula is left to implementer choice. Production counts, resource
+feasibility, fidelity and full proofs remain integration deliverables; acceptance
+of this rule does not assert their success.
 
 ## References
 
