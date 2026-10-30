@@ -143,3 +143,14 @@ complete diagnostic metadata substitution. No production adoption or full
 proof follows. Security gate unknowns remain: next write/review the exact
 mechanism and complete count/budget obligations before RFC promotion, then
 independently implement only an accepted rule.
+
+
+## Complete runtime sizing follow-up (2026-10-30)
+
+[EXP-0030](../experiments/EXP-0030-real-runtime-sizing/README.md) validates its
+separate E0 resource hypothesis on the fixed 1B candidate: the current CPU
+zero-lookup base floor is 2.56–3.80 TiB over nine policy/length pairs. All ten
+saved-record corruptions are caught. This leaves the finite common-family
+result validated and G-4 unknown; it does not approve draft RFC-0076. Complete
+memory scheduling, original opening counts, the actual full budget, independent
+implementation/review, fidelity and real proof acceptance remain owed.

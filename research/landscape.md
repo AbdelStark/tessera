@@ -250,3 +250,18 @@ must be measured on H100, with secret rejection counts excluded from production 
 ## Real-model public-layout prerequisite (2026-10-29)
 
 [#617](https://github.com/AbdelStark/tessera/issues/617) records the actual 1B candidate’s failed proof preparation: at B=31/32 its MLP residual selects one Wide and fifteen Split gadgets; B=30 selects two Wide and fourteen Split. The synthetic two-layer derivative also fails the existing read-role guard. These are E0 public metadata observations, not successful proofs or performance figures. [EXP-0029](experiments/EXP-0029-uniform-requant/README.md) is done: validated in its frozen E0 scope: 154,900 sites, 4,590,008 integer/field cases, 9,881,680 rejected auxiliary perturbations and ten caught source faults. Unchanged production leaf code accepts candidate public layouts at all three required policies (sixteen real layers, 6,895 split values), and the tiny case (two layers, 1,029 split values). No production adoption, full proof, global G-4, hiding or performance result is credited.
+
+
+## Real-model CPU planner sizing (2026-10-30)
+
+[EXP-0030](experiments/EXP-0030-real-runtime-sizing/README.md), **E0 primary**:
+complete fixed 1B diagnostic public runtime metadata at 2/512/2048 positions and
+B=30/31/32 gives zero-lookup CPU base floors 2.559803/2.647686/3.803255 TiB.
+The original planner refuses 16/64/256/1024 GiB in every real case. At two
+positions, 8,758 NI-100 advice rows of 4,194,304 cells contribute 2,350,957,723,648
+charged bytes; table, tensor and weight terms remain charged too. Independent
+integer recount and ten corruption controls pass. This is conservative charged
+memory, not RSS, a physical lower bound, an H100 result or a complete G-4 pass.
+The candidate rule remains unadopted and this fixed D is not fidelity-qualified.
+The historical 405B projections above establish no real-model implementation
+capability. Current grouping/windows cannot remove this CPU cell-base blocker.

@@ -1,0 +1,9 @@
+{
+  "producer_sources_match_executed_hashes": true,
+  "input_hashes_match_frozen_registration": true,
+  "binary_sha256": "f09ca8ff158fc7839d6a406f4e31527243a98e82aeeac0774e33045af5ca548d",
+  "scratch_archive": "/tmp/tessera-627-scratch-evidence.tar.gz",
+  "scratch_archive_sha256": "9684a7789a3fb0ba530a611118164d993478f199ad7f1ef7da066b1898e7b3b8",
+  "scratch_archive_verified": true,
+  "audit_source_sha256": "231e15f17cc46a6770514414e3f37f68117eb3da5853fddb1a60aded8753f3d7"
+}

@@ -1,0 +1,3 @@
+SHA-256 24b68bbfd9bc3dc64dbc5b8ab0adb4f24ecc8de89f8240ddb0a7964fe34639f0
+UTC 2026-10-30T01:47:41.255259+00:00
+Frozen before new adapter/counting/audit implementation. Existing public metadata and source inspection motivated the hypothesis.

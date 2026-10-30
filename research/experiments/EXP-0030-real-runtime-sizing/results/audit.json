@@ -1,0 +1,283 @@
+{
+  "verdict": "validated",
+  "scope": "E0 exact public resource counts; WindowMemory internals source-pinned, no independent allocation/soundness proof",
+  "cases": [
+    {
+      "positions": 2,
+      "policy": 32,
+      "case": "tiny-control",
+      "cells": {
+        "advice": 5783945216,
+        "lookups": 11104,
+        "table_rows": 1488030158,
+        "tensors": 207848
+      },
+      "base_bytes": 465529071392,
+      "zero_lookup_base_floor": 465528360736,
+      "peak_bytes": 465529961200,
+      "weight_terms": {
+        "trees": 36700160,
+        "block": 58720256,
+        "answers": 33184,
+        "folds": 13107200,
+        "metadata": 73728
+      },
+      "fits_gib": [
+        1024
+      ]
+    },
+    {
+      "positions": 2,
+      "policy": 30,
+      "case": "real",
+      "cells": {
+        "advice": 36733714432,
+        "lookups": 3434752,
+        "table_rows": 5536481870,
+        "tensors": 1514951816
+      },
+      "base_bytes": 2814753220448,
+      "zero_lookup_base_floor": 2814533396320,
+      "peak_bytes": 2814903721648,
+      "weight_terms": {
+        "trees": 2684354560,
+        "block": 1879048192,
+        "answers": 2863584,
+        "folds": 7717519360,
+        "metadata": 131072
+      },
+      "fits_gib": []
+    },
+    {
+      "positions": 2,
+      "policy": 31,
+      "case": "real",
+      "cells": {
+        "advice": 36733714432,
+        "lookups": 3434752,
+        "table_rows": 5536481870,
+        "tensors": 1514951816
+      },
+      "base_bytes": 2814753220448,
+      "zero_lookup_base_floor": 2814533396320,
+      "peak_bytes": 2814903721648,
+      "weight_terms": {
+        "trees": 2684354560,
+        "block": 1879048192,
+        "answers": 2863584,
+        "folds": 7717519360,
+        "metadata": 131072
+      },
+      "fits_gib": []
+    },
+    {
+      "positions": 2,
+      "policy": 32,
+      "case": "real",
+      "cells": {
+        "advice": 36733714432,
+        "lookups": 3434752,
+        "table_rows": 5536481870,
+        "tensors": 1514951816
+      },
+      "base_bytes": 2814753220448,
+      "zero_lookup_base_floor": 2814533396320,
+      "peak_bytes": 2814903721648,
+      "weight_terms": {
+        "trees": 2684354560,
+        "block": 1879048192,
+        "answers": 2863584,
+        "folds": 7717519360,
+        "metadata": 131072
+      },
+      "fits_gib": []
+    },
+    {
+      "positions": 512,
+      "policy": 30,
+      "case": "real",
+      "cells": {
+        "advice": 36796628992,
+        "lookups": 962854912,
+        "table_rows": 5536481870,
+        "tensors": 2961852416
+      },
+      "base_bytes": 2972784280928,
+      "zero_lookup_base_floor": 2911161566560,
+      "peak_bytes": 3062420989584,
+      "weight_terms": {
+        "trees": 2684354560,
+        "block": 1879048192,
+        "answers": 2863584,
+        "folds": 7717519360,
+        "metadata": 131072
+      },
+      "fits_gib": []
+    },
+    {
+      "positions": 512,
+      "policy": 31,
+      "case": "real",
+      "cells": {
+        "advice": 36796628992,
+        "lookups": 962854912,
+        "table_rows": 5536481870,
+        "tensors": 2961852416
+      },
+      "base_bytes": 2972784280928,
+      "zero_lookup_base_floor": 2911161566560,
+      "peak_bytes": 3062420989584,
+      "weight_terms": {
+        "trees": 2684354560,
+        "block": 1879048192,
+        "answers": 2863584,
+        "folds": 7717519360,
+        "metadata": 131072
+      },
+      "fits_gib": []
+    },
+    {
+      "positions": 512,
+      "policy": 32,
+      "case": "real",
+      "cells": {
+        "advice": 36796628992,
+        "lookups": 962854912,
+        "table_rows": 5536481870,
+        "tensors": 2961852416
+      },
+      "base_bytes": 2972784280928,
+      "zero_lookup_base_floor": 2911161566560,
+      "peak_bytes": 3062420989584,
+      "weight_terms": {
+        "trees": 2684354560,
+        "block": 1879048192,
+        "answers": 2863584,
+        "folds": 7717519360,
+        "metadata": 131072
+      },
+      "fits_gib": []
+    },
+    {
+      "positions": 2048,
+      "policy": 30,
+      "case": "real",
+      "cells": {
+        "advice": 49073356800,
+        "lookups": 5662834688,
+        "table_rows": 5536481870,
+        "tensors": 10537656320
+      },
+      "base_bytes": 4544145016160,
+      "zero_lookup_base_floor": 4181723596128,
+      "peak_bytes": 5143204545168,
+      "weight_terms": {
+        "trees": 2684354560,
+        "block": 1879048192,
+        "answers": 2863584,
+        "folds": 7717519360,
+        "metadata": 131072
+      },
+      "fits_gib": []
+    },
+    {
+      "positions": 2048,
+      "policy": 31,
+      "case": "real",
+      "cells": {
+        "advice": 49073356800,
+        "lookups": 5662834688,
+        "table_rows": 5536481870,
+        "tensors": 10537656320
+      },
+      "base_bytes": 4544145016160,
+      "zero_lookup_base_floor": 4181723596128,
+      "peak_bytes": 5143204545168,
+      "weight_terms": {
+        "trees": 2684354560,
+        "block": 1879048192,
+        "answers": 2863584,
+        "folds": 7717519360,
+        "metadata": 131072
+      },
+      "fits_gib": []
+    },
+    {
+      "positions": 2048,
+      "policy": 32,
+      "case": "real",
+      "cells": {
+        "advice": 49073356800,
+        "lookups": 5662834688,
+        "table_rows": 5536481870,
+        "tensors": 10537656320
+      },
+      "base_bytes": 4544145016160,
+      "zero_lookup_base_floor": 4181723596128,
+      "peak_bytes": 5143204545168,
+      "weight_terms": {
+        "trees": 2684354560,
+        "block": 1879048192,
+        "answers": 2863584,
+        "folds": 7717519360,
+        "metadata": 131072
+      },
+      "fits_gib": []
+    }
+  ],
+  "corruptions_caught": 10,
+  "faults": [
+    {
+      "name": "missing-tensor",
+      "caught": true,
+      "assertion": "complete padded tensor count"
+    },
+    {
+      "name": "unpadded-lookups",
+      "caught": true,
+      "assertion": "all lookup trees padded separately"
+    },
+    {
+      "name": "missing-runtime-greedy-lookup",
+      "caught": true,
+      "assertion": "complete aligned lookup blocks"
+    },
+    {
+      "name": "omitted-table-rows",
+      "caught": true,
+      "assertion": "all lookup trees padded separately"
+    },
+    {
+      "name": "short-advice-storage",
+      "caught": true,
+      "assertion": "all advice nonzero rows"
+    },
+    {
+      "name": "omitted-weight-folds",
+      "caught": true,
+      "assertion": "all weight working-set terms"
+    },
+    {
+      "name": "grouping-drops-tables",
+      "caught": true,
+      "assertion": "grouping retains nonlookup cells"
+    },
+    {
+      "name": "changed-cell-coefficient",
+      "caught": true,
+      "assertion": "unchanged cell coefficient"
+    },
+    {
+      "name": "false-64gib-decision",
+      "caught": true,
+      "assertion": "original planner budget decision"
+    },
+    {
+      "name": "off-by-one-stage-peak",
+      "caught": true,
+      "assertion": "peak is base plus largest stage"
+    }
+  ],
+  "counts_sha256": "97abf7c4eba2c4421969dff1a98378c80ad8409792d586714be5df7dc5cf2a06",
+  "original_and_restored_controls_pass": true
+}

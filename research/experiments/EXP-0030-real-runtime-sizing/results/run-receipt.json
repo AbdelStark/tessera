@@ -1,0 +1,91 @@
+{
+  "scope": "E0 public metadata; no production adoption, full G-4, witness or proof",
+  "base": "51fbd9353a42259e0fdc07973aae6f3857a90f6a",
+  "registration": "4d25903",
+  "scratch": "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi",
+  "platform": "macOS-15.6.1-arm64-arm-64bit-Mach-O",
+  "python": "3.15.2",
+  "protected_sha256": {
+    "crates/tessera-prover/src/leaf/model.rs": "71567ce3858c8c2cb17fce538ec3974d0eddd3a413ab2399ecd0a2b8fcaef08c",
+    "crates/tessera-prover/src/leaf/layout.rs": "690ad2748ad9b994817492b755e8cdc6eeb8ba815a793a7253f1a02e318c5ff7",
+    "crates/tessera-compiler/src/advice.rs": "fa0f75a088d49ad322679f77c3b28ce844bd36e58632adb3804b5c3d0800ccb1",
+    "crates/tessera-sumcheck/src/prover/window/memory.rs": "b6b1ca4b5863a79a69e52b5adc1977bb98457bae42817e1051384120d4e812d5"
+  },
+  "patches": {
+    "crates/tessera-compiler/src/select.rs": [
+      [
+        "    reads: BTreeMap<NodeId, Vec<TableId>>,",
+        "    /// Scratch-only public metadata injection.\n    pub reads: BTreeMap<NodeId, Vec<TableId>>,"
+      ]
+    ],
+    "crates/tessera-prover/src/cpu/mod.rs": [
+      [
+        "mod backend;",
+        "/// Scratch-only access to the existing public-metadata weight charge.\npub mod backend;"
+      ]
+    ],
+    "crates/tessera-prover/src/cpu/backend.rs": [
+      [
+        "fn weight_memory(c: &ClaimList)",
+        "/// Scratch-only public metadata charge; body unchanged.\npub fn weight_memory(c: &ClaimList)"
+      ]
+    ],
+    "crates/tessera-prover/src/native.rs": [
+      [
+        "    pub(crate) fn window_shape(",
+        "    /// Scratch-only metadata visibility.\n    pub fn window_shape("
+      ]
+    ],
+    "crates/tessera-prover/src/stages/stream.rs": [
+      [
+        "    pub(crate) fn window_shapes(",
+        "    /// Scratch-only metadata visibility.\n    pub fn window_shapes("
+      ]
+    ],
+    "crates/tessera-prover/src/cpu/plan.rs": [
+      [
+        "pub(crate) fn new(",
+        "pub fn new("
+      ],
+      [
+        "    pub(crate) fn staged(",
+        "    /// Scratch-only visibility; metadata algorithm unchanged.\n    pub fn staged("
+      ],
+      [
+        "pub(crate) fn for_budget(",
+        "pub fn for_budget("
+      ],
+      [
+        "pub(crate) fn grouped(",
+        "pub fn grouped("
+      ]
+    ]
+  },
+  "adapter_sha256": {
+    "probe.rs": "3fbe7f1e2aa85eae5a2158ed46d96a3873110681accd3d2e02e5cd4ad4e22e4a",
+    "candidate.rs": "e98a0f6f02238d3a47e5fb8b7a121d88d7b57e2d3924b4850ea488cf5dbc2b0e",
+    "Cargo.toml": "dd2a191a4fd6a89baa77dbf3ce6a3bf86ed6770b52051c78b6e0ec8cfabe0bad",
+    "Cargo.lock": "a0b623ba1b7ba3b4c02ad4aa6d9f98cf03dd24914e15572aab6e9c15f7c04d8d",
+    "run.py": "d436bc375351e4419fc0dd8ba635d46ba12f030ebe6c9fed245669e7f6bfc3ad"
+  },
+  "modified_sha256": {
+    "crates/tessera-compiler/src/select.rs": "2acf09a28560c767600e460fe0f204790f2f66855c64261ad5662b5bb4e85c3a",
+    "crates/tessera-prover/src/cpu/mod.rs": "08a0592d1d8daf0d1f077ebcb95d42a53afd86fc7932fee99492ec852b9c700a",
+    "crates/tessera-prover/src/cpu/backend.rs": "32dbfcdff4591b8ccfe3e1799afdaba627d7a481350a9e0014d094272568c2e2",
+    "crates/tessera-prover/src/native.rs": "d25f17c8307f53ffec2f8297588cd8e66f02066689b12e513c1c3391dea350f8",
+    "crates/tessera-prover/src/stages/stream.rs": "5066ca90bff32c3a7438200ddf62e04818e85add14ac8b75747266951101d64e",
+    "crates/tessera-prover/src/cpu/plan.rs": "fa2525a73243d2d869707d3dcb01e7407ee080495d3cdd0374d9be8f11e97894"
+  },
+  "command": [
+    "cargo",
+    "run",
+    "--release",
+    "--offline",
+    "--locked",
+    "--manifest-path",
+    "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/research/experiments/EXP-0030-real-runtime-sizing/Cargo.toml"
+  ],
+  "exit_code": 0,
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "all_algorithm_sources_preserved": true
+}

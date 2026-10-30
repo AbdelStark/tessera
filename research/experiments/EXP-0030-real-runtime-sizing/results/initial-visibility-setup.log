@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/Users/abdel/dev/tessera/research/experiments/EXP-0030-real-runtime-sizing/run.py", line 78, in <module>
+    assert changed.count(before) == 1, (path, before)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ('crates/tessera-prover/src/stages/mod.rs', '    pub(crate) fn window_shapes(')
