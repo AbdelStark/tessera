@@ -1,0 +1,25 @@
+checks	Repository policies	﻿2026-10-30T02:27:06.9522289Z ##[group]Run cargo run --locked --quiet -p xtask -- lint
+checks	Repository policies	2026-10-30T02:27:06.9522833Z ^[[36;1mcargo run --locked --quiet -p xtask -- lint^[[0m
+checks	Repository policies	2026-10-30T02:27:06.9542498Z shell: /usr/bin/bash -e {0}
+checks	Repository policies	2026-10-30T02:27:06.9542758Z env:
+checks	Repository policies	2026-10-30T02:27:06.9542965Z   CARGO_TERM_COLOR: always
+checks	Repository policies	2026-10-30T02:27:06.9543217Z   CARGO_INCREMENTAL: 0
+checks	Repository policies	2026-10-30T02:27:06.9543460Z   CARGO_PROFILE_DEV_DEBUG: 0
+checks	Repository policies	2026-10-30T02:27:06.9543709Z   CARGO_PROFILE_TEST_DEBUG: 0
+checks	Repository policies	2026-10-30T02:27:06.9543962Z   RUSTUP_TOOLCHAIN: 1.95.0
+checks	Repository policies	2026-10-30T02:27:06.9544202Z   CACHE_ON_FAILURE: false
+checks	Repository policies	2026-10-30T02:27:06.9544429Z ##[endgroup]
+checks	Repository policies	2026-10-30T02:27:27.0972810Z ok    unsafe-code policy (RFC-0001)
+checks	Repository policies	2026-10-30T02:27:27.0973848Z ok    SPDX headers (09 §7)
+checks	Repository policies	2026-10-30T02:27:27.0974313Z ok    manifest licenses (09 §7)
+checks	Repository policies	2026-10-30T02:27:27.0975126Z ok    Markdown links, anchors and table cells (07 §9)
+checks	Repository policies	2026-10-30T02:27:27.0978175Z ok    dependency-policy files (09 §7)
+checks	Repository policies	2026-10-30T02:27:27.0979082Z FAIL  secret access only in listed modules (05 §3 OBS-1)
+checks	Repository policies	2026-10-30T02:27:27.0980751Z       research/experiments/EXP-0030-real-runtime-sizing/probe.rs:19: #[path] pulls in code from another file, which this check cannot follow; prover code enters a crate only through `mod` at its default path
+checks	Repository policies	2026-10-30T02:27:27.0982373Z ok    telemetry through the public-data helpers only (05 §2, §3 OBS-1, §5)
+checks	Repository policies	2026-10-30T02:27:27.0982999Z ok    committed reports match their JSON Schemas (03 §5)
+checks	Repository policies	2026-10-30T02:27:27.0983510Z ok    one version for the crates and tessera-quant (09 §1)
+checks	Repository policies	2026-10-30T02:27:27.0984251Z ok    no floating point in the table generators, the soundness calculator or the audit accounting (RFC-0008, RFC-0014, RFC-0016)
+checks	Repository policies	2026-10-30T02:27:27.0985008Z ok    no merge-conflict markers (07 §9)
+checks	Repository policies	2026-10-30T02:27:27.0985363Z ok    agent skills and symlinks (.agents/)
+checks	Repository policies	2026-10-30T02:27:27.1017686Z ##[error]Process completed with exit code 1.

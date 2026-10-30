@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `done: validated` |
+| Status | `running` |
 | Idea | [IDEA-0041](../../ideas/IDEA-0041-uniform-requant.md), already triaged and finite-E0 validated; follow-up for [#627](https://github.com/AbdelStark/tessera/issues/627) / #617 |
 | Evidence level | E0: exact public geometry and charged planner bytes, not measured resident memory |
 | Hardware | Apple M1 Max, 64 GiB unified memory; CPU metadata only, no timing criterion |
@@ -101,7 +101,7 @@ experimental build can contaminate ordinary validation. Keep all result logs.
 
 ## Results
 
-**E0, primary, charged metadata quantities.** All nine real cases and the
+**Initial complete run: E0, primary, charged metadata quantities.** All nine real cases and the
 unchanged tiny control completed. Every baseline real case reproduced the exact
 leaf refusal before metadata injection. All algorithm-source restoration and
 untouched-guard checks passed. The separate integer audit agrees on every saved
@@ -180,10 +180,12 @@ proved by the Python recount.
 
 ## Verdict
 
-`validated` for the frozen E0 resource hypothesis: all required cases and
+The initial complete run is `validated` for the frozen E0 resource hypothesis: all required cases and
 recounts pass, all ten accounting corruptions are caught, and every real
 zero-lookup floor exceeds 64 GiB. No production capability, complete G-4,
-physical peak, performance or hiding credit follows.
+physical peak, performance or hiding credit follows. A final complete replay with a
+policy-compliant normal module boundary is running before merge; the initial
+CI import failure and complete-run receipts are preserved.
 
 ## Follow-ups
 

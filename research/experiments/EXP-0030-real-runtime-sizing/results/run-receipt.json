@@ -59,19 +59,14 @@
         "pub(crate) fn grouped(",
         "pub fn grouped("
       ]
-    ],
-    "research/experiments/EXP-0029-uniform-requant/layout_probe.rs": [
-      [
-        "fn patch(",
-        "pub fn patch("
-      ]
     ]
   },
   "adapter_sha256": {
-    "probe.rs": "2a96440558053aae687e3eeb1aa3bbbef485863ff71c68dbd08dc6ae9bbbcf0c",
+    "probe.rs": "3fbe7f1e2aa85eae5a2158ed46d96a3873110681accd3d2e02e5cd4ad4e22e4a",
+    "candidate.rs": "e98a0f6f02238d3a47e5fb8b7a121d88d7b57e2d3924b4850ea488cf5dbc2b0e",
     "Cargo.toml": "dd2a191a4fd6a89baa77dbf3ce6a3bf86ed6770b52051c78b6e0ec8cfabe0bad",
     "Cargo.lock": "a0b623ba1b7ba3b4c02ad4aa6d9f98cf03dd24914e15572aab6e9c15f7c04d8d",
-    "run.py": "84197a1466a63f375e406c4181c1a60b1a852e8e69934fe5ad903eb3bc6c47e5"
+    "run.py": "d436bc375351e4419fc0dd8ba635d46ba12f030ebe6c9fed245669e7f6bfc3ad"
   },
   "modified_sha256": {
     "crates/tessera-compiler/src/select.rs": "2acf09a28560c767600e460fe0f204790f2f66855c64261ad5662b5bb4e85c3a",
@@ -79,19 +74,6 @@
     "crates/tessera-prover/src/cpu/backend.rs": "32dbfcdff4591b8ccfe3e1799afdaba627d7a481350a9e0014d094272568c2e2",
     "crates/tessera-prover/src/native.rs": "d25f17c8307f53ffec2f8297588cd8e66f02066689b12e513c1c3391dea350f8",
     "crates/tessera-prover/src/stages/stream.rs": "5066ca90bff32c3a7438200ddf62e04818e85add14ac8b75747266951101d64e",
-    "crates/tessera-prover/src/cpu/plan.rs": "fa2525a73243d2d869707d3dcb01e7407ee080495d3cdd0374d9be8f11e97894",
-    "research/experiments/EXP-0029-uniform-requant/layout_probe.rs": "ad427865444f119a8b943a5f7b5a76b5757097c5d4f20dd3bc9e02367855a8fb"
-  },
-  "command": [
-    "cargo",
-    "run",
-    "--release",
-    "--offline",
-    "--locked",
-    "--manifest-path",
-    "/var/folders/ts/wx8nz2rj3_zdlbfj9m_53q540000gn/T/tessera-627-runtime-overlay-kh6w7_mi/research/experiments/EXP-0030-real-runtime-sizing/Cargo.toml"
-  ],
-  "exit_code": 0,
-  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
-  "all_algorithm_sources_preserved": true
+    "crates/tessera-prover/src/cpu/plan.rs": "fa2525a73243d2d869707d3dcb01e7407ee080495d3cdd0374d9be8f11e97894"
+  }
 }

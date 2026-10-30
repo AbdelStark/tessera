@@ -57,9 +57,6 @@ patches = {
         ("pub(crate) fn for_budget(", "pub fn for_budget("),
         ("pub(crate) fn grouped(", "pub fn grouped("),
     ],
-    "research/experiments/EXP-0029-uniform-requant/layout_probe.rs": [
-        ("fn patch(", "pub fn patch("),
-    ],
 }
 if len(sys.argv) > 1:
     # Validate every owned source before restoring an earlier failed setup; no partial cleanup.
@@ -78,6 +75,13 @@ if len(sys.argv) > 1:
         restores[path] = original
     for path, text in restores.items():
         (scratch / path).write_text(text)
+
+# The normal module is exactly the already-studied helper bodies, with visibility only.
+prior_adapter = (scratch / "research/experiments/EXP-0029-uniform-requant/layout_probe.rs").read_text()
+helper_body = prior_adapter[prior_adapter.index("fn table("):prior_adapter.index("fn main()")]
+helper_body = helper_body.replace("fn patch(", "pub(super) fn patch(")
+module_text = (ROOT / "candidate.rs").read_text()
+assert module_text[module_text.index("fn table("):].rstrip() == helper_body.rstrip()
 
 originals = {}
 prepared_patches = {}
@@ -102,7 +106,7 @@ protected = [
 hashes = {p: hashlib.sha256((scratch / p).read_bytes()).hexdigest() for p in protected}
 for path in protected:
     assert (scratch / path).read_bytes() == subprocess.check_output(["git", "show", f"{BASE}:{path}"], cwd=REPO) == (REPO / path).read_bytes()
-receipt = {"scope": "E0 public metadata; no production adoption, full G-4, witness or proof", "base": BASE, "registration": REGISTRATION, "scratch": str(scratch), "platform": platform.platform(), "python": platform.python_version(), "protected_sha256": hashes, "patches": patches, "adapter_sha256": {p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in ["probe.rs","Cargo.toml","Cargo.lock","run.py"]}, "modified_sha256": {p: hashlib.sha256((scratch / p).read_bytes()).hexdigest() for p in patches}}
+receipt = {"scope": "E0 public metadata; no production adoption, full G-4, witness or proof", "base": BASE, "registration": REGISTRATION, "scratch": str(scratch), "platform": platform.platform(), "python": platform.python_version(), "protected_sha256": hashes, "patches": patches, "adapter_sha256": {p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in ["probe.rs","candidate.rs","Cargo.toml","Cargo.lock","run.py"]}, "modified_sha256": {p: hashlib.sha256((scratch / p).read_bytes()).hexdigest() for p in patches}}
 (ROOT / "results/run-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
 env = dict(os.environ, CARGO_BUILD_JOBS="2", CARGO_TARGET_DIR=str(scratch / "target"))
 command = ["cargo", "run", "--release", "--offline", "--locked", "--manifest-path", str(experiment / "Cargo.toml")]

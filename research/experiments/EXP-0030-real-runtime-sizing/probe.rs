@@ -16,8 +16,6 @@ use tessera_prover::{Cells, LeafLayout, MemoryBudget, PassPlan, StageProver};
 use tessera_sumcheck::WindowMemory;
 use tessera_tables::{GeneratedTable, Table, TableSpec};
 
-#[path = "../EXP-0029-uniform-requant/layout_probe.rs"]
-#[allow(dead_code)]
 mod candidate;
 
 const RULE: &str = "a site's real layers read the same tensors over the same axes (RFC-0045 'One claim per input')";
