@@ -283,6 +283,16 @@ fn check_batch_runtime_equivalence(
         let resident = Resident::runtime(&engine, &runtime, model, &first).expect("resident");
         let regenerator =
             Regenerator::runtime(&engine, &runtime, model, &tokens, &checkpoints).expect("regen");
+        if q == 1 {
+            for tensor in &lowering.graph.tensors {
+                assert_eq!(
+                    &regenerator.tensor(tensor.id).expect("tensor replay")[..],
+                    &first.tensor(tensor.id).expect("resident tensor")[..],
+                    "protocol={protocol}, tensor {:?}",
+                    tensor.id
+                );
+            }
+        }
         for (idx, tile) in advice.tiles().iter().enumerate() {
             let rt = resident.tile(tile).expect("resident tile");
             let gt = regenerator.tile(tile).expect("regenerator tile");

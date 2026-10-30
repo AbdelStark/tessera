@@ -47,6 +47,11 @@ impl Live {
         self.values.get(tensor.0 as usize)?.as_deref()
     }
 
+    /// Transfer a requested tensor without retaining or copying the replay's allocation.
+    pub(crate) fn take(&mut self, tensor: TensorId) -> Option<SecretBuf<i64>> {
+        self.values.get_mut(tensor.0 as usize)?.take()
+    }
+
     fn require(&self, tensor: TensorId) -> Result<&[i64], WitnessError> {
         self.get(tensor).ok_or(WitnessError::Internal {
             rule: "a node's inputs are computed before it",

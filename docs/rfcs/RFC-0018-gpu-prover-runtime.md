@@ -141,6 +141,11 @@ Budgets per device and host come from `ProverConfig.memory_budget`. The planner 
   - **The limit.** A proof whose plan exceeds the budget takes token groups (RFC-0054): the plan then holds its largest group's lookup trees in place of the stage's, and runs the merge's pass, P2b, after P2. The fewest group bits that fit win. A proof that no grouping fits fails before P1 with `ERR-RES-MEMORY`.
 - **Pass counters.** The run manifest records every pass and its time as `tessera_passes_total{pass}` and `tessera_pass_seconds{pass}` ([05 §4](../spec/05-observability.md#4-metrics)).
 
+The [CPU lifetime inventory](../perf/v0.3/cpu-memory-lifetimes.md) records which
+backing allocations coexist across these passes, and which completed reduction
+buffers are cleared before openings. It does not reduce the conservative floor
+or qualify the complete driver for real-model memory budgets.
+
 ### Crash consistency
 
 - Before `Round1`, the prover writes a per-proof secret seed (from the OS CSPRNG) to a 0600 file via atomic rename. Every masking value, mask polynomial and blinding choice of the proof's advice, along with its coin-toss share and NI session id, derives from it through RFC-0004's per-purpose domains (`advice-masks`, `prover-share`, `ni-session`). The weights' masks and blinding rows derive from the epoch's `masks_seed` instead (INV-ZK-3, draft [RFC-0073](RFC-0073-weight-mask-expansion.md)), and the rows a proof uses are its reservation's.

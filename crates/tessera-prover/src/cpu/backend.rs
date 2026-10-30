@@ -612,6 +612,8 @@ impl<'a> CpuBackend<'a> {
         } else {
             ModelNativeProver::new(&u.native, &u.lowering, &actual, &d.witness, claims)?
         };
+        // The native prover owns its remaining leaf inputs; reduction stages read the witness.
+        drop(actual);
         let mut proofs = Vec::new();
         let mut regenerate = || {
             engine.regenerate(p.model, &d.witness).map_err(|e| match e {
@@ -664,6 +666,10 @@ impl<'a> CpuBackend<'a> {
             &advice,
             &p.layout,
         )?;
+        // Original opening debts now live in `targets`; P4/P5 regenerate their source rows.
+        // Clear the completed reduction working sets before allocating combined rows (OBS-6).
+        drop(stages);
+        drop(native);
         let gamma = tr.challenge("pcs/advice/gamma");
         let av: Vec<_> = (0..advice.layout().row_vars())
             .map(|_| tr.challenge("pcs/advice/xi"))

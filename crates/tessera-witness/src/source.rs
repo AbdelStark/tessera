@@ -17,7 +17,7 @@ use core::fmt;
 
 use tessera_codec::{Secret, SecretBuf};
 use tessera_compiler::{RuntimePlan, Selection, SequenceTile, Tile};
-use tessera_ir::{IntegerModel, TableId};
+use tessera_ir::{IntegerModel, TableId, TensorId};
 
 use crate::engine::{Input, Operand, elements};
 use crate::multiplicity::Multiplicities;
@@ -66,6 +66,53 @@ impl fmt::Debug for Regenerator<'_> {
 }
 
 impl<'a> Regenerator<'a> {
+    /// Regenerate one graph tensor's real positions, flat and row-major, from the checkpoints.
+    /// This is the reference engine's integer tensor, before field conversion or PCS padding.
+    /// The returned clearing buffer owns its allocation; the source caches no regenerated value.
+    ///
+    /// Unlike [`WitnessSource::tile`], this asks for the whole tensor. In particular, requesting
+    /// a score tensor materializes its full quadratic domain, and requesting a weight widens
+    /// that one INT8 matrix to `i64`. Callers must budget the requested tensor and its replay
+    /// cone beside their other live buffers (RFC-0018 'Memory scheduler'); this API alone does
+    /// not qualify a bounded-memory proof driver.
+    ///
+    /// # Errors
+    /// [`WitnessError::Usage`] for an identifier outside this lowering. Otherwise the same
+    /// replay, allocation and debug range errors as [`WitnessSource::tile`].
+    pub fn tensor(&self, tensor: TensorId) -> Result<SecretBuf<i64>, WitnessError> {
+        if self
+            .replay
+            .structure
+            .graph()
+            .tensors
+            .get(tensor.0 as usize)
+            .is_none()
+        {
+            return Err(WitnessError::Usage {
+                rule: "a regenerated tensor belongs to the source's lowering",
+            });
+        }
+        if self.replay.structure.computed(tensor) {
+            return self
+                .replay
+                .compute(self.store, &[tensor])?
+                .take(tensor)
+                .ok_or(WitnessError::Internal {
+                    rule: "a tensor replay retains its requested output",
+                });
+        }
+        match self.replay.leaf(self.store, tensor)? {
+            Input::Values(values) => Ok(values),
+            Input::Weight(entries) => {
+                let mut values = crate::engine::zeros(tensor, entries.len())?;
+                for (out, &entry) in values.iter_mut().zip(entries) {
+                    *out = i64::from(entry);
+                }
+                Ok(values)
+            }
+        }
+    }
+
     /// Regenerate the complete exact-greedy runtime advice, including its separate maximum
     /// and the combined model/certificate table counts (draft RFC-0053).
     ///
@@ -279,7 +326,7 @@ impl<'a> Resident<'a> {
         let whole = witness.len() == graph.tensors.len()
             && graph.tensors.iter().enumerate().all(|(t, spec)| {
                 witness
-                    .tensor(tessera_ir::TensorId(t as u32))
+                    .tensor(TensorId(t as u32))
                     .is_some_and(|values| values.len() == elements(&spec.shape))
             });
         if !whole {
@@ -295,7 +342,7 @@ impl<'a> Resident<'a> {
         })
     }
 
-    fn values(&self, tensor: tessera_ir::TensorId) -> Result<&'a [i64], WitnessError> {
+    fn values(&self, tensor: TensorId) -> Result<&'a [i64], WitnessError> {
         self.witness
             .tensor(tensor)
             .map(|values| &values[..])
@@ -305,10 +352,7 @@ impl<'a> Resident<'a> {
     }
 
     /// `values`, copied into a buffer of its own.
-    fn copied(
-        tensor: tessera_ir::TensorId,
-        values: &[i64],
-    ) -> Result<SecretBuf<i64>, WitnessError> {
+    fn copied(tensor: TensorId, values: &[i64]) -> Result<SecretBuf<i64>, WitnessError> {
         let mut buffer = SecretBuf::try_with_capacity(values.len())
             .map_err(|_| WitnessError::Memory { tensor })?;
         buffer.extend(values.iter().copied());
@@ -426,7 +470,7 @@ fn multiplicities(
     gadgets: &Gadgets,
     table: TableId,
     visit_attention: impl Fn(&Core, &mut Multiplicities) -> Result<(), WitnessError>,
-    read_classes: impl Fn(tessera_ir::TensorId) -> Result<SecretBuf<i64>, WitnessError>,
+    read_classes: impl Fn(TensorId) -> Result<SecretBuf<i64>, WitnessError>,
 ) -> Result<TileWitness, WitnessError> {
     let rows = gadgets.rows(structure, table)?;
     let mut counts = Multiplicities::new(table, rows, gadgets.update_bound(structure, table)?)?;

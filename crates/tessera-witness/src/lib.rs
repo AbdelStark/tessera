@@ -40,6 +40,10 @@
 //! recounting shared model/certificate multiplicities before adding one combined row-zero tail.
 //! Sampling certificates remain outside RFC-0050's current-model layout.
 //!
+//! [`Regenerator::tensor`] also supplies one whole integer tensor for reduction consumers.
+//! Its result and replay cone can exceed a tile's memory, notably for scores and widened
+//! weights; callers must account for those allocations separately.
+//!
 //! # Features
 //!
 //! - `unsafe-debug-dump` dumps secret tensors for debugging (OBS-4). Tests only: a release build
