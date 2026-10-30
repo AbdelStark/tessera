@@ -99,18 +99,7 @@ impl<'p> Requant<'p> {
             | tv_tables::TableKind::Silu { b, r_by_class, .. } => (*b, r_by_class.len()),
             _ => return Err(internal),
         };
-        let bits = if choice.pattern == Pattern::Lookup {
-            u32::from(b)
-        } else {
-            crate::range_checks::signed_width(
-                *plan
-                    .selected
-                    .ranges
-                    .get(usize::try_from(z.0).map_err(|_| internal)?)
-                    .ok_or(internal)?,
-            )
-            .ok_or(internal)?
-        };
+        let bits = plan.selected.key_bits(choice).map_err(|_| internal)?;
         let shape = plan.graph.tensor(y).ok_or(internal)?.shape;
         let log =
             |d: u32| usize::try_from(u32::BITS.saturating_sub(d.saturating_sub(1).leading_zeros()));

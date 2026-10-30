@@ -1190,3 +1190,103 @@ fn public_cpu_api_proves_one_layer_models_in_ni_and_live() {
         );
     }
 }
+
+#[test]
+fn public_cpu_api_proves_heterogeneous_requant_layers() {
+    for (d_ff, first_shift, second_shift) in [(6, 2, 12), (24, 2, 12), (24, 1, 5)] {
+        let mut model = bounded_model();
+        model.arch.d_ff = d_ff;
+        let shapes = model.arch.weight_shapes().unwrap();
+        for w in &mut model.weights {
+            let shape = shapes[w.ty as usize];
+            w.rows = shape.out;
+            w.cols = shape.inputs;
+            w.data.resize((shape.out * shape.inputs) as usize, 0);
+        }
+        for channel in &mut model.quant.channels {
+            let n = shapes[channel.ty as usize].out as usize;
+            if !channel.class.is_empty() {
+                channel.class.resize(n, 0);
+            }
+            if !channel.multiplier.is_empty() {
+                channel.multiplier.resize(n, 1);
+            }
+        }
+        for (point, shifts) in &mut model.quant.public.shift_class_sets {
+            if let tessera_ir::QuantPoint::Layer {
+                layer,
+                site: tessera_ir::Site::MlpResidual,
+            } = *point
+            {
+                *shifts = vec![if layer == 0 {
+                    first_shift
+                } else {
+                    second_shift
+                }];
+            }
+        }
+        // These Down sites now have one pot class, so they carry no channel vector.
+        model
+            .quant
+            .channels
+            .retain(|c| c.ty != tessera_ir::WeightType::Down);
+        tessera_compiler::validate(&model).unwrap();
+        let policy = GadgetPolicy {
+            max_log2_rows: 18,
+            query_block: 2,
+            ..Default::default()
+        };
+        let p = public(&model, 3, policy);
+        let ranges = analyze(&p.lowering.graph, &p.lowering.tables).unwrap();
+        let old = tessera_compiler::select(&p.lowering.graph, &ranges, &p.lowering.tables, &policy)
+            .unwrap();
+        let legacy = claim_list(
+            PublicModel::of(&model),
+            &old,
+            &policy,
+            ParamSet::TEST_SMALL.layout,
+            ParamSetId(Ascii::new(ParamSet::TEST_SMALL.id).unwrap()),
+        )
+        .unwrap();
+        let first_difference = old
+            .tables
+            .iter()
+            .zip(&p.selection.tables)
+            .position(|(a, b)| a != b)
+            .unwrap_or(old.tables.len().min(p.selection.tables.len()));
+        let mut stale = tv_core::claims::ClaimList::open(
+            &envelope::seal(&schema::CLAIM_LIST, &legacy),
+            &tv_codec::DecodeLimits::MESSAGE,
+        )
+        .unwrap();
+        // The table check precedes layout checks; a production parameter name also
+        // exercises this rejection when the test-small verifier feature is disabled.
+        stale.params = tv_core::claims::ParamSetId::new("ni-100/1").unwrap();
+        assert_eq!(
+            tv_core::validation::validate(&stale).err(),
+            Some(tv_core::validation::ClaimsError::StatementMismatch {
+                field: tv_core::validation::StatementField::Table {
+                    table: tv_tables::TableId(first_difference as u32)
+                }
+            })
+        );
+        assert!(
+            matches!(LeafLayout::model(&p.lowering,&p.layers,&old,&legacy),
+        Err(tessera_prover::leaf::LeafError::Internal{rule})
+        if rule=="a site's real layers read the same tensors over the same axes (RFC-0045 'One claim per input')")
+        );
+        assert_ne!(p.selection.tables, old.tables);
+        LeafLayout::model(&p.lowering, &p.layers, &p.selection, &p.claims).unwrap();
+        let (graph, claims) = verifier(&p, 3);
+        let selected = tv_core::selection::derive(&graph, claims.gadget_policy).unwrap();
+        assert_eq!(selected.tables.len(), p.selection.tables.len());
+        for (actual, expected) in selected.tables.iter().zip(&p.selection.tables) {
+            assert_eq!(actual.id.0, expected.id.0);
+            assert_eq!(actual.log2_rows, expected.log2_rows);
+            // Whole canonical table bytes are also compared by independent claim validation
+            // and CLI acceptance in check_api, including their digests and repeated reads.
+        }
+        split::Layout::derive(&graph, claims.gadget_policy).unwrap();
+        check_api(&model, 3, 1);
+    }
+}

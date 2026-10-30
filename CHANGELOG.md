@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Derive a common Requant family for incompatible Protocol One model layer sites, with independent verifier selection, complete first-use tables and ordered requests; retain the leaf guard, legacy-compatible artifacts and Protocol Two behavior (RFC-0076, [#617](https://github.com/AbdelStark/tessera/issues/617)). Real 1B/8B proofs and whole-model memory qualification remain pending.
+
 - Stream generated LogUp table/count sources through the CPU prover's ordinary and grouped leaf batches under checked P2 reservations, preserving proof messages and the conservative cell floor while removing dense table-column and negated-count construction (RFC-0008/0054, [#637](https://github.com/AbdelStark/tessera/issues/637)).
 
 - Finish each admitted integer candidate's construction before loading its BF16 held-out reference, separating float64 migration scratch from reference model/window residency while preserving preflight, full-window KL reduction and strength selection (RFC-0005, [#635](https://github.com/AbdelStark/tessera/issues/635)).
@@ -16,7 +18,7 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
-- Accept common-family Protocol One Requant selection and its explicit one-time unreleased compatibility decision; implementation and actual real-model proofs remain pending (RFC-0076, [#619](https://github.com/AbdelStark/tessera/issues/619), parent #617).
+- Accept common-family Protocol One Requant selection and its explicit one-time unreleased compatibility decision; actual real-model proofs remain pending (RFC-0076, [#619](https://github.com/AbdelStark/tessera/issues/619), parent #617).
 
 - Full pinned Llama-3.1-8B calibration metadata, all 16 existing-policy scale preflights and one fixed diagnostic INT8 artifact with complete readback/Rust geometry checks, with private statistics and weights outside the checkout; no fidelity or real-proof claim (RFC-0005/0025/0038, [#633](https://github.com/AbdelStark/tessera/issues/633)).
 

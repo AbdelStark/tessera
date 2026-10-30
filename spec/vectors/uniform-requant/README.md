@@ -11,3 +11,7 @@ The cases pin legacy preservation, ordered class shifts, widening, mixed low
 presence, the virtual top range, exact request order and rejection precedence.
 They cover the four-class 62-bit wrap boundary, singleton groups and `k=1`.
 These are selection vectors, not full-proof or global soundness evidence.
+
+Four focused boundary inputs were added after the initial oracle freeze without
+changing its algorithm: packed-class wrap, mixed low presence, the minimum Split
+envelope and refusal of a Wide envelope beyond 62 bits.

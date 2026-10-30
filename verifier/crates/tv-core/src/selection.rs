@@ -73,3 +73,44 @@ pub struct Selection {
 pub fn derive(graph: &Graph, policy: GadgetPolicy) -> Result<Selection, ClaimsError> {
     crate::range_checks::catalog(graph, policy)
 }
+
+impl Selection {
+    /// RFC-0076 N1: the selected envelope may be wider than the analyzed input.
+    /// Recover it from the independently derived table widths, including the
+    /// Wide virtual top range, rather than reusing the original signed width.
+    pub(crate) fn key_bits(&self, choice: &Choice) -> Result<u32, ClaimsError> {
+        let bits = |id: &TableId| {
+            let table = self
+                .tables
+                .get(usize::try_from(id.0).map_err(|_| ClaimsError::Internal)?)
+                .ok_or(ClaimsError::Internal)?;
+            match &table.kind {
+                tv_tables::TableKind::Requant { b, .. } | tv_tables::TableKind::Silu { b, .. } => {
+                    Ok(u32::from(*b))
+                }
+                _ => Err(ClaimsError::Internal),
+            }
+        };
+        let last = choice.tables.last().ok_or(ClaimsError::Internal)?;
+        match choice.pattern {
+            Pattern::Lookup | Pattern::Requant1 => bits(last),
+            Pattern::RequantSplit { split } => bits(last)?
+                .checked_add(u32::from(split))
+                .ok_or(ClaimsError::Internal),
+            Pattern::RequantWide { split, middle } => {
+                let top_table = choice
+                    .tables
+                    .iter()
+                    .rev()
+                    .nth(1)
+                    .ok_or(ClaimsError::Internal)?;
+                bits(top_table)?
+                    .checked_sub(1)
+                    .and_then(|k| k.checked_add(u32::from(split)))
+                    .and_then(|b| b.checked_add(u32::from(middle)))
+                    .ok_or(ClaimsError::Internal)
+            }
+            _ => Err(ClaimsError::Internal),
+        }
+    }
+}

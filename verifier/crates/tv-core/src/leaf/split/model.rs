@@ -158,17 +158,7 @@ fn requant(
             return Err(internal());
         }
     }
-    let width = if choice.pattern == Pattern::Lookup {
-        u32::from(final_bits)
-    } else {
-        crate::range_checks::signed_width(
-            *selected
-                .ranges
-                .get(usize::try_from(input.0).map_err(|_| internal())?)
-                .ok_or_else(internal)?,
-        )
-        .ok_or_else(internal)?
-    };
+    let width = selected.key_bits(choice)?;
     let off = power(width.checked_sub(1).ok_or_else(internal)?)?;
     let mut lookups = reserve(choice.tables.len())?;
     let mut ids = choice.tables.iter();

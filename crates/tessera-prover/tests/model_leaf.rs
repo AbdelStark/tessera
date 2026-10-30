@@ -7,7 +7,7 @@ use tessera_codec::{Ascii, DecodeLimits, Secret, envelope, schema};
 use tessera_compiler::schedule::{LayerMap, NodeRef};
 use tessera_compiler::{
     AuxColumn, CompareColumn, Lowering, ModelAdviceLayout, PublicModel, Selection, analyze,
-    claim_list, select,
+    claim_list, select_model,
 };
 use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField, QuadraticExtension};
 use tessera_gadgets::{Slack, TableColumns};
@@ -61,7 +61,8 @@ struct Public {
 fn public(model: &IntegerModel, n: u32, policy: GadgetPolicy) -> Public {
     let lowering = tessera_compiler::lower(PublicModel::of(model), n).unwrap();
     let ranges = analyze(&lowering.graph, &lowering.tables).unwrap();
-    let selection = select(&lowering.graph, &ranges, &lowering.tables, &policy).unwrap();
+    let selection =
+        select_model(tessera_ir::PROTOCOL_VERSION, &lowering, &ranges, &policy).unwrap();
     let p = ParamSet::TEST_SMALL;
     let claims = claim_list(
         PublicModel::of(model),

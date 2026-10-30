@@ -37,6 +37,9 @@
 
 use std::collections::BTreeMap;
 
+mod model;
+pub use model::select_model;
+
 use tessera_ir::{GadgetId, GadgetPolicy, Graph, Node, NodeId, Op, TableId, TensorId};
 use tessera_tables::{GeneratedTable, Table, TableKind, TableSpec};
 
@@ -156,6 +159,9 @@ impl Selection {
     }
 }
 
+/// Per-node selection for fragment/anchor graphs. Canonical model callers use [`select_model`]
+/// to supply the protocol version and layer checkpoints required by RFC-0076.
+///
 /// The gadget of every gadget-backed node of `graph`, whose ranges are `ranges` and whose lookups
 /// name tables among `tables`, under `policy`.
 ///
@@ -174,6 +180,16 @@ pub fn select(
     tables: &[TableSpec],
     policy: &GadgetPolicy,
 ) -> Result<Selection, CompileError> {
+    select_planned(graph, ranges, tables, policy, &BTreeMap::new())
+}
+
+fn select_planned(
+    graph: &Graph,
+    ranges: &Ranges,
+    tables: &[TableSpec],
+    policy: &GadgetPolicy,
+    plans: &BTreeMap<NodeId, model::RequantPlan>,
+) -> Result<Selection, CompileError> {
     let max = u32::from(policy.max_log2_rows);
     if !(1..=32).contains(&max) {
         return Err(CompileError::Usage {
@@ -188,6 +204,8 @@ pub fn select(
         tables: tables.to_vec(),
         reads: Vec::new(),
         producers: None,
+        materialize: true,
+        plans,
     };
     let mut gadgets = Vec::new();
     let mut reads = BTreeMap::new();
@@ -213,6 +231,9 @@ struct Selector<'a> {
     reads: Vec<TableId>,
     /// Each tensor's producer, computed at the first `BitDecompose`.
     producers: Option<Vec<Option<(NodeId, u32)>>>,
+    // The model's validation pass generates definitions but assigns no auxiliary ids.
+    materialize: bool,
+    plans: &'a BTreeMap<NodeId, model::RequantPlan>,
 }
 
 impl Selector<'_> {
@@ -220,7 +241,11 @@ impl Selector<'_> {
         Ok(Some(match &node.op {
             Op::Requant { shift, lo, hi } => {
                 let shifts = self.graph.shift_classes[shift.0 as usize].clone();
-                self.requant(node, shifts, *lo, *hi)?
+                if let Some(plan) = self.plans.get(&node.id).copied() {
+                    self.planned_requant(node, shifts, *lo, *hi, plan)?
+                } else {
+                    self.requant(node, shifts, *lo, *hi)?
+                }
             }
             Op::TableMap { table } | Op::Bitwise { table } => {
                 let table = self.sized(node, *table)?;
@@ -246,7 +271,11 @@ impl Selector<'_> {
             Op::Argmax => {
                 let table = self.table(node, TableKind::Range { bits: 29 })?;
                 Gadget::Argmax {
-                    table: self.sized(node, table)?,
+                    table: if self.materialize {
+                        self.sized(node, table)?
+                    } else {
+                        table
+                    },
                 }
             }
             Op::InverseCdf { .. } => Gadget::InverseCdf,
@@ -647,6 +676,23 @@ impl Selector<'_> {
         {
             self.reads.push(spec.id);
             return Ok(spec.id);
+        }
+        if !self.materialize {
+            let checked =
+                GeneratedTable::new(TableId(0), kind).map_err(|_| CompileError::Table {
+                    node: node.id,
+                    table: TableId(0),
+                    rule: "the generator refuses a table selection built",
+                })?;
+            if u32::from(checked.spec().log2_rows) > self.max {
+                return Err(CompileError::Range {
+                    node: node.id,
+                    input: 0,
+                    rule: "a lookup's table has at most 2^{B_max} rows",
+                });
+            }
+            // No gadget produced by this pass escapes; only its family is inspected.
+            return Ok(TableId(0));
         }
         let next = self
             .tables
