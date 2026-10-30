@@ -13,6 +13,16 @@ uv sync --extra cu130    # CUDA 13.0 wheels, Linux only: calibrating 8B and up
 
 ## Command line
 
+The [real-model ramp guide](../docs/models/real-model-ramp.md) pins the actual 1B and 8B
+Hugging Face sources, their weight checksums and the current proof/qualification blockers.
+The 1B source needs an explicit, bit-preserving tied-head preparation step; the importer
+continues to refuse tied checkpoints. From this directory, the repository tool is:
+
+```sh
+PYTHONPATH=. uv run --no-sync python tools/materialize_tied_head.py prepare SOURCE NEW_DIRECTORY
+PYTHONPATH=. uv run --no-sync python tools/materialize_tied_head.py verify SOURCE PREPARED_DIRECTORY
+```
+
 `tessera-quant`, or `python -m tessera_quant`, runs the pipeline from files ([02 §2.1](../docs/spec/02-public-api.md#21-tessera-quant-python)):
 
 ```sh

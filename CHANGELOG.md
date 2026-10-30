@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- A repository tool for bounded, bit-preserving BF16 tied-head checkpoint preparation, with exact configuration lexemes, checked shards, private staged output and complete streaming verification; the [real-model ramp guide](docs/models/real-model-ramp.md) pins the 1B/8B sources and records the unresolved real-proof and fidelity obligations (RFC-0005, TB-5, [#623](https://github.com/AbdelStark/tessera/issues/623)).
+
 - Complete claim-validation and NI-driver fuzz targets, declared tamper-case seeds and a pinned CPU-time campaign runner; the 24 CPU-hour release result remains pending until its report is recorded ([#185](https://github.com/AbdelStark/tessera/issues/185), SP-8, RFC-0019).
 - Draft RFC-0075 for bounded full-support weight-mask regeneration and complete core/draw/total cost accounting, backed by SUR-0016 and frozen E0 audit EXP-0028; no GPU measurement or zero-knowledge capability is claimed ([#568](https://github.com/AbdelStark/tessera/issues/568)).
 - Proposed separate Lean verifier blueprint, with three surfaces of theorem statements, provisional predicate correspondences, negative-case evidence and open refinement/composition obligations; no mechanized proof or changed acceptance semantics ([#392](https://github.com/AbdelStark/tessera/issues/392), RFC-0019 OQ-0019-1, SP-6).
