@@ -192,6 +192,12 @@ jobs:
       - name: Runtime library unit tests
         if: matrix.workspace == 'prover'
         run: cargo nextest run --workspace --exclude xtask --exclude tessera-bench --lib --locked
+      - name: Streamed advice rows match scalar and frozen layout oracles (#630)
+        if: matrix.workspace == 'prover'
+        run: |
+          cargo nextest run -p tessera-pcs --test source_rows --locked
+          cargo nextest run -p tessera-compiler --test advice_layout --locked \
+            -E 'test(every_model_source_location_point_zero_row_and_segment_matches_the_oracle)'
       - name: Opt-in TLS 1.3 Live transport and adversarial framing checks (RFC-0014)
         if: matrix.workspace == 'prover'
         run: cargo test -p tessera-protocol --features tls --lib transport --locked
