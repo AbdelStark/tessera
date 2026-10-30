@@ -1,0 +1,187 @@
+{
+  "scope": "actual 8B existing scale-policy preflight; no held-out scoring, selected alpha, fidelity or proof",
+  "model_source": "NousResearch/Meta-Llama-3.1-8B",
+  "model_revision": "1f47e50cdbe801ad8a5174156ec3a0655108fb9f",
+  "calibration_statistics_digest": "432dbac32234d087655e013698e0f955be3188090848ed1090d645838a0198f8",
+  "calibration_report_sha256": "93382568df77ce3546fed03f88e9377df58383beedebe4efc9a459f1bebaa318",
+  "source_sha256": {
+    "integer_model.py": "8f6932335032c1830b7a6f8c7c4311f9129a13da7086d7d383b5dd90efd4bf60",
+    "checkpoint.py": "ebd6c8b80c6a56a6da3dd23a8be933b534a921ce26ffec58c3f261cd58a859c0",
+    "tce.py": "e8ef69d99a4a44b88d7ffaa76339eba36f651fd33a97a3a76147d310b9dd04e9",
+    "log.py": "5317cdba89634ed17751ba9c053cce81021a0ace81fc18098e94c1425753c3cf",
+    "scales.py": "e3283e0b33f152f9f6982db55293f9cb9f6418ab38501f755993efc4ed7adfbb",
+    "_wide.py": "a2409f9d0cf21c42d77a13b87515bd2a8a635022c74942f37208a60f4802febd",
+    "arch.py": "66ca9ea61c3db13d3fe9f64dce495631e64b6af71427d141ba2843fbf3bb9fa6",
+    "__init__.py": "c979858e1f9a856c5512a4fa4af33a8c0a875496facbd9892c9bf53d08e665d6",
+    "assemble.py": "e1cdb4120d77aa4b6aa6909358a82b05bfe8ea66b1d94974e2ae0201bb97b766",
+    "_streaming.py": "a881bdee4e81eebbeb0c2eb8473bb545fc7c9595e0cb93780582b3765c1962b0",
+    "capture.py": "a904facf2f828b854533e566652073f1536244b66663ad1d263630c072ce609c",
+    "cli.py": "fcba16f1c20abef13f81e440bc588b2a96e078efc07f35df0b359fd7c798b4e2",
+    "fidelity.py": "d708b9a3da078c4489757e0fdcbe93bea3b07d5f66a8a7398e78102a8d591ceb",
+    "reference.py": "6d5064d51ed5e52a454ed67ff9579097be89c40ecbd5d3e0383d6cd961038479",
+    "tables.py": "0e1828e5a0bf91fd264361f5c9483bfcd2fdb53df10a88e647f9a3bddc241f4e",
+    "errors.py": "204b1f575308ce2df69e3e647afa02c22cc86247c4206c032c16abc4a8e654e8",
+    "migration.py": "cc6911b27813fa04ffb00d86eb00fbdb9e21fc7bba63282f8741a9e641b47293",
+    "_integer_matmul.py": "f28782bf55321d13882080dbb51099eca233a5b6a3bc8900044e776041dca82d",
+    "__main__.py": "47a98845127f26c2a5e7573960defae3a99826acad33cb49b709159545e2f214",
+    "calibration.py": "f0f770df494caca7bb334d77fb33f56e5a1d4eb3059e2a2962a1a258e3b7841f"
+  },
+  "results": [
+    {
+      "profile": "Servable",
+      "scales": "pot",
+      "admissible": [],
+      "attempts": [
+        {
+          "alpha": "1/2",
+          "state": "infeasible",
+          "code": "ERR-QUANT-CALIB",
+          "error_type": "QuantizationInfeasibleError",
+          "seconds": 19.105199375015218
+        },
+        {
+          "alpha": "3/5",
+          "state": "infeasible",
+          "code": "ERR-QUANT-CALIB",
+          "error_type": "QuantizationInfeasibleError",
+          "seconds": 17.6185473339865
+        },
+        {
+          "alpha": "7/10",
+          "state": "infeasible",
+          "code": "ERR-QUANT-CALIB",
+          "error_type": "QuantizationInfeasibleError",
+          "seconds": 15.623225000017555
+        },
+        {
+          "alpha": "4/5",
+          "state": "infeasible",
+          "code": "ERR-QUANT-CALIB",
+          "error_type": "QuantizationInfeasibleError",
+          "seconds": 15.9605467079964
+        }
+      ]
+    },
+    {
+      "profile": "Servable",
+      "scales": "affine",
+      "admissible": [
+        "1/2",
+        "3/5",
+        "7/10"
+      ],
+      "attempts": [
+        {
+          "alpha": "1/2",
+          "state": "admissible",
+          "weight_entries": 8029995008,
+          "weight_tensors": 226,
+          "seconds": 154.64570049999747
+        },
+        {
+          "alpha": "3/5",
+          "state": "admissible",
+          "weight_entries": 8029995008,
+          "weight_tensors": 226,
+          "seconds": 137.2513153339969
+        },
+        {
+          "alpha": "7/10",
+          "state": "admissible",
+          "weight_entries": 8029995008,
+          "weight_tensors": 226,
+          "seconds": 137.6630547090026
+        },
+        {
+          "alpha": "4/5",
+          "state": "infeasible",
+          "code": "ERR-QUANT-CALIB",
+          "error_type": "QuantizationInfeasibleError",
+          "seconds": 121.27963512501447
+        }
+      ]
+    },
+    {
+      "profile": "Minimal",
+      "scales": "pot",
+      "admissible": [
+        "1/2",
+        "3/5",
+        "7/10",
+        "4/5"
+      ],
+      "attempts": [
+        {
+          "alpha": "1/2",
+          "state": "admissible",
+          "weight_entries": 8029995008,
+          "weight_tensors": 226,
+          "seconds": 121.23696766700596
+        },
+        {
+          "alpha": "3/5",
+          "state": "admissible",
+          "weight_entries": 8029995008,
+          "weight_tensors": 226,
+          "seconds": 124.94114858299145
+        },
+        {
+          "alpha": "7/10",
+          "state": "admissible",
+          "weight_entries": 8029995008,
+          "weight_tensors": 226,
+          "seconds": 123.638388708001
+        },
+        {
+          "alpha": "4/5",
+          "state": "admissible",
+          "weight_entries": 8029995008,
+          "weight_tensors": 226,
+          "seconds": 115.89871300000232
+        }
+      ]
+    },
+    {
+      "profile": "Minimal",
+      "scales": "affine",
+      "admissible": [
+        "1/2",
+        "3/5",
+        "7/10",
+        "4/5"
+      ],
+      "attempts": [
+        {
+          "alpha": "1/2",
+          "state": "admissible",
+          "weight_entries": 8029995008,
+          "weight_tensors": 226,
+          "seconds": 114.68677262502024
+        },
+        {
+          "alpha": "3/5",
+          "state": "admissible",
+          "weight_entries": 8029995008,
+          "weight_tensors": 226,
+          "seconds": 115.29186079200008
+        },
+        {
+          "alpha": "7/10",
+          "state": "admissible",
+          "weight_entries": 8029995008,
+          "weight_tensors": 226,
+          "seconds": 116.69595074999961
+        },
+        {
+          "alpha": "4/5",
+          "state": "admissible",
+          "weight_entries": 8029995008,
+          "weight_tensors": 226,
+          "seconds": 116.5541457090003
+        }
+      ]
+    }
+  ],
+  "seconds": 1574.1989002920163,
+  "process_peak_rss_bytes": 27896037376
+}

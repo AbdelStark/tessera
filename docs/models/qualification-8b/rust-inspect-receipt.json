@@ -1,0 +1,8 @@
+{
+  "command": "tessera inspect <fixed 8B D> --json",
+  "binary_sha256": "44f54a6e6b0199d13c113bfad41f8610fa550efbc7508884ee468814d64d7cb0",
+  "exit_code": 0,
+  "seconds": 24.698516957985703,
+  "peak_child_rss_bytes": 16070983680,
+  "scope": "Rust catalog envelope/IntegerModel decode and public geometry; not compilation, fidelity or proof"
+}

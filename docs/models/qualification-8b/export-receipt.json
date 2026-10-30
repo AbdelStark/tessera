@@ -1,0 +1,68 @@
+{
+  "scope": "fixed Servable/affine alpha=1/2 diagnostic; not selected alpha, fidelity or proof",
+  "source": {
+    "git_head": "e78f2508a9294e57d203d4e3400589b82d5d0eac",
+    "source_sha256": {
+      "integer_model.py": "8f6932335032c1830b7a6f8c7c4311f9129a13da7086d7d383b5dd90efd4bf60",
+      "checkpoint.py": "ebd6c8b80c6a56a6da3dd23a8be933b534a921ce26ffec58c3f261cd58a859c0",
+      "tce.py": "e8ef69d99a4a44b88d7ffaa76339eba36f651fd33a97a3a76147d310b9dd04e9",
+      "log.py": "5317cdba89634ed17751ba9c053cce81021a0ace81fc18098e94c1425753c3cf",
+      "scales.py": "e3283e0b33f152f9f6982db55293f9cb9f6418ab38501f755993efc4ed7adfbb",
+      "_wide.py": "a2409f9d0cf21c42d77a13b87515bd2a8a635022c74942f37208a60f4802febd",
+      "arch.py": "66ca9ea61c3db13d3fe9f64dce495631e64b6af71427d141ba2843fbf3bb9fa6",
+      "__init__.py": "c979858e1f9a856c5512a4fa4af33a8c0a875496facbd9892c9bf53d08e665d6",
+      "assemble.py": "e1cdb4120d77aa4b6aa6909358a82b05bfe8ea66b1d94974e2ae0201bb97b766",
+      "_streaming.py": "a881bdee4e81eebbeb0c2eb8473bb545fc7c9595e0cb93780582b3765c1962b0",
+      "capture.py": "a904facf2f828b854533e566652073f1536244b66663ad1d263630c072ce609c",
+      "cli.py": "fcba16f1c20abef13f81e440bc588b2a96e078efc07f35df0b359fd7c798b4e2",
+      "fidelity.py": "d708b9a3da078c4489757e0fdcbe93bea3b07d5f66a8a7398e78102a8d591ceb",
+      "reference.py": "6d5064d51ed5e52a454ed67ff9579097be89c40ecbd5d3e0383d6cd961038479",
+      "tables.py": "0e1828e5a0bf91fd264361f5c9483bfcd2fdb53df10a88e647f9a3bddc241f4e",
+      "errors.py": "204b1f575308ce2df69e3e647afa02c22cc86247c4206c032c16abc4a8e654e8",
+      "migration.py": "cc6911b27813fa04ffb00d86eb00fbdb9e21fc7bba63282f8741a9e641b47293",
+      "_integer_matmul.py": "f28782bf55321d13882080dbb51099eca233a5b6a3bc8900044e776041dca82d",
+      "__main__.py": "47a98845127f26c2a5e7573960defae3a99826acad33cb49b709159545e2f214",
+      "calibration.py": "f0f770df494caca7bb334d77fb33f56e5a1d4eb3059e2a2962a1a258e3b7841f"
+    },
+    "script_sha256": "4c7973942ce8466e279a058dccfb8a63757ffa484530c3f6696145257b96a235"
+  },
+  "checkpoint_blake3": [
+    [
+      "model-00001-of-00004.safetensors",
+      "c203a930f3040b708655524f6d6ea01d9319667124c454f3774f552ef32bc1f2"
+    ],
+    [
+      "model-00002-of-00004.safetensors",
+      "52dde308c154695e865b94f48972477cc55f62a9fa7a585c7922d9f4f43f028c"
+    ],
+    [
+      "model-00003-of-00004.safetensors",
+      "395abf861f388a7c8c43c52202e9020acf2c427ac4510827e426a29970006fa6"
+    ],
+    [
+      "model-00004-of-00004.safetensors",
+      "24de7e174df7286fae317ab5ae22c980571935c70d8b034777941b114630074b"
+    ]
+  ],
+  "checkpoint_sha256": {
+    "model-00001-of-00004.safetensors": "f8b9704ab09cdeb097aa4a0a24bca96f906eec36bad63ab495bc21475058601b",
+    "model-00002-of-00004.safetensors": "c28b25e7541751056ee126627e007f8d4288319733285e9f7b17b9ff6eb313f0",
+    "model-00003-of-00004.safetensors": "d8e9504dd4e4a146d484c52a97584ec14dac92237c46b064934af67a85e7d383",
+    "model-00004-of-00004.safetensors": "e4486f35c040f683f7d790354f66c169c109eb9fa0954a4a35d7c458a108405d"
+  },
+  "calibration_report_sha256": "93382568df77ce3546fed03f88e9377df58383beedebe4efc9a459f1bebaa318",
+  "statistics_digest": "432dbac32234d087655e013698e0f955be3188090848ed1090d645838a0198f8",
+  "selection_digest": "8c7f3d086b03487c1f4503b9e1967470c70b90f4407b589a86900246e824fc52",
+  "profile": "Servable",
+  "scales": "affine",
+  "alpha": "1/2",
+  "artifact_bytes": 8032307955,
+  "artifact_sha256": "364c633550d773e4c14d8be98c5a81fd859a2cd9a417a07d5c391d155286f1ca",
+  "artifact_envelope_digest": "e0408c73164ae09647726775462985302b8668b797ab94aac6ce282f8ce5ab59",
+  "weight_tensors": 226,
+  "weight_entries": 8029995008,
+  "full_weight_and_metadata_readback": true,
+  "seconds": 256.60225133399945,
+  "process_peak_rss_bytes": 29738893312,
+  "rss_units": "bytes on Darwin; KiB on Linux"
+}

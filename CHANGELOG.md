@@ -12,6 +12,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Added
 
+- Full pinned Llama-3.1-8B calibration metadata, all 16 existing-policy scale preflights and one fixed diagnostic INT8 artifact with complete readback/Rust geometry checks, with private statistics and weights outside the checkout; no fidelity or real-proof claim (RFC-0005/0025/0038, [#633](https://github.com/AbdelStark/tessera/issues/633)).
+
 - Complete E0 real-1B runtime/planner sizing: the current CPU zero-lookup floor is 2.56–3.80 TiB over nine cases, with independent recount and ten corruptions caught; no production selection, measured peak or proof capability change (EXP-0030, [#627](https://github.com/AbdelStark/tessera/issues/627)).
 
 - A repository tool for bounded, bit-preserving BF16 tied-head checkpoint preparation, with exact configuration lexemes, checked shards, private staged output and complete streaming verification; the [real-model ramp guide](docs/models/real-model-ramp.md) pins the 1B/8B sources and records the unresolved real-proof and fidelity obligations (RFC-0005, TB-5, [#623](https://github.com/AbdelStark/tessera/issues/623)).
