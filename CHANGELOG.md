@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Bound public graph/range validation, runtime source setup, replay input checks and grouped-column transfers from allocation requests, including repeated coverage walks and position-vector overlap; preserve validation and the CPU admission floor (RFC-0006/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Bound public source/gadget construction metadata from allocator-request counts, including complete root relations, wide requantization, Softmax cores/slack forms and malformed Requant role payloads; keep runtime/replay/tile work and CPU admission separate (RFC-0018/0050, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Plan computed score query/key/maximum buffers from public tensor geometry, reserve raw INT8 inputs exactly and clear them after padding; account for short contexts, GQA and conversion overlap separately from other native work (RFC-0056, [#641](https://github.com/AbdelStark/tessera/issues/641)).

@@ -57,7 +57,7 @@ pub use lower::{
     positions_values, settle, validate,
 };
 pub use plan::{ExecutionPlan, QueryBlock, SequenceTile, Share, Tile, check_plan, plan, tiles};
-pub use range::{HALF_FIELD, Range, Ranges, analyze, analyze_fragment};
+pub use range::{HALF_FIELD, Range, Ranges, analysis_memory_bytes, analyze, analyze_fragment};
 pub use report::{
     CommitmentReport, Growth, Holding, SCHEMA as REPORT_SCHEMA, StageTables, TableClass, TableUse,
     Tally, report, stage_count,
