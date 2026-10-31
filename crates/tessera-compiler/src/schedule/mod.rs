@@ -53,6 +53,7 @@ mod claims;
 mod degree;
 mod layers;
 pub mod masks;
+mod memory;
 mod natives;
 mod padding;
 mod public;

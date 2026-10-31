@@ -1933,6 +1933,7 @@ dependencies = [
 name = "tessera-compiler"
 version = "0.1.0"
 dependencies = [
+ "allocation-counter",
  "proptest",
  "serde_json",
  "tessera-codec",

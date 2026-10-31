@@ -39,6 +39,7 @@ pub mod anchor;
 mod claim;
 mod error;
 mod lower;
+mod memory;
 mod plan;
 mod range;
 mod report;

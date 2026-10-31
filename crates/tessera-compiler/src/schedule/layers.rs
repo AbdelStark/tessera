@@ -55,6 +55,31 @@ pub struct LayerMap {
 }
 
 impl LayerMap {
+    /// Requested heap bytes owned by the layer map, including nested spare
+    /// capacity (RFC-0037/0018). Excludes the inline object, construction scratch
+    /// and allocator overhead. Does not allocate or validate; returns `None`
+    /// if a checked byte count or sum overflows.
+    pub fn heap_bytes(&self) -> Option<u64> {
+        let Self {
+            count: _,
+            vars: _,
+            first: _,
+            width: _,
+            inputs,
+            checkpoints,
+            last_output: _,
+            uniform,
+        } = self;
+        let array = |n: usize, size: usize| (n as u64).checked_mul(size as u64);
+        let mut bytes = array(inputs.capacity(), size_of::<Vec<Kind>>())?
+            .checked_add(array(checkpoints.capacity(), size_of::<TensorId>())?)?
+            .checked_add(array(uniform.capacity(), size_of::<bool>())?)?;
+        for values in inputs {
+            bytes = bytes.checked_add(array(values.capacity(), size_of::<Kind>())?)?;
+        }
+        Some(bytes)
+    }
+
     /// The layers of `lowering`'s graph, from its checkpoints: [`LayerMap::of`].
     ///
     /// # Errors
