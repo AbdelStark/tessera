@@ -300,3 +300,19 @@ and instrumentation overhead, input preparation and other proof phases still nee
 separate charges. This helper does not change CPU admission or qualify a real-model
 whole-process budget. Physical measurements run on one engine thread so the counting
 allocator observes every buffer allocation under test.
+
+## Engine table loading
+
+`Engine::table_memory` plans the sequential table loader's requested buffers
+without building a core or reading model data. It charges the full id-indexed
+registry, cloned class vectors, dense lookup cores and RoPE's `d_head/2` stored
+`u128` frequencies. RoPE computes position pairs on demand; its logical pair
+count is not retained storage. The registry and frequencies reserve exact capacities.
+The table digest's one `u64` Exp zero-tail piece coexists with the loaded cores.
+
+All supplied payloads are summed, including duplicate ids: replacement constructs
+the new table while the previous table remains live. This conservatively bounds
+both retained storage and replacement overlap. Graph validation, thread runtime,
+allocator bookkeeping, borrowed specifications and every other proof phase remain
+separate. This helper authenticates neither table parameters nor their digests and
+does not change CPU admission.

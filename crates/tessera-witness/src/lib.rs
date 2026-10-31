@@ -72,7 +72,7 @@ mod tile;
 pub use checkpoint::Checkpoints;
 pub use engine::{Engine, SecretGraphInputs, Witness};
 pub use error::WitnessError;
-pub use memory::CheckpointMemory;
+pub use memory::{CheckpointMemory, TableMemory};
 pub use multiplicity::{MultiplicityColumn, MultiplicityPlan};
 pub use source::{Regenerator, Resident, WitnessSource};
 pub use tensors::{CheckpointTensors, TensorSource};

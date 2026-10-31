@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Public buffer bounds for canonical tokens, checkpoints and the nonweight tensor cache.
+//! Public buffer bounds for table loading and token/checkpoint/cache construction.
 
 use tessera_codec::SecretBuf;
 use tessera_compiler::Lowering;
@@ -258,6 +258,111 @@ mod tests {
             });
             assert_eq!(allocations.count_total, 0);
             assert_eq!(result.unwrap(), Err(WitnessError::Memory { tensor }));
+        }
+    }
+}
+
+/// Requested heap buffers owned by the engine's sequential table loader.
+/// Input specifications are borrowed; loaded tables own their cloned class vectors,
+/// dense lookup cores or RoPE frequencies. Registry gaps and duplicate specifications
+/// are charged. Graph validation, thread-runtime/stack storage and allocator overhead
+/// remain separate. This is an upper bound, not table/digest authentication or CPU admission.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TableMemory {
+    retained: u64,
+    peak: u64,
+}
+
+impl TableMemory {
+    pub(crate) fn new(tables: &[tessera_tables::TableSpec], registry_entry: u64) -> Result<Self> {
+        use tessera_tables::{GeneratedTable, TableKind};
+        let context = tables
+            .iter()
+            .max_by_key(|t| t.id.0)
+            .map_or(tessera_ir::TableId(0), |t| t.id);
+        let fail = || WitnessError::MemoryTable { table: context };
+        let slots = tables
+            .iter()
+            .map(|t| u64::from(t.id.0) + 1)
+            .max()
+            .unwrap_or(0);
+        let registry = slots.checked_mul(registry_entry).ok_or_else(fail)?;
+        if usize::try_from(slots).is_err() || registry > isize::MAX as u64 {
+            return Err(fail());
+        }
+        let mut retained = registry;
+        let mut digest_scratch = 0;
+        for table in tables {
+            let (values, width, classes) = match &table.kind {
+                // RopeConstants keeps one u128 frequency per pair of head dimensions,
+                // not max_context*d_head/2 cosine/sine pairs (RFC-0008).
+                TableKind::Rope { d_head, .. } => (u64::from(d_head / 2), 16, 0),
+                kind => {
+                    let values = GeneratedTable::core_storage_len(kind).map_err(|error| {
+                        WitnessError::Table {
+                            table: table.id,
+                            error,
+                        }
+                    })?;
+                    let classes = match kind {
+                        TableKind::Requant { r_by_class, .. }
+                        | TableKind::Silu { r_by_class, .. } => r_by_class.len() as u64,
+                        _ => 0,
+                    };
+                    if matches!(kind, TableKind::Exp { .. }) {
+                        digest_scratch = 8; // one u64 zero-tail piece beside all completed cores.
+                    }
+                    (values, 8, classes)
+                }
+            };
+            let bytes = values.checked_mul(width).ok_or_else(fail)?;
+            if usize::try_from(values).is_err() || bytes > isize::MAX as u64 {
+                return Err(fail());
+            }
+            retained = retained
+                .checked_add(bytes)
+                .and_then(|n| n.checked_add(classes))
+                .ok_or_else(fail)?;
+        }
+        // Sum every supplied payload, including duplicates: replacement constructs
+        // the new table before dropping the previous one. Digest work allocates no
+        // other buffers; the incremental hasher and fixed-point generators are inline.
+        let peak = retained.checked_add(digest_scratch).ok_or_else(fail)?;
+        Ok(Self { retained, peak })
+    }
+
+    /// Registry descriptors plus all supplied owned table payloads, including duplicates.
+    pub fn retained_bytes(self) -> u64 {
+        self.retained
+    }
+
+    /// Conservative simultaneous requested buffers during sequential table loading.
+    pub fn peak_bytes(self) -> u64 {
+        self.peak
+    }
+}
+
+#[cfg(test)]
+mod table_memory_tests {
+    use super::*;
+    use tessera_tables::{TableId, TableKind, TableSpec};
+
+    #[test]
+    fn registry_address_and_product_overflow_refuse_without_allocating() {
+        for (id, entry) in [(0, isize::MAX as u64 + 1), (3, 1u64 << 62)] {
+            let tables = [TableSpec {
+                id: TableId(id),
+                kind: TableKind::Range { bits: 1 },
+                log2_rows: 1,
+                digest: [0; 32],
+            }];
+            let measured = allocation_counter::measure(|| {
+                assert_eq!(
+                    TableMemory::new(&tables, entry),
+                    Err(WitnessError::MemoryTable { table: TableId(id) })
+                )
+            });
+            assert_eq!(measured.count_total, 0);
         }
     }
 }

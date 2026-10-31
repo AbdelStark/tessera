@@ -122,12 +122,42 @@ impl<'a> Engine<'a> {
         graph.validate().map_err(|_| WitnessError::Usage {
             rule: "the graph follows RFC-0006 'Operation set'",
         })?;
+        let loaded_tables = Self::load_tables(tables)?;
+        let threads = thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
+        Ok(Self {
+            graph,
+            lowering: None,
+            tables: loaded_tables,
+            threads,
+        })
+    }
+
+    // Keep table loading separate from graph validation and platform thread discovery:
+    // its buffer bound covers this constructor, not OS/runtime allocations.
+    fn load_tables(tables: &[TableSpec]) -> Result<Vec<Option<Loaded>>, WitnessError> {
+        // Check registry addressability without pre-validating later specifications:
+        // constructors must retain their original first-error order.
         let count = tables
             .iter()
-            .map(|t| t.id.0 as usize + 1)
+            .map(|t| u64::from(t.id.0) + 1)
             .max()
             .unwrap_or(0);
-        let mut loaded_tables: Vec<Option<Loaded>> = (0..count).map(|_| None).collect();
+        let count = usize::try_from(count).map_err(|_| WitnessError::MemoryTable {
+            table: tables
+                .iter()
+                .max_by_key(|t| t.id.0)
+                .map_or(TableId(0), |t| t.id),
+        })?;
+        let mut loaded_tables: Vec<Option<Loaded>> = Vec::new();
+        loaded_tables
+            .try_reserve_exact(count)
+            .map_err(|_| WitnessError::MemoryTable {
+                table: tables
+                    .iter()
+                    .max_by_key(|t| t.id.0)
+                    .map_or(TableId(0), |t| t.id),
+            })?;
+        loaded_tables.resize_with(count, || None);
         for spec in tables {
             let fail = |error| WitnessError::Table {
                 table: spec.id,
@@ -140,13 +170,18 @@ impl<'a> Engine<'a> {
             };
             loaded_tables[spec.id.0 as usize] = Some(loaded);
         }
-        let threads = thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
-        Ok(Self {
-            graph,
-            lowering: None,
-            tables: loaded_tables,
-            threads,
-        })
+        Ok(loaded_tables)
+    }
+
+    /// Plan the table loader's owned buffers from public specifications, without allocation.
+    /// This charges registry gaps, cloned class vectors, lookup cores, RoPE frequencies
+    /// and digest scratch. Graph validation, thread runtime and allocator overhead are
+    /// separate; invalid specifications still require the constructor's validation.
+    ///
+    /// # Errors
+    /// Invalid lookup parameters, or overflowing/unaddressable buffer geometry.
+    pub fn table_memory(tables: &[TableSpec]) -> Result<crate::TableMemory, WitnessError> {
+        crate::TableMemory::new(tables, size_of::<Option<Loaded>>() as u64)
     }
 
     /// Checked owned-buffer bounds for canonical tokens, checkpoints and tensor-cache
@@ -1360,5 +1395,239 @@ mod window_regeneration_tests {
                 "regenerated tensor {i} must be recomputed"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod table_memory_tests {
+    use super::*;
+    use tessera_codec::Rational;
+
+    fn rope() -> TableKind {
+        TableKind::Rope {
+            theta: 500_000,
+            factor: 8,
+            low_freq_factor: 1,
+            high_freq_factor: 4,
+            original_max: 8192,
+            bits: 16,
+            max_context: 3,
+            d_head: 6,
+        }
+    }
+    fn spec(id: u32, kind: TableKind) -> TableSpec {
+        if matches!(kind, TableKind::Rope { .. }) {
+            RopeTable::new(TableId(id), kind).unwrap().spec().clone()
+        } else {
+            GeneratedTable::new(TableId(id), kind)
+                .unwrap()
+                .spec()
+                .clone()
+        }
+    }
+
+    #[test]
+    fn table_loader_bounds_cover_gaps_classes_rope_digest_and_replacement() {
+        let range = spec(0, TableKind::Range { bits: 32 });
+        let exp = spec(
+            0,
+            TableKind::Exp {
+                key_bits: 8,
+                sigma: 4,
+                scale: Rational::new(1, 1).unwrap(),
+            },
+        );
+        let exp_values = GeneratedTable::from_spec(&exp)
+            .unwrap()
+            .storage_bytes()
+            .unwrap()
+            - size_of::<GeneratedTable>();
+        let silu = spec(
+            3,
+            TableKind::Silu {
+                b: 8,
+                r_by_class: vec![1, 3, 6],
+                in_exp: -10,
+                out_exp: -4,
+            },
+        );
+        let rq = spec(
+            7,
+            TableKind::Requant {
+                b: 8,
+                r_by_class: vec![1, 3],
+                lo: -128,
+                hi: 127,
+            },
+        );
+        // The caller's spare class capacity must not be cloned or charged as loaded storage.
+        let mut rq = rq;
+        if let TableKind::Requant { r_by_class, .. } = &mut rq.kind {
+            r_by_class.reserve_exact(100);
+        }
+        let rope = spec(1, rope());
+        let mut old = exp.clone();
+        old.id = TableId(1);
+        old = spec(1, old.kind);
+        for (tables, retained, exact, extra) in [
+            (vec![], 0, true, 0),
+            (
+                vec![spec(
+                    0,
+                    TableKind::Exp2Frac {
+                        frac_bits: 8,
+                        out_bits: 8,
+                    },
+                )],
+                size_of::<Option<Loaded>>() + 256 * 8,
+                true,
+                0,
+            ),
+            (
+                vec![spec(0, TableKind::Pow2 { max_exp: 63 })],
+                size_of::<Option<Loaded>>(),
+                true,
+                0,
+            ),
+            (
+                vec![spec(0, TableKind::AesSbox)],
+                size_of::<Option<Loaded>>(),
+                true,
+                0,
+            ),
+            (
+                vec![spec(0, TableKind::Gf256Mul { c: 3 })],
+                size_of::<Option<Loaded>>(),
+                true,
+                0,
+            ),
+            (
+                vec![spec(
+                    0,
+                    TableKind::Bitwise8 {
+                        op: tessera_tables::BitOp::Xor,
+                    },
+                )],
+                size_of::<Option<Loaded>>(),
+                true,
+                0,
+            ),
+            (vec![range], size_of::<Option<Loaded>>(), true, 0),
+            (vec![exp], size_of::<Option<Loaded>>() + exp_values, true, 8),
+            (
+                vec![rope.clone()],
+                2 * size_of::<Option<Loaded>>() + 3 * 16,
+                true,
+                0,
+            ),
+            (
+                vec![silu, rq, rope.clone()],
+                8 * size_of::<Option<Loaded>>() + (128 + 32 + 4) * 8 + 3 + 2 + 3 * 16,
+                true,
+                0,
+            ),
+            (
+                vec![old, rope],
+                2 * size_of::<Option<Loaded>>() + exp_values + 3 * 16,
+                false,
+                8,
+            ),
+        ] {
+            let mut plan = None;
+            let planning =
+                allocation_counter::measure(|| plan = Some(Engine::table_memory(&tables).unwrap()));
+            assert_eq!(planning.count_total, 0);
+            let plan = plan.unwrap();
+            assert_eq!(plan.retained_bytes(), retained as u64);
+            assert_eq!(plan.peak_bytes(), (retained + extra) as u64);
+            let mut loaded = None;
+            let measured = allocation_counter::measure(|| {
+                loaded = Some(Engine::load_tables(&tables).unwrap())
+            });
+            let loaded = loaded.unwrap();
+            assert_eq!(loaded.capacity(), loaded.len());
+            assert!(u64::try_from(measured.bytes_current).unwrap() <= plan.retained_bytes());
+            assert!(
+                measured.bytes_max <= plan.peak_bytes(),
+                "{measured:?} {plan:?}"
+            );
+            if exact {
+                assert_eq!(
+                    u64::try_from(measured.bytes_current).unwrap(),
+                    plan.retained_bytes()
+                );
+            }
+            // Single Exp pins the digest piece while its complete core is live.
+            if tables.len() == 1 && extra == 8 {
+                assert_eq!(measured.bytes_max, plan.peak_bytes());
+            }
+        }
+    }
+
+    #[test]
+    fn table_loading_keeps_the_first_constructor_error_before_later_parameter_errors() {
+        let mut first = spec(0, TableKind::Range { bits: 8 });
+        first.digest[0] ^= 1;
+        let later = TableSpec {
+            id: TableId(1),
+            kind: TableKind::Range { bits: 0 },
+            log2_rows: 0,
+            digest: [0; 32],
+        };
+        assert!(matches!(
+            Engine::load_tables(&[first, later]),
+            Err(WitnessError::Table {
+                table: TableId(0),
+                error: tessera_tables::TableError::Digest
+            })
+        ));
+    }
+
+    #[test]
+    fn large_table_geometry_and_invalid_lookup_are_planned_without_allocating() {
+        let mut large_rope = rope();
+        if let TableKind::Rope {
+            d_head,
+            max_context,
+            ..
+        } = &mut large_rope
+        {
+            *d_head = u16::MAX - 1;
+            *max_context = 1;
+        }
+        let tables = [TableSpec {
+            id: TableId(9),
+            kind: large_rope,
+            log2_rows: 24,
+            digest: [0; 32],
+        }];
+        let measured = allocation_counter::measure(|| {
+            let plan = Engine::table_memory(&tables).unwrap();
+            assert_eq!(
+                plan.retained_bytes(),
+                (10 * size_of::<Option<Loaded>>() + usize::from(u16::MAX / 2) * 16) as u64
+            );
+            assert_eq!(plan.peak_bytes(), plan.retained_bytes());
+        });
+        assert_eq!(measured.count_total, 0);
+        let bad = [TableSpec {
+            id: TableId(2),
+            kind: TableKind::Range { bits: 0 },
+            log2_rows: 0,
+            digest: [0; 32],
+        }];
+        let measured = allocation_counter::measure(|| {
+            assert_eq!(
+                Engine::table_memory(&bad),
+                Err(WitnessError::Table {
+                    table: TableId(2),
+                    error: tessera_tables::TableError::Parameter {
+                        kind: "Range",
+                        rule: "1 ≤ bits ≤ 32"
+                    }
+                })
+            )
+        });
+        assert_eq!(measured.count_total, 0);
     }
 }
