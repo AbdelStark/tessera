@@ -236,3 +236,36 @@ fn oversized_batch_layout_is_refused_with_layout_error() {
         Err(PcsError::Layout { .. })
     ));
 }
+
+#[test]
+fn slotted_layout_heap_plan_counts_slot_lengths_and_all_nested_runs() {
+    let params = sample_params(6, 4);
+    let lengths = vec![5, 2, 6];
+    let tiles = vec![TileShape {
+        layer: Some(0),
+        values: vec![TensorShape::Dense(DenseShape::with_slots(
+            vec![Axis::new(24), Axis::new(64)],
+            Padding::Zero,
+            0,
+            8,
+            lengths.clone(),
+        ))],
+    }];
+    let mut layout = None;
+    let info = allocation_counter::measure(|| {
+        layout = Some(AdviceLayout::new_batch(params, 8, &lengths, &tiles).unwrap());
+    });
+    let layout = layout.unwrap();
+    assert_eq!(
+        layout.heap_bytes(),
+        Some(usize::try_from(info.bytes_current).unwrap())
+    );
+    let mut clone = None;
+    let copied = allocation_counter::measure(|| clone = Some(layout.clone()));
+    let clone = clone.unwrap();
+    assert_eq!(
+        clone.heap_bytes(),
+        Some(usize::try_from(copied.bytes_current).unwrap())
+    );
+    assert!(clone.heap_bytes().unwrap() <= layout.heap_bytes().unwrap());
+}

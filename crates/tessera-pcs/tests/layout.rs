@@ -1693,3 +1693,34 @@ fn the_attention_geometry_is_rfc_0034s() {
     // Both kinds of tile occur: of one row, and of several.
     assert_eq!(seen.len(), 2);
 }
+
+/// Physical retained allocations are an independent oracle for nested public layout storage.
+#[test]
+fn layout_heap_plan_counts_every_retained_vector_and_its_clone() {
+    let mut rng = SplitMix64::new(0x0641_0010);
+    let mut seen = Seen::default();
+    for _ in 0..200 {
+        let model = model(&mut rng, 1 << 13);
+        let mut layout = None;
+        let info = allocation_counter::measure(|| {
+            layout = Some(AdviceLayout::new(model.params, model.positions, &model.tiles).unwrap());
+        });
+        let layout = layout.unwrap();
+        seen.tally(&model, &layout);
+        let mut bytes = None;
+        let planning = allocation_counter::measure(|| bytes = layout.heap_bytes());
+        assert_eq!(planning.count_total, 0);
+        let bytes = bytes.unwrap();
+        assert_eq!(usize::try_from(info.bytes_current).unwrap(), bytes);
+        let mut copied = None;
+        let info = allocation_counter::measure(|| copied = Some(layout.clone()));
+        let copied = copied.unwrap();
+        assert_eq!(
+            copied.heap_bytes(),
+            Some(usize::try_from(info.bytes_current).unwrap())
+        );
+        assert!(copied.heap_bytes().unwrap() <= bytes);
+        assert_eq!(copied, layout);
+    }
+    seen.check();
+}

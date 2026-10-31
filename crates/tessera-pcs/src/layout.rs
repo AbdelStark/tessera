@@ -1003,6 +1003,34 @@ pub struct AdviceLayout {
 }
 
 impl AdviceLayout {
+    /// Requested heap bytes retained by this public layout, including all nested
+    /// vectors. A cloned layout uses no more: its vectors reserve their lengths,
+    /// which are bounded by these capacities. Does not include the inline struct,
+    /// source tile shapes, construction scratch or allocator bookkeeping.
+    /// Returns `None` on byte-count overflow.
+    pub fn heap_bytes(&self) -> Option<usize> {
+        fn vector<T>(v: &Vec<T>) -> Option<usize> {
+            v.capacity().checked_mul(size_of::<T>())
+        }
+        let mut bytes = vector(&self.tensors)?
+            .checked_add(vector(&self.tiles)?)?
+            .checked_add(vector(&self.segments)?)?;
+        if let Some(lengths) = &self.attention.slot_lengths {
+            bytes = bytes.checked_add(vector(lengths)?)?;
+        }
+        for tensor in &self.tensors {
+            bytes = bytes.checked_add(vector(&tensor.nonzero)?)?;
+            if let Geometry::Dense { axes, order } = &tensor.geometry {
+                bytes = bytes
+                    .checked_add(vector(axes)?)?
+                    .checked_add(vector(order)?)?;
+            }
+        }
+        for segment in &self.segments {
+            bytes = bytes.checked_add(vector(&segment.nonzero)?)?;
+        }
+        Some(bytes)
+    }
     /// The layout of a sequence of `positions` whose tiles, in production order (RFC-0041
     /// 'Production order'), are `tiles`, under `params`.
     ///

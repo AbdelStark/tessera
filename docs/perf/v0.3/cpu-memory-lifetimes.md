@@ -245,3 +245,15 @@ synthetic 1B-width fixture with 193 draws plans 94,306,424 bytes for P5-owned st
 without allocating large buffers. Caller P1/layout, encoder, mask/source row, retained
 Round2, allocator overhead and other phases remain additional. Complete CPU admission
 and real-model proof qualification remain pending.
+
+## Public layout retention
+
+`AdviceLayout::heap_bytes` counts the capacities of its placement, tile and segment
+arrays, slot lengths, dense axes/order and all nonzero-row runs. The cloned layout
+retained by P1 allocates each vector at its length, so the original footprint also
+bounds that copy. Count both while they coexist. Physical allocation tests cover
+200 generated layouts plus slotted batches, originals and clones, including spare
+capacity. The helper allocates nothing and returns `None` on checked-count overflow.
+
+This is retained requested heap only. Inline structs, caller tile shapes, constructor
+scratch and allocator overhead remain separate; the helper does not admit a CPU route.
