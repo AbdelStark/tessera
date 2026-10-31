@@ -817,18 +817,15 @@ impl<'a> CpuBackend<'a> {
             weight_combined,
             scoring,
         };
-        let size = |bytes: Vec<u8>| bytes.len() as u64;
-        metrics::proof_bytes(
-            metrics::ProofPart::Sumcheck,
-            size(tessera_codec::encode(&round2.logup))
-                + size(tessera_codec::encode(&round2.trees))
-                + size(tessera_codec::encode(&round2.stages)),
-        );
-        metrics::proof_bytes(
-            metrics::ProofPart::Openings,
-            size(tessera_codec::encode(&round2.advice_combined))
-                + size(tessera_codec::encode(&round2.weight_combined)),
-        );
+        let mut sumcheck_size = EncodedSize::default();
+        sumcheck_size.add(&round2.logup);
+        sumcheck_size.add(&round2.trees);
+        sumcheck_size.add(&round2.stages);
+        metrics::proof_bytes(metrics::ProofPart::Sumcheck, sumcheck_size.finish());
+        let mut opening_size = EncodedSize::default();
+        opening_size.add(&round2.advice_combined);
+        opening_size.add(&round2.weight_combined);
+        metrics::proof_bytes(metrics::ProofPart::Openings, opening_size.finish());
         let shape = protocol::QueryShape {
             advice_count: p.cfg.params.advice_queries,
             advice_len: encoder.codeword_len() as u64,
@@ -1033,10 +1030,7 @@ impl ProverEngine for CpuBackend<'_> {
         };
         metrics::phase(metrics::Phase::Round3, answering.elapsed());
         metrics::pass(Pass::P5, answering.elapsed());
-        metrics::proof_bytes(
-            metrics::ProofPart::Columns,
-            tessera_codec::encode(&round3).len() as u64,
-        );
+        metrics::proof_bytes(metrics::ProofPart::Columns, EncodedSize::of(&round3));
         Ok(round3)
     }
     fn leaf_groups(&self) -> protocol::LeafGroups {

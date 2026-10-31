@@ -887,6 +887,39 @@ fn public_cpu_api_selects_real_stage_windows_under_budget() {
                         expected
                     );
                     let proof = proof.unwrap();
+                    // 05 §4: independently materialize the published parts after measuring
+                    // the prover peak; these test-only buffers are outside that measurement.
+                    for (part, bytes) in [
+                        ("round1", tessera_codec::encode(&proof.round1).len()),
+                        (
+                            "sumcheck",
+                            tessera_codec::encode(&proof.round2.logup).len()
+                                + tessera_codec::encode(&proof.round2.trees).len()
+                                + tessera_codec::encode(&proof.round2.stages).len(),
+                        ),
+                        (
+                            "openings",
+                            tessera_codec::encode(&proof.round2.advice_combined).len()
+                                + tessera_codec::encode(&proof.round2.weight_combined).len(),
+                        ),
+                        ("columns", tessera_codec::encode(&proof.round3).len()),
+                    ] {
+                        let metric = samples
+                            .iter()
+                            .find(|sample| {
+                                sample.name == "tessera_proof_bytes"
+                                    && sample
+                                        .labels
+                                        .iter()
+                                        .any(|(key, value)| *key == "part" && value == part)
+                            })
+                            .expect("every proof-byte part is recorded");
+                        assert_eq!(
+                            metric.value,
+                            tessera_codec::metrics::Value::Gauge(bytes as f64),
+                            "published {part} bytes equal the complete canonical encoding"
+                        );
+                    }
                     let decoded = tv_codec::decode(
                         &tessera_codec::encode(&proof),
                         &tv_codec::DecodeLimits::MESSAGE,

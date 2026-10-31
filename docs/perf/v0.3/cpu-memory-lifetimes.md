@@ -134,6 +134,16 @@ allocations, retained engine cores, descriptors and constructor overlap remain
 separate charges. A backing plan authenticates neither arbitrary supplied metadata
 nor a host budget. CPU admission and the resident-cell floor remain unchanged.
 
+## Proof-byte metrics
+
+The CPU driver counts existing TCE encoders' writes into a private size sink for
+Round1, the same sumcheck/opening parts of Round2, and Round3. It retains no encoded
+output buffer for those measurements. Labels and part membership stay the same.
+The metrics-only sum saturates at `u64::MAX` and cannot change session state or
+serve as an allocation bound. Allocations inside an encoder, retained proof
+messages and final packet publication remain separate costs. The CLI's envelope
+encoding is not removed by this change.
+
 ## Evidence required before changing admission
 
 The tensor tests compare every graph tensor with the existing resident engine,
