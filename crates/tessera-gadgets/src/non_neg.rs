@@ -35,6 +35,15 @@ pub struct NonNeg {
 }
 
 impl NonNeg {
+    pub(crate) fn heap_bytes(&self) -> Option<usize> {
+        self.limb
+            .iter()
+            .chain(core::iter::once(&self.top))
+            .try_fold(0usize, |sum, table| {
+                sum.checked_add(crate::storage::table(table)?)
+            })
+    }
+
     /// `NonNeg` for `v ∈ [0, 2^bits)` with limbs of `limb_bits` bits (`GadgetPolicy.limb_bits`,
     /// RFC-0007), its tables `Range { L }` (when `n ≥ 2`) and `Range { k − (n−1)L }` among
     /// `tables`.

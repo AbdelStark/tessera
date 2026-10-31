@@ -105,6 +105,16 @@ impl fmt::Debug for Regenerator<'_> {
 }
 
 impl<'a> Regenerator<'a> {
+    /// Requested owned public metadata, including gadget templates and their nested
+    /// capacities. Borrowed engine/model/tokens/checkpoints, constructor scratch and
+    /// each returned tile are separate. Returns `None` on overflow; allocates nothing.
+    pub fn metadata_bytes(&self) -> Option<usize> {
+        self.replay
+            .structure
+            .heap_bytes()?
+            .checked_add(self.gadgets.heap_bytes()?)
+    }
+
     /// Regenerate one graph tensor's real positions, flat and row-major, from the checkpoints.
     /// This is the reference engine's integer tensor, before field conversion or PCS padding.
     /// The returned clearing buffer owns its allocation; the source caches no regenerated value.
@@ -313,6 +323,15 @@ impl fmt::Debug for Resident<'_> {
 }
 
 impl<'a> Resident<'a> {
+    /// Requested owned public metadata, including gadget templates and their nested
+    /// capacities. Borrowed engine/model/tensors, constructor scratch and each returned
+    /// tile are separate. Returns `None` on overflow; allocates nothing.
+    pub fn metadata_bytes(&self) -> Option<usize> {
+        self.structure
+            .heap_bytes()?
+            .checked_add(self.gadgets.heap_bytes()?)
+    }
+
     /// Cut complete exact-greedy runtime advice from the first CPU pass. Maximum advice
     /// remains separate from graph shares; table counts include every certificate key.
     ///

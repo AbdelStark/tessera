@@ -339,3 +339,26 @@ P2/native/window state, runtime and allocator overhead also remain separate.
 Physical tests assert exact retained bytes and compare the observed constructor
 peak with this owned bound plus a separately measured fixture source peak. That
 fixture measurement is not a public tile bound and cannot admit the real CPU route.
+
+## Retained source and gadget templates
+
+`Requant::heap_bytes`, `RsqrtRow::heap_bytes` and `SoftmaxRow::heap_bytes`
+count their requested owned template heap without allocating or reading witness
+values. Inline descriptors are excluded. Wide requantization includes its box and
+every owned table role, even when two roles have the same table id. Root templates
+include both comparisons' bound/carry vectors and table capacities. Softmax includes
+its dense Exp core. Cloned templates are measured separately; these counts do not
+predict constructor scratch or scalar witness generation.
+
+`Resident::metadata_bytes` and `Regenerator::metadata_bytes` count retained
+structure arrays, templates, boxed auxiliary descriptors, nested constraint forms,
+request/read/row arrays, runtime key columns and grouped-column capacity. The
+regenerator borrows its tokens and checkpoints; the resident source borrows its
+tensors. Neither owns another copy of those buffers. Physical allocation tests
+compare the counts with constructor retention for every conformance model, ordinary
+and slotted runtime sources, and an empty grouping vector with spare capacity.
+
+These are retained requested bytes, measured after construction. Borrowed inputs,
+constructor temporaries, each returned tile, replay/gadget witness work, stack and
+allocator/runtime overhead still require separate charges. The complete phase bound,
+CPU admission change and real-model proof remain pending.

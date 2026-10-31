@@ -131,6 +131,15 @@ pub struct SoftmaxRow {
 }
 
 impl SoftmaxRow {
+    /// Requested owned heap of this public template's table payloads, including
+    /// the dense Exp core. Excludes inline `Self`, constructor scratch and every
+    /// secret witness (RFC-0018). Returns `None` on size overflow; allocates nothing.
+    pub fn heap_bytes(&self) -> Option<usize> {
+        crate::storage::table(&self.exp)?
+            .checked_add(crate::storage::table(&self.reciprocal)?)?
+            .checked_add(self.non_neg.heap_bytes()?)
+    }
+
     /// Build from an Exp table and the reciprocal/NonNeg Range specifications in `tables`.
     /// `max_context` is the model's public bound, not a prover-supplied row length.
     ///

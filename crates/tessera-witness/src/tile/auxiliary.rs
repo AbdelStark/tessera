@@ -80,6 +80,29 @@ fn softmax_role(column: SoftmaxColumn) -> Result<AuxColumn, WitnessError> {
 }
 
 impl Prepared {
+    pub(super) fn heap_bytes(&self) -> Option<usize> {
+        use super::memory::{affine, array, lookups};
+        match self {
+            Self::Root(value) => size_of::<Root>()
+                .checked_add(value.gadget.heap_bytes()?)?
+                .checked_add(lookups(&value.lookups)?)?
+                .checked_add(array::<(TableId, u64)>(value.rows.capacity())?),
+            Self::Softmax(value) => {
+                let bytes = size_of::<Softmax>()
+                    .checked_add(value.gadget.heap_bytes()?)?
+                    .checked_add(array::<SoftmaxColumn>(value.committed.capacity())?)?
+                    .checked_add(array::<SoftmaxLookup<Goldilocks>>(
+                        value.lookups.capacity(),
+                    )?)?
+                    .checked_add(array::<(TableId, u64)>(value.rows.capacity())?)?;
+                value.lookups.iter().try_fold(bytes, |sum, lookup| {
+                    sum.checked_add(affine(&lookup.key)?)?
+                        .checked_add(lookup.value.as_ref().map_or(Some(0), affine)?)
+                })
+            }
+        }
+    }
+
     pub(super) fn new(
         node: &Node,
         selection: &Selection,

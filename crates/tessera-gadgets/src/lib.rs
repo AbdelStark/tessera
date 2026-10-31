@@ -120,6 +120,7 @@ mod non_neg;
 mod requant;
 mod rsqrt;
 mod softmax;
+mod storage;
 mod vocab;
 mod witness;
 
