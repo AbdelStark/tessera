@@ -815,6 +815,12 @@ fn complete_runtime_cpu_proofs_discharge_original_sources_in_both_contexts() {
     );
 }
 
+// A real leaf/stage fixture kept narrow for allocation fault-injection controls.
+#[test]
+fn native_memory_counter_uses_real_leaf_claims_in_both_modes() {
+    check_complete(&bounded_model_named("tiny-2-servable"), 3, 18);
+}
+
 #[test]
 fn complete_cpu_leaf_and_mixed_softmax_graph_stages_preserve_all_sources_in_both_modes() {
     for name in [

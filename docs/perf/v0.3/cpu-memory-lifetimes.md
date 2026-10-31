@@ -492,3 +492,59 @@ canonical resident/cache borrowers; arbitrary TensorSource callback allocations,
 replay execution, source construction, retained input/template data, encoding,
 stack/runtime and allocator overhead remain outside their scope. The helpers do
 not admit the cached CPU route or replace the resident-cell floor.
+
+## Owned native construction and preparation
+
+`ModelNativePlan::memory(lowering, literal_scores)` derives three allocation-free
+bounds from matching public metadata. `construction_peak_bytes` covers retained
+native storage and constructor overlap; `prepared_peak_bytes` includes one initial
+prepare; `instance_bytes` adds the metadata requests of one instance per tag.
+The methods cover the ordinary computed-score representation and the literal
+oracle, and slotted batches always select the existing literal representation.
+
+Construction includes every owned raw field table, padding/causal mask, table/data
+container, coefficient/factor vector, fixed/point vector and Arc descriptor. Roots
+charge their original root/input columns, byte/top columns and residual table;
+Softmax retains its original maximum, reciprocal and average, plus either literal
+score/broadcast tables or the existing computed input peak. Integer/evaluation
+scratch uses equality halves or blocked evaluation storage, rather than charging
+a full quadratic table for the computed path. Canonical grouped point maps and
+token-axis analysis are included; arbitrary callback allocations are excluded.
+
+Preparation charges equality vectors and cache growth without assuming coincident
+Fiat–Shamir points. Runtime relations include time/vocabulary/output equality
+scratch, public coefficient vectors and term construction. Observe creates and
+clears two coefficient arrays even though it retains no public factors. The
+pinned hash-table estimate includes bucket/control/alignment requests throughout
+growth; allocation tests check it with distinct public keys. Instance metadata
+borrows tables and clones their term/factor descriptions; computed instances
+create no such borrowed-table vectors.
+
+These bounds exclude the already-owned public plan/lowering, leaf/model witnesses,
+sources, sumcheck/computed-round state, windows, claims/openings, stack/runtime and
+allocator overhead. They authenticate no input and do not admit a cached CPU
+route. The remaining phase/lifetime bound and real-model execution are still owed.
+
+
+## Computed score round state
+
+`ModelNativePlan::score_round_memory_bytes` charges both key and forest states
+for every Softmax family without assuming they run at different times. It uses
+matching public lowering geometry and allocates nothing. Slotted batches retain
+the literal representation and contribute zero computed round storage.
+
+One state charges its box and the growing point across all own variables. A key
+round additionally needs a cloned/extended low point, at most `Np` equality
+weights and two dimension-sized clearing folds. The transition after the last
+key binding allocates four full padded `[Lp, Hp, Np]` extension-field row arrays,
+the key equality weights and one dimension-sized fold. Row binding truncates
+these arrays without reducing their capacity; the bound retains their full size.
+The larger scratch phase is added to each state's persistent storage, and every
+state's bound is summed.
+
+Allocator assertions wrap start, each round and each bind in the existing
+literal/computed message differential, including padded layers/heads/positions,
+single-position contexts and dimensions large enough for key scratch to dominate.
+Retained native inputs, generic sumcheck wrappers/messages, output vectors,
+windows, stack/runtime and allocator overhead remain separate. No CPU route is
+admitted by this helper.

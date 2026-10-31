@@ -613,14 +613,29 @@ fn the_stages_read_a_grouped_stages_claims_at_its_merged_points() {
             }
             assert_eq!(claims.instances(), layout.instances().len());
             // The native relations take their targets at these points.
-            tessera_prover::native::ModelNativeProver::new(
-                &native,
-                &p.lowering,
-                actual,
-                witness,
-                &claims,
-            )
-            .unwrap();
+            let mut memory = None;
+            let planning = allocation_counter::measure(|| {
+                memory = Some(native.memory(&p.lowering, false).unwrap())
+            });
+            assert_eq!(planning.count_total, 0);
+            let memory = memory.unwrap();
+            let mut built = None;
+            let measured = allocation_counter::measure(|| {
+                built = Some(
+                    tessera_prover::native::ModelNativeProver::new(
+                        &native,
+                        &p.lowering,
+                        actual,
+                        witness,
+                        &claims,
+                    )
+                    .unwrap(),
+                )
+            });
+            assert!(
+                measured.bytes_max <= memory.construction_peak_bytes(),
+                "grouped {measured:?} {memory:?}"
+            );
         }
     });
 }
