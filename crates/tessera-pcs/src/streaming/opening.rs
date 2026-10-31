@@ -8,7 +8,7 @@
 //! rows before drawing P5's queries. Protocol/2 blinding and the full driver remain separate.
 
 mod memory;
-pub use memory::AdviceOpeningMemory;
+pub use memory::{AdviceColumnMemory, AdviceOpeningMemory};
 
 use core::fmt;
 
@@ -835,6 +835,175 @@ mod tests {
     }
 
     #[test]
+    fn column_memory_bounds_private_public_columns_and_multiproof() {
+        use allocation_counter::measure;
+        let small = fixture();
+        let make = |bits, shape: Vec<Axis>| {
+            let layout = AdviceLayout::new(
+                LayoutParams {
+                    log2_k: bits,
+                    ..*small.0.params()
+                },
+                1,
+                &[TileShape {
+                    layer: Some(0),
+                    values: vec![TensorShape::Dense(DenseShape::new(shape, Padding::Zero))],
+                }],
+            )
+            .unwrap();
+            let params = crate::CommitmentParams {
+                log2_k: bits,
+                ..small.1
+            };
+            (
+                layout,
+                params,
+                RowEncoder::new(1 << bits, 1, params.mask_coeffs).unwrap(),
+            )
+        };
+        let medium = make(6, vec![Axis::new(9), Axis::new(64)]);
+        let large = make(10, vec![Axis::new(13)]);
+        for (layout, params, encoder) in [small, medium, large] {
+            let mut row_values = vec![Fp::ZERO; encoder.message_len()];
+            let mut masks = || Fp::from_u64_reduced(7);
+            let parts = layout
+                .segments()
+                .iter()
+                .enumerate()
+                .map(|(segment, part)| {
+                    let mut committer = StreamingCommitter::new(
+                        params,
+                        &layout,
+                        segment as u32,
+                        &encoder,
+                        &mut masks,
+                    )
+                    .unwrap();
+                    for row in part.nonzero.iter().cloned().flatten() {
+                        row_values.fill(Fp::from_u64_reduced(row + 3));
+                        committer.push_row(row, &row_values).unwrap();
+                    }
+                    committer.finish().unwrap()
+                })
+                .collect::<Vec<_>>();
+            let state = AdviceOpening::build(&parts, |out| {
+                out.fill(0);
+                Ok(())
+            })
+            .unwrap();
+            let groups = state
+                .prepare(&[], Fp2::ONE, &vec![Fp2::ONE; layout.row_vars() as usize])
+                .unwrap();
+            let mut p4 = groups.begin(&encoder, &mut masks).unwrap();
+            for segment in layout.segments() {
+                for row in segment.nonzero.iter().cloned().flatten() {
+                    row_values.fill(Fp::from_u64_reduced(row + 3));
+                    p4.push_row(row, &row_values).unwrap();
+                }
+            }
+            let (_, permit) = p4.finish().unwrap().into_parts();
+            let n = encoder.codeword_len() as u64;
+            let cases = [
+                vec![0],
+                vec![n - 1],
+                vec![n - 1, 0, n - 1, 1],
+                (0..193).map(|i| (i * 337 + 17) % n).collect(),
+                vec![0; n as usize + 7],
+                (0..n).collect(),
+            ];
+            for queries in cases {
+                let mut plan = None;
+                let planning = measure(|| {
+                    plan = Some(
+                        AdviceColumnMemory::new(&layout, params, queries.len() as u64).unwrap(),
+                    )
+                });
+                assert_eq!(planning.count_total, 0);
+                let plan = plan.unwrap();
+                let mut pass = None;
+                let borrowed_masks = &mut masks;
+                let starting = measure(|| {
+                    let masks = borrowed_masks;
+                    pass = Some(
+                        state
+                            .begin_columns(&permit, &encoder, masks, &queries)
+                            .unwrap(),
+                    );
+                });
+                let private = u64::try_from(starting.bytes_current).unwrap();
+                assert!(
+                    starting.bytes_max <= plan.private_pass_bytes(),
+                    "P5 construct: {starting:?} {plan:?}"
+                );
+                let mut pass = pass.unwrap();
+                let mut answer = None;
+                let finishing = measure(|| {
+                    for segment in layout.segments() {
+                        for row in segment.nonzero.iter().cloned().flatten() {
+                            row_values.fill(Fp::from_u64_reduced(row + 3));
+                            pass.push_row(row, &row_values).unwrap();
+                        }
+                    }
+                    answer = Some(pass.finish().unwrap());
+                });
+                assert!(
+                    private + finishing.bytes_max <= plan.peak_bytes(),
+                    "P5 finish: {private} {finishing:?} {plan:?}"
+                );
+                let retained =
+                    u64::try_from(starting.bytes_current + finishing.bytes_current).unwrap();
+                assert!(
+                    retained <= plan.output_bytes(),
+                    "P5 output: {retained} {plan:?}"
+                );
+                let answer = answer.unwrap();
+                assert!(
+                    (answer.proof.siblings.capacity() * size_of::<Digest>()) as u64
+                        <= plan.proof_bytes()
+                );
+                let mut distinct = queries.clone();
+                distinct.sort_unstable();
+                distinct.dedup();
+                assert_eq!(answer.columns.len(), distinct.len());
+                assert!(
+                    answer
+                        .columns
+                        .iter()
+                        .all(|column| column.len() == layout.rows() as usize)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn column_memory_invalid_and_unaddressable_arguments_allocate_nothing() {
+        let (layout, params, _) = fixture();
+        for (queries, code) in [(0, ErrorCode::Usage), (u64::MAX, ErrorCode::ResMemory)] {
+            let mut result = None;
+            let info = allocation_counter::measure(|| {
+                result = Some(AdviceColumnMemory::new(&layout, params, queries))
+            });
+            assert_eq!(info.count_total, 0);
+            assert_eq!(result.unwrap().unwrap_err().code(), code);
+        }
+        for other in [
+            crate::CommitmentParams {
+                log2_inv_rate: 2,
+                ..params
+            },
+            crate::CommitmentParams {
+                log2_k: 4,
+                ..params
+            },
+        ] {
+            assert!(matches!(
+                AdviceColumnMemory::new(&layout, other, 1),
+                Err(AdviceOpeningError::Invalid(PcsError::LayoutData { .. }))
+            ));
+        }
+    }
+
+    #[test]
     fn opening_memory_bounds_groups_private_buffers_and_publication_overlap() {
         use allocation_counter::measure;
         let small = fixture();
@@ -1017,6 +1186,16 @@ mod tests {
         assert_eq!(plan.private_pass_bytes(), 4_966_293_696);
         assert_eq!(plan.output_bytes(), 3_825_390_384);
         assert_eq!(plan.peak_bytes(), 8_830_068_048);
+        let mut columns = None;
+        let allocations = measure(|| {
+            columns = Some(AdviceColumnMemory::new(&layout, params, 193).unwrap());
+        });
+        assert_eq!(allocations.count_total, 0);
+        let columns = columns.unwrap();
+        assert_eq!(columns.private_pass_bytes(), 80_637_392);
+        assert_eq!(columns.proof_bytes(), 142_048);
+        assert_eq!(columns.output_bytes(), 13_669_032);
+        assert_eq!(columns.peak_bytes(), 94_306_424);
     }
 
     #[test]

@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Bound PCS-owned P5 columns and publication overlap before query sampling, and reserve canonical Merkle siblings exactly from validated public indices. Repeated draws retain their worst-case charge; full CPU admission remains pending (RFC-0004/0011/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Preflight PCS-owned grouping and advice-opening allocation bounds, including repeated-claim descriptor growth, combination scratch and simultaneous private/public rows; caller storage and the full CPU route remain separate (RFC-0011/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Stream NI proof and producer Live packet envelopes through a cleared bounded buffer, retaining exclusive 0600 temporary files, synchronized no-overwrite publication and identical manifest entries (RFC-0003/0014/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).

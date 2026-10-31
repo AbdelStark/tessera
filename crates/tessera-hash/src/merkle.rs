@@ -68,6 +68,26 @@ pub struct MerkleTree {
     leaves: usize,
 }
 
+// Each additional sorted leaf diverges from its predecessor at height d, adding
+// d-1 internal union nodes. S = 1 + internal_union_nodes - opened_leaves, hence
+// the sibling frontier changes by d-2. Every proper nonempty prefix has at least
+// one sibling. Intermediate values fit the existing tree's 2*n-1 node capacity.
+fn sibling_count(leaves: usize, sorted_distinct: &[usize]) -> usize {
+    let first = sorted_distinct[0];
+    let last = sorted_distinct[sorted_distinct.len() - 1];
+    if last - first + 1 == sorted_distinct.len() {
+        // A contiguous interval's missing prefix/suffix decompose into one maximal
+        // dyadic subtree per set bit. This also avoids an extra scan for all leaves.
+        return (first.count_ones() + (leaves - last - 1).count_ones()) as usize;
+    }
+    sorted_distinct
+        .windows(2)
+        .fold(leaves.ilog2() as usize, |count, pair| {
+            let divergence = (usize::BITS - (pair[0] ^ pair[1]).leading_zeros()) as usize;
+            count + divergence - 2
+        })
+}
+
 impl MerkleTree {
     /// The tree over `leaves`, whose number must be a power of two.
     pub fn new(mut leaves: Vec<Digest>) -> Result<Self, MerkleError> {
@@ -121,7 +141,14 @@ impl MerkleTree {
         }
         known.sort_unstable();
         known.dedup();
-        let mut siblings = Vec::new();
+        // Validated distinct in-range indices cover every leaf: the canonical proof
+        // has no siblings. Keep this public full-set case independent of tree height.
+        if known.len() == self.leaves {
+            return Ok(MultiProof {
+                siblings: Vec::new(),
+            });
+        }
+        let mut siblings = Vec::with_capacity(sibling_count(self.leaves, &known));
         let (mut start, mut width) = (0, self.leaves);
         while width > 1 {
             let mut parents = Vec::with_capacity(known.len());
@@ -195,4 +222,99 @@ pub fn verify_multiproof(
         width /= 2;
     }
     siblings.next().is_none() && known == [(0, *root)]
+}
+#[cfg(test)]
+mod allocation_tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    // Independent set frontier: membership, then sorted parents; the production
+    // path uses paired Vec indices. Keep this scalar oracle separate from sizing.
+    fn reference(tree: &MerkleTree, queries: &[u64]) -> Vec<Digest> {
+        let mut current = queries.iter().map(|&q| q as usize).collect::<BTreeSet<_>>();
+        let mut expected = Vec::new();
+        let (mut offset, mut width) = (0, tree.leaves);
+        while width > 1 {
+            for &node in &current {
+                if !current.contains(&(node ^ 1)) {
+                    expected.push(tree.nodes[offset + (node ^ 1)]);
+                }
+            }
+            current = current.iter().map(|node| node / 2).collect();
+            offset += width;
+            width /= 2;
+        }
+        expected
+    }
+
+    #[test]
+    fn canonical_opening_matches_scalar_frontier_for_every_small_subset() {
+        for bits in 0..=4 {
+            let n = 1usize << bits;
+            let tree = MerkleTree::new((0..n).map(|i| [i as u8; 32]).collect()).unwrap();
+            for subset in 1u64..(1u64 << n) {
+                let queries = (0..n)
+                    .filter(|&i| subset & (1 << i) != 0)
+                    .map(|i| i as u64)
+                    .collect::<Vec<_>>();
+                let expected = reference(&tree, &queries);
+                let actual = tree.open(&queries).unwrap();
+                assert_eq!(actual.siblings, expected);
+                assert_eq!(actual.siblings.capacity(), actual.siblings.len());
+                let mut repeated = queries.iter().rev().copied().collect::<Vec<_>>();
+                repeated.extend(&queries);
+                assert_eq!(tree.open(&repeated).unwrap().siblings, expected);
+            }
+        }
+    }
+    #[test]
+    fn exact_capacity_matches_sparse_clustered_and_boundary_queries() {
+        let n = 1024usize;
+        let tree = MerkleTree::new(
+            (0..n)
+                .map(|i| {
+                    let mut digest = [0xA5; 32];
+                    digest[..8].copy_from_slice(&(i as u64).to_le_bytes());
+                    digest
+                })
+                .collect(),
+        )
+        .unwrap();
+        for count in [1usize, 2, 3, 4, 7, 8, 15, 16, 31, 33, 193, 1024] {
+            for queries in [
+                (0..count).map(|i| i as u64).collect::<Vec<_>>(),
+                (0..count).map(|i| ((i * 337 + 17) % n) as u64).collect(),
+                vec![n as u64 - 1; count],
+            ] {
+                let actual = tree.open(&queries).unwrap();
+                assert_eq!(actual.siblings, reference(&tree, &queries));
+                assert_eq!(actual.siblings.capacity(), actual.siblings.len());
+            }
+        }
+        // No large tree allocation: independently count sparse public frontiers at
+        // every usize-representable power-of-two height, including the PCS maximum32.
+        for bits in 1..usize::BITS {
+            let leaves = 1usize << bits;
+            for queries in [
+                vec![0],
+                vec![leaves - 1],
+                vec![0, leaves - 1],
+                vec![1, leaves / 2],
+            ] {
+                let mut sorted = queries.clone();
+                sorted.sort_unstable();
+                sorted.dedup();
+                let mut nodes = sorted.iter().copied().collect::<BTreeSet<_>>();
+                let mut expected = 0;
+                for _ in 0..bits {
+                    expected += nodes
+                        .iter()
+                        .filter(|&&index| !nodes.contains(&(index ^ 1)))
+                        .count();
+                    nodes = nodes.iter().map(|index| index / 2).collect();
+                }
+                assert_eq!(sibling_count(leaves, &sorted), expected);
+            }
+        }
+    }
 }

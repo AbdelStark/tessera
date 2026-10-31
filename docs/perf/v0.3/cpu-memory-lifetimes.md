@@ -221,3 +221,27 @@ images and output-copy overlap. A separate public synthetic layout matching the
 allocations without allocating large payloads. This is not whole-model memory
 evidence. Caller claims, layout/P1 tree, encoder, source row, mask generator,
 allocator overhead and other proof phases remain separately charged.
+
+## Advice column allocation plan
+
+`AdviceColumnMemory` bounds PCS-owned P5 storage before column queries are sampled.
+It charges the original draw-sized query array, private column containers and values,
+one codeword, both Merkle index frontiers, proof siblings, and simultaneous private
+and public column copies. For N columns, height h and Q draws, it uses at most
+`min(N - 1, min(Q, N) * h)` siblings. A bound based on `N - min(Q, N)` would fail
+when draws repeat: fewer actual distinct leaves can require more siblings.
+
+After indices exist, Merkle opening reserves the exact canonical sibling count from
+adjacent sorted distinct indices. The unchanged level traversal determines digest
+order. Contiguous intervals use their dyadic prefix/suffix complements; validated
+coverage of every leaf returns the canonical empty proof. No query is drawn earlier
+and no favorable collision reduces the preflight charge. The allocation benchmark's
+[cardinality argument and samples](../../../crates/tessera-hash/benches/openings/README.md)
+record the proof and the measured effect.
+
+Physical tests cover singleton/boundary, repeated, unsorted, sparse and all-leaf
+queries at several row widths, including private/public output overlap. The public
+synthetic 1B-width fixture with 193 draws plans 94,306,424 bytes for P5-owned storage
+without allocating large buffers. Caller P1/layout, encoder, mask/source row, retained
+Round2, allocator overhead and other phases remain additional. Complete CPU admission
+and real-model proof qualification remain pending.

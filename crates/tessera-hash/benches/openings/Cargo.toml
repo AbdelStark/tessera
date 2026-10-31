@@ -1,0 +1,18 @@
+[package]
+name = "tessera-merkle-open-bench"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+autobins = false
+
+[workspace]
+
+[dependencies]
+criterion = { version = "=0.5.1", default-features = false }
+tessera-hash = { path = "../.." }
+
+[[bench]]
+name = "merkle_open"
+path = "src/main.rs"
+harness = false

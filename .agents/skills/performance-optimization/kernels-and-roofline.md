@@ -48,7 +48,7 @@ Hardware and algebraic reference for optimizing Tessera's six critical kernel fa
 ## 4. Ligero PCS & NTT (`tessera-pcs`, `RFC-0011`, `RFC-0012`)
 
 ### Roofline Profile
-- **Operation**: arrange witness of size $N = m \times k$ into an $m$-row by $k$-column matrix, pad with $b$ blinding columns (`k' = k + b`), encode each row with a Reed–Solomon code of length $n = \rho^{-1} k'$ via radix-2 NTT over Goldilocks, transpose or hash columns into $n$ Blake3 Merkle leaves, and answer linear row combinations + $t$ opened columns.
+- **Operation**: arrange advice into rows of `k` base-field values, interpolate each row, add `(X^k - 1) M(X)` with `P` mask coefficients, and evaluate at `n = 2^r k` coset points by radix-2 NTT (RFC-0011). There are no extra stored blinding columns: the effective degree rate is `(k + P)/n`. Chain column digests and open combined rows plus late queried columns.
 - **Hotspots**:
   1. $m$ independent length-$n$ NTTs (compute + cache-strided butterfly access).
   2. Column hashing into Blake3 leaves (memory-transpose + hash compute bound).
