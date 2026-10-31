@@ -12,6 +12,8 @@ use tessera_field::{Field, GoldilocksExt2 as F};
 use tessera_ir::CommitmentClass;
 use tessera_pcs::{AdviceClaim, AdvicePoint, WeightLayout, WeightMatrix};
 
+mod memory;
+pub use memory::OpeningTargetMemory;
 mod geometry;
 pub use geometry::OpeningGeometry;
 

@@ -207,6 +207,7 @@ jobs:
           cargo test -p tessera-gadgets --lib rsqrt::memory --locked -- --test-threads=1
           cargo test -p tessera-prover --lib score_input --features test-rng,test-params --locked -- --test-threads=1
           cargo test -p tessera-prover --lib native::memory --locked -- --test-threads=1
+          cargo test -p tessera-prover --lib openings::memory --locked -- --test-threads=1
           cargo test -p tessera-pcs --lib weights::memory --locked -- --test-threads=1
           cargo test -p tessera-pcs --test weights --locked regenerated_weight_roots_columns_and_multiproofs_equal_the_resident_reference -- --test-threads=1
           cargo test -p tessera-pcs --test layout --test request_slots --test weights_opening --locked -- --test-threads=1
