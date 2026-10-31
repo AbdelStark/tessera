@@ -1,0 +1,51 @@
+    Finished `bench` profile [optimized] target(s) in 0.08s
+     Running src/main.rs (/tmp/tessera-641-mutation-target/release/deps/count_reads-a34960a2d760da40)
+scope=count-reader-only positions=2 table=32 logical_rows=8388608 max_updates=1155 backing_bytes=18480 setup_seconds=1.977885042
+chunk_rows=256 prefix_rows=262177 fixed_update_visits=1183875
+Benchmarking weighted-count-prefix/256
+Benchmarking weighted-count-prefix/256: Warming up for 1.0000 s
+Benchmarking weighted-count-prefix/256: Collecting 10 samples in estimated 3.1118 s (220 iterations)
+Benchmarking weighted-count-prefix/256: Analyzing
+weighted-count-prefix/256
+                        time:   [14.244 ms 14.872 ms 15.563 ms]
+                        thrpt:  [16.846 Melem/s 17.629 Melem/s 18.406 Melem/s]
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) low mild
+  1 (10.00%) high mild
+chunk_rows=4096 prefix_rows=262177 fixed_update_visits=75075
+Benchmarking weighted-count-prefix/4096
+Benchmarking weighted-count-prefix/4096: Warming up for 1.0000 s
+Benchmarking weighted-count-prefix/4096: Collecting 10 samples in estimated 3.0544 s (3080 iterations)
+Benchmarking weighted-count-prefix/4096: Analyzing
+weighted-count-prefix/4096
+                        time:   [965.00 µs 1.0381 ms 1.1029 ms]
+                        thrpt:  [237.72 Melem/s 252.56 Melem/s 271.69 Melem/s]
+chunk_rows=65536 prefix_rows=262177 fixed_update_visits=5775
+Benchmarking weighted-count-prefix/65536
+Benchmarking weighted-count-prefix/65536: Warming up for 1.0000 s
+Benchmarking weighted-count-prefix/65536: Collecting 10 samples in estimated 3.0069 s (18k iterations)
+Benchmarking weighted-count-prefix/65536: Analyzing
+weighted-count-prefix/65536
+                        time:   [159.33 µs 169.54 µs 178.18 µs]
+                        thrpt:  [1.4714 Gelem/s 1.5464 Gelem/s 1.6455 Gelem/s]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+
+       16.87 real         5.68 user         0.08 sys
+            37994496  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                6681  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   1  signals received
+                  20  voluntary context switches
+                1434  involuntary context switches
+           601532697  instructions retired
+           208908184  cycles elapsed
+            24053120  peak memory footprint

@@ -9,6 +9,7 @@ use tessera_logup::TABLE_BATCH_CONSTRUCTION_BYTES_PER_TREE;
 use tessera_sumcheck::{MergePolynomial, WindowMemory, WindowShape};
 
 pub(super) const CHUNK_ROWS: usize = 256;
+const MAX_CHUNK_ROWS: usize = 65_536;
 const NATIVE_DESCRIPTOR_BYTES_PER_TREE: u64 = 4096;
 // A collected Result<Vec<_>> may retain four slots for one source. Its descriptors
 // and public class/container metadata coexist with the generic batch constructor.
@@ -42,6 +43,7 @@ mod tests {
             forests: 0,
             working_bytes: 0,
             cuts: Vec::new(),
+            chunk_rows: CHUNK_ROWS,
         }
     }
 
@@ -88,6 +90,165 @@ mod tests {
             ))
         ));
     }
+    #[test]
+    fn larger_public_chunks_preserve_reference_cuts_and_feasibility() {
+        for generated in [false, true] {
+            for allowance in [
+                0,
+                80 << 20,
+                (80 << 20) + 4096,
+                84 << 20,
+                96 << 20,
+                128 << 20,
+                u64::MAX,
+            ] {
+                let reference = stress(generated).select_with_chunk_limit(allowance, CHUNK_ROWS);
+                let batched = stress(generated).select(allowance);
+                assert_eq!(reference.is_ok(), batched.is_ok());
+                if let (Ok(reference), Ok(batched)) = (reference, batched) {
+                    assert_eq!(batched.cuts, reference.cuts);
+                    assert!(batched.working_bytes <= allowance);
+                    assert!(batched.working_bytes >= reference.working_bytes);
+                    assert!((CHUNK_ROWS..=MAX_CHUNK_ROWS).contains(&batched.chunk_rows));
+                    assert!(batched.chunk_rows.is_power_of_two());
+                    if !generated {
+                        assert_eq!(batched.chunk_rows, CHUNK_ROWS);
+                    }
+                }
+            }
+        }
+        let ample = stress(true).select(u64::MAX).unwrap();
+        assert_eq!(ample.chunk_rows, MAX_CHUNK_ROWS);
+        let reference = stress(true)
+            .select_with_chunk_limit(84 << 20, CHUNK_ROWS)
+            .unwrap();
+        let tight = ample.clone().select(reference.working_bytes).unwrap();
+        assert_eq!(tight.chunk_rows, CHUNK_ROWS);
+        assert_eq!(tight.cuts, reference.cuts);
+        assert_eq!(tight.working_bytes, reference.working_bytes);
+        assert_eq!(tight.select(u64::MAX).unwrap(), ample);
+        for limit in [0, CHUNK_ROWS - 1, CHUNK_ROWS + 1] {
+            assert!(matches!(
+                stress(true).select_with_chunk_limit(u64::MAX, limit),
+                Err(ProverError::Resource(
+                    tessera_codec::error::ErrorCode::ResMemory
+                ))
+            ));
+        }
+    }
+
+    #[test]
+    fn enlarged_read_scratch_is_charged_and_bounds_actual_allocations() {
+        use std::cell::Cell;
+        use tessera_codec::{Ascii, SecretBuf};
+        use tessera_field::{
+            Field, Goldilocks as B, GoldilocksExt2 as F, PrimeField, QuadraticExtension,
+        };
+        use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
+        use tessera_logup::{TableBatchBudget, TableSource, prove_table_batch_bounded};
+        use tessera_sumcheck::WindowError;
+        struct AllocatingSource {
+            rows: usize,
+            maximum_read: Cell<usize>,
+        }
+        impl TableSource<B> for AllocatingSource {
+            fn rows(&self) -> usize {
+                self.rows
+            }
+            fn has_values(&self) -> bool {
+                false
+            }
+            fn read_scratch_bytes(&self, rows: usize) -> Option<u64> {
+                (rows as u64).checked_mul(8)
+            }
+            fn read(
+                &self,
+                first: usize,
+                keys: &mut [B],
+                values: &mut [B],
+                counts: &mut [B],
+            ) -> Result<(), WindowError> {
+                if keys.len() != values.len()
+                    || keys.len() != counts.len()
+                    || first
+                        .checked_add(keys.len())
+                        .is_none_or(|end| end > self.rows)
+                {
+                    return Err(WindowError::Source);
+                }
+                self.maximum_read
+                    .set(self.maximum_read.get().max(keys.len()));
+                let mut scratch = SecretBuf::try_with_capacity(keys.len())
+                    .map_err(|_| WindowError::Allocation)?;
+                scratch.resize(keys.len(), 0u64);
+                for i in 0..keys.len() {
+                    keys[i] = B::from_u64_reduced((first + i) as u64);
+                    values[i] = B::ZERO;
+                    counts[i] = B::from_u64_reduced(scratch[i]);
+                }
+                Ok(())
+            }
+        }
+        for height in [12usize, 16] {
+            let rows = 1usize << height;
+            let source = AllocatingSource {
+                rows,
+                maximum_read: Cell::new(0),
+            };
+            let owned = 16 * rows as u64 + NATIVE_DESCRIPTOR_BYTES_PER_TREE;
+            let plan = TablePlan {
+                trees: vec![Shape {
+                    height,
+                    trees_log: 0,
+                    fraction: true,
+                    generated: true,
+                }],
+                fixed: owned + 65_536 + ((height + 1) * (height + 8) * 384) as u64,
+                scratch: 128 * CHUNK_ROWS as u64 + 32 * (height + 1) as u64 + 512,
+                retained: 0,
+                forests: 0,
+                working_bytes: 0,
+                cuts: Vec::new(),
+                chunk_rows: CHUNK_ROWS,
+            }
+            .select(u64::MAX)
+            .unwrap();
+            assert_eq!(plan.chunk_rows, rows.min(MAX_CHUNK_ROWS));
+            let mut transcript = Transcript::new(&SessionContext {
+                protocol: Ascii::new("tessera-protocol/1").unwrap(),
+                mode: Mode::NonInteractive,
+                params: ParamSetId(Ascii::new("test-small/1").unwrap()),
+                statement_digest: [59; 32],
+                session_id: [71; 16],
+            });
+            let mut proof = None;
+            let measured = allocation_counter::measure(|| {
+                proof = Some(
+                    prove_table_batch_bounded(
+                        &mut transcript,
+                        F::new(B::ONE, B::ONE),
+                        F::ZERO,
+                        &[&source as &dyn TableSource<B>],
+                        TableBatchBudget {
+                            allowance: plan.working_bytes,
+                            source_bytes: owned,
+                            chunk_rows: core::num::NonZeroUsize::new(plan.chunk_rows).unwrap(),
+                        },
+                    )
+                    .unwrap(),
+                );
+            });
+            assert_eq!(source.maximum_read.get(), plan.chunk_rows);
+            assert!(
+                measured.bytes_max <= plan.working_bytes,
+                "actual allocated peak {} exceeds charged {}",
+                measured.bytes_max,
+                plan.working_bytes
+            );
+            assert_eq!(proof.unwrap().multiplicities().len(), 1);
+        }
+    }
+
     #[test]
     fn constructor_metadata_is_reserved_beside_native_source_storage() {
         use core::mem::size_of;
@@ -150,6 +311,7 @@ mod tests {
                 forests: 0,
                 working_bytes: 0,
                 cuts: Vec::new(),
+                chunk_rows: CHUNK_ROWS,
             }
             .select(u64::MAX)
             .unwrap();
@@ -171,7 +333,7 @@ mod tests {
                 TableBatchBudget {
                     allowance: plan.working_bytes,
                     source_bytes: n * (16 + native),
-                    chunk_rows: core::num::NonZeroUsize::new(256).unwrap(),
+                    chunk_rows: core::num::NonZeroUsize::new(plan.chunk_rows).unwrap(),
                 },
             )
             .unwrap();
@@ -200,6 +362,7 @@ pub(super) struct TablePlan {
     pub(super) forests: u64,
     pub(super) working_bytes: u64,
     pub(super) cuts: Vec<usize>,
+    pub(super) chunk_rows: usize,
 }
 
 fn add(a: u64, b: u64) -> Result<u64, ProverError> {
@@ -397,19 +560,46 @@ impl TablePlan {
             forests,
             working_bytes: 0,
             cuts: Vec::new(),
+            chunk_rows: CHUNK_ROWS,
         }
         .select(u64::MAX)
     }
 
-    pub(super) fn select(mut self, allowance: u64) -> Result<Self, ProverError> {
-        // `select` can run repeatedly; construction is a local charge, never accumulated.
-        let fixed = add(
-            add(self.fixed, self.scratch)?,
+    fn fixed_bytes(&self, chunk_rows: usize) -> Result<u64, ProverError> {
+        let mut scratch = self.scratch;
+        if chunk_rows > CHUNK_ROWS {
+            for tree in self.trees.iter().filter(|tree| tree.generated) {
+                let chunk = power(tree.height)?.min(chunk_rows as u64);
+                let height = u64::try_from(tree.height).map_err(|_| memory())?;
+                scratch = scratch.max(add(add(mul(128, chunk)?, mul(32, add(height, 1)?)?)?, 512)?);
+            }
+        }
+        add(
+            add(self.fixed, scratch)?,
             mul(
                 self.trees.len() as u64,
                 TABLE_BATCH_CONSTRUCTION_BYTES_PER_TREE,
             )?,
-        )?;
+        )
+    }
+
+    pub(super) fn select(self, allowance: u64) -> Result<Self, ProverError> {
+        self.select_with_chunk_limit(allowance, MAX_CHUNK_ROWS)
+    }
+
+    fn select_with_chunk_limit(
+        mut self,
+        allowance: u64,
+        limit: usize,
+    ) -> Result<Self, ProverError> {
+        if limit < CHUNK_ROWS || !limit.is_power_of_two() {
+            return Err(memory());
+        }
+        // First retain the existing feasible plan and its minimal window cuts. A larger read
+        // chunk may consume spare public budget, never add a streaming round (RFC-0018).
+        // `scratch` remains the original charge, so repeated selection can shrink again.
+        self.chunk_rows = CHUNK_ROWS;
+        let fixed = self.fixed_bytes(CHUNK_ROWS)?;
         if fixed > allowance {
             return Err(memory());
         }
@@ -440,6 +630,30 @@ impl TablePlan {
                 .ok_or_else(memory)?;
             self.cuts.push(choice.0);
             self.working_bytes = self.working_bytes.max(choice.1);
+        }
+        let window_peak = self.working_bytes.checked_sub(fixed).ok_or_else(memory)?;
+        let largest = self
+            .trees
+            .iter()
+            .filter(|tree| tree.generated)
+            .map(|tree| tree.height)
+            .max()
+            .map(power)
+            .transpose()?
+            .unwrap_or(0);
+        let mut chunk = usize::try_from(largest).map_err(|_| memory())?.min(limit);
+        while chunk > CHUNK_ROWS {
+            if let Some(bytes) = self
+                .fixed_bytes(chunk)
+                .ok()
+                .and_then(|fixed| fixed.checked_add(window_peak))
+                .filter(|&bytes| bytes <= allowance)
+            {
+                self.chunk_rows = chunk;
+                self.working_bytes = bytes;
+                break;
+            }
+            chunk /= 2;
         }
         Ok(self)
     }

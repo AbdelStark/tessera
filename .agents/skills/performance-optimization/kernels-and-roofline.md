@@ -2,7 +2,7 @@
 
 Hardware and algebraic reference for optimizing Tessera's six critical kernel families ([08-performance-budget.md](../../../docs/spec/08-performance-budget.md), [RFC-0002](../../../docs/rfcs/RFC-0002-field-arithmetic.md), [RFC-0011](../../../docs/rfcs/RFC-0011-advice-commitment.md), [RFC-0010](../../../docs/rfcs/RFC-0010-proof-schedule.md), [RFC-0008](../../../docs/rfcs/RFC-0008-logup-and-tables.md), [RFC-0018](../../../docs/rfcs/RFC-0018-gpu-prover-runtime.md)).
 
-## 1. Goldilocks Field (`p = 2^64 - 2^32 + 1`) & Quartic Extension `Fp4`
+## 1. Goldilocks Field (`p = 2^64 - 2^32 + 1`) & Quadratic Extension `Fp2`
 
 ### Algebraic Structure (`RFC-0002`)
 - **Prime**: $p = 2^{64} - 2^{32} + 1 = \texttt{0xFFFF\_FFFF\_0000\_0001}$.
@@ -12,7 +12,7 @@ Hardware and algebraic reference for optimizing Tessera's six critical kernel fa
   - Because $2^{64} \equiv 2^{32} - 1 \pmod p$ and $2^{96} \equiv -1 \pmod p$:
     $$x \equiv x_{\text{lo}} + (x_{\text{mid}} \ll 32) - x_{\text{mid}} - x_{\text{top}} \pmod p.$$
 - **Canonical representation invariant (`INV-FIELD-1`)**: every public `Goldilocks` value must be in canonical form $[0, p)$ when serialized, compared for equality, or converted via `.to_canonical_u64()`. Internal lazy representations in registers `[0, 2^64)` are allowed inside tight loops provided canonicalization happens before observation.
-- **Quartic extension `Fp4`**: $\mathbb{F}_p[X]/(X^4 - 7)$ (`W = 7`). Multiplication in `Fp4` uses Karatsuba / Toom-Cook over quadratic towers $(a_0 + a_2 X^2) + X(a_1 + a_3 X^2)$ with $(X^2)^2 = 7$, reducing 16 base-field multiplications to 9 base-field multiplications.
+- **Quadratic extension `Fp2`**: $\mathbb{F}_p[X]/(X^2 - 7)$ (`W = 7`), as RFC-0002 fixes it. Karatsuba uses three base products: $(a_0b_0 + 7a_1b_1) + ((a_0+a_1)(b_0+b_1)-a_0b_0-a_1b_1)X$. A value occupies 16 bytes, twice a base element; higher-degree extensions are outside the current protocol.
 
 ### Common Pitfalls
 - **Underflow/overflow in `reduce128`**: subtracting $x_{\text{top}}$ or adding $(x_{\text{mid}} \ll 32) - x_{\text{mid}}$ can wrap around $2^{64}$. On overflow, add $2^{64} \equiv 2^{32} - 1 = \texttt{0xFFFF\_FFFF}$; on underflow, subtract $\texttt{0xFFFF\_FFFF}$. Always test `reduce128((p - 1) as u128 * (p - 1) as u128)` and `reduce128(u64::MAX as u128 * u64::MAX as u128)`.
@@ -27,9 +27,9 @@ Hardware and algebraic reference for optimizing Tessera's six critical kernel fa
 ### Optimization Patterns
 1. **Fused fold-and-evaluate**: after receiving challenge $r_{i-1}$, fold $A_j$ for round $i-1$ and immediately accumulate the round-$i$ evaluations $s_i(t)$ in a single pass over memory, cutting memory traffic in half.
 2. **Difference-step evaluation**: for a linear interpolation $A(t, b) = A(0, b) + t \cdot \Delta(b)$ where $\Delta(b) = A(1, b) - A_j(0, b)$, compute $A(2, b) = A(1, b) + \Delta(b)$, $A(3, b) = A(2, b) + \Delta(b)$ via additions instead of multiplications, and evaluate the asymptotic point $\Delta(b)$ (`t = \infty` / leading coefficient) directly.
-3. **Base-field vs extension-field split**: when the witness table $A_j$ holds base-field `Goldilocks` values and the challenge $r_1 \in \mathbb{F}_{p^4}$ enters in round 1:
-   - Round 1 evaluates products of base-field elements (1x bandwidth, 1x mul cost) and only lifts the final univariate sums to $\mathbb{F}_{p^4}$.
-   - After folding with $r_1 \in \mathbb{F}_{p^4}$, the table becomes $\mathbb{F}_{p^4}$ (4x bandwidth, 9x mul cost), and its length halves to $2^{v-1}$.
+3. **Base-field vs extension-field split**: when the witness table $A_j$ holds base-field `Goldilocks` values and the challenge $r_1 \in \mathbb{F}_{p^2}$ enters in round 1:
+   - Round 1 evaluates products of base-field elements (1x bandwidth, 1x mul cost) and only lifts the final univariate sums to $\mathbb{F}_{p^2}$.
+   - After folding with $r_1 \in \mathbb{F}_{p^2}$, the table becomes $\mathbb{F}_{p^2}$ (2x bandwidth, three base products per multiplication), and its length halves to $2^{v-1}$.
 
 ## 3. LogUp & Fractional GKR (`tessera-logup`, `RFC-0008`)
 
@@ -41,7 +41,7 @@ Hardware and algebraic reference for optimizing Tessera's six critical kernel fa
   2. Per-layer GKR sumcheck over the degree-3 relation $\sum_{x} \widetilde{eq}(r, x) \cdot (\text{num}(x) + \lambda \cdot \text{den}(x))$.
 
 ### Optimization Patterns
-1. **Zero-multiplicity skipping in leaf generation**: table entries with multiplicity $m_i = 0$ have $P_i = 0$, simplifying $P_{\text{parent}} = P_R \cdot Q_L$ when $P_L = 0$.
+1. **Public structure only**: a publicly fixed zero subtree can use its specified closed form. Never branch on secret multiplicities, skip their commitment positions, or sort secret keys. Public-budget chunk sizing may amortize fixed-capacity scans while preserving the original keyed-address counting loop (INV-ARCH-2).
 2. **Contiguous layer arena**: allocate a single flat buffer of size $2 \cdot 2^L$ for all tree layers rather than $L$ separate `Vec` allocations per column.
 3. **Factored `eq(r, x)` tables**: when evaluating $\widetilde{eq}(r, x)$ over $x \in \{0, 1\}^\ell$, precompute the hypercube table via doubling ($2^\ell$ additions + $2^\ell$ multiplications total) rather than $O(\ell \cdot 2^\ell)$ point-wise products.
 

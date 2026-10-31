@@ -144,6 +144,24 @@ serve as an allocation bound. Allocations inside an encoder, retained proof
 messages and final packet publication remain separate costs. The CLI's envelope
 encoding is not removed by this change.
 
+## Generated table read chunks
+
+The P2 planner first selects the existing 256-row reference plan. It retains that
+plan's window cuts and uses spare public allowance for a larger power-of-two read
+chunk, up to 65,536 rows. Each candidate charges the full source scratch and must
+fit beside the retained maximum window working set. If none fits, the original
+chunk remains feasible. Repeated selection can shrink a previous large chunk.
+The charged nonzero chunk is passed to the table engine for ordinary and grouped
+batches. The conservative resident-cell floor and all source backing stay charged.
+
+For each generated table, scratch uses
+`128*min(chunk,table_rows) + 32*(height+1) + 512` bytes: paired extension chunks,
+three base chunks, clearing count scratch, partner outputs, carry stack and
+container descriptors. The count reader's public fixed-capacity traversal is
+unchanged; no secret sparsity or sorted keys affect chunk selection. The standalone
+[count-reader benchmark](../../../crates/tessera-prover/benches/count-reads/README.md)
+records configuration measurements separately from whole-prover performance.
+
 ## Evidence required before changing admission
 
 The tensor tests compare every graph tensor with the existing resident engine,

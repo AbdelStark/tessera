@@ -1,0 +1,39 @@
+{
+  "scope": "Same reader/configuration comparison; not whole-prover speedup",
+  "runs": [
+    {
+      "chunk_rows": 256,
+      "ns": 14386938.511688313,
+      "confidence_interval": {
+        "confidence_level": 0.95,
+        "lower_bound": 13727262.078914141,
+        "upper_bound": 14858530.70186896
+      }
+    },
+    {
+      "chunk_rows": 4096,
+      "ns": 959856.6079313543,
+      "confidence_interval": {
+        "confidence_level": 0.95,
+        "lower_bound": 925207.6179641689,
+        "upper_bound": 989905.9243595098
+      }
+    },
+    {
+      "chunk_rows": 65536,
+      "ns": 170318.11809767698,
+      "confidence_interval": {
+        "confidence_level": 0.95,
+        "lower_bound": 151886.55715727026,
+        "upper_bound": 183926.9717050269
+      }
+    }
+  ],
+  "speedup_256_to_65536": 84.47098096420629,
+  "source_hashes_verified": true,
+  "equivalence_checks_passed": true,
+  "style_only_benchmark_source_changes": [
+    "clone_on_copy",
+    "op_ref"
+  ]
+}

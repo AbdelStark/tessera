@@ -1,0 +1,16 @@
+{
+  "utc": "2026-10-31T04:02:05.712532+00:00",
+  "base": "baa6ab5d91abd8a205124583fb1301bf666f51bc",
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "source": {
+    "Cargo.toml": "60b47b3476c77b7cd42d186bfba32dd20473d34c6f70714f89f2cc41325104df",
+    "Cargo.lock": "70910b18fecd2dc397086fb128371ed14c2af5d0cb8a1e1bdb2aea04ae4ac838",
+    "src/main.rs": "c54dbc5f2a4f8d03eeaa981963a5e5a6a55cfe901c9802691719b1f72dfc83e3",
+    "README.md": "14ed248d6250285e847f7a9e0eac6de8cb831313045f4c726b05c3ce9d543b8f"
+  },
+  "public_model_sha256": "68d879e42530d306b62d1cf022f66ae9da29315c49d386ba7035b8666fb14ab7",
+  "scope": "Public conformance zero-input count-reader prefix benchmark only; no production policy/model proof change",
+  "hardware": "Apple M1Max10CPUcores64GiB;400GB/s aggregate Apple spec optimistic limit; calibration19263 stillrunning",
+  "cargo_target": "/tmp/tessera-641-mutation-target",
+  "log": "/tmp/tessera-641-count-chunk-before.log"
+}

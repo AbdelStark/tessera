@@ -1,0 +1,22 @@
+[package]
+name = "tessera-count-read-bench"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+autobins = false
+
+[workspace]
+
+[dependencies]
+criterion = { version = "=0.5.1", default-features = false }
+tessera-codec = { path = "../../../tessera-codec" }
+tessera-compiler = { path = "../../../tessera-compiler" }
+tessera-ir = { path = "../../../tessera-ir" }
+tessera-protocol = { path = "../../../tessera-protocol" }
+tessera-witness = { path = "../../../tessera-witness" }
+
+[[bench]]
+name = "count_reads"
+path = "src/main.rs"
+harness = false

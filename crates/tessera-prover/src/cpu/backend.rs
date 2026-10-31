@@ -17,7 +17,7 @@ use tessera_witness::WitnessSource as _;
 use tessera_witness::{Engine, Resident, Witness};
 
 use super::plan::{Cells, Pass, PassPlan};
-use super::table_plan::{CHUNK_ROWS, TablePlan};
+use super::table_plan::TablePlan;
 
 pub(super) struct Unit {
     lowering: Lowering,
@@ -30,6 +30,7 @@ pub(super) struct Unit {
     grouped: Option<GroupedLayout>,
     windows: Vec<usize>,
     table_allowance: u64,
+    table_chunk_rows: NonZeroUsize,
     table_retained: u64,
     forest_bytes: u64,
 }
@@ -411,6 +412,7 @@ impl<'a> CpuBackend<'a> {
         let table = plan.table_plan().ok_or_else(memory)?;
         let (table_allowance, table_retained, forest_bytes) =
             (table.working_bytes, table.retained, table.forests);
+        let table_chunk_rows = NonZeroUsize::new(table.chunk_rows).ok_or_else(memory)?;
         Ok((
             Unit {
                 lowering,
@@ -422,6 +424,7 @@ impl<'a> CpuBackend<'a> {
                 grouped,
                 windows: plan.stage_windows().iter().map(|s| s.cut).collect(),
                 table_allowance,
+                table_chunk_rows,
                 table_retained,
                 forest_bytes,
             },
@@ -520,7 +523,7 @@ impl<'a> CpuBackend<'a> {
         let table_budget = tessera_logup::TableBatchBudget {
             allowance: u.table_allowance,
             source_bytes,
-            chunk_rows: NonZeroUsize::new(CHUNK_ROWS).ok_or_else(memory)?,
+            chunk_rows: u.table_chunk_rows,
         };
         let tensors = actual.tensors();
         let forests = actual.forests();
