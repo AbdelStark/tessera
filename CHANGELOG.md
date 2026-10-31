@@ -6,6 +6,10 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Bound additional window-engine specification, state, message and returned-proof storage from public geometry; preserve the existing grid/fold reservation and charge source/wrapper work separately (RFC-0010/0055/0056, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
+- Bound ordinary batched sumcheck storage from public instance/term geometry, including table bindings, compiled plans, pinned B-tree metadata, kernel scratch and retained outputs; charge delegated computed-state payloads separately and leave CPU admission unchanged (RFC-0010/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Bound original advice/weight opening-target capacities and canonical construction work from public geometry, including native-original lists, stable sorting and mapped-point scratch; count repeated and zero-weight obligations without admitting a cached CPU route (RFC-0011/0045/0052, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Bound protocol/1 regenerated weight trees, construction/answer scratch, canonical model-reference metadata, folds and all ChannelParams combined rows from public layout geometry; measure the existing resident differential and seven-claim fold storage without admitting the cached route (RFC-0012/0040/0052, [#641](https://github.com/AbdelStark/tessera/issues/641)).

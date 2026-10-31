@@ -7,7 +7,7 @@
 //! buffers, including temporary multilinear-to-grid transforms.
 
 mod memory;
-pub use memory::{WindowMemory, WindowShape};
+pub use memory::{WindowMemory, WindowMetadataMemory, WindowShape};
 
 use core::fmt;
 
