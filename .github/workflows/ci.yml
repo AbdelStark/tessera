@@ -208,6 +208,7 @@ jobs:
           cargo test -p tessera-prover --lib score_input --features test-rng,test-params --locked -- --test-threads=1
           cargo test -p tessera-prover --lib native::memory --locked -- --test-threads=1
           cargo test -p tessera-prover --lib stages:: --locked -- --test-threads=1
+          cargo test -p tessera-prover --test stages --locked driver_work_bounds -- --test-threads=1
           cargo test -p tessera-prover --test stages --locked stage_state_memory_covers -- --test-threads=1
           cargo test -p tessera-prover --test stages --locked stage_source_geometry -- --test-threads=1
           cargo test -p tessera-prover --lib openings::memory --locked -- --test-threads=1

@@ -90,7 +90,7 @@ pub use openings::{
 pub use release::{Release, ReleaseSchedule, ScheduleError};
 pub use stages::{
     PaddedWitness, PublicTensors, StageError, StageProof, StageProver, StageSourceMemory,
-    StageStateMemory, WitnessSource, public_value,
+    StageStateMemory, StageWorkMemory, WitnessSource, public_value,
 };
 
 // Test-only features cannot reach a release build (RFC-0001 'Cargo features').
