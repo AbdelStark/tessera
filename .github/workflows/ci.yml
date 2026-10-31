@@ -159,10 +159,10 @@ jobs:
     needs: scope
     if: needs.scope.outputs.code == 'true'
     runs-on: ubuntu-24.04
-    # Bounded regeneration (#637): setup/builds and 421 passing integration tests used
-    # the old 12-minute job budget before the audit and seeded NI/Live/CLI checks.
-    # Budget the complete prover suite; protocol-message deadlines are separate.
-    timeout-minutes: ${{ matrix.workspace == 'prover' && 25 || 12 }}
+    # Checkpoint integration (#641): both exact-head runs exhausted 25m after 424
+    # passing component tests and recorder checks, during the final NI/Live stage.
+    # Allow the complete suite; test commands and protocol deadlines stay unchanged.
+    timeout-minutes: ${{ matrix.workspace == 'prover' && 45 || 12 }}
     strategy:
       matrix:
         workspace: [prover, verifier]
