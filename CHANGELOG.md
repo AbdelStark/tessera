@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Use checkpoint-derived nonweight tensors and borrow model INT8 weights when their complete replay reservation fits beside the unchanged resident-cell floor; preserve the resident fallback and verify byte-identical independently accepted proofs (RFC-0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Keep telemetry CI from spending its entire deadline refreshing package indexes: reuse installed tools, bound downloads and refresh indexes only after a cached install fails; retain export and syscall-isolation checks ([#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Price generated P2 table sources by canonical public count-backing plans when explicitly selected, and bound opening-geometry constructor work including symbolic points and prefix grouping; retain the resident route and its logical-cell floor (RFC-0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).

@@ -59,7 +59,7 @@ impl CheckpointMemory {
     ///
     /// # Errors
     /// Missing referenced tensors or overflowing/unaddressable buffer counts.
-    pub(crate) fn new(lowering: &Lowering) -> Result<Self> {
+    pub fn new(lowering: &Lowering) -> Result<Self> {
         let graph = &lowering.graph;
         let context = lowering.tokens;
         let (nt, nn, nc) = (

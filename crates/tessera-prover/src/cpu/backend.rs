@@ -14,7 +14,7 @@ use tessera_ir::{ClaimList, StageId};
 use tessera_sumcheck::SumcheckTranscript;
 use tessera_tables::{GeneratedTable, Table as _, TableError};
 use tessera_witness::WitnessSource as _;
-use tessera_witness::{Engine, Resident, Witness};
+use tessera_witness::{CheckpointTensors, Checkpoints, Engine, Resident, TensorSource, Witness};
 
 use super::plan::{Cells, Pass, PassPlan};
 use super::table_plan::TablePlan;
@@ -33,6 +33,7 @@ pub(super) struct Unit {
     table_chunk_rows: NonZeroUsize,
     table_retained: u64,
     forest_bytes: u64,
+    checkpoint_sources: bool,
 }
 /// A proven leaf stage: in one batch, or in token groups with its atom splits.
 enum Leaf {
@@ -46,9 +47,9 @@ impl Unit {
         &self,
         engine: &'w Engine<'w>,
         model: &IntegerModel,
-        witness: &'w Witness,
+        witness: &'w dyn TensorSource,
     ) -> Result<Resident<'w>, ProverError> {
-        let source = Resident::runtime(engine, &self.runtime, model, witness)?;
+        let source = Resident::runtime_from_tensors(engine, &self.runtime, model, witness)?;
         Ok(match &self.grouped {
             Some(grouped) => source.with_grouped_columns(grouped.columns()?)?,
             None => source,
@@ -110,10 +111,58 @@ fn plan_groups(
     }
     Ok((plan, None))
 }
-struct Data {
+enum Tensors<'model> {
+    Resident(Witness),
+    Checkpoint(CheckpointTensors<'model>),
+}
+impl TensorSource for Tensors<'_> {
+    fn values(&self, tensor: tessera_ir::TensorId) -> Option<&[i64]> {
+        match self {
+            Self::Resident(witness) => witness.values(tensor),
+            Self::Checkpoint(witness) => witness.values(tensor),
+        }
+    }
+    fn int8_values(&self, tensor: tessera_ir::TensorId) -> Option<&[i8]> {
+        match self {
+            Self::Resident(witness) => witness.int8_values(tensor),
+            Self::Checkpoint(witness) => witness.int8_values(tensor),
+        }
+    }
+}
+struct ReplayInputs {
+    tokens: Secret<Vec<u32>>,
+    checkpoints: Checkpoints,
+}
+
+fn witness<'model>(
+    engine: &Engine<'_>,
+    model: &'model IntegerModel,
+    batch: &ProofBatch,
+    checkpoint_sources: bool,
+) -> Result<(Tensors<'model>, Option<ReplayInputs>), ProverError> {
+    if !checkpoint_sources {
+        return Ok((
+            Tensors::Resident(engine.run_batch(model, &batch.tokens)?),
+            None,
+        ));
+    }
+    let tokens = engine.canonical_batch_tokens(model, &batch.tokens)?;
+    let checkpoints = Checkpoints::new(engine, model, &tokens)?;
+    let tensors = CheckpointTensors::new(engine, model, &tokens, &checkpoints)?;
+    Ok((
+        Tensors::Checkpoint(tensors),
+        Some(ReplayInputs {
+            tokens,
+            checkpoints,
+        }),
+    ))
+}
+
+struct Data<'model> {
     statement: protocol::PublicStatement,
     unit: Unit,
-    witness: Witness,
+    witness: Tensors<'model>,
+    replay: Option<ReplayInputs>,
     seed: random::Seed,
     p1: pcs::AdviceOpening<'static>,
     permit: Option<pcs::ColumnPermit>,
@@ -121,7 +170,7 @@ struct Data {
 }
 pub(super) struct CpuBackend<'a> {
     prepared: Prepared<'a>,
-    data: Option<Data>,
+    data: Option<Data<'a>>,
 }
 
 fn memory() -> ProverError {
@@ -410,6 +459,21 @@ impl<'a> CpuBackend<'a> {
             prepared.cfg.memory_budget,
             runtime.selection(),
         )?;
+        // INV-ARCH-6 / RFC-0018: borrow INT8 weights only when all extra replay
+        // storage fits beside the unchanged resident oracle. The cache lives
+        // while a second cache is regenerated; construction includes its inputs.
+        let mut plan = plan;
+        if plan.check(prepared.cfg.memory_budget).is_ok() {
+            let checkpoint = tessera_witness::CheckpointMemory::new(&lowering)?;
+            let bytes = checkpoint
+                .retained_bytes()
+                .checked_add(checkpoint.peak_bytes())
+                .ok_or_else(memory)?;
+            let cached = plan.clone().checkpoints(bytes);
+            if cached.check(prepared.cfg.memory_budget).is_ok() {
+                plan = cached;
+            }
+        }
         let table = plan.table_plan().ok_or_else(memory)?;
         let (table_allowance, table_retained, forest_bytes) =
             (table.working_bytes, table.retained, table.forests);
@@ -428,6 +492,7 @@ impl<'a> CpuBackend<'a> {
                 table_chunk_rows,
                 table_retained,
                 forest_bytes,
+                checkpoint_sources: plan.uses_checkpoints(),
             },
             plan,
         ))
@@ -439,7 +504,7 @@ impl<'a> CpuBackend<'a> {
         let (unit, plan) = Self::unit(prepared, batch)?;
         plan.check(prepared.cfg.memory_budget)?;
         let engine = Engine::new(&unit.lowering)?.threads(prepared.threads);
-        let witness = engine.run_batch(prepared.model, &batch.tokens)?;
+        let (witness, _replay) = witness(&engine, prepared.model, batch, plan.uses_checkpoints())?;
         let source = unit.source(&engine, prepared.model, &witness)?;
         let advice =
             ModelAdviceLayout::runtime(&unit.lowering, &unit.runtime, &prepared.plan.claims)?;
@@ -625,7 +690,21 @@ impl<'a> CpuBackend<'a> {
         drop(actual);
         let mut proofs = Vec::new();
         let mut regenerate = || {
-            engine.regenerate(p.model, &d.witness).map_err(|e| match e {
+            let regenerated = match (&d.witness, &d.replay) {
+                (Tensors::Resident(original), None) => {
+                    engine.regenerate(p.model, original).map(Tensors::Resident)
+                }
+                (Tensors::Checkpoint(_), Some(input)) => {
+                    CheckpointTensors::new(&engine, p.model, &input.tokens, &input.checkpoints)
+                        .map(Tensors::Checkpoint)
+                }
+                _ => {
+                    return Err(crate::StageError::Internal {
+                        rule: "the chosen witness strategy owns its regeneration inputs",
+                    });
+                }
+            };
+            regenerated.map_err(|e| match e {
                 tessera_witness::WitnessError::Memory { .. }
                 | tessera_witness::WitnessError::MemoryTable { .. } => crate::StageError::Memory,
                 _ => crate::StageError::Internal {
@@ -849,12 +928,12 @@ impl CpuBackend<'_> {
         plan.check(self.prepared.cfg.memory_budget)?;
         let c = &self.prepared.plan.claims;
         let engine = Engine::new(&unit.lowering)?.threads(self.prepared.threads);
-        // P1 retains one canonical witness; budgeted stage windows regenerate from its tokens.
+        // P1 retains the selected canonical source; stage windows replay the same inputs.
         let tile = Public(format!("0..{}", c.arch.n_layers));
-        let witness = {
+        let (witness, replay) = {
             let _pass = span!(DEBUG, "witness_pass", layer_tile = tile).entered();
             let started = Instant::now();
-            let witness = engine.run_batch(self.prepared.model, &batch.tokens)?;
+            let witness = witness(&engine, self.prepared.model, batch, unit.checkpoint_sources)?;
             metrics::phase(metrics::Phase::Witness, started.elapsed());
             event!(
                 DEBUG,
@@ -921,6 +1000,7 @@ impl CpuBackend<'_> {
             statement: batch.statement.clone(),
             unit,
             witness,
+            replay,
             seed,
             p1: opening,
             permit: None,
