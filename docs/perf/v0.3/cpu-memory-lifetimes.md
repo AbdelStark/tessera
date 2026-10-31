@@ -647,3 +647,66 @@ Caller-owned original specifications and arbitrary spare capacities, source
 callbacks and retained/regenerated witness, transcript encodings, delegated stage
 wrappers, stack/runtime and allocator overhead remain separate. This helper does
 not change proof construction, transcript ordering, memory admission or CPU routing.
+
+
+## Persistent stage-driver state
+
+`StageStateMemory::new(graph, schedule)` counts the canonical `StageProver`
+constructor and persistent state without reading a field value or allocating.
+The constructor charge includes publicness/producer derivation and the pool.
+The retained charge adds all nested claim/part vectors for every declared layer,
+plus every leaf/layer/zero/round coordinate inserted by the complete schedule.
+The coordinate-map bound follows the pinned std/hashbrown bucket growth and
+includes control/alignment bytes. No repeated point or coefficient reduces it.
+
+These are state charges: `construction_peak_bytes` covers `new`/`for_graph` before
+leaf evaluation; `retained_bytes` covers persistent canonical state through the
+schedule. Pending window preparations, relation arenas and source payloads,
+temporary evaluations/claims, returned messages, borrowed inputs, callbacks and
+stack/runtime/allocator overhead remain additional. The helper assumes a compiled
+valid graph/schedule and does not authenticate metadata or change CPU admission.
+
+
+## Canonical relation sources
+
+`StageProver::relation_source_memory(stage, native_tables)` builds public operand
+geometry without loading witness data or drawing challenges. The caller supplies
+every native table before sharing; native payload/instance callback work stays
+separate. This public planner allocates, and its construction work is additional.
+
+`StageSourceMemory::metadata_bytes` charges canonical arena/plan/point/index/factor
+storage, independently grown outer vectors and each nested allocation. Generated
+column/factor functions record their box size and owned captured-vector bytes.
+Nested Broadcast/Spread boxes, tensor shape/layer lists, selection rows, EQ points,
+RoPE frequencies and slot lengths are counted. Shared Arcs are conservatively
+charged for every owning recipe. Counting-allocator fixtures cover spare capacity
+and captured allocations; the original field functions remain the value oracle.
+
+`resident_input_bytes` additionally bounds the original prime-field columns and
+canonical Vec growth requests. Streaming sources retain recipes instead of these
+arrays. Relation contractions/public EQ tables, prepared-window and sumcheck state,
+source replay, construction temporaries, returned messages, borrowed inputs and
+runtime/allocator overhead remain additional. These component charges do not
+admit the cached route or replace the existing resident floor.
+
+
+## Relation-table producers
+
+`RelationMemory` bounds canonical table builders from public geometry without
+allocating or reading any value. Its matmul, elementwise, rotate, selection and
+recomposition methods return constructor peak, retained table heap and additional
+borrowed-instance metadata charges. Actual constructors and instances are measured
+separately, including both matrix layouts, no-contraction axes, broadcast/partner
+inputs, public operands, ragged bit widths and zero-variable cases.
+
+The bills include contracted/expanded fields, public equality/kernel arrays,
+saved point fragments and canonical descriptor/term growth. Elementwise clones
+and pre-EQ overlap, selection low contractions and EQ scratch, and public-x
+recomposition's clearing clone overlap remain charged. Matmul conservatively
+counts both possible contractions even when one operand is borrowed. Every
+selection member and term remains before specialization or cancellation.
+
+Original borrowed operands/points/kernel, original relation objects retained
+separately, outer relation/instance containers, returned claims and subsequent
+sumcheck/wrapper work, callbacks and runtime/allocator overhead remain additional.
+These are producer charges and leave CPU admission unchanged.

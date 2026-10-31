@@ -54,7 +54,8 @@ use tessera_ir::{
 use tessera_poly::{eq, eq_table, evaluate_base, less_than};
 use tessera_prover::leaf::gadget_nodes;
 use tessera_prover::{
-    PaddedWitness, PublicTensors, StageError, StageProof, StageProver, WitnessSource, public_value,
+    PaddedWitness, PublicTensors, StageError, StageProof, StageProver, StageStateMemory,
+    WitnessSource, public_value,
 };
 use tessera_sumcheck::SumcheckTranscript;
 use tessera_tables::{GeneratedTable, RopeTable, Table, TableId, TableKind, TableSpec};
@@ -2924,4 +2925,87 @@ fn public_value_refuses_a_tensor_that_is_not_public() {
             rule: "a public mask is its graph's"
         })
     );
+}
+
+#[test]
+fn stage_state_memory_covers_constructor_and_persisted_claims_parts_and_coordinates() {
+    for name in MODELS {
+        let (lowering, schedule, witness) = setup(name);
+        let mut memory = None;
+        let planning = allocation_counter::measure(|| {
+            memory = Some(StageStateMemory::new(&lowering.graph, &schedule).unwrap());
+        });
+        assert_eq!(planning.count_total, 0);
+        let memory = memory.unwrap();
+        let mut held = None;
+        let constructor = allocation_counter::measure(|| {
+            held = Some(StageProver::new(&lowering, &schedule, &witness));
+        });
+        assert!(
+            constructor.bytes_max <= memory.construction_peak_bytes(),
+            "{name}: {constructor:?}, {memory:?}"
+        );
+        drop(held.take());
+        let points = leaf_points(&schedule, 19);
+        let retained = allocation_counter::measure(|| {
+            let mut prover = StageProver::new(&lowering, &schedule, &witness);
+            let mut t = transcript();
+            let leaf = prover.leaf(&points).unwrap();
+            absorb_leaf(&mut t, &leaf);
+            drop(leaf);
+            drop(prover.leaf_splits(&mut t).unwrap());
+            for k in 1..schedule.stages.len() {
+                drop(
+                    prover
+                        .prove_stage(&mut t, u16::try_from(k).unwrap())
+                        .unwrap(),
+                );
+            }
+            held = Some(prover);
+        });
+        assert!(
+            u64::try_from(retained.bytes_current).unwrap() <= memory.retained_bytes(),
+            "{name}: {retained:?}, {memory:?}"
+        );
+        let mut empty = schedule.clone();
+        empty.stages.clear();
+        let invalid = allocation_counter::measure(|| {
+            assert_eq!(
+                StageStateMemory::new(&lowering.graph, &empty),
+                Err(StageError::Internal {
+                    rule: "stage state has a compiled leaf stage"
+                })
+            );
+        });
+        assert_eq!(invalid.count_total, 0);
+    }
+}
+
+#[test]
+fn stage_source_geometry_never_reads_witness_values() {
+    struct MetadataOnly;
+    impl WitnessSource for MetadataOnly {
+        fn values(&self, _: TensorId) -> Option<&[i64]> {
+            panic!("public source geometry read witness values")
+        }
+    }
+    for name in MODELS {
+        let (lowering, schedule, _) = setup(name);
+        let prover = StageProver::new(&lowering, &schedule, &MetadataOnly);
+        for k in 1..schedule.stages.len() {
+            let memory = prover
+                .relation_source_memory(u16::try_from(k).unwrap(), |_| {
+                    panic!("graph-only fixture has no native instances")
+                })
+                .unwrap();
+            assert!(memory.metadata_bytes() > 0);
+            assert!(memory.resident_input_bytes() > 0);
+        }
+        assert_eq!(
+            prover.relation_source_memory(u16::MAX, |_| Ok(0)),
+            Err(StageError::Internal {
+                rule: "source memory names a compiled stage"
+            })
+        );
+    }
 }
