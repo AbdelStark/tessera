@@ -102,6 +102,7 @@ fn plan_groups(
             leaf,
             selection,
             Some(&grouped),
+            None,
         )?);
         if let Ok(fit) = candidate.for_budget(budget) {
             return Ok((fit, Some(grouped)));
@@ -400,7 +401,7 @@ impl<'a> CpuBackend<'a> {
             .collect::<Result<Vec<_>, _>>()?;
         let plan = PassPlan::new(native.schedule().stages.len(), cells, weight_memory(c)?)
             .staged(shapes)?
-            .tables(TablePlan::new(&leaf, runtime.selection(), None)?);
+            .tables(TablePlan::new(&leaf, runtime.selection(), None, None)?);
         let (plan, grouped) = plan_groups(
             plan,
             &leaf,

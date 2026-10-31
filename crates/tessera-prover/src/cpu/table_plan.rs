@@ -340,6 +340,90 @@ mod tests {
             assert_eq!(proof.multiplicities().len(), count);
         }
     }
+
+    #[test]
+    fn physical_count_sources_replace_only_the_logical_table_reservation() {
+        use crate::leaf::{Site, SiteGadget, SiteLookup};
+        use tessera_compiler::schedule::{LayerMap, NodeRef};
+        use tessera_field::{Field, Goldilocks as B};
+        use tessera_gadgets::{Affine, Lookup};
+        use tessera_ir::{GadgetPolicy, Graph, NodeId};
+        use tessera_tables::{GeneratedTable, Table, TableId, TableKind};
+        use tessera_witness::MultiplicityPlan;
+        let table = GeneratedTable::new(TableId(0), TableKind::Range { bits: 29 }).unwrap();
+        let graph = Graph::default();
+        let specs = vec![table.spec().clone()];
+        let ranges = tessera_compiler::analyze(&graph, &specs).unwrap();
+        let selection =
+            tessera_compiler::select(&graph, &ranges, &specs, &GadgetPolicy::default()).unwrap();
+        let leaf = LeafLayout::new(
+            &LayerMap::none(),
+            vec![Site {
+                node: NodeRef::Node(NodeId(0)),
+                layers: vec![SiteGadget {
+                    lookups: vec![SiteLookup {
+                        lookup: Lookup {
+                            table: TableId(0),
+                            key: Affine {
+                                constant: B::ZERO,
+                                terms: vec![(B::ONE, ModelColumn::Input(0))],
+                            },
+                            value: None,
+                        },
+                        domain: vec![4],
+                        axes: Vec::new(),
+                        token: Some(0),
+                    }],
+                }],
+            }],
+        )
+        .unwrap();
+        // Four public contributions plus the canonical weighted row-zero tail.
+        // Neither the backing choice nor its size observes a lookup value.
+        let plans = [MultiplicityPlan::new(TableId(0), 1 << 29, 5).unwrap()];
+        assert!(!plans[0].is_dense());
+        let dense = TablePlan::new(&leaf, &selection, None, None).unwrap();
+        let physical = TablePlan::new(&leaf, &selection, None, Some(&plans)).unwrap();
+        assert_eq!(dense.trees, physical.trees);
+        assert_eq!(dense.scratch, physical.scratch);
+        assert_eq!(dense.forests, physical.forests);
+        assert_eq!(dense.retained, physical.retained);
+        let source = tessera_witness::Engine::table_memory(&selection.tables)
+            .unwrap()
+            .retained_bytes()
+            + plans[0].payload_bytes();
+        assert_eq!(dense.fixed - physical.fixed, 16 * (1u64 << 29) - source);
+        let allowance = 64 << 20;
+        assert!(matches!(
+            dense.select(allowance),
+            Err(ProverError::Resource(
+                tessera_codec::error::ErrorCode::ResMemory
+            ))
+        ));
+        let fixed = physical.fixed;
+        let fitted = physical.clone().select(allowance).unwrap();
+        assert!(fitted.working_bytes <= allowance);
+        assert!(fitted.cuts.iter().any(|&c| c > 0));
+        assert!(matches!(
+            physical.select(fixed - 1),
+            Err(ProverError::Resource(
+                tessera_codec::error::ErrorCode::ResMemory
+            ))
+        ));
+        for invalid in [
+            vec![],
+            vec![MultiplicityPlan::new(TableId(1), 1 << 29, 5).unwrap()],
+            vec![MultiplicityPlan::new(TableId(0), 1 << 28, 5).unwrap()],
+            vec![MultiplicityPlan::new(TableId(0), 1 << 29, 0).unwrap()],
+        ] {
+            assert!(matches!(
+                TablePlan::new(&leaf, &selection, None, Some(&invalid)),
+                Err(ProverError::Resource(
+                    tessera_codec::error::ErrorCode::ResMemory
+                ))
+            ));
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -392,6 +476,7 @@ impl TablePlan {
         leaf: &LeafLayout<ModelColumn>,
         selection: &Selection,
         grouped: Option<&GroupedLayout>,
+        physical_counts: Option<&[tessera_witness::MultiplicityPlan]>,
     ) -> Result<Self, ProverError> {
         let mut trees = Vec::new();
         let mut table_rows = 0;
@@ -526,10 +611,38 @@ impl TablePlan {
             0
         };
         let forests = mul(8, forest_rows)?;
-        // Generated core + canonical counts each use at most 8*T physical bytes.
-        // Smaller weighted count storage is still covered; the legacy floor is unchanged.
+        // The resident oracle keeps its established dense source reservation.
+        // A cached-route caller can instead supply the canonical public backing
+        // plans derived by Engine::runtime_multiplicity_plans. No secret sparsity
+        // or arbitrary host allowance enters this selection (RFC-0018).
+        let table_sources = if let Some(plans) = physical_counts {
+            if plans.len() != leaf.instances().len() {
+                return Err(memory());
+            }
+            let mut bytes =
+                tessera_witness::Engine::table_memory(&selection.tables)?.retained_bytes();
+            for (plan, instance) in plans.iter().zip(leaf.instances()) {
+                let spec = selection
+                    .tables
+                    .iter()
+                    .find(|s| s.id == instance.table)
+                    .ok_or_else(memory)?;
+                if plan.table() != instance.table
+                    || plan.rows() != power(usize::from(spec.log2_rows))?
+                    || plan.max_updates() == 0
+                {
+                    return Err(memory());
+                }
+                bytes = add(bytes, plan.payload_bytes())?;
+            }
+            bytes
+        } else {
+            mul(16, table_rows)?
+        };
+        // Actual lookup columns, forest inputs and retained group state remain
+        // charged in full. Generic table descriptors/read scratch are unchanged.
         let source = add(
-            add(mul(16, table_rows)?, mul(16, lookup_rows)?)?,
+            add(table_sources, mul(16, lookup_rows)?)?,
             add(forests, retained)?,
         )?;
         let max_vars = trees

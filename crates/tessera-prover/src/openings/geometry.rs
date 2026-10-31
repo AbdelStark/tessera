@@ -87,6 +87,68 @@ impl OpeningGeometry {
         sink.counts.groups = sink.groups.len();
         Ok(sink.counts)
     }
+    /// Conservative requested heap peak of this geometry's canonical derivation
+    /// (RFC-0018), without allocating or reading witness values. Inputs must be
+    /// the same public metadata used by `derive`. Borrowed inputs, inline storage,
+    /// allocator/runtime overhead and other proof phases remain separate.
+    ///
+    /// # Errors
+    /// Inconsistent geometry or checked storage overflow.
+    pub fn construction_peak_bytes(
+        &self,
+        lowering: &Lowering,
+        leaf: &LeafLayout<ModelColumn>,
+        grouped: Option<&GroupedLayout>,
+        native: &ModelNativePlan,
+        advice: &ModelAdviceLayout<'_>,
+    ) -> Result<u64, StageError> {
+        let plus = |a: u64, b: u64| a.checked_add(b).ok_or(StageError::Memory);
+        let times = |a: u64, b: u64| a.checked_mul(b).ok_or(StageError::Memory);
+        // walk_model_targets is the same generic traversal used by the numeric
+        // target producer. All coefficient/source metadata types are identical;
+        // only point elements change from F to Origin. Scale its existing bound
+        // by the larger element-size ratio, then add geometry-only ownership.
+        let ratio = (size_of::<Origin>() as u64)
+            .div_ceil(size_of::<F>() as u64)
+            .max(1);
+        let target = self.target_memory(lowering, leaf, native)?;
+        let mut bytes = times(ratio, target.construction_peak_bytes())?;
+        let claims = &native.schedule().stages.first().ok_or_else(bad)?.claims;
+        bytes = plus(bytes, geometry_array::<Vec<Origin>>(claims.len() as u64)?)?;
+        for claim in claims {
+            bytes = plus(bytes, geometry_growing::<Origin>(claim.point.len() as u64)?)?;
+        }
+        if grouped.is_some() {
+            // PublicStage's token-axis analysis, including intermediate output
+            // arrays; each merged leaf also creates one temporary group-index list.
+            bytes = plus(
+                bytes,
+                geometry_array::<Option<u8>>(lowering.graph.tensors.len() as u64)?,
+            )?;
+            for node in &lowering.graph.nodes {
+                bytes = plus(
+                    bytes,
+                    geometry_growing::<Option<u8>>(node.outputs.len().max(1) as u64)?,
+                )?;
+            }
+            bytes = plus(
+                bytes,
+                times(
+                    claims.len() as u64,
+                    geometry_growing::<usize>(u64::from(tessera_protocol::MAX_LEAF_GROUP_BITS))?,
+                )?,
+            )?;
+        }
+        bytes = plus(
+            bytes,
+            geometry_group_memory(
+                self.groups as u64,
+                u64::from(advice.layout().params().log2_k),
+            )?,
+        )?;
+        Ok(bytes)
+    }
+
     /// Maximum distinct advice column points, excluding proximity.
     pub fn groups(&self) -> usize {
         self.groups
@@ -357,9 +419,98 @@ impl OpeningStage<Origin> for PublicStage {
     }
 }
 
+fn geometry_array<T>(n: u64) -> Result<u64, StageError> {
+    let bytes = n
+        .checked_mul(size_of::<T>() as u64)
+        .ok_or(StageError::Memory)?;
+    if usize::try_from(n).is_err() || bytes > isize::MAX as u64 {
+        return Err(StageError::Memory);
+    }
+    Ok(bytes)
+}
+fn geometry_growing<T>(n: u64) -> Result<u64, StageError> {
+    if n == 0 {
+        return Ok(0);
+    }
+    let minimum = if size_of::<T>() == 1 {
+        8
+    } else if size_of::<T>() <= 1024 {
+        4
+    } else {
+        1
+    };
+    geometry_array::<T>(n.max(minimum).checked_mul(4).ok_or(StageError::Memory)?)
+}
+
+fn geometry_group_memory(groups: u64, columns: u64) -> Result<u64, StageError> {
+    if groups == 0 {
+        return Ok(0);
+    }
+    let plus = |a: u64, b: u64| a.checked_add(b).ok_or(StageError::Memory);
+    let times = |a: u64, b: u64| a.checked_mul(b).ok_or(StageError::Memory);
+    let mut bytes = 0;
+    // Pinned std/hashbrown table, with both old/new bucket allocations
+    // and controls/alignment during growth. Prefix vectors are exact
+    // clones; a candidate exists beside all retained distinct prefixes.
+    let n = groups;
+    let buckets = plus(times(n, 8)?, 6)?
+        .checked_div(7)
+        .ok_or(StageError::Memory)?
+        .max(4)
+        .checked_next_power_of_two()
+        .ok_or(StageError::Memory)?;
+    let entries = times(2, buckets)?;
+    bytes = plus(bytes, geometry_array::<Vec<Origin>>(entries)?)?;
+    bytes = plus(bytes, geometry_array::<u8>(entries)?)?;
+    bytes = plus(bytes, times(31, u64::from(buckets.trailing_zeros()))?)?;
+    let points = times(plus(n, 1)?, columns)?;
+    bytes = plus(bytes, geometry_array::<Origin>(points)?)?;
+    Ok(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn constructor_counts_fail_closed_and_prefix_maps_fit_independently() {
+        let checked = allocation_counter::measure(|| {
+            assert_eq!(geometry_array::<Origin>(u64::MAX), Err(StageError::Memory));
+            assert_eq!(
+                geometry_array::<u8>(isize::MAX as u64 + 1),
+                Err(StageError::Memory)
+            );
+            assert_eq!(
+                geometry_growing::<Origin>(u64::MAX / 4 + 1),
+                Err(StageError::Memory)
+            );
+            assert_eq!(geometry_group_memory(u64::MAX, 22), Err(StageError::Memory));
+            assert_eq!(geometry_group_memory(1, u64::MAX), Err(StageError::Memory));
+        });
+        assert_eq!(checked.count_total, 0);
+        for n in [0usize, 1, 2, 5, 6, 11, 12, 31, 64, 129, 513, 4097] {
+            for k in [1usize, 22] {
+                let mut groups = HashSet::new();
+                let observed = allocation_counter::measure(|| {
+                    for j in 0..n {
+                        let mut point = vec![Origin::Zero; k];
+                        point[0] = Origin::Leaf(j as u32);
+                        groups.try_reserve(1).unwrap();
+                        groups.insert(point);
+                    }
+                    if n != 0 {
+                        let mut point = vec![Origin::Zero; k];
+                        point[0] = Origin::Leaf(0);
+                        groups.insert(point);
+                    }
+                });
+                assert!(
+                    observed.bytes_max <= geometry_group_memory(n as u64, k as u64).unwrap(),
+                    "{n}/{k}: {observed:?}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn grouped_origins_use_the_global_suffix_and_original_variable_positions() {

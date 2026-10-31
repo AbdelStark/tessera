@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Price generated P2 table sources by canonical public count-backing plans when explicitly selected, and bound opening-geometry constructor work including symbolic points and prefix grouping; retain the resident route and its logical-cell floor (RFC-0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Account for retained lowering, runtime selection, advice/leaf/group layouts and native-plan metadata by their nested vector capacities and pinned B-tree node bounds; keep constructors and proof payloads separately reserved (RFC-0006/0018/0045/0054, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Count graph, layer-map and stage-schedule public metadata by actual nested vector capacities, including empty vectors with spare storage, separately from validation scratch and tensor payloads (RFC-0006/0037/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).

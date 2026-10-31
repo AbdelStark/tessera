@@ -212,6 +212,7 @@ jobs:
           cargo test -p tessera-prover --test stages --locked stage_state_memory_covers -- --test-threads=1
           cargo test -p tessera-prover --test stages --locked stage_source_geometry -- --test-threads=1
           cargo test -p tessera-prover --test stages --locked public_metadata_heap_counts -- --test-threads=1
+          cargo test -p tessera-prover --lib openings::geometry::tests --locked -- --test-threads=1
           cargo test -p tessera-compiler --lib memory:: --locked -- --test-threads=1
           cargo test -p tessera-prover --test model_leaf retained_public_layout_memory --features test-rng,test-params --locked -- --test-threads=1
           cargo test -p tessera-prover --lib openings::memory --locked -- --test-threads=1

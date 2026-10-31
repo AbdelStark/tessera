@@ -778,3 +778,20 @@ These are allocation-free retained-storage queries over public metadata, without
 value reads or validation. Construction/analysis scratch, inline objects, witness
 and proof payloads, driver state and allocator/runtime overhead remain separate.
 They do not change CPU admission or enable the cached route (RFC-0018, #641).
+
+### Physical P2 source and opening-geometry preparation
+
+The P2 planner accepts canonical public multiplicity plans for its generated table
+source reservation. This path counts generated-core/class storage plus the selected
+dense or fixed-capacity weighted backing, checks table identities and padded row
+counts, and preserves all lookup columns, forest inputs, group state and engine
+work. The resident caller continues using its existing dense source reservation.
+This input alone does not enable the cached route or change the 64-byte cell floor.
+
+`OpeningGeometry::construction_peak_bytes` covers its derivation's requested heap
+peak separately from its scalar retained result. The shared generic target walk
+uses the existing numeric target-constructor bound scaled by the `Origin`/field
+element size ratio. Geometry-only leaf points, grouped token-axis/index work and
+prefix hash-set storage are added explicitly. Tests measure the hash set separately
+and compare actual constructor peaks across ordinary, grouped and slotted models.
+Borrowed inputs, inline storage and allocator/runtime overhead remain separate.
