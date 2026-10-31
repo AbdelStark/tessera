@@ -18,6 +18,63 @@ fn shape_growth(count: u64) -> Option<u64> {
 }
 
 impl Graph {
+    /// Requested heap storage currently owned by this graph, including spare
+    /// capacity in every nested vector (RFC-0006, RFC-0018). Reads lengths and
+    /// capacities only; does not allocate, validate, or inspect constant values.
+    /// Excludes the inline `Graph`, construction scratch and allocator overhead.
+    /// Returns `None` if an allocation is unaddressable or a byte sum overflows.
+    pub fn heap_bytes(&self) -> Option<u64> {
+        let Self {
+            nodes,
+            tensors,
+            constants,
+            shift_classes,
+            weights,
+            slots,
+        } = self;
+        let mut bytes = array::<Node>(nodes.capacity() as u64)?
+            .checked_add(array::<TensorSpec>(tensors.capacity() as u64)?)?
+            .checked_add(array::<Vec<i64>>(constants.capacity() as u64)?)?
+            .checked_add(array::<Vec<u8>>(shift_classes.capacity() as u64)?)?
+            .checked_add(array::<(WeightRef, TensorId)>(weights.capacity() as u64)?)?;
+        for Node {
+            id: _,
+            op,
+            inputs,
+            outputs,
+        } in nodes
+        {
+            bytes = bytes
+                .checked_add(array::<TensorId>(inputs.capacity() as u64)?)?
+                .checked_add(array::<TensorId>(outputs.capacity() as u64)?)?
+                .checked_add(op_heap(op)?)?;
+        }
+        for TensorSpec {
+            id: _,
+            shape,
+            ty: _,
+            range: _,
+            kind: _,
+        } in tensors
+        {
+            bytes = bytes.checked_add(array::<u32>(shape.capacity() as u64)?)?;
+        }
+        for values in constants {
+            bytes = bytes.checked_add(array::<i64>(values.capacity() as u64)?)?;
+        }
+        for values in shift_classes {
+            bytes = bytes.checked_add(array::<u8>(values.capacity() as u64)?)?;
+        }
+        if let Some(BatchSlots {
+            slot_len: _,
+            lengths,
+        }) = slots
+        {
+            bytes = bytes.checked_add(array::<u32>(lengths.capacity() as u64)?)?;
+        }
+        Some(bytes)
+    }
+
     /// Upper bound on all requested heap bytes of [`Self::validate`] for a valid
     /// graph, including replaced shape buffers. Derives sizes without allocating
     /// or validating the graph. Borrowed graph storage, stack and allocator/runtime
@@ -54,6 +111,54 @@ impl Graph {
             bytes = bytes.checked_add(scratch)?;
         }
         Some(bytes)
+    }
+}
+
+// Exhaustive fields/variants keep a new heap-owning operation from silently
+// inheriting a zero charge. Transpose is the only current owning variant.
+fn op_heap(op: &Op) -> Option<u64> {
+    match op {
+        Op::Transpose { perm } => array::<u8>(perm.capacity() as u64),
+        Op::MatMulWeight { weight: _ }
+        | Op::ConstMul { c: _ }
+        | Op::ConstAdd { c: _ }
+        | Op::Rotate { rope: _ }
+        | Op::Sum { axis: _ }
+        | Op::Slice {
+            axis: _,
+            start: _,
+            len: _,
+        }
+        | Op::GatherPublic { index: _ }
+        | Op::Expand { axis: _, len: _ }
+        | Op::MatMulAct { transpose_rhs: _ }
+        | Op::Mul { broadcast: _ }
+        | Op::SumSquares { axis: _ }
+        | Op::OneHot { vocab: _ }
+        | Op::Requant {
+            shift: _,
+            lo: _,
+            hi: _,
+        }
+        | Op::TableMap { table: _ }
+        | Op::SoftmaxRow {
+            exp_table: _,
+            sigma: _,
+        }
+        | Op::RsqrtRow {
+            kappa: _,
+            eps_int: _,
+            dim: _,
+        }
+        | Op::InverseCdf { prf: _ }
+        | Op::Bitwise { table: _ }
+        | Op::BitDecompose { low: _, high: _ }
+        | Op::BitFn { f: _ }
+        | Op::Add
+        | Op::Sub
+        | Op::Reshape
+        | Op::Argmax
+        | Op::AssertEqual => Some(0),
     }
 }
 

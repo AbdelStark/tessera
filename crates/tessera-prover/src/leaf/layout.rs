@@ -20,6 +20,10 @@ use super::{LeafError, internal};
 /// instance, then fit a `u64` with room to spare.
 const MAX_BLOCK_VARS: u32 = 48;
 
+pub(super) fn heap_vector<T>(v: &Vec<T>) -> Option<u64> {
+    (v.capacity() as u64).checked_mul(size_of::<T>() as u64)
+}
+
 /// One lookup of a site's gadget in one layer: its table and its forms (RFC-0009), with the axes
 /// of the gadget's domain over which each term's tensor is read (RFC-0045 'A block's claim').
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -277,6 +281,79 @@ pub struct LeafLayout<T = Term> {
 }
 
 impl<T: Copy + Eq> LeafLayout<T> {
+    /// Requested heap bytes of the public leaf layout, including nested spare
+    /// capacities (RFC-0045/0018). Reads no field values and does not allocate or
+    /// validate. Borrowed data, inline storage, construction work, witness/column
+    /// payloads and allocator overhead are separate. Returns `None` on overflow.
+    pub fn heap_bytes(&self) -> Option<u64> {
+        let Self {
+            sites,
+            instances,
+            reads,
+            ungroupable: _,
+        } = self;
+        let mut bytes = heap_vector(sites)?
+            .checked_add(heap_vector(instances)?)?
+            .checked_add(heap_vector(reads)?)?;
+        for Site { node: _, layers } in sites {
+            bytes = bytes.checked_add(heap_vector(layers)?)?;
+            for SiteGadget { lookups } in layers {
+                bytes = bytes.checked_add(heap_vector(lookups)?)?;
+                for SiteLookup {
+                    lookup,
+                    domain,
+                    axes,
+                    token: _,
+                } in lookups
+                {
+                    bytes = bytes
+                        .checked_add(heap_vector(domain)?)?
+                        .checked_add(heap_vector(axes)?)?;
+                    for (_, axis) in axes {
+                        bytes = bytes.checked_add(heap_vector(axis)?)?;
+                    }
+                    let Lookup {
+                        table: _,
+                        key,
+                        value,
+                    } = lookup;
+                    for tessera_gadgets::Affine { constant: _, terms } in
+                        core::iter::once(key).chain(value.as_ref())
+                    {
+                        bytes = bytes.checked_add(heap_vector(terms)?)?;
+                    }
+                }
+            }
+        }
+        for InstanceLayout {
+            table: _,
+            blocks,
+            entries: _,
+            height: _,
+        } in instances
+        {
+            bytes = bytes.checked_add(heap_vector(blocks)?)?;
+        }
+        for site in reads {
+            bytes = bytes.checked_add(heap_vector(site)?)?;
+            for layer in site {
+                bytes = bytes.checked_add(heap_vector(layer)?)?;
+                for Read {
+                    term: _,
+                    axes,
+                    coords,
+                    public: _,
+                } in layer
+                {
+                    bytes = bytes
+                        .checked_add(heap_vector(axes)?)?
+                        .checked_add(heap_vector(coords)?)?;
+                }
+            }
+        }
+        Some(bytes)
+    }
+
     /// The layout of `sites`, in the layers `layers` (RFC-0045 'The column', 'The split'):
     ///
     /// 1. **Sites** come in node order, each once: a template position at its layer-0 node, with

@@ -1592,3 +1592,130 @@ fn runtime_leaf_counts_and_implicit_table_digests_match_independent_metadata() {
     }
     assert_eq!(checked, 101);
 }
+
+#[test]
+fn retained_public_layout_memory_matches_owned_allocations() {
+    use tessera_compiler::RuntimePlan;
+    use tessera_prover::{leaf::GroupedLayout, native::ModelNativePlan};
+    fn retained<T>(build: impl FnOnce() -> T) -> (T, u64) {
+        let mut held = None;
+        let observed = allocation_counter::measure(|| {
+            held = Some(build());
+        });
+        (
+            held.unwrap(),
+            u64::try_from(observed.bytes_current).unwrap(),
+        )
+    }
+    for name in [
+        "tiny-2-servable",
+        "tiny-2-minimal",
+        "tiny-2-affine",
+        "tiny-4-servable",
+    ] {
+        let model = bounded_model_named(name);
+        for n in [1, 3, 5] {
+            let p = public(
+                &model,
+                n,
+                GadgetPolicy {
+                    max_log2_rows: 18,
+                    query_block: 2,
+                    ..GadgetPolicy::default()
+                },
+            );
+            let (lowering, lowering_bytes) = retained(|| p.lowering.clone());
+            let (selection, selection_bytes) = retained(|| p.selection.clone());
+            let (runtime, runtime_bytes) = retained(|| {
+                RuntimePlan::derive(&p.lowering, &p.selection, &p.claims, 1, 0).unwrap()
+            });
+            let (advice, advice_bytes) =
+                retained(|| ModelAdviceLayout::runtime(&p.lowering, &runtime, &p.claims).unwrap());
+            let (leaf, leaf_bytes) = retained(|| {
+                LeafLayout::runtime(&p.lowering, &p.layers, &runtime, &p.claims).unwrap()
+            });
+            let (native, native_bytes) = retained(|| {
+                ModelNativePlan::derive_runtime(&p.lowering, &runtime, &p.claims, &leaf).unwrap()
+            });
+            let sizing = allocation_counter::measure(|| {
+                assert_eq!(
+                    lowering.heap_bytes(),
+                    Some(lowering_bytes),
+                    "lowering {name}/{n}"
+                );
+                assert!(
+                    selection.heap_upper_bound().unwrap() >= selection_bytes,
+                    "selection {name}/{n}"
+                );
+                assert!(
+                    runtime.heap_upper_bound().unwrap() >= runtime_bytes,
+                    "runtime {name}/{n}"
+                );
+                assert!(
+                    advice.heap_upper_bound().unwrap() >= advice_bytes,
+                    "advice {name}/{n}"
+                );
+                assert_eq!(leaf.heap_bytes(), Some(leaf_bytes), "leaf {name}/{n}");
+                assert_eq!(native.heap_bytes(), Some(native_bytes), "native {name}/{n}");
+            });
+            assert_eq!(sizing.count_total, 0);
+            if n > 1 {
+                let (grouped, bytes) = retained(|| {
+                    GroupedLayout::new(
+                        &leaf,
+                        &p.layers,
+                        tessera_protocol::LeafGroups {
+                            token_bits: 1,
+                            layer_bits: 0,
+                        },
+                    )
+                    .unwrap()
+                });
+                assert_eq!(grouped.heap_bytes(), Some(bytes), "grouped {name}/{n}");
+                for h in 0..grouped.count() {
+                    let (group, bytes) = retained(|| grouped.group(h).unwrap());
+                    let sizing = allocation_counter::measure(|| {
+                        assert_eq!(group.heap_bytes(), Some(bytes), "group {name}/{n}/{h}");
+                    });
+                    assert_eq!(sizing.count_total, 0);
+                }
+            }
+        }
+    }
+
+    // RFC-0071: optional cloned slot lengths and multiple runtime windows.
+    let model = model("tiny-2-minimal");
+    let mut p = public(&model, 3, GadgetPolicy::default());
+    p.lowering = tessera_compiler::lower_batch(PublicModel::of(&model), &[2, 1, 3]).unwrap();
+    p.layers = LayerMap::new(&p.lowering).unwrap();
+    let ranges = analyze(&p.lowering.graph, &p.lowering.tables).unwrap();
+    p.selection = select_model(
+        p.claims.protocol_version,
+        &p.lowering,
+        &ranges,
+        &p.claims.gadget_policy,
+    )
+    .unwrap();
+    let (lowering, bytes) = retained(|| p.lowering.clone());
+    assert_eq!(lowering.heap_bytes(), Some(bytes));
+    let (runtime, bytes) = retained(|| {
+        RuntimePlan::derive_batch(
+            &p.lowering,
+            &p.selection,
+            &p.claims,
+            &[(1, 1), (1, 0), (1, 2)],
+        )
+        .unwrap()
+    });
+    assert!(runtime.heap_upper_bound().unwrap() >= bytes);
+    let (advice, bytes) =
+        retained(|| ModelAdviceLayout::runtime(&p.lowering, &runtime, &p.claims).unwrap());
+    assert!(advice.heap_upper_bound().unwrap() >= bytes);
+    let (leaf, bytes) =
+        retained(|| LeafLayout::runtime(&p.lowering, &p.layers, &runtime, &p.claims).unwrap());
+    assert_eq!(leaf.heap_bytes(), Some(bytes));
+    let (native, bytes) = retained(|| {
+        ModelNativePlan::derive_runtime(&p.lowering, &runtime, &p.claims, &leaf).unwrap()
+    });
+    assert_eq!(native.heap_bytes(), Some(bytes));
+}

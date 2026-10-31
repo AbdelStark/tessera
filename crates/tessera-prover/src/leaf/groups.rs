@@ -66,6 +66,42 @@ pub struct GroupLayout {
 }
 
 impl GroupLayout {
+    /// Requested heap bytes of this one group's public block/read layout,
+    /// including spare capacities (RFC-0054/0018). No allocation or validation;
+    /// construction work, payloads, inline data and allocator overhead are extra.
+    /// Returns `None` on checked overflow.
+    pub fn heap_bytes(&self) -> Option<u64> {
+        use super::layout::heap_vector as vector;
+        let Self {
+            tokens: _,
+            layers: _,
+            instances,
+            reads,
+        } = self;
+        let mut bytes = vector(instances)?.checked_add(vector(reads)?)?;
+        for InstanceLayout {
+            table: _,
+            blocks,
+            entries: _,
+            height: _,
+        } in instances
+        {
+            bytes = bytes.checked_add(vector(blocks)?)?;
+        }
+        for GroupRead {
+            site: _,
+            layer: _,
+            read: _,
+            polynomial: _,
+            coords,
+            group_bits: _,
+        } in reads
+        {
+            bytes = bytes.checked_add(vector(coords)?)?;
+        }
+        Some(bytes)
+    }
+
     /// `s`, the group's token subset: the token index's low `g_T` bits.
     pub fn tokens(&self) -> u64 {
         self.tokens
@@ -122,6 +158,57 @@ struct Share {
 }
 
 impl GroupedLayout {
+    /// Requested retained heap bytes of grouping metadata, including nested
+    /// spare capacities (RFC-0054/0018). No allocation or validation; inline data,
+    /// construction work, group proofs/payloads and allocator overhead are extra.
+    /// Returns `None` on checked overflow.
+    pub fn heap_bytes(&self) -> Option<u64> {
+        use super::layout::heap_vector as vector;
+        let Self {
+            groups: _,
+            polynomials,
+            coords,
+            fixed,
+            shares,
+        } = self;
+        let mut bytes = vector(polynomials)?
+            .checked_add(vector(coords)?)?
+            .checked_add(vector(fixed)?)?
+            .checked_add(vector(shares)?)?;
+        for MergePolynomial {
+            vars: _,
+            group_vars,
+        } in polynomials
+        {
+            bytes = bytes.checked_add(vector(group_vars)?)?;
+        }
+        for point in coords {
+            bytes = bytes.checked_add(vector(point)?)?;
+        }
+        for site in fixed {
+            bytes = bytes.checked_add(vector(site)?)?;
+            for layer in site {
+                bytes = bytes.checked_add(vector(layer)?)?;
+            }
+        }
+        for Share {
+            site: _,
+            layer: _,
+            subset: _,
+            first: _,
+            blocks,
+            reads,
+            reads_zero,
+        } in shares
+        {
+            bytes = bytes
+                .checked_add(vector(blocks)?)?
+                .checked_add(vector(reads)?)?
+                .checked_add(vector(reads_zero)?)?;
+        }
+        Some(bytes)
+    }
+
     /// The layouts of `stage`'s groups under `groups`, its layers `layers` (RFC-0054 'Groups',
     /// 'What a group holds'):
     ///

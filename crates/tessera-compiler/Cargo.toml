@@ -20,6 +20,7 @@ tessera-sumcheck = { path = "../tessera-sumcheck" }
 tessera-tables = { path = "../tessera-tables" }
 
 [dev-dependencies]
+allocation-counter = "0.8"
 proptest = "1"
 
 [lints]

@@ -88,6 +88,21 @@ pub struct RuntimePlan {
     key_columns: Vec<GreedyKeyColumn>,
 }
 impl RuntimePlan {
+    /// Conservative retained heap bytes of this public runtime selection and
+    /// request columns (RFC-0053/0018). Reads capacities only, without allocation
+    /// or validation. Inline storage, construction scratch and allocator overhead
+    /// are separate. Returns `None` on checked overflow.
+    pub fn heap_upper_bound(&self) -> Option<u64> {
+        let Self {
+            selection,
+            certificate: _,
+            key_columns,
+        } = self;
+        selection
+            .heap_upper_bound()?
+            .checked_add(crate::memory::vector(key_columns)?)
+    }
+
     /// Extend checked model metadata for one request. Empty outputs add no maximum or table.
     ///
     /// # Errors
