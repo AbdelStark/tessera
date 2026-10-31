@@ -459,3 +459,36 @@ another charge. These constructor/request sums exclude borrowed input storage,
 checkpoint/cache payloads, returned tile/scalar-gadget work, stack/runtime and
 allocator overhead, and the remaining proof phases. They do not admit the cached
 CPU route or replace the resident-cell floor.
+
+## Resident and cached tile work
+
+`Requant::witness_memory`, `RsqrtRow::witness_memory` and
+`SoftmaxRow::witness_memory` bound requested bytes of honest witness construction,
+including returned clearing columns and public descriptors. The root bound also
+covers comparison constraints, temporary product/constant limb buffers, coefficient
+polynomials and the later `into_tensors` transfer. Its polynomial work is a subset
+of the two bracket expansions and comparisons already bounded for full constraints.
+`SoftmaxRow::evaluation_memory` includes its complete Goldilocks constraints,
+product leaves, original lookup columns and grouped concatenation. Reciprocal and slack
+lookups can share a Range table; growing their shared scalar key buffer is charged.
+Only the Exp lookup has position keys/values; its group moves both buffers.
+The bounds exclude borrowed templates/inputs, counting, stack/runtime and allocator
+overhead, and use the pinned compiler's allocation-request growth bound.
+
+`Engine::source_tile_work_memory` sums public work over all graph nodes to bound
+any one resident/cached tile. A table tile can visit every contributing node;
+attention recounts run one row at a time. The sum includes output copies,
+input/output/share descriptors and coordinate ranges, returned lookup/auxiliary
+columns, scalar gadget work, copied class vectors and Requant padding witnesses.
+Softmax rows charge their temporary padded row and complete evaluation, including
+outer tile descriptors for row callbacks and empty attention cuts.
+`runtime_source_tile_work_memory` additionally charges the maximum and all padded
+runtime key columns and descriptors.
+
+A table tile's canonical `MultiplicityPlan::payload_bytes` is a separate charge;
+this payload is not hidden inside the work sum. Both helpers allocate nothing and
+read no witness values. They assume valid canonical lowering/gadget metadata and
+canonical resident/cache borrowers; arbitrary TensorSource callback allocations,
+replay execution, source construction, retained input/template data, encoding,
+stack/runtime and allocator overhead remain outside their scope. The helpers do
+not admit the cached CPU route or replace the resident-cell floor.

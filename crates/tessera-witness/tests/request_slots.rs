@@ -6,6 +6,7 @@
 
 mod common;
 
+use allocation_counter::measure;
 use tessera_codec::{Ascii, Secret, SecretBuf};
 use tessera_compiler::{
     ModelAdviceLayout, PublicModel, RuntimePlan, analyze, claim_list, lower, lower_batch,
@@ -140,7 +141,7 @@ fn batched_witness_isolates_slots_zeros_padded_rows_and_refuses_nonzero_padded_t
     );
     for bad in [vec![0; 9], vec![fixture.model.arch.vocab; 10]] {
         let bad = Secret::new(bad);
-        let info = allocation_counter::measure(|| {
+        let info = measure(|| {
             assert_eq!(
                 engine.canonical_batch_tokens(&fixture.model, &bad).err(),
                 Some(WitnessError::Usage {
@@ -343,6 +344,11 @@ fn check_batch_runtime_equivalence(
             .collect();
         assert_eq!(plans.len(), planned.len());
         assert_eq!(planned, required);
+        let mut work = None;
+        let planning =
+            measure(|| work = Some(engine.runtime_source_tile_work_memory(&runtime).unwrap()));
+        assert_eq!(planning.count_total, 0);
+        let work = work.unwrap();
         let resident = Resident::runtime(&engine, &runtime, model, &first).expect("resident");
         let borrowed = Resident::runtime_from_tensors(&engine, &runtime, model, &cached)
             .expect("borrowed INT8 source");
@@ -359,7 +365,22 @@ fn check_batch_runtime_equivalence(
             }
         }
         for (idx, tile) in advice.tiles().iter().enumerate() {
-            let rt = resident.tile(tile).expect("resident tile");
+            let count_bytes = if let tessera_compiler::Tile::Table { table } = tile.tile {
+                plans
+                    .iter()
+                    .find(|plan| plan.table() == tessera_ir::TableId(table))
+                    .unwrap()
+                    .payload_bytes()
+            } else {
+                0
+            };
+            let mut rt = None;
+            let requests = measure(|| rt = Some(resident.tile(tile).expect("resident tile")));
+            assert!(
+                requests.bytes_total <= work + count_bytes,
+                "protocol={protocol} q={q} tile={idx} {requests:?} work={work} counts={count_bytes}"
+            );
+            let rt = rt.unwrap();
             if let Some(column) = rt.multiplicities() {
                 let plan = plans
                     .iter()
@@ -370,7 +391,13 @@ fn check_batch_runtime_equivalence(
             }
             let gt = regenerator.tile(tile).expect("regenerator tile");
             assert_same_tile(&rt, &gt, &format!("protocol={protocol} q={q} tile={idx}"));
-            let bt = borrowed.tile(tile).expect("borrowed INT8 tile");
+            let mut bt = None;
+            let requests = measure(|| bt = Some(borrowed.tile(tile).expect("borrowed INT8 tile")));
+            assert!(
+                requests.bytes_total <= work + count_bytes,
+                "borrowed protocol={protocol} q={q} tile={idx} {requests:?} work={work} counts={count_bytes}"
+            );
+            let bt = bt.unwrap();
             assert_same_tile(
                 &rt,
                 &bt,

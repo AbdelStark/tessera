@@ -249,3 +249,155 @@ fn softmax_metadata_planning_refuses_missing_and_nonexp_specs_without_allocation
         assert_eq!(measured.count_total, 0);
     }
 }
+
+#[test]
+fn requant_witness_requests_cover_all_forms_and_wide_transfers() {
+    for (b, shifts, lo, hi, maximum) in [
+        (8, &[3u8][..], -16, 15, 8),
+        (12, &[5, 7][..], -16, 15, 10),
+        (14, &[3][..], -3, 3, 10),
+        (14, &[3, 4][..], -5, 2, 10),
+        (13, &[2, 3, 4, 5][..], -4, 4, 10),
+        (12, &[1, 2][..], -2, 3, 9),
+        (62, &[33, 34, 35, 36][..], -128, 127, 24),
+    ] {
+        let (selected, tables) = common::select_requant(b, shifts, lo, hi, maximum);
+        let gadget = Requant::new(&selected, &tables).unwrap();
+        for rows in [0, 1, 3, 17, 1024] {
+            let values = vec![0; rows];
+            let classes = (0..rows)
+                .map(|i| (i % shifts.len()) as u8)
+                .collect::<Vec<_>>();
+            let mut bound = None;
+            let planning = measure(|| bound = Requant::witness_memory(rows as u64));
+            assert_eq!(planning.count_total, 0);
+            let bound = bound.unwrap();
+            let mut tensors = None;
+            let built = measure(|| {
+                tensors = Some(
+                    gadget
+                        .witness(&values, Some(&classes))
+                        .unwrap()
+                        .into_tensors(),
+                )
+            });
+            assert!(
+                built.bytes_total <= bound,
+                "{selected:?} rows={rows} {built:?} {bound}"
+            );
+        }
+    }
+}
+
+#[test]
+fn root_witness_requests_cover_every_width_comparison_and_transferred_column() {
+    let tables = (1..=32)
+        .map(|bits| {
+            GeneratedTable::new(TableId(u32::from(bits)), TableKind::Range { bits })
+                .unwrap()
+                .spec()
+                .clone()
+        })
+        .collect::<Vec<_>>();
+    for bits in 1..=32 {
+        let root = RsqrtRow::new(1, bits - 1, 1, &tables).unwrap();
+        for rows in [0, 1, 3, 17, 1024] {
+            let real = (0..rows).map(|i| i % 3 != 1).collect::<Vec<_>>();
+            let values = real
+                .iter()
+                .enumerate()
+                .map(|(i, &r)| {
+                    if !r {
+                        0
+                    } else if i % 2 == 0 {
+                        1
+                    } else {
+                        (1 << 55) - 1
+                    }
+                })
+                .collect::<Vec<_>>();
+            let mut bound = None;
+            let planning = measure(|| bound = RsqrtRow::witness_memory(rows as u64));
+            assert_eq!(planning.count_total, 0);
+            let bound = bound.unwrap();
+            let mut tensors = None;
+            let built =
+                measure(|| tensors = Some(root.witness(&values, &real).unwrap().into_tensors()));
+            assert!(
+                built.bytes_total <= bound,
+                "bits={bits} rows={rows} {built:?} {bound}"
+            );
+            if bits == 32 {
+                assert_eq!(tensors.as_ref().unwrap().len(), 187);
+            }
+        }
+    }
+}
+
+#[test]
+fn softmax_witness_and_evaluation_requests_cover_copies_and_lookup_concatenation() {
+    use tessera_field::Goldilocks;
+    for (sigma, limb, max_context) in [
+        (0, 1, 4096),
+        (0, 32, 4096),
+        (16, 8, 4096),
+        (16, 17, 65536), // Reciprocal Range(17) shares the NonNeg limb group.
+        (16, 16, 4096),
+        (31, 32, 2),
+        (31, 1, 2),
+    ] {
+        let tables = softmax_specs(sigma, limb);
+        for positions in [1usize, 2, 8, 128, 4096, 65536]
+            .into_iter()
+            .filter(|&n| n <= max_context)
+        {
+            let gadget = SoftmaxRow::new(TableId(0), limb, max_context, &tables).unwrap();
+            let scores = (0..positions)
+                .map(|i| (i % 23) as i64 - 11)
+                .collect::<Vec<_>>();
+            let mut bound = None;
+            let planning = measure(|| {
+                bound = Some((
+                    SoftmaxRow::witness_memory(positions as u64).unwrap(),
+                    SoftmaxRow::evaluation_memory(positions as u64).unwrap(),
+                ))
+            });
+            assert_eq!(planning.count_total, 0);
+            let (witness_bound, evaluation_bound) = bound.unwrap();
+            for valid in [0, 1, positions.div_ceil(2), positions] {
+                let mut witness = None;
+                let built = measure(|| witness = Some(gadget.witness(&scores, valid).unwrap()));
+                assert!(
+                    built.bytes_total <= witness_bound,
+                    "sigma={sigma} limb={limb} positions={positions} {built:?} {witness_bound}"
+                );
+                let witness = witness.unwrap();
+                let mut evaluation = None;
+                let built = measure(|| {
+                    evaluation = Some(
+                        gadget
+                            .evaluate::<Goldilocks>(&scores, valid, &witness)
+                            .unwrap(),
+                    )
+                });
+                assert!(
+                    built.bytes_total <= evaluation_bound,
+                    "sigma={sigma} limb={limb} positions={positions} {built:?} {evaluation_bound}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn witness_request_planning_refuses_unaddressable_rows_without_allocation() {
+    let planning = measure(|| {
+        assert_eq!(Requant::witness_memory(u64::MAX), None);
+        assert_eq!(RsqrtRow::witness_memory(u64::MAX), None);
+        for rows in [0, 3, 1 << 63] {
+            assert_eq!(SoftmaxRow::witness_memory(rows), None);
+            assert_eq!(SoftmaxRow::evaluation_memory(rows), None);
+        }
+    });
+    assert_eq!(planning.count_total, 0);
+}

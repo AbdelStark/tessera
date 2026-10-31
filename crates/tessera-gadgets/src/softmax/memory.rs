@@ -9,6 +9,22 @@ use tessera_field::Goldilocks as F;
 use tessera_tables::{GeneratedTable, TableError, TableId, TableKind, TableSpec};
 
 impl SoftmaxRow {
+    pub(crate) fn constraint_memory() -> Option<u64> {
+        const LIMBS: u64 = 31 + 18;
+        // Seven relation vectors have 18 monomials and 23 literal factors. The
+        // first two lookups have three affine vectors; both slack mappings add
+        // 2*(L-1)+2*L coefficient/term pairs, including both virtual top limbs.
+        sum([
+            growing::<SoftmaxColumn>(3 + 2 * (LIMBS - 1)),
+            growing::<SoftmaxLookup<F>>(2 + 2 * LIMBS),
+            array::<SoftmaxRelation<F>>(7),
+            array::<(F, Vec<SoftmaxTerm>)>(18),
+            array::<SoftmaxTerm>(23),
+            array::<(F, SoftmaxTerm)>(4 * LIMBS + 1),
+            nonneg(LIMBS),
+        ])
+    }
+
     /// Plan requested template and Goldilocks constraint bytes without allocation
     /// or core generation. The Exp payload follows its public parameters; metadata
     /// covers every valid limb/context choice (at most 49 NonNeg limbs).
@@ -40,20 +56,7 @@ impl SoftmaxRow {
         let template = array::<i64>(core)
             .and_then(|n| n.checked_add(size_of::<u64>() as u64))
             .ok_or_else(|| fail(TableError::Memory))?;
-        const LIMBS: u64 = 31 + 18;
-        // Seven relation vectors have 18 monomials and 23 literal factors. The
-        // first two lookups have three affine vectors; both slack mappings add
-        // 2*(L-1)+2*L coefficient/term pairs, including both virtual top limbs.
-        let constraints = sum([
-            growing::<SoftmaxColumn>(3 + 2 * (LIMBS - 1)),
-            growing::<SoftmaxLookup<F>>(2 + 2 * LIMBS),
-            array::<SoftmaxRelation<F>>(7),
-            array::<(F, Vec<SoftmaxTerm>)>(18),
-            array::<SoftmaxTerm>(23),
-            array::<(F, SoftmaxTerm)>(4 * LIMBS + 1),
-            nonneg(LIMBS),
-        ])
-        .ok_or_else(|| fail(TableError::Memory))?;
+        let constraints = Self::constraint_memory().ok_or_else(|| fail(TableError::Memory))?;
         Ok(TemplateMemory {
             template,
             constraints,
