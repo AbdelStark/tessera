@@ -13,6 +13,7 @@ use tessera_sumcheck::{
 
 use super::columns::Column;
 use super::relations::{Arena, Plan, Read};
+use super::source_memory::{add, array};
 use super::{NativeProver, StageError, StageProver, WitnessSource, eq_vertex};
 
 type F = GoldilocksExt2;
@@ -33,7 +34,10 @@ enum Factor {
         column: ColumnRef,
         coordinates: Vec<Coordinate>,
     },
-    Public(Box<dyn Fn(usize) -> F + Send + Sync>),
+    Public {
+        at: Box<dyn Fn(usize) -> F + Send + Sync>,
+        heap: u64,
+    },
     Rotate {
         cos: ColumnRef,
         sin: ColumnRef,
@@ -71,6 +75,24 @@ impl Arena {
 }
 
 impl Factor {
+    fn public(
+        owned: u64,
+        at: impl Fn(usize) -> F + Send + Sync + 'static,
+    ) -> Result<Self, StageError> {
+        let heap = add(size_of_val(&at) as u64, owned)?;
+        Ok(Self::Public {
+            at: Box::new(at),
+            heap,
+        })
+    }
+    fn heap_bytes(&self) -> Result<u64, StageError> {
+        match self {
+            Self::Column { coordinates, .. } => array::<Coordinate>(coordinates.capacity()),
+            Self::Public { heap, .. } => Ok(*heap),
+            Self::Rotate { rest, .. } => array::<F>(rest.capacity()),
+            Self::Native { .. } => Ok(0),
+        }
+    }
     fn read(read: &Read, arena: &Arena) -> Self {
         let (column, low) = match *read {
             Read::Operand(index) | Read::Spread(index) => (
@@ -138,7 +160,7 @@ impl Factor {
                 }
                 Ok(sum)
             }
-            Self::Public(at) => Ok(at(index)),
+            Self::Public { at, .. } => Ok(at(index)),
             Self::Rotate {
                 cos,
                 sin,
@@ -256,14 +278,14 @@ fn fixed(point: &[F]) -> impl Iterator<Item = Coordinate> + '_ {
 fn free(start: usize, count: usize) -> impl Iterator<Item = Coordinate> {
     (start..start + count).map(Coordinate::Free)
 }
-fn eq_factor(point: Vec<F>, low: usize, zero_bits: usize) -> Factor {
-    Factor::Public(Box::new(move |index| {
+fn eq_factor(point: Vec<F>, low: usize, zero_bits: usize) -> Result<Factor, StageError> {
+    Factor::public(array::<F>(point.capacity())?, move |index| {
         if index & ((1usize << zero_bits) - 1) != 0 {
             F::ZERO
         } else {
             eq_vertex(&point, (index >> low) as u64)
         }
-    }))
+    })
 }
 
 impl Plan {
@@ -432,9 +454,14 @@ impl Plan {
                 let (selected, hi) = rest.split_at(*rows);
                 let members = members.clone();
                 let selected = selected.to_vec();
+                let owned = members.iter().try_fold(
+                    array::<(F, Vec<usize>)>(members.capacity())?,
+                    |n, (_, v)| add(n, array::<usize>(v.capacity())?),
+                )?;
+                let owned = add(owned, array::<F>(selected.capacity())?)?;
                 tables.push(push(
                     factors,
-                    Factor::Public(Box::new(move |index| {
+                    Factor::public(owned, move |index| {
                         members.iter().fold(F::ZERO, |sum, (coefficient, indices)| {
                             sum + *coefficient
                                 * indices
@@ -443,7 +470,7 @@ impl Plan {
                                     .filter(|(_, i)| **i == index)
                                     .fold(F::ZERO, |s, (j, _)| s + eq_vertex(&selected, j as u64))
                         })
-                    })),
+                    })?,
                     true,
                 ));
                 let coordinates = fixed(lo).chain(free(0, *axis)).chain(fixed(hi)).collect();
@@ -476,7 +503,7 @@ impl Plan {
                 if point.len() != *rows {
                     return internal("a recomposition EQ has its row coordinates");
                 }
-                tables.push(push(factors, eq_factor(point.to_vec(), k, 0), true));
+                tables.push(push(factors, eq_factor(point.to_vec(), k, 0)?, true));
                 let mut whole = Factor::read(x, arena);
                 if let Factor::Column { coordinates, .. } = &mut whole {
                     for coordinate in coordinates {
@@ -504,10 +531,10 @@ impl Plan {
                     };
                     let pad = k - bits;
                     let at = tables.len();
-                    tables.push(push(factors, eq_factor(point.to_vec(), k, pad), true));
+                    tables.push(push(factors, eq_factor(point.to_vec(), k, pad)?, true));
                     tables.push(push(
                         factors,
-                        Factor::Public(Box::new(move |index| {
+                        Factor::public(0, move |index| {
                             let i = index & ((1usize << k) - 1);
                             let bit = i >> pad;
                             if i & ((1usize << pad) - 1) == 0 && bit < usize::from(count) {
@@ -515,7 +542,7 @@ impl Plan {
                             } else {
                                 F::ZERO
                             }
-                        })),
+                        })?,
                         true,
                     ));
                     tables.push(push(
@@ -892,6 +919,28 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
 }
 
 impl Plan {
+    fn heap_bytes(&self) -> Result<u64, StageError> {
+        match self {
+            Self::Elementwise { inputs, terms, .. } => terms.iter().try_fold(
+                add(
+                    array::<Read>(inputs.capacity())?,
+                    array::<Term<F>>(terms.capacity())?,
+                )?,
+                |n, t| {
+                    add(
+                        n,
+                        super::source_memory::growing::<usize>(t.factors().len())?,
+                    )
+                },
+            ),
+            Self::Selection { members, .. } => members.iter().try_fold(
+                array::<(F, Vec<usize>)>(members.capacity())?,
+                |n, (_, indices)| add(n, array::<usize>(indices.capacity())?),
+            ),
+            _ => Ok(0),
+        }
+    }
+
     fn memory_shape(&self, vars: usize) -> tessera_sumcheck::WindowShape {
         let (tables, delta, windowable) = match self {
             Self::Elementwise { inputs, terms, .. } => (
@@ -913,6 +962,93 @@ impl Plan {
 }
 
 impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
+    /// Canonical source metadata and original resident column requests for a
+    /// compiled stage, without loading witness data or drawing challenges.
+    /// `native_tables` supplies every canonical native operand before sharing.
+    /// Public geometry construction allocates; its temporaries are additional.
+    /// Native source payloads/instance callbacks, relation contractions, sumcheck
+    /// engines, pending windows, messages and runtime/allocator work are separate.
+    ///
+    /// # Errors
+    /// The public stage/operand geometry is invalid or its byte counts overflow.
+    pub fn relation_source_memory(
+        &self,
+        k: u16,
+        native_tables: impl Fn(u32) -> Result<usize, StageError>,
+    ) -> Result<super::StageSourceMemory, StageError> {
+        use super::source_memory::growing;
+        let stage = self
+            .schedule
+            .stages
+            .get(usize::from(k))
+            .ok_or(StageError::Internal {
+                rule: "source memory names a compiled stage",
+            })?;
+        let mut arena = Arena {
+            streaming: true,
+            geometry_only: true,
+            ..Arena::default()
+        };
+        let mut factors = Vec::new();
+        let (mut graphs, mut native, mut nested, mut points) = (0usize, 0usize, 0u64, 0u64);
+        for instance in &stage.instances {
+            if let Relation::Native { tag, .. } = instance.relation {
+                native = native
+                    .checked_add(native_tables(tag)?)
+                    .ok_or(StageError::Memory)?;
+                continue;
+            }
+            graphs = graphs.checked_add(1).ok_or(StageError::Memory)?;
+            let plan = self.plan(stage, instance, &mut arena)?;
+            let layers = match &instance.layers {
+                Layers::Eq(rho) => rho.len(),
+                _ => 0,
+            };
+            let len = instance
+                .point
+                .len()
+                .checked_add(layers)
+                .ok_or(StageError::Memory)?;
+            points = add(points, growing::<F>(len)?)?;
+            // Only public lengths control the column/factor recipes. No proof,
+            // incoming claim, transcript label or challenge is supplied here.
+            let point = vec![F::ZERO; len];
+            drop(plan.window(&arena, &point, &mut factors)?);
+            nested = add(nested, plan.heap_bytes()?)?;
+        }
+        let mut metadata = add(nested, points)?;
+        metadata = add(
+            metadata,
+            add(growing::<Plan>(graphs)?, growing::<Vec<F>>(graphs)?)?,
+        )?;
+        metadata = add(metadata, growing::<Option<usize>>(stage.instances.len())?)?;
+        metadata = add(
+            metadata,
+            growing::<Factor>(
+                factors
+                    .len()
+                    .checked_add(native)
+                    .ok_or(StageError::Memory)?,
+            )?,
+        )?;
+        metadata = add(
+            metadata,
+            add(
+                growing::<Column>(arena.secret.len())?,
+                growing::<Column>(arena.public.len())?,
+            )?,
+        )?;
+        let mut inputs = 0;
+        for column in arena.secret.iter().chain(&arena.public) {
+            metadata = add(metadata, column.heap_bytes()?)?;
+            inputs = add(inputs, growing::<Goldilocks>(column.len())?)?;
+        }
+        for factor in &factors {
+            metadata = add(metadata, factor.heap_bytes()?)?;
+        }
+        Ok(super::StageSourceMemory { metadata, inputs })
+    }
+
     /// Public operand/grid geometry; called before P1 with a source that lends no witness data.
     pub(crate) fn window_shapes(
         &self,
@@ -1023,9 +1159,15 @@ mod tests {
                 .map(|i| Goldilocks::from_u64_reduced((i * i + 3 * k + 1) as u64))
                 .collect();
             literal.public.push(Column::Public(values.clone()));
-            recipe
-                .public
-                .push(Column::generated(true, len, move |i| Ok(values[i])).unwrap());
+            recipe.public.push(
+                Column::generated(
+                    true,
+                    len,
+                    array::<Goldilocks>(values.capacity()).unwrap(),
+                    move |i| Ok(values[i]),
+                )
+                .unwrap(),
+            );
         }
         let (built, degree) = build(&literal, plans, points).unwrap();
         let instances: Vec<_> = built.iter().map(|b| b.instance()).collect();
@@ -1229,5 +1371,41 @@ mod tests {
             &[32, 32],
             &[],
         );
+    }
+    #[test]
+    fn factor_heap_counts_owned_points_and_selection_rows() {
+        for vars in [0usize, 1, 17, 62] {
+            let mut held = None;
+            let measured = allocation_counter::measure(|| {
+                held = Some(eq_factor(vec![F::ZERO; vars], 0, 0).unwrap());
+            });
+            assert!(
+                u64::try_from(measured.bytes_current).unwrap()
+                    <= held.as_ref().unwrap().heap_bytes().unwrap()
+            );
+        }
+        let mut held = None;
+        let measured = allocation_counter::measure(|| {
+            let plan = Plan::Selection {
+                x: 0,
+                low: 1,
+                axis: 3,
+                high: 1,
+                rows: 10,
+                members: vec![(F::ONE, vec![0; 1024]); 32],
+            };
+            let arena = Arena::default();
+            let mut factors = Vec::new();
+            drop(plan.window(&arena, &[F::ZERO; 12], &mut factors).unwrap());
+            held = Some(factors);
+        });
+        let factors = held.as_ref().unwrap();
+        let actual = factors
+            .iter()
+            .try_fold(array::<Factor>(factors.capacity()).unwrap(), |n, f| {
+                add(n, f.heap_bytes().unwrap())
+            })
+            .unwrap();
+        assert!(u64::try_from(measured.bytes_current).unwrap() <= actual);
     }
 }

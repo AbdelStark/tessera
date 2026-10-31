@@ -39,6 +39,10 @@
 //! module borrows them, and keeps what it derives in `SecretBuf`s that clear their memory.
 
 mod columns;
+mod memory;
+mod source_memory;
+pub use memory::StageStateMemory;
+pub use source_memory::StageSourceMemory;
 mod padded;
 mod public;
 mod relations;
