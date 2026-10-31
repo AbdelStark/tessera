@@ -625,3 +625,25 @@ instances/tables and their constructors, transcript callbacks/encodings, delegat
 `ComputedState` payloads, stack/runtime and allocator overhead remain additional.
 Native score payloads already have their separate public bound. Window-engine and
 stage-source/wrapper storage are separate; this helper admits no CPU route.
+
+
+## Window-engine descriptor and output storage
+
+`WindowMetadataMemory::new::<F>(shapes, terms, degree)` is an allocation-free
+additional charge beside the unchanged `WindowMemory::working_bytes`. It counts
+the consumed canonical specification array overlapping the prepared states,
+per-instance tables/terms/factor/EQ vectors, folded-column containers and private
+true sums. The output charge includes every round message, point, final evaluation
+and instance/index vector. It assumes no public-column or term cancellation.
+
+The peak adds canonical preparation containers and temporary EQ-point copies,
+message lines and Lagrange bases, labels, and a split suffix-EQ pair independent
+of preparation order. Each independently grown vector receives its own capacity
+slack. The original grid/fold model and its margins remain intact. Tests measure
+canonical specification cloning, preparation and proof output together, including
+singleton relations whose term/unused-column descriptors dominate their payload.
+
+Caller-owned original specifications and arbitrary spare capacities, source
+callbacks and retained/regenerated witness, transcript encodings, delegated stage
+wrappers, stack/runtime and allocator overhead remain separate. This helper does
+not change proof construction, transcript ordering, memory admission or CPU routing.

@@ -393,8 +393,8 @@ pub use merge::{
 };
 pub use proof::SumcheckProof;
 pub use prover::window::{
-    MAX_WINDOW_VARS, PreparedWindow, WindowError, WindowInstance, WindowMemory, WindowPass,
-    WindowShape, WindowSource, WindowTable,
+    MAX_WINDOW_VARS, PreparedWindow, WindowError, WindowInstance, WindowMemory,
+    WindowMetadataMemory, WindowPass, WindowShape, WindowSource, WindowTable,
 };
 pub use prover::{
     BatchMemory, BatchShape, Computed, ComputedState, Instance, Prefix, ProvenBatch, Table,

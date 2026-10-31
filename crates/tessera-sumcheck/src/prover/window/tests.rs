@@ -1001,3 +1001,91 @@ fn prefix_weights_do_not_overlap_a_consumed_grid_allocation() {
         plan.working_bytes
     );
 }
+
+#[test]
+fn window_metadata_covers_consumed_specs_messages_and_returned_storage() {
+    fn measure(source: &mut Source, specs: &[WindowInstance<F>], degree: usize, cuts: &[usize]) {
+        let shapes = specs
+            .iter()
+            .map(|s| WindowShape {
+                vars: s.vars,
+                tables: s.tables.len(),
+                delta: s.terms.iter().map(|t| t.factors().len()).max().unwrap(),
+                windowable: s.windowed,
+            })
+            .collect::<Vec<_>>();
+        let terms = specs
+            .iter()
+            .map(|s| s.terms.len() as u64)
+            .collect::<Vec<_>>();
+        let mut metadata = None;
+        let planning = allocation_counter::measure(|| {
+            metadata = Some(WindowMetadataMemory::new::<F>(&shapes, &terms, degree).unwrap());
+        });
+        assert_eq!(planning.count_total, 0);
+        let metadata = metadata.unwrap();
+        // Source-owned callback history is outside the engine charge.
+        source.passes.reserve(128);
+        for width in [1, 2, MAX_WINDOW_VARS] {
+            for &cut in cuts {
+                let fields =
+                    WindowMemory::with_window_vars(&shapes, cut, size_of::<F>(), width).unwrap();
+                let mut result = None;
+                let measured = allocation_counter::measure(|| {
+                    let prepared = PreparedWindow::with_window_vars(
+                        source,
+                        Protocol::One,
+                        degree,
+                        specs.to_vec(),
+                        cut,
+                        width,
+                    )
+                    .unwrap();
+                    result = Some(
+                        prepared
+                            .prove(
+                                &mut BoundaryTranscript { count: 0 },
+                                Prefix::GroupTree(u32::MAX, u32::MAX),
+                                source,
+                            )
+                            .unwrap(),
+                    );
+                });
+                assert!(
+                    measured.bytes_max <= fields.working_bytes + metadata.peak_bytes(),
+                    "cut {cut}, width {width}: {measured:?}, fields {fields:?}, metadata {metadata:?}"
+                );
+                assert!(
+                    u64::try_from(measured.bytes_current).unwrap() <= metadata.output_bytes(),
+                    "output {measured:?}, metadata {metadata:?}"
+                );
+                drop(result);
+                source.passes.clear();
+            }
+        }
+    }
+    let (mut source, specs) = specs(&[(8, 3, true, 2), (5, 2, false, 1), (0, 1, true, 0)]);
+    measure(&mut source, &specs, 4, &[0, 1, 4, 7]);
+
+    // Metadata dominates the singleton payload; retain each unused column and
+    // each distinct term descriptor even though all values happen to be zero.
+    let mut source = Source {
+        tables: vec![vec![F::ZERO]; 512],
+        passes: Vec::new(),
+    };
+    let specs = vec![WindowInstance {
+        vars: 0,
+        tables: (0..512)
+            .map(|id| WindowTable {
+                id,
+                public: id % 3 == 0,
+            })
+            .collect(),
+        terms: (0..8192)
+            .map(|i| Term::new(fp(i + 1), vec![i as usize % 512]))
+            .collect(),
+        eq: Vec::new(),
+        windowed: true,
+    }];
+    measure(&mut source, &specs, 1, &[0]);
+}
