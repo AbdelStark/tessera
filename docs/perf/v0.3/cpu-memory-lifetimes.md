@@ -578,3 +578,27 @@ as are the persistent commitment and caller-owned model/layout payloads.
 This component excludes input/layout/state decoding, original opening targets,
 generic proof/message wrappers, stack/runtime and allocator overhead. The complete
 CPU phase/lifetime bound and cached-route admission remain separate work.
+
+
+## Original opening targets
+
+`OpeningGeometry::target_memory(lowering, leaf, native)` derives allocation-free
+bounds for the original `ModelOpenings` producer. `retained_bytes` includes all
+advice-claim descriptors, mapped pieces and point capacities, and all ten weight
+point lists. Each separately grown vector gets its own minimum-capacity slack;
+repeated points, zero coefficients and every ChannelParams obligation remain.
+
+`construction_peak_bytes` adds a conservative superset of the complete native
+original list and its point/piece capacities, fixed-site and read lists, stable
+sort buffers, Softmax row copies, native round points, pool point/coefficient/layer
+scratch, and advice-image projection/axis/attention-shape buffers. The public point
+length bound follows graph shapes, pool/atom/coefficient coordinates, leaf reads,
+global stage rounds and weight-coordinate counts. It assumes no favorable sampled
+coordinate or coefficient value.
+
+These bounds cover canonical leaf/stage callbacks. They exclude borrowed
+lowering/layout/leaf/native/stage state, the public geometry planner's own
+derivation, PCS grouping/accumulators, generic messages, stack/runtime and allocator
+overhead. The geometry planner requires the complete runtime selection's tables,
+including the greedy-range table when present; the lowering's initial table list
+is insufficient for a runtime proof. Full CPU admission remains separate work.

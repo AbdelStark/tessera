@@ -39,6 +39,7 @@ pub struct OpeningGeometry {
 }
 impl OpeningGeometry {
     /// Derive every original target through the same traversal as [`ModelOpenings::derive`].
+    /// `tables` is the complete runtime selection, including its greedy-range table.
     /// All inputs must be the canonical public metadata for one proof unit. No witness,
     /// completed prover pool or fabricated proof is used. Numeric coefficients are irrelevant
     /// to capacity: every original source and image is counted, including zero-weight ones.

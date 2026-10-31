@@ -453,16 +453,22 @@ impl<'a> Committed<'a> {
                 rule: "INV-SCH-3: original opening sources, points and order follow the runtime schedule"
             })
         ));
-        let targets = tessera_prover::ModelOpenings::derive(
-            &self.p.lowering,
-            layout,
-            leaf,
-            native,
-            stages,
-            self.advice,
-            &self.weight_layout,
-        )
-        .unwrap();
+        let mut targets = None;
+        let target_allocations = allocation_counter::measure(|| {
+            targets = Some(
+                tessera_prover::ModelOpenings::derive(
+                    &self.p.lowering,
+                    layout,
+                    leaf,
+                    native,
+                    stages,
+                    self.advice,
+                    &self.weight_layout,
+                )
+                .unwrap(),
+            );
+        });
+        let targets = targets.unwrap();
         let runtime = self.prompt.map(|prompt| {
             tessera_compiler::RuntimePlan::derive(
                 &self.p.lowering,
@@ -503,6 +509,24 @@ impl<'a> Committed<'a> {
             &self.weight_layout,
         )
         .unwrap();
+        let mut memory = None;
+        let planning = allocation_counter::measure(|| {
+            memory = Some(
+                geometry
+                    .target_memory(&self.p.lowering, layout, native)
+                    .unwrap(),
+            );
+        });
+        assert_eq!(planning.count_total, 0);
+        let memory = memory.unwrap();
+        assert!(
+            target_allocations.bytes_max <= memory.construction_peak_bytes(),
+            "target constructor {target_allocations:?} {memory:?}"
+        );
+        assert!(
+            u64::try_from(target_allocations.bytes_current).unwrap() <= memory.retained_bytes(),
+            "target retained {target_allocations:?} {memory:?}"
+        );
         assert_eq!(geometry.advice_claims(), targets.advice().len() as u64);
         assert_eq!(
             geometry.advice_images(),

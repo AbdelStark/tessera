@@ -84,7 +84,9 @@ pub use cpu::{
 };
 pub use leaf::{LeafError, LeafLayout, PreparedLeaf, ProvenLeaf, prepare_leaf, prove_leaf};
 pub use model::{ModelSchedule, derive_model_schedule, derive_runtime_schedule};
-pub use openings::{GraphOpenings, ModelOpenings, OpeningGeometry, OpeningTarget};
+pub use openings::{
+    GraphOpenings, ModelOpenings, OpeningGeometry, OpeningTarget, OpeningTargetMemory,
+};
 pub use release::{Release, ReleaseSchedule, ScheduleError};
 pub use stages::{
     PaddedWitness, PublicTensors, StageError, StageProof, StageProver, WitnessSource, public_value,
