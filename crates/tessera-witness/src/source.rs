@@ -26,6 +26,45 @@ use crate::structure::{Core, Structure};
 use crate::tile::{Gadgets, Target};
 use crate::{Checkpoints, Engine, TensorSource, TileWitness, Witness, WitnessError};
 
+impl Engine<'_> {
+    /// Derive one multiplicity backing plan per used table from canonical public runtime data.
+    /// The architecture, runtime and this engine must describe the same lowering/proof unit.
+    /// No model weights, tokens or witness values are read. The existing row/update-bound
+    /// derivation includes runtime keys, repeated requests, weighted padding and the row-0 tail.
+    /// Grouping changes that tail's weight, not the number of stored contributions.
+    ///
+    /// This builds temporary public structure/gadget metadata and returns an owned plan vector.
+    /// Those allocations and the engine's public table cores need separate reservations; this
+    /// method is not a complete phase bound or a host-budget admission decision (RFC-0018).
+    ///
+    /// # Errors
+    /// As the runtime source constructors for inconsistent metadata or unsupported gadgets;
+    /// `Memory`/`MemoryTable` for metadata capacity or target-address-space limits.
+    pub fn runtime_multiplicity_plans(
+        &self,
+        arch: &tessera_ir::ArchSpec,
+        runtime: &RuntimePlan,
+    ) -> Result<Vec<crate::MultiplicityPlan>, WitnessError> {
+        let structure = Structure::new(self, arch)?;
+        let mut gadgets = Gadgets::new(&structure, runtime.selection(), arch.max_context)?;
+        crate::runtime::configure(&structure, runtime, &mut gadgets)?;
+        let mut plans = Vec::new();
+        plans
+            .try_reserve_exact(gadgets.read.len())
+            .map_err(|_| WitnessError::Memory {
+                tensor: structure.lowering.tokens,
+            })?;
+        for &table in &gadgets.read {
+            plans.push(crate::MultiplicityPlan::new(
+                table,
+                gadgets.rows(&structure, table)?,
+                gadgets.update_bound(&structure, table)?,
+            )?);
+        }
+        Ok(plans)
+    }
+}
+
 /// A source of a sequence's witness, by tile (RFC-0018 'Pass structure', RFC-0010 'Stages'): the
 /// passes after the first regenerate the parts of the witness they need, tile by tile, instead of
 /// storing it.

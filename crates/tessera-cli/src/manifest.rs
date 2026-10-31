@@ -370,6 +370,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn file_and_byte_publication_record_identical_artifacts() {
+        let dir =
+            std::env::temp_dir().join(format!("tessera-artifact-metadata-{}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        for schema in [
+            &schema::NI_PROOF,
+            &schema::ROUND1,
+            &schema::EXECUTION_PLAN,
+            &schema::INTEGER_MODEL,
+        ] {
+            let path = dir.join(schema.name);
+            let bytes = tessera_codec::envelope::seal(schema, &7u64);
+            std::fs::write(&path, &bytes).unwrap();
+            output_envelope(&path, &bytes);
+            output_file(&path, schema);
+            let entries = with(|run| {
+                run.outputs
+                    .iter()
+                    .filter(|entry| entry["path"] == path.to_str().unwrap())
+                    .cloned()
+                    .collect::<Vec<_>>()
+            });
+            assert_eq!(entries.len(), 2);
+            assert_eq!(entries[0], entries[1]);
+            assert_eq!(
+                entries[0]["digest"].is_null(),
+                schema.class == Class::Secret
+            );
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
     fn proc_fields_and_sizes_parse() {
         let status = "Name:\ttessera\nVmPeak:\t  2048 kB\nVmHWM:\t    1536 kB\n";
         assert_eq!(proc_field(status, "VmHWM").and_then(kib), Some(1536 * 1024));

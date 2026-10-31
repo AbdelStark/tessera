@@ -29,6 +29,13 @@ fn bad() -> StageError {
         rule: "native model sources have their canonical identities and domains",
     }
 }
+fn gadget_error(error: tessera_gadgets::GadgetError) -> StageError {
+    if error.code() == tessera_codec::error::ErrorCode::ResMemory {
+        StageError::Memory
+    } else {
+        bad()
+    }
+}
 fn vars(shape: &[u32]) -> u32 {
     shape
         .iter()
@@ -205,8 +212,8 @@ impl ModelNativePlan {
                     kappa,
                     eps_int,
                 } => {
-                    let root =
-                        RsqrtRow::new(dim, kappa, eps_int, &selection.tables).map_err(|_| bad())?;
+                    let root = RsqrtRow::new(dim, kappa, eps_int, &selection.tables)
+                        .map_err(gadget_error)?;
                     let sum = lowering.graph.producer(node.inputs[0]).ok_or_else(bad)?;
                     let sum = &lowering.graph.nodes[sum.0 as usize];
                     if !matches!(sum.op, Op::SumSquares { .. }) {
@@ -1380,5 +1387,25 @@ mod tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod memory_error_tests {
+    use super::*;
+    #[test]
+    fn native_table_core_resources_preserve_the_resource_refusal() {
+        let error = |error| tessera_gadgets::GadgetError::Spec {
+            table: tessera_ir::TableId(11),
+            error,
+        };
+        assert_eq!(
+            gadget_error(error(tessera_tables::TableError::Memory)),
+            StageError::Memory
+        );
+        assert_eq!(
+            gadget_error(error(tessera_tables::TableError::Digest)),
+            bad()
+        );
     }
 }

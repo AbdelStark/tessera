@@ -87,20 +87,32 @@ enum Source<'m> {
     Weight(&'m [i8]),
 }
 
+// RFC-0018: exact-reserved source and borrowed-operand descriptor arrays.
+pub(crate) fn operand_metadata_bytes(count: u64) -> Option<u64> {
+    usize::try_from(count).ok()?;
+    let sources = count.checked_mul(size_of::<Source<'_>>() as u64)?;
+    let operands = count.checked_mul(size_of::<Operand<'_>>() as u64)?;
+    if sources > isize::MAX as u64 || operands > isize::MAX as u64 {
+        return None;
+    }
+    sources.checked_add(operands)
+}
+
 impl<'m> Operands<'m> {
     /// The node's inputs, in its order.
     pub(crate) fn all<'s>(&'s self, live: &'s Live) -> Result<Vec<Operand<'s>>, WitnessError>
     where
         'm: 's,
     {
-        self.sources
-            .iter()
-            .map(|source| match source {
-                Source::Live(t) => live.require(*t).map(Operand::Values),
-                Source::Leaf(values) => Ok(Operand::Values(values)),
-                Source::Weight(entries) => Ok(Operand::Weight(entries)),
-            })
-            .collect()
+        let mut operands = Vec::with_capacity(self.sources.len());
+        for source in &self.sources {
+            operands.push(match source {
+                Source::Live(t) => Operand::Values(live.require(*t)?),
+                Source::Leaf(values) => Operand::Values(values),
+                Source::Weight(entries) => Operand::Weight(entries),
+            });
+        }
+        Ok(operands)
     }
 }
 
@@ -183,24 +195,23 @@ impl<'a> Replay<'a> {
         node: &Node,
         live: &Live,
     ) -> Result<Operands<'a>, WitnessError> {
-        let sources = node
-            .inputs
-            .iter()
-            .map(|&t| {
-                if live.get(t).is_some() {
-                    return Ok(Source::Live(t));
-                }
+        let mut sources = Vec::with_capacity(node.inputs.len());
+        for &t in &node.inputs {
+            let source = if live.get(t).is_some() {
+                Source::Live(t)
+            } else {
                 if self.structure.computed(t) {
                     return Err(WitnessError::Internal {
                         rule: "a node's inputs are computed before it",
                     });
                 }
-                Ok(match self.leaf(store, t)? {
+                match self.leaf(store, t)? {
                     Input::Values(values) => Source::Leaf(values),
                     Input::Weight(entries) => Source::Weight(entries),
-                })
-            })
-            .collect::<Result<_, _>>()?;
+                }
+            };
+            sources.push(source);
+        }
         Ok(Operands { sources })
     }
 
@@ -217,6 +228,32 @@ impl<'a> Replay<'a> {
             check(t, values, graph.tensors[t.0 as usize].range)?;
         }
         Ok(outputs)
+    }
+
+    // RFC-0006: Engine::for_graph validates dense topological node order. Each
+    // computed input's producer is earlier, so one reverse scan closes the cone
+    // without a DFS worklist. Checkpoints remain leaves (INV-ARCH-3).
+    fn needed_nodes(&self, wanted: &[TensorId]) -> Vec<bool> {
+        let graph = self.structure.graph();
+        let mut needed = vec![false; graph.nodes.len()];
+        let mark = |tensor, needed: &mut [bool]| {
+            if self.structure.computed(tensor)
+                && let Some(node) = self.structure.producer(tensor)
+            {
+                needed[node.id.0 as usize] = true;
+            }
+        };
+        for &tensor in wanted {
+            mark(tensor, &mut needed);
+        }
+        for node in graph.nodes.iter().rev() {
+            if needed[node.id.0 as usize] {
+                for &tensor in &node.inputs {
+                    mark(tensor, &mut needed);
+                }
+            }
+        }
+        needed
     }
 
     /// Computes `wanted` from the checkpoints in `store`, and returns a [`Live`] that holds them
@@ -237,21 +274,7 @@ impl<'a> Replay<'a> {
     ) -> Result<Live, WitnessError> {
         let structure = &self.structure;
         let graph = structure.graph();
-        let mut needed = vec![false; graph.nodes.len()];
-        let mut stack: Vec<TensorId> = wanted.to_vec();
-        while let Some(t) = stack.pop() {
-            if !structure.computed(t) {
-                continue;
-            }
-            let Some(node) = structure.producer(t) else {
-                continue;
-            };
-            let id = node.id.0 as usize;
-            if !needed[id] {
-                needed[id] = true;
-                stack.extend(&node.inputs);
-            }
-        }
+        let needed = self.needed_nodes(wanted);
         // A core runs as one, at its last node, when its output is needed and no wanted tensor is
         // one of its others: by then its query, key and value heads are all computed.
         let mut unit: Vec<Option<&Core>> = vec![None; graph.nodes.len()];
@@ -431,5 +454,128 @@ impl<'a> Replay<'a> {
         check(core.e, &e, range(core.e))?;
         check(core.r, &r, range(core.r))?;
         Ok(Rows { scores, e, r })
+    }
+}
+
+#[cfg(test)]
+mod allocation_tests {
+    use super::*;
+    use crate::Engine;
+    use crate::test_support::fixture;
+
+    #[test]
+    fn reverse_cones_match_independent_set_frontiers_and_stop_at_checkpoints() {
+        use std::collections::BTreeSet;
+        let (model, lowering) = fixture(3);
+        let engine = Engine::new(&lowering).unwrap();
+        let tokens = Secret::new(vec![0, 1, 2]);
+        let replay = Replay::new(
+            Structure::new(&engine, &model.arch).unwrap(),
+            &model,
+            &tokens,
+        )
+        .unwrap();
+        let graph = &lowering.graph;
+        let mut cases = graph
+            .tensors
+            .iter()
+            .map(|tensor| vec![tensor.id])
+            .collect::<Vec<_>>();
+        cases.extend(
+            graph
+                .tensors
+                .iter()
+                .map(|tensor| vec![tensor.id, tensor.id]),
+        );
+        cases.extend([
+            vec![],
+            vec![TensorId(u32::MAX)],
+            graph.tensors.iter().rev().map(|tensor| tensor.id).collect(),
+        ]);
+        for wanted in cases {
+            let mut pending = wanted
+                .iter()
+                .map(|tensor| tensor.0)
+                .collect::<BTreeSet<_>>();
+            let mut visited = BTreeSet::new();
+            let mut expected = vec![false; graph.nodes.len()];
+            while let Some(id) = pending.pop_first() {
+                let tensor = TensorId(id);
+                if !visited.insert(id) || !replay.structure.computed(tensor) {
+                    continue;
+                }
+                if let Some(node) = replay.structure.producer(tensor) {
+                    expected[node.id.0 as usize] = true;
+                    pending.extend(node.inputs.iter().map(|tensor| tensor.0));
+                }
+            }
+            assert_eq!(replay.needed_nodes(&wanted), expected);
+        }
+    }
+
+    #[test]
+    fn replay_operand_arrays_match_the_public_arity_without_growth() {
+        let (model, lowering) = fixture(3);
+        let engine = Engine::new(&lowering)
+            .unwrap()
+            .threads(core::num::NonZeroUsize::MIN);
+        let tokens = Secret::new(vec![0, 1, 2]);
+        let store = Checkpoints::new(&engine, &model, &tokens).unwrap();
+        let replay = Replay::new(
+            Structure::new(&engine, &model.arch).unwrap(),
+            &model,
+            &tokens,
+        )
+        .unwrap();
+        let wanted = lowering
+            .graph
+            .tensors
+            .iter()
+            .filter(|tensor| {
+                !lowering
+                    .graph
+                    .weights
+                    .iter()
+                    .any(|&(_, id)| id == tensor.id)
+            })
+            .map(|tensor| tensor.id)
+            .collect::<Vec<_>>();
+        let live = replay.compute(&store, &wanted).unwrap();
+        for node in &lowering.graph.nodes {
+            let mut operands = None;
+            let built = allocation_counter::measure(|| {
+                operands = Some(replay.operands(&store, node, &live).unwrap())
+            });
+            let operands = operands.unwrap();
+            assert_eq!(operands.sources.capacity(), node.inputs.len());
+            let leaves = operands
+                .sources
+                .iter()
+                .map(|source| match source {
+                    Source::Leaf(values) => values.capacity() * size_of::<i64>(),
+                    _ => 0,
+                })
+                .sum::<usize>();
+            let expected = node.inputs.len() * size_of::<Source<'_>>() + leaves;
+            assert_eq!(usize::try_from(built.bytes_current).unwrap(), expected);
+            // The positions reader owns a temporary public Vec while constructing
+            // its SecretBuf copy; all other leaf readers allocate only that copy.
+            let positions = if node.inputs.contains(&lowering.positions) {
+                crate::engine::elements(
+                    &lowering.graph.tensors[lowering.positions.0 as usize].shape,
+                ) * size_of::<i64>()
+            } else {
+                0
+            };
+            assert!(usize::try_from(built.bytes_max).unwrap() <= expected + positions);
+            let mut borrowed = None;
+            let borrows =
+                allocation_counter::measure(|| borrowed = Some(operands.all(&live).unwrap()));
+            assert_eq!(borrowed.unwrap().capacity(), node.inputs.len());
+            assert_eq!(
+                usize::try_from(borrows.bytes_current).unwrap(),
+                node.inputs.len() * size_of::<Operand<'_>>()
+            );
+        }
     }
 }

@@ -18,6 +18,8 @@ pub enum TableError {
         /// The rule the parameters break.
         rule: &'static str,
     },
+    /// The materialized dense core cannot fit the target address space or be allocated.
+    Memory,
     /// The specification's `log2_rows` is not `⌈log2 T⌉`.
     Log2Rows {
         /// What the specification states.
@@ -37,6 +39,7 @@ impl fmt::Display for TableError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Parameter { kind, rule } => write!(f, "a {kind} table needs {rule}"),
+            Self::Memory => f.write_str("a table's dense core does not fit in memory"),
             Self::Log2Rows { stated, expected } => {
                 write!(
                     f,

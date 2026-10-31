@@ -60,6 +60,7 @@ compile_error!(
 mod checkpoint;
 mod engine;
 mod error;
+mod memory;
 mod multiplicity;
 mod replay;
 mod runtime;
@@ -71,7 +72,11 @@ mod tile;
 pub use checkpoint::Checkpoints;
 pub use engine::{Engine, SecretGraphInputs, Witness};
 pub use error::WitnessError;
-pub use multiplicity::MultiplicityColumn;
+pub use memory::{CheckpointMemory, TableMemory};
+pub use multiplicity::{MultiplicityColumn, MultiplicityPlan};
 pub use source::{Regenerator, Resident, WitnessSource};
 pub use tensors::{CheckpointTensors, TensorSource};
 pub use tile::{TileLookup, TileWitness};
+
+#[cfg(test)]
+mod test_support;

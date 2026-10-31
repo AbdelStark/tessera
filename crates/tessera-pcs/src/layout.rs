@@ -726,6 +726,19 @@ impl Placement {
     ///
     /// [`PcsError::ClaimPoint`] unless `r` has `n_X` coordinates.
     pub fn point<F: Field>(&self, r: &[F]) -> Result<Vec<F>, PcsError> {
+        self.point_geometry(r, F::ZERO, F::ONE)
+    }
+
+    /// The coordinate permutation of [`Self::point`], for values or symbolic origins.
+    /// Only copies, reordering and Boolean placement coordinates are permitted: no arithmetic
+    /// on `C` is available. A public memory planner can therefore count distinct column-point
+    /// origins before Fiat-Shamir challenges are drawn (RFC-0011 rules 1 and 3).
+    ///
+    /// `zero` and `one` represent the two distinct Boolean constants in the caller's domain.
+    ///
+    /// # Errors
+    /// [`PcsError::ClaimPoint`] unless `r` has this tensor's number of variables.
+    pub fn point_geometry<C: Copy>(&self, r: &[C], zero: C, one: C) -> Result<Vec<C>, PcsError> {
         let vars = self.vars as usize;
         if r.len() != vars {
             return Err(PcsError::ClaimPoint {
@@ -761,8 +774,8 @@ impl Placement {
             }
         }
         point.extend((0..self.base_bits).map(|bit| match (self.base >> bit) & 1 {
-            1 => F::ONE,
-            _ => F::ZERO,
+            1 => one,
+            _ => zero,
         }));
         Ok(point)
     }
@@ -990,6 +1003,34 @@ pub struct AdviceLayout {
 }
 
 impl AdviceLayout {
+    /// Requested heap bytes retained by this public layout, including all nested
+    /// vectors. A cloned layout uses no more: its vectors reserve their lengths,
+    /// which are bounded by these capacities. Does not include the inline struct,
+    /// source tile shapes, construction scratch or allocator bookkeeping.
+    /// Returns `None` on byte-count overflow.
+    pub fn heap_bytes(&self) -> Option<usize> {
+        fn vector<T>(v: &Vec<T>) -> Option<usize> {
+            v.capacity().checked_mul(size_of::<T>())
+        }
+        let mut bytes = vector(&self.tensors)?
+            .checked_add(vector(&self.tiles)?)?
+            .checked_add(vector(&self.segments)?)?;
+        if let Some(lengths) = &self.attention.slot_lengths {
+            bytes = bytes.checked_add(vector(lengths)?)?;
+        }
+        for tensor in &self.tensors {
+            bytes = bytes.checked_add(vector(&tensor.nonzero)?)?;
+            if let Geometry::Dense { axes, order } = &tensor.geometry {
+                bytes = bytes
+                    .checked_add(vector(axes)?)?
+                    .checked_add(vector(order)?)?;
+            }
+        }
+        for segment in &self.segments {
+            bytes = bytes.checked_add(vector(&segment.nonzero)?)?;
+        }
+        Some(bytes)
+    }
     /// The layout of a sequence of `positions` whose tiles, in production order (RFC-0041
     /// 'Production order'), are `tiles`, under `params`.
     ///

@@ -20,6 +20,49 @@ fn cfg(mode: Mode) -> ProverConfig {
         release: ReleaseConfig,
     }
 }
+// Optional table-read chunks may shrink before any reduction stage needs windows.
+// Choose the actual ungrouped/unwindowed boundary, not an ample plan's size (#641).
+fn window_budget(
+    plan: &tessera_compiler::ExecutionPlan,
+    model: &IntegerModel,
+    state: &mut WeightCommitmentState,
+    batch: &ProofBatch,
+    config: &ProverConfig,
+    high: u64,
+) -> Option<u64> {
+    let planned = |host, state: &mut WeightCommitmentState| {
+        let mut cfg = config.clone();
+        cfg.memory_budget.host = host;
+        match Prover::new(plan, model, state, cfg).and_then(|p| p.plan(batch)) {
+            Ok(plan) => Some(plan),
+            Err(ProverError::Resource(tessera_codec::error::ErrorCode::ResMemory)) => None,
+            Err(error) => panic!("unexpected fixture planning error: {error}"),
+        }
+    };
+    let (mut low, mut high) = (0, high);
+    while high - low > 1 {
+        let middle = low + (high - low) / 2;
+        let feasible = planned(middle, state).is_some_and(|p| {
+            p.resident_bytes().is_some_and(|bytes| bytes <= middle)
+                && p.leaf_groups() == protocol::LeafGroups::NONE
+                && p.stage_windows().iter().all(|stage| stage.cut == 0)
+        });
+        if feasible {
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    let host = high.checked_sub(1)?;
+    let candidate = planned(host, state)?;
+    (candidate
+        .resident_bytes()
+        .is_some_and(|bytes| bytes <= host)
+        && candidate.leaf_groups() == protocol::LeafGroups::NONE
+        && candidate.stage_windows().iter().any(|stage| stage.cut > 0))
+    .then_some(host)
+}
+
 fn producer<T: tessera_codec::Decode>(bytes: &[u8]) -> T {
     tessera_codec::decode(bytes, DecodeLimits::INTEGER_MODEL).unwrap()
 }
@@ -162,6 +205,8 @@ fn check_api(model: &IntegerModel, n: u32, prompt: u32) {
         protocol::MessageKind::ColumnQueries,
     );
     let proof = prover.prove_non_interactive(&batch).unwrap();
+    let geometry = public_opening_geometry(&plan, &batch, proof.round1.leaf_groups);
+    assert!(proof.round2.advice_combined.len() <= geometry.groups() + 1);
     cli::check(&plan, &batch, &weights, &proof);
     out_of_order(
         prover.prove_non_interactive(&batch),
@@ -710,6 +755,8 @@ fn public_cpu_api_groups_the_leaf_stage_under_a_forced_budget() {
         );
         let proof = proof.unwrap();
         assert_eq!(proof.round1.leaf_groups, groups);
+        let geometry = public_opening_geometry(&plan, &batch, groups);
+        assert!(proof.round2.advice_combined.len() <= geometry.groups() + 1);
         let trees = &proof.round2.trees;
         assert_eq!(trees.groups.len(), 1 << bits);
         assert!(proof.round2.logup.roots.is_empty() && !trees.table_roots.is_empty());
@@ -820,14 +867,14 @@ fn public_cpu_api_selects_real_stage_windows_under_budget() {
                 .plan(&batch)
                 .unwrap();
             let total = resident.resident_bytes().unwrap();
-            let stage = resident
-                .stage_windows()
-                .iter()
-                .map(|s| s.working_bytes)
-                .max()
-                .unwrap();
-            for step in 1..=128 {
-                let host = total - stage * step / 128;
+            if let Some(host) = window_budget(
+                &plan,
+                &model,
+                &mut state,
+                &batch,
+                &cfg(Mode::NonInteractive),
+                total,
+            ) {
                 let mut config = cfg(Mode::NonInteractive);
                 config.memory_budget.host = host;
                 #[cfg(feature = "test-rng")]
@@ -883,6 +930,39 @@ fn public_cpu_api_selects_real_stage_windows_under_budget() {
                         expected
                     );
                     let proof = proof.unwrap();
+                    // 05 §4: independently materialize the published parts after measuring
+                    // the prover peak; these test-only buffers are outside that measurement.
+                    for (part, bytes) in [
+                        ("round1", tessera_codec::encode(&proof.round1).len()),
+                        (
+                            "sumcheck",
+                            tessera_codec::encode(&proof.round2.logup).len()
+                                + tessera_codec::encode(&proof.round2.trees).len()
+                                + tessera_codec::encode(&proof.round2.stages).len(),
+                        ),
+                        (
+                            "openings",
+                            tessera_codec::encode(&proof.round2.advice_combined).len()
+                                + tessera_codec::encode(&proof.round2.weight_combined).len(),
+                        ),
+                        ("columns", tessera_codec::encode(&proof.round3).len()),
+                    ] {
+                        let metric = samples
+                            .iter()
+                            .find(|sample| {
+                                sample.name == "tessera_proof_bytes"
+                                    && sample
+                                        .labels
+                                        .iter()
+                                        .any(|(key, value)| *key == "part" && value == part)
+                            })
+                            .expect("every proof-byte part is recorded");
+                        assert_eq!(
+                            metric.value,
+                            tessera_codec::metrics::Value::Gauge(bytes as f64),
+                            "published {part} bytes equal the complete canonical encoding"
+                        );
+                    }
                     let decoded = tv_codec::decode(
                         &tessera_codec::encode(&proof),
                         &tv_codec::DecodeLimits::MESSAGE,
@@ -1046,30 +1126,15 @@ fn check_slotted_batch_with_windows(requests: &[(u32, u32)], windows: bool) {
         .plan(&batch)
         .unwrap();
     if windows {
-        let total = resident.resident_bytes().unwrap();
-        let stage = resident
-            .stage_windows()
-            .iter()
-            .map(|s| s.working_bytes)
-            .max()
-            .unwrap();
-        let mut selected = None;
-        for step in 1..=128 {
-            config.memory_budget.host = total - stage * step / 128;
-            let candidate = Prover::new(&plan, &model, &mut state, config.clone())
-                .unwrap()
-                .plan(&batch);
-            if let Ok(candidate) = candidate
-                && candidate.stage_windows().iter().any(|s| s.cut > 0)
-            {
-                selected = Some(candidate);
-                break;
-            }
-        }
-        assert!(
-            selected.is_some(),
-            "the slotted fixture must exercise budget windows"
-        );
+        config.memory_budget.host = window_budget(
+            &plan,
+            &model,
+            &mut state,
+            &batch,
+            &config,
+            resident.resident_bytes().unwrap(),
+        )
+        .expect("the slotted fixture must exercise budget windows");
     }
     let mut prover = Prover::new(&plan, &model, &mut state, config.clone()).unwrap();
     let selected = prover.plan(&batch).unwrap();
@@ -1099,6 +1164,9 @@ fn check_slotted_batch_with_windows(requests: &[(u32, u32)], windows: bool) {
         );
     }
     let proof = proof.unwrap();
+    let geometry = public_opening_geometry(&plan, &batch, proof.round1.leaf_groups);
+    assert!(proof.round2.advice_combined.len() <= geometry.groups() + 1);
+
     if tv_core::params::ParamSet::accept(&claims.params).is_some() {
         let decoded = tv_codec::decode(
             &tessera_codec::encode(&proof),
@@ -1170,6 +1238,8 @@ fn public_cpu_api_proves_one_layer_models_in_ni_and_live() {
             .unwrap()
             .prove_non_interactive(&batch)
             .unwrap();
+        let geometry = public_opening_geometry(&plan, &batch, proof.round1.leaf_groups);
+        assert!(proof.round2.advice_combined.len() <= geometry.groups() + 1);
         let proof = tv_codec::decode(
             &tessera_codec::encode(&proof),
             &tv_codec::DecodeLimits::MESSAGE,
@@ -1289,4 +1359,61 @@ fn public_cpu_api_proves_heterogeneous_requant_layers() {
         split::Layout::derive(&graph, claims.gadget_policy).unwrap();
         check_api(&model, 3, 1);
     }
+}
+
+// Public metadata only: the helper never reads ProofBatch.tokens or a model weight.
+fn public_opening_geometry(
+    plan: &tessera_compiler::ExecutionPlan,
+    batch: &ProofBatch,
+    groups: protocol::LeafGroups,
+) -> tessera_prover::OpeningGeometry {
+    let c = &plan.claims;
+    let requests: Vec<_> = batch
+        .statement
+        .batch
+        .requests
+        .iter()
+        .map(|r| (r.prompt_len, r.output_len))
+        .collect();
+    let lengths: Vec<_> = requests
+        .iter()
+        .map(|&(p, o)| p.checked_add(o).unwrap())
+        .collect();
+    let lowering = tessera_compiler::lower_batch(PublicModel::of_claims(c), &lengths).unwrap();
+    let ranges = analyze(&lowering.graph, &lowering.tables).unwrap();
+    let selection = select_model(c.protocol_version, &lowering, &ranges, &c.gadget_policy).unwrap();
+    let runtime =
+        tessera_compiler::RuntimePlan::derive_batch(&lowering, &selection, c, &requests).unwrap();
+    let layers = LayerMap::new(&lowering).unwrap();
+    let leaf = LeafLayout::runtime(&lowering, &layers, &runtime, c).unwrap();
+    let native =
+        tessera_prover::native::ModelNativePlan::derive_runtime(&lowering, &runtime, c, &leaf)
+            .unwrap();
+    let advice = ModelAdviceLayout::runtime(&lowering, &runtime, c).unwrap();
+    let weight_layout = tessera_pcs::WeightLayout::new(
+        c.layout.weights,
+        tessera_pcs::WeightShapes {
+            layers: c.arch.n_layers,
+            shapes: c.arch.weight_shapes().unwrap(),
+            channels: lowering
+                .classes
+                .iter()
+                .chain(&lowering.multipliers)
+                .map(|(w, _)| (w.ty.matrix(), w.layer))
+                .collect(),
+        },
+    )
+    .unwrap();
+    let grouped = (groups != protocol::LeafGroups::NONE)
+        .then(|| tessera_prover::leaf::GroupedLayout::new(&leaf, &layers, groups).unwrap());
+    tessera_prover::OpeningGeometry::derive(
+        &lowering,
+        &runtime.selection().tables,
+        &leaf,
+        grouped.as_ref(),
+        &native,
+        &advice,
+        &weight_layout,
+    )
+    .unwrap()
 }

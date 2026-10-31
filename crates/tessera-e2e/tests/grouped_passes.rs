@@ -145,8 +145,25 @@ fn a_grouped_proof_counts_the_group_pass_and_the_merge_pass_once_each() {
     assert_eq!(proof.round1.leaf_groups, protocol::LeafGroups::NONE);
     assert_eq!((passes(&samples, "p2"), passes(&samples, "p2b")), (1, 0));
 
-    // A small stage shortfall now takes windows before leaf groups (RFC-0055).
-    let window_budget = fits.resident_bytes().unwrap() - 1;
+    // RFC-0055: force a stage shortfall, rather than merely shrinking optional
+    // table-read chunks. Find the ungrouped, unwindowed feasibility boundary (#641).
+    let (mut low, mut high) = (0, fits.resident_bytes().unwrap());
+    while high - low > 1 {
+        let middle = low + (high - low) / 2;
+        let plan = Prover::new(&compiled.plan, &model, &mut state, config(middle))
+            .unwrap()
+            .plan(&batch)
+            .unwrap();
+        let feasible = plan.resident_bytes().is_some_and(|bytes| bytes <= middle)
+            && plan.leaf_groups() == protocol::LeafGroups::NONE
+            && plan.stage_windows().iter().all(|stage| stage.cut == 0);
+        if feasible {
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    let window_budget = high - 1;
     let windowed = Prover::new(&compiled.plan, &model, &mut state, config(window_budget))
         .unwrap()
         .plan(&batch)

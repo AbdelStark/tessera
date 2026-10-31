@@ -727,6 +727,37 @@ impl<'a> ModelAdviceLayout<'a> {
         point: &'p [F],
     ) -> Result<impl Iterator<Item = Result<AdviceClaimImage<F>, CompileError>> + 'p, CompileError>
     {
+        let (range, column) = self.claim_range(source, point.len())?;
+        Ok(range.map(move |tile| self.image(tile, column, source, point)))
+    }
+
+    /// Every advice point owed by `source`, using opaque coordinate origins rather than field
+    /// challenges. The same map supplies [`Self::claim`]; it only copies/reorders coordinates
+    /// and inserts `zero`/`one`. Fixed attention-share coordinates affect weights, never which
+    /// images remain owed, so this iterator retains every image, including zero-weight ones.
+    ///
+    /// This is public geometry for preflight memory accounting, not an opening proof.
+    ///
+    /// # Errors
+    /// As [`Self::claim`] for absent sources, malformed layout geometry or point lengths.
+    pub fn claim_points<'p, C: Copy + 'p>(
+        &'p self,
+        source: AdviceSource,
+        point: &'p [C],
+        zero: C,
+        one: C,
+    ) -> Result<impl Iterator<Item = Result<Vec<C>, CompileError>> + 'p, CompileError> {
+        let (range, column) = self.claim_range(source, point.len())?;
+        Ok(range.map(move |tile| {
+            self.image_geometry(tile, column, source, point, zero, one, |_, _| {})
+        }))
+    }
+
+    fn claim_range(
+        &self,
+        source: AdviceSource,
+        variables: usize,
+    ) -> Result<(Range<usize>, usize), CompileError> {
         let &(group, column) = self.bindings.get(&source).ok_or_else(|| usage(SOURCE))?;
         let range = self.columns[group].tiles.clone();
         let first = self.tiles.get(range.start).ok_or_else(|| usage(METADATA))?;
@@ -741,10 +772,10 @@ impl<'a> ModelAdviceLayout<'a> {
                 .ok_or_else(|| usage(METADATA))?
                 .vars() as usize
         };
-        if point.len() != arity {
+        if variables != arity {
             return Err(usage(POINT));
         }
-        Ok(range.map(move |tile| self.image(tile, column, source, point)))
+        Ok((range, column))
     }
 
     fn full_shape(&self, source: AdviceSource) -> Result<&[u32], CompileError> {
@@ -790,12 +821,41 @@ impl<'a> ModelAdviceLayout<'a> {
         source: AdviceSource,
         point: &[F],
     ) -> Result<AdviceClaimImage<F>, CompileError> {
+        let mut weight = F::ONE;
+        let point = self.image_geometry(
+            tile,
+            column,
+            source,
+            point,
+            F::ZERO,
+            F::ONE,
+            |value, bit| weight *= if bit { value } else { F::ONE - value },
+        )?;
+        Ok(AdviceClaimImage {
+            tile,
+            source,
+            weight,
+            point,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn image_geometry<C: Copy>(
+        &self,
+        tile: usize,
+        column: usize,
+        source: AdviceSource,
+        point: &[C],
+        zero: C,
+        one: C,
+        on_fixed: impl FnMut(C, bool),
+    ) -> Result<Vec<C>, CompileError> {
         let placement = self
             .geometry
             .tensor(tile, column)
             .ok_or_else(|| usage(METADATA))?;
         let sequence = self.tiles.get(tile).ok_or_else(|| usage(METADATA))?;
-        let (natural, weight) = if let Tile::Attention { kv_head, .. } = sequence.tile {
+        let natural = if let Tile::Attention { kv_head, .. } = sequence.tile {
             let attention = self.geometry.attention();
             let block = sequence.block.as_ref().ok_or_else(|| usage(METADATA))?;
             let mut local = vec![attention.heads, attention.queries];
@@ -805,16 +865,11 @@ impl<'a> ModelAdviceLayout<'a> {
                 origin.push(0);
             }
             let full = self.attention_full_shape(column, source)?;
-            project(&full, &local, &origin, point)?
+            project(&full, &local, &origin, point, on_fixed)?
         } else {
-            (point.to_vec(), F::ONE)
+            point.to_vec()
         };
-        Ok(AdviceClaimImage {
-            tile,
-            source,
-            weight,
-            point: placement.point(&natural).map_err(pcs)?,
-        })
+        placement.point_geometry(&natural, zero, one).map_err(pcs)
     }
 }
 
@@ -822,17 +877,17 @@ fn bits(length: u32) -> u32 {
     u32::BITS - length.saturating_sub(1).leading_zeros()
 }
 
-fn project<F: Field>(
+fn project<C: Copy>(
     full: &[u32],
     local: &[u32],
     origin: &[u32],
-    point: &[F],
-) -> Result<(Vec<F>, F), CompileError> {
+    point: &[C],
+    mut on_fixed: impl FnMut(C, bool),
+) -> Result<Vec<C>, CompileError> {
     if full.len() != local.len() || full.len() != origin.len() {
         return Err(usage(METADATA));
     }
     let mut projected = Vec::new();
-    let mut weight = F::ONE;
     let mut coordinate = 0;
     for ((&full, &local), &origin) in full.iter().zip(local).zip(origin).rev() {
         let (full_bits, local_bits) = (bits(full), bits(local));
@@ -849,11 +904,7 @@ fn project<F: Field>(
             if bit < local_bits {
                 projected.push(value);
             } else {
-                weight *= if fixed >> (bit - local_bits) & 1 == 0 {
-                    F::ONE - value
-                } else {
-                    value
-                };
+                on_fixed(value, fixed >> (bit - local_bits) & 1 != 0);
             }
             coordinate += 1;
         }
@@ -861,7 +912,7 @@ fn project<F: Field>(
     if coordinate != point.len() {
         return Err(usage(POINT));
     }
-    Ok((projected, weight))
+    Ok(projected)
 }
 
 /// One term of the weighted PCS opening sum for a public source claim.

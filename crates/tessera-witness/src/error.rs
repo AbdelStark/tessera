@@ -28,7 +28,8 @@ pub enum WitnessError {
         /// What the model breaks.
         rule: &'static str,
     },
-    /// A table the lowering names does not regenerate from its specification (`ERR-INTERNAL`).
+    /// A table does not regenerate (`ERR-INTERNAL`), or its core cannot be allocated
+    /// (`ERR-RES-MEMORY`).
     Table {
         /// The table.
         table: TableId,
@@ -74,12 +75,15 @@ impl WitnessError {
     /// The stable error code (04 §3).
     pub fn code(&self) -> ErrorCode {
         match self {
+            Self::Table {
+                error: TableError::Memory,
+                ..
+            } => ErrorCode::ResMemory,
+            Self::Gadget(error) => error.code(),
             Self::ExactMismatch => ErrorCode::WitnessExactMismatch,
             Self::Usage { .. } => ErrorCode::Usage,
             Self::Model { .. } => ErrorCode::QuantArch,
-            Self::Table { .. } | Self::Range { .. } | Self::Internal { .. } | Self::Gadget(_) => {
-                ErrorCode::Internal
-            }
+            Self::Table { .. } | Self::Range { .. } | Self::Internal { .. } => ErrorCode::Internal,
             Self::Memory { .. } | Self::MemoryTable { .. } => ErrorCode::ResMemory,
             Self::Unequal { .. } => ErrorCode::WitnessAnchor,
         }

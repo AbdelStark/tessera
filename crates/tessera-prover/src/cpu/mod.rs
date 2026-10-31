@@ -12,10 +12,12 @@ use tessera_pcs as pcs;
 use tessera_protocol::{self as protocol, ProverEngine};
 
 mod backend;
+mod encoded_size;
 mod error;
 mod plan;
 mod random;
 mod table_plan;
+use encoded_size::EncodedSize;
 pub use error::ProverError;
 pub use plan::{Cells, Pass, PassPlan};
 pub use tessera_hash::Mode;
@@ -275,10 +277,7 @@ impl<'a> Prover<'a> {
         let mut session = protocol::ProverSession::new(backend::CpuBackend::new(prepared, batch)?);
         let answer = session.start(commit).map_err(Into::into);
         if let Ok((round1, _)) = &answer {
-            metrics::proof_bytes(
-                metrics::ProofPart::Round1,
-                tessera_codec::encode(round1).len() as u64,
-            );
+            metrics::proof_bytes(metrics::ProofPart::Round1, EncodedSize::of(round1));
         }
         self.session = Some(session);
         answer
@@ -336,10 +335,7 @@ impl<'a> Prover<'a> {
             advice,
             leaf_groups: backend.leaf_groups(),
         };
-        metrics::proof_bytes(
-            metrics::ProofPart::Round1,
-            tessera_codec::encode(&round1).len() as u64,
-        );
+        metrics::proof_bytes(metrics::ProofPart::Round1, EncodedSize::of(&round1));
         let mut tr = transcript(Mode::NonInteractive, params, &round1)?;
         let seed_nonce = tr.grind("seed-pow", params.seed_pow as u8);
         let _seed = tr.squeeze("seed");

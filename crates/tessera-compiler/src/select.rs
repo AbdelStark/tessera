@@ -678,12 +678,8 @@ impl Selector<'_> {
             return Ok(spec.id);
         }
         if !self.materialize {
-            let checked =
-                GeneratedTable::new(TableId(0), kind).map_err(|_| CompileError::Table {
-                    node: node.id,
-                    table: TableId(0),
-                    rule: "the generator refuses a table selection built",
-                })?;
+            let checked = GeneratedTable::new(TableId(0), kind)
+                .map_err(|error| CompileError::table_generation(node.id, TableId(0), error))?;
             if u32::from(checked.spec().log2_rows) > self.max {
                 return Err(CompileError::Range {
                     node: node.id,
@@ -701,11 +697,8 @@ impl Selector<'_> {
             .max()
             .unwrap_or(0);
         let id = TableId(next);
-        let table = GeneratedTable::new(id, kind).map_err(|_| CompileError::Table {
-            node: node.id,
-            table: id,
-            rule: "the generator refuses a table selection built",
-        })?;
+        let table = GeneratedTable::new(id, kind)
+            .map_err(|error| CompileError::table_generation(node.id, id, error))?;
         self.tables.push(table.spec().clone());
         self.reads.push(id);
         Ok(id)

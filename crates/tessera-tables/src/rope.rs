@@ -38,7 +38,8 @@ impl RopeTable {
     ///
     /// # Errors
     ///
-    /// [`TableError::Parameter`] for another kind or parameters RFC-0008 does not allow.
+    /// [`TableError::Parameter`] for another kind or parameters RFC-0008 does not allow,
+    /// or [`TableError::Memory`] if the frequency vector cannot be reserved.
     pub fn new(id: TableId, kind: TableKind) -> Result<Self, TableError> {
         let rope = RopeConstants::new(&kind)?;
         let pairs = u64::from(rope.max_context) * rope.omegas.len() as u64;
@@ -106,7 +107,8 @@ impl RopeConstants {
     ///
     /// # Errors
     ///
-    /// [`TableError::Parameter`] for another kind or parameters RFC-0008 does not allow.
+    /// [`TableError::Parameter`] for another kind or parameters RFC-0008 does not allow,
+    /// or [`TableError::Memory`] if the frequency vector cannot be reserved.
     pub fn new(kind: &TableKind) -> Result<Self, TableError> {
         let refuse = |rule| Err(TableError::Parameter { kind: "Rope", rule });
         let TableKind::Rope {
@@ -150,24 +152,27 @@ impl RopeConstants {
             u128::from(low_freq_factor),
             u128::from(high_freq_factor),
         );
-        let omegas = (0..u128::from(d_head / 2))
-            .map(|i| {
-                let (y, n) = exp_neg(2 * i * ln_theta / u128::from(d_head));
-                let omega = if n < 128 { y >> n } else { 0 };
-                let l_omega = u128::from(original_max) * omega;
-                if TAU * high < l_omega {
-                    // A wavelength below original_max / high: kept.
-                    omega
-                } else if TAU * low > l_omega {
-                    // A wavelength above original_max / low: slowed by the factor.
-                    omega / factor
-                } else {
-                    // Between them, interpolated by `(L·ω/2π − low) / (high − low)` in Q40.
-                    let smooth = ((l_omega - low * TAU) << 40) / ((high - low) * TAU);
-                    omega / factor + ((omega * smooth) >> 40) * (factor - 1) / factor
-                }
-            })
-            .collect();
+        let mut omegas = Vec::new();
+        omegas
+            .try_reserve_exact((d_head / 2) as usize)
+            .map_err(|_| TableError::Memory)?;
+        for i in 0..u128::from(d_head / 2) {
+            let (y, n) = exp_neg(2 * i * ln_theta / u128::from(d_head));
+            let omega = if n < 128 { y >> n } else { 0 };
+            let l_omega = u128::from(original_max) * omega;
+            let scaled = if TAU * high < l_omega {
+                // A wavelength below original_max / high: kept.
+                omega
+            } else if TAU * low > l_omega {
+                // A wavelength above original_max / low: slowed by the factor.
+                omega / factor
+            } else {
+                // Between them, interpolated by `(L·ω/2π − low) / (high − low)` in Q40.
+                let smooth = ((l_omega - low * TAU) << 40) / ((high - low) * TAU);
+                omega / factor + ((omega * smooth) >> 40) * (factor - 1) / factor
+            };
+            omegas.push(scaled);
+        }
         Ok(Self {
             omegas,
             bits,

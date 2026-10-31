@@ -6,6 +6,29 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Plan engine table-loader buffers, including id gaps, class clones, RoPE frequencies and replacement overlap; reserve registry and frequency capacities exactly without changing table values or CPU admission ([#641](https://github.com/AbdelStark/tessera/issues/641)).
+
+- Plan owned canonical-token, checkpoint and full nonweight-cache constructor buffers, including repeated leaf copies, public position-vector overlap and checked metadata sizes; use exact reader/operand reservations and reverse topological replay cones without a worklist. Borrowed tables, runtime and other proof phases remain separate (RFC-0006/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
+- Bound sequential PCS P1 storage, including encoder initialization scratch, all segment chains, active codeword block, merged tree and owned layout; reserve CPU segment descriptors exactly and retain separate caller/whole-route charges (RFC-0011/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
+- Count every nested public advice-layout allocation, including spare capacities, and bound its owned clone; retain constructor scratch as a separate charge (RFC-0011/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
+- Bound PCS-owned P5 columns and publication overlap before query sampling, and reserve canonical Merkle siblings exactly from validated public indices. Repeated draws retain their worst-case charge; full CPU admission remains pending (RFC-0004/0011/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
+- Preflight PCS-owned grouping and advice-opening allocation bounds, including repeated-claim descriptor growth, combination scratch and simultaneous private/public rows; caller storage and the full CPU route remain separate (RFC-0011/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
+- Stream NI proof and producer Live packet envelopes through a cleared bounded buffer, retaining exclusive 0600 temporary files, synchronized no-overwrite publication and identical manifest entries (RFC-0003/0014/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
+- Batch generated table/count reads using checked spare public memory, preserving the 256-row fallback and existing window cuts; charge the selected source scratch and retain exact count/proof behavior (RFC-0018/0054, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
+- Count public proof-byte metrics through the existing TCE encoders without retaining temporary output buffers; preserve reported parts, proof bytes and CPU admission (RFC-0003/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
+- Derive multiplicity backing plans from public table and runtime metadata through the same dense/weighted storage decision used by allocation; check addressability before reserving storage and run independent padded-column histograms in CI (RFC-0008/0018/0071, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
+- Preflight materialized lookup-core lengths without allocation, reserve each core once, and report dense-core allocation failures as `ERR-RES-MEMORY`. Table values, digests, parameter bundles and CPU admission remain unchanged (RFC-0008/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
+- Derive public opening geometry through the CPU producer's original-source traversal, using opaque coordinate origins and retaining zero-weight images and all ChannelParams reads. Counts support future memory planning; CPU admission and proof artifacts remain unchanged (RFC-0011/0012/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 - Allow the complete prover CI suite 45 minutes after both checkpoint-source runs exhausted the 25-minute job budget during final NI/Live checks; preserve every test command, filter and protocol deadline ([#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Clear completed CPU leaf/native/stage working sets before later proof phases, after transferring their remaining obligations; add checkpoint tensor replay with resident equivalence and allocation checks. The resident-cell memory guard and real-model proof requirements remain unchanged (RFC-0018, [#629](https://github.com/AbdelStark/tessera/issues/629)).

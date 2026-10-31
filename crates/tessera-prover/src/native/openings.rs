@@ -2,16 +2,16 @@
 
 //! Original native source points, separately from their transformed graph projections.
 use super::*;
-use crate::openings::OriginalAdvice;
+use crate::openings::{OpeningStage, OriginalAdvice, PointConstant};
 use tessera_compiler::AdviceSource;
 use tessera_compiler::schedule::{Coord, Relation as ScheduledRelation};
 
 impl ModelNativePlan {
-    pub(crate) fn source_openings<W: WitnessSource + ?Sized>(
+    pub(crate) fn source_openings<C: Copy + Eq, S: OpeningStage<C> + ?Sized>(
         &self,
         lowering: &Lowering,
-        stages: &crate::StageProver<'_, W>,
-    ) -> Result<Vec<OriginalAdvice>, StageError> {
+        stages: &S,
+    ) -> Result<Vec<OriginalAdvice<C>>, StageError> {
         let mut out = Vec::new();
         for stage in self.schedule.stages.iter().skip(1) {
             let rounds = (0..stage.rounds)
@@ -44,7 +44,7 @@ impl ModelNativePlan {
                     .checked_sub(family.lambda as usize)
                     .ok_or_else(bad)?;
                 let (p, layer) = point.split_at(local);
-                let mut push = |point: &[F], column: AuxColumn| {
+                let mut push = |point: &[C], column: AuxColumn| {
                     let pieces = family
                         .nodes
                         .iter()
@@ -52,13 +52,7 @@ impl ModelNativePlan {
                         .map(|(l, &node)| {
                             (
                                 AdviceSource::Auxiliary(node, column),
-                                if layer.is_empty() {
-                                    F::ONE
-                                } else {
-                                    layer.iter().enumerate().fold(F::ONE, |w, (j, &r)| {
-                                        w * if (l >> j) & 1 == 0 { F::ONE - r } else { r }
-                                    })
-                                },
+                                stages.layer_weight(layer, l),
                             )
                         })
                         .collect();
@@ -83,7 +77,7 @@ impl ModelNativePlan {
                     (Relation::MaxPad, _) => push(p, AuxColumn::Maximum),
                     (Relation::Reciprocal, Kind::Softmax { .. }) => {
                         let keys = vars(&[family.shape[2]]) as usize;
-                        let mut point = vec![fp(2).inverse().ok_or_else(bad)?; keys];
+                        let mut point = vec![stages.constant(PointConstant::Half)?; keys];
                         point.extend_from_slice(p);
                         let pieces = family
                             .nodes
@@ -94,9 +88,7 @@ impl ModelNativePlan {
                                     AdviceSource::Tensor(
                                         lowering.graph.nodes[node.0 as usize].outputs[0],
                                     ),
-                                    layer.iter().enumerate().fold(F::ONE, |w, (j, &r)| {
-                                        w * if (l >> j) & 1 == 0 { F::ONE - r } else { r }
-                                    }),
+                                    stages.layer_weight(layer, l),
                                 )
                             })
                             .collect();
@@ -112,13 +104,15 @@ impl ModelNativePlan {
                             point: time.to_vec(),
                             pieces: vec![(AdviceSource::GreedyMaximum(c.gadget), F::ONE)],
                         });
+                        let zero = stages.constant(PointConstant::Zero)?;
+                        let one = stages.constant(PointConstant::One)?;
                         for carry in 0..=time.len() {
                             let mut original = p[..nv].to_vec();
                             original.extend((0..time.len()).map(|j| {
                                 if j < carry {
-                                    F::ZERO
+                                    zero
                                 } else if j == carry {
-                                    F::ONE
+                                    one
                                 } else {
                                     time[j]
                                 }

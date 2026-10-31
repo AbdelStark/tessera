@@ -1,0 +1,55 @@
+   Compiling tessera-hash v0.1.0 (/private/tmp/tessera-641-opening-memory/crates/tessera-hash)
+   Compiling tessera-merkle-open-bench v0.1.0 (/private/tmp/tessera-641-opening-memory/crates/tessera-hash/benches/openings)
+    Finished `bench` profile [optimized] target(s) in 6.45s
+     Running src/main.rs (/tmp/tessera-641-column-bench-target/release/deps/merkle_open-bc0738004f8ef7b1)
+PUBLIC merkle case=one leaves=65536 draws=1 siblings=16 capacity=16
+Benchmarking merkle_open/one
+Benchmarking merkle_open/one: Warming up for 1.0000 s
+Benchmarking merkle_open/one: Collecting 20 samples in estimated 3.0001 s (1.6M iterations)
+Benchmarking merkle_open/one: Analyzing
+merkle_open/one         time:   [1.8865 µs 2.0112 µs 2.1621 µs]
+                        change: [-21.798% -6.2702% +10.475%] (p = 0.47 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 20 measurements (10.00%)
+  2 (10.00%) low mild
+PUBLIC merkle case=sparse8 leaves=65536 draws=8 siblings=72 capacity=72
+Benchmarking merkle_open/sparse8
+Benchmarking merkle_open/sparse8: Warming up for 1.0000 s
+Benchmarking merkle_open/sparse8: Collecting 20 samples in estimated 3.0000 s (993k iterations)
+Benchmarking merkle_open/sparse8: Analyzing
+merkle_open/sparse8     time:   [2.8991 µs 3.0773 µs 3.2239 µs]
+                        change: [-22.034% -10.758% +3.1861%] (p = 0.13 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 20 measurements (10.00%)
+  1 (5.00%) low mild
+  1 (5.00%) high mild
+PUBLIC merkle case=sparse193 leaves=65536 draws=193 siblings=1606 capacity=1606
+Benchmarking merkle_open/sparse193
+Benchmarking merkle_open/sparse193: Warming up for 1.0000 s
+Benchmarking merkle_open/sparse193: Collecting 20 samples in estimated 3.0002 s (91k iterations)
+Benchmarking merkle_open/sparse193: Analyzing
+merkle_open/sparse193   time:   [30.172 µs 31.637 µs 33.072 µs]
+                        change: [-17.365% -4.3231% +10.229%] (p = 0.55 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 20 measurements (10.00%)
+  1 (5.00%) low mild
+  1 (5.00%) high mild
+PUBLIC merkle case=cluster193 leaves=65536 draws=193 siblings=14 capacity=14
+Benchmarking merkle_open/cluster193
+Benchmarking merkle_open/cluster193: Warming up for 1.0000 s
+Benchmarking merkle_open/cluster193: Collecting 20 samples in estimated 3.0005 s (643k iterations)
+Benchmarking merkle_open/cluster193: Analyzing
+merkle_open/cluster193  time:   [4.2484 µs 4.8303 µs 5.4054 µs]
+                        change: [-13.938% +4.1849% +25.652%] (p = 0.68 > 0.05)
+                        No change in performance detected.
+PUBLIC merkle case=all leaves=65536 draws=65536 siblings=0 capacity=0
+Benchmarking merkle_open/all
+Benchmarking merkle_open/all: Warming up for 1.0000 s
+Benchmarking merkle_open/all: Collecting 20 samples in estimated 3.0150 s (2520 iterations)
+Benchmarking merkle_open/all: Analyzing
+merkle_open/all         time:   [1.1894 ms 1.3116 ms 1.4163 ms]
+                        change: [+6.4071% +26.066% +49.108%] (p = 0.01 < 0.05)
+                        Performance has regressed.
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+

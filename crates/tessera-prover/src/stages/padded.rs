@@ -326,8 +326,8 @@ impl Evaluator<'_> {
                     .ok_or(StageError::Internal {
                         rule: "a lookup's table is the graph's",
                     })?;
-            let table = GeneratedTable::from_spec(spec).map_err(|_| StageError::Internal {
-                rule: "a lookup's table regenerates from its specification",
+            let table = GeneratedTable::from_spec(spec).map_err(|error| {
+                StageError::from_table(error, "a lookup's table regenerates from its specification")
             })?;
             self.lookups.insert(id, table);
         }

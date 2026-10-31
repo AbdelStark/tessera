@@ -1,0 +1,106 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling cfg-if v1.0.5
+   Compiling libc v0.2.191
+   Compiling shlex v2.0.1
+   Compiling syn v3.0.9
+   Compiling find-msvc-tools v0.1.15
+   Compiling serde_core v1.0.229
+   Compiling cc v1.10.0
+   Compiling syn v2.0.119
+   Compiling once_cell v1.21.4
+   Compiling zerocopy v0.8.63
+   Compiling blake3 v1.8.7
+   Compiling zerocopy-derive v0.8.63
+   Compiling serde v1.0.229
+   Compiling getrandom v0.3.4
+   Compiling zeroize v1.9.1
+   Compiling zmij v1.0.23
+   Compiling arrayvec v0.7.8
+   Compiling tracing-core v0.1.36
+   Compiling serde_derive v1.0.229
+   Compiling constant_time_eq v0.4.2
+   Compiling autocfg v1.5.1
+   Compiling serde_json v1.0.154
+   Compiling pin-project-lite v0.2.17
+   Compiling tracing v0.1.44
+   Compiling num-traits v0.2.19
+   Compiling half v2.7.1
+   Compiling tessera-codec-derive v0.1.0 (/private/tmp/tessera-641-opening-memory/crates/tessera-codec-derive)
+   Compiling regex-syntax v0.8.11
+   Compiling anstyle v1.0.14
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling clap_lex v1.1.1
+   Compiling ciborium-io v0.2.2
+   Compiling either v1.19.0
+   Compiling itertools v0.10.5
+   Compiling regex-automata v0.4.18
+   Compiling ciborium-ll v0.2.2
+   Compiling clap_builder v4.6.7
+   Compiling tessera-codec v0.1.0 (/private/tmp/tessera-641-opening-memory/crates/tessera-codec)
+   Compiling cast v0.3.0
+   Compiling same-file v1.0.6
+   Compiling walkdir v2.5.0
+   Compiling criterion-plot v0.5.0
+   Compiling tessera-field v0.1.0 (/private/tmp/tessera-641-opening-memory/crates/tessera-field)
+   Compiling tinytemplate v1.2.1
+   Compiling clap v4.6.7
+   Compiling ciborium v0.2.2
+   Compiling regex v1.13.1
+   Compiling is-terminal v0.4.17
+   Compiling oorandom v11.1.5
+   Compiling anes v0.1.6
+   Compiling tessera-hash v0.1.0 (/private/tmp/tessera-641-opening-memory/crates/tessera-hash)
+   Compiling criterion v0.5.1
+   Compiling tessera-merkle-open-bench v0.1.0 (/private/tmp/tessera-641-opening-memory/crates/tessera-hash/benches/openings)
+    Finished `bench` profile [optimized] target(s) in 1m 47s
+     Running src/main.rs (/tmp/tessera-641-column-bench-target/release/deps/merkle_open-bc0738004f8ef7b1)
+PUBLIC merkle case=one leaves=65536 draws=1 siblings=16 capacity=16
+Benchmarking merkle_open/one
+Benchmarking merkle_open/one: Warming up for 1.0000 s
+Benchmarking merkle_open/one: Collecting 20 samples in estimated 3.0002 s (1.6M iterations)
+Benchmarking merkle_open/one: Analyzing
+merkle_open/one         time:   [1.9709 µs 2.0318 µs 2.1115 µs]
+Found 3 outliers among 20 measurements (15.00%)
+  1 (5.00%) low severe
+  1 (5.00%) high mild
+  1 (5.00%) high severe
+PUBLIC merkle case=sparse8 leaves=65536 draws=8 siblings=72 capacity=128
+Benchmarking merkle_open/sparse8
+Benchmarking merkle_open/sparse8: Warming up for 1.0000 s
+Benchmarking merkle_open/sparse8: Collecting 20 samples in estimated 3.0001 s (830k iterations)
+Benchmarking merkle_open/sparse8: Analyzing
+merkle_open/sparse8     time:   [3.4173 µs 3.5996 µs 3.7925 µs]
+Found 3 outliers among 20 measurements (15.00%)
+  2 (10.00%) low mild
+  1 (5.00%) high mild
+PUBLIC merkle case=sparse193 leaves=65536 draws=193 siblings=1606 capacity=2048
+Benchmarking merkle_open/sparse193
+Benchmarking merkle_open/sparse193: Warming up for 1.0000 s
+Benchmarking merkle_open/sparse193: Collecting 20 samples in estimated 3.0006 s (95k iterations)
+Benchmarking merkle_open/sparse193: Analyzing
+merkle_open/sparse193   time:   [31.010 µs 33.637 µs 35.655 µs]
+PUBLIC merkle case=cluster193 leaves=65536 draws=193 siblings=14 capacity=16
+Benchmarking merkle_open/cluster193
+Benchmarking merkle_open/cluster193: Warming up for 1.0000 s
+Benchmarking merkle_open/cluster193: Collecting 20 samples in estimated 3.0008 s (633k iterations)
+Benchmarking merkle_open/cluster193: Analyzing
+merkle_open/cluster193  time:   [4.4813 µs 4.8333 µs 5.1989 µs]
+Found 6 outliers among 20 measurements (30.00%)
+  3 (15.00%) low severe
+  1 (5.00%) low mild
+  1 (5.00%) high mild
+  1 (5.00%) high severe
+PUBLIC merkle case=all leaves=65536 draws=65536 siblings=0 capacity=0
+Benchmarking merkle_open/all
+Benchmarking merkle_open/all: Warming up for 1.0000 s
+Benchmarking merkle_open/all: Collecting 20 samples in estimated 3.0046 s (2940 iterations)
+Benchmarking merkle_open/all: Analyzing
+merkle_open/all         time:   [1.0411 ms 1.0779 ms 1.1109 ms]
+Found 5 outliers among 20 measurements (25.00%)
+  3 (15.00%) low severe
+  1 (5.00%) high mild
+  1 (5.00%) high severe
+

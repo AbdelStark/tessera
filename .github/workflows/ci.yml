@@ -223,7 +223,7 @@ jobs:
         run: |
           cargo test -p tessera-scoring --test sampler --test exact --locked
           cargo test -p tessera-witness --test engine the_engine_computes_the_conformance_vectors --locked
-          cargo nextest run -p tessera-witness --test tensors --test request_slots --locked
+          cargo nextest run -p tessera-witness --test tensors --test request_slots --test multiplicities --locked
           cargo test -p tessera-cli --example recorder_integration --test recorder --locked
           cargo run -p tessera-cli --example recorder_integration --locked -- \
             "$TESSERA_BIN" "$RUNNER_TEMP/recorder-integration"

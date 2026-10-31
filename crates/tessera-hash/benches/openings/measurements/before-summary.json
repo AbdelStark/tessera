@@ -1,0 +1,59 @@
+{
+  "source": {
+    "Cargo.toml": "3a86322fb45e2e6967d1542e069ac20a00cf0fd96e709b90ac48a19eaf1f01bc",
+    "Cargo.lock": "c36d31e63d5f30b0c2af52e1d730b2790f01f937191cf49105f21b14d7583166",
+    "src/main.rs": "28a2dded287ec470eecacd813290269765530c9a998e94754d66a2d3996c1ff5",
+    "README.md": "37e00928cca59c986b1768df9f9628690d665764d452e48d3165440e7eeeb398",
+    "merkle_source": "193f90f768b428165069e870869af71111296c98dcecfd2c6c43bbd50b49541a",
+    "parent": "ad39d4d7f51d9a27ade3aee1aa714c2079c323b4"
+  },
+  "units": "ns/open,includingdrop",
+  "host": "M1Max10CPU64GiB,concurrentunchangedcalibration/hostwork",
+  "results": {
+    "one": {
+      "confidence_interval": {
+        "confidence_level": 0.95,
+        "lower_bound": 1970.9042482668322,
+        "upper_bound": 2111.4643657434262
+      },
+      "point_estimate": 2031.78738734667,
+      "standard_error": 35.64523960229066
+    },
+    "sparse8": {
+      "confidence_interval": {
+        "confidence_level": 0.95,
+        "lower_bound": 3417.349712294889,
+        "upper_bound": 3792.523165661424
+      },
+      "point_estimate": 3599.5577383303475,
+      "standard_error": 95.9785594721916
+    },
+    "sparse193": {
+      "confidence_interval": {
+        "confidence_level": 0.95,
+        "lower_bound": 31009.805911151616,
+        "upper_bound": 35655.26638815528
+      },
+      "point_estimate": 33636.50640697791,
+      "standard_error": 1178.416075239631
+    },
+    "cluster193": {
+      "confidence_interval": {
+        "confidence_level": 0.95,
+        "lower_bound": 4481.289218187426,
+        "upper_bound": 5198.948292571688
+      },
+      "point_estimate": 4833.325327031016,
+      "standard_error": 182.21254287512147
+    },
+    "all": {
+      "confidence_interval": {
+        "confidence_level": 0.95,
+        "lower_bound": 1041139.7357424707,
+        "upper_bound": 1110906.4668510756
+      },
+      "point_estimate": 1077910.5764061722,
+      "standard_error": 17628.565565606626
+    }
+  }
+}

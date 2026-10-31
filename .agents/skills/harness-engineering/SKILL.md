@@ -95,7 +95,7 @@ Done when the target crate compiles with `unwrap_used`, `expect_used`, `panic`, 
 
 ### Pillar 5 — Soundness Calibration (`F65537`)
 
-Goldilocks ($p \approx 2^{64}$, extension $\approx 2^{256}$) makes accidental false acceptance impossible to observe statistically in a test run ($\approx 2^{-128}$). To test that the soundness equations themselves hold:
+The Goldilocks quadratic extension has $p^2 \approx 2^{128}$ elements (RFC-0014). Production-field cheating probabilities are too small to calibrate statistically in routine CI; each bound must still count its degrees and events. To test the soundness equations:
 
 1. Parameterize generic protocol checks or write calibration tests over the small prime field $F_{65537}$ ($p = 2^{16} + 1$) where the theoretical soundness error is $\epsilon \approx d / 65537$.
 2. Run $M = 100{,}000$ trials of a cheating prover (e.g., false sumcheck claim, forged LogUp multiset, corrupted Reed–Solomon codeword) against random verifier challenges.

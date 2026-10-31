@@ -333,6 +333,23 @@ impl WeightLayout {
         channel_point: &[Fp2],
         layer_point: &[Fp2],
     ) -> Result<Vec<Fp2>, PcsError> {
+        self.channel_point_geometry(matrix, channel_point, layer_point, Fp2::ZERO, Fp2::ONE)
+    }
+
+    /// The coordinate-only map of [`Self::channel_point`], for values or symbolic origins.
+    /// It copies coordinates and inserts the Boolean constants `zero` and `one`; it never
+    /// computes on them. This keeps public opening-memory estimates independent of challenges.
+    ///
+    /// # Errors
+    /// As [`Self::channel_point`] for matrix ownership and coordinate lengths.
+    pub fn channel_point_geometry<C: Copy>(
+        &self,
+        matrix: WeightMatrix,
+        channel_point: &[C],
+        layer_point: &[C],
+        zero: C,
+        one: C,
+    ) -> Result<Vec<C>, PcsError> {
         if !self.channels.iter().any(|&(m, _)| m == matrix) {
             return Err(PcsError::WeightPlace {
                 matrix,
@@ -364,16 +381,12 @@ impl WeightLayout {
         let gamma = channel_width.trailing_zeros() as usize;
         let mut point = Vec::with_capacity(gamma + log2_l_pad + LOG2_CHANNEL_TYPES as usize);
         point.extend_from_slice(channel_point);
-        point.resize(gamma, Fp2::ZERO);
+        point.resize(gamma, zero);
         point.extend_from_slice(layer_point);
-        point.resize(gamma + log2_l_pad, Fp2::ZERO);
+        point.resize(gamma + log2_l_pad, zero);
         let tag = matrix.index();
         for bit in 0..LOG2_CHANNEL_TYPES {
-            point.push(if (tag >> bit) & 1 == 1 {
-                Fp2::ONE
-            } else {
-                Fp2::ZERO
-            });
+            point.push(if (tag >> bit) & 1 == 1 { one } else { zero });
         }
         Ok(point)
     }

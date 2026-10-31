@@ -1,0 +1,67 @@
+   Compiling tessera-count-read-bench v0.1.0 (/private/tmp/tessera-641-metric-encoding/crates/tessera-prover/benches/count-reads)
+    Finished `bench` profile [optimized] target(s) in 7.65s
+     Running src/main.rs (/tmp/tessera-641-mutation-target/release/deps/count_reads-a34960a2d760da40)
+scope=count-reader-only positions=2 table=32 logical_rows=8388608 max_updates=1155 backing_bytes=18480 setup_seconds=1.8858447090000001
+chunk_rows=256 prefix_rows=262177 fixed_update_visits=1183875
+Benchmarking weighted-count-prefix/256
+Benchmarking weighted-count-prefix/256: Warming up for 1.0000 s
+Benchmarking weighted-count-prefix/256: Collecting 10 samples in estimated 3.0073 s (220 iterations)
+Benchmarking weighted-count-prefix/256: Analyzing
+weighted-count-prefix/256
+                        time:   [13.727 ms 14.387 ms 14.859 ms]
+                        thrpt:  [17.645 Melem/s 18.223 Melem/s 19.099 Melem/s]
+                 change:
+                        time:   [-7.1045% +2.3463% +14.864%] (p = 0.70 > 0.05)
+                        thrpt:  [-12.940% -2.2925% +7.6478%]
+                        No change in performance detected.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) low mild
+  1 (10.00%) high severe
+chunk_rows=4096 prefix_rows=262177 fixed_update_visits=75075
+Benchmarking weighted-count-prefix/4096
+Benchmarking weighted-count-prefix/4096: Warming up for 1.0000 s
+Benchmarking weighted-count-prefix/4096: Collecting 10 samples in estimated 3.0360 s (3080 iterations)
+Benchmarking weighted-count-prefix/4096: Analyzing
+weighted-count-prefix/4096
+                        time:   [925.21 µs 959.86 µs 989.91 µs]
+                        thrpt:  [264.85 Melem/s 273.14 Melem/s 283.37 Melem/s]
+                 change:
+                        time:   [-12.679% +3.5859% +27.387%] (p = 0.74 > 0.05)
+                        thrpt:  [-21.499% -3.4617% +14.520%]
+                        No change in performance detected.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) high mild
+  1 (10.00%) high severe
+chunk_rows=65536 prefix_rows=262177 fixed_update_visits=5775
+Benchmarking weighted-count-prefix/65536
+Benchmarking weighted-count-prefix/65536: Warming up for 1.0000 s
+Benchmarking weighted-count-prefix/65536: Collecting 10 samples in estimated 3.0009 s (20k iterations)
+Benchmarking weighted-count-prefix/65536: Analyzing
+weighted-count-prefix/65536
+                        time:   [151.89 µs 170.32 µs 183.93 µs]
+                        thrpt:  [1.4254 Gelem/s 1.5393 Gelem/s 1.7261 Gelem/s]
+                 change:
+                        time:   [-12.161% -0.6046% +11.743%] (p = 0.93 > 0.05)
+                        thrpt:  [-10.509% +0.6082% +13.845%]
+                        No change in performance detected.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) low mild
+
+       24.56 real        12.77 user         0.31 sys
+           204767232  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+               49472  page reclaims
+                 316  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   3  signals received
+                 179  voluntary context switches
+                3681  involuntary context switches
+           618447852  instructions retired
+           255855680  cycles elapsed
+            24675712  peak memory footprint

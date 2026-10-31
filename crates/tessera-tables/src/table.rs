@@ -77,6 +77,21 @@ pub struct GeneratedTable {
 }
 
 impl GeneratedTable {
+    /// Number of values stored in the generated table's dense core, derived without allocation.
+    /// `Exp` stores the prefix before its zero tail, `Exp2Frac` stores its full value column,
+    /// and `Silu` stores each class's reduced `h` domain in class order (RFC-0008).
+    /// Arithmetic kinds compute values on demand and store no dense core, even when their
+    /// digest's logical core contains a whole value column.
+    ///
+    /// This is core geometry only: class/container capacities, constructor scratch and allocator
+    /// overhead remain separate charges. It authenticates neither a `TableSpec` nor its digest.
+    ///
+    /// # Errors
+    /// [`TableError::Parameter`] for any parameter refused by [`Self::new`].
+    pub fn core_storage_len(kind: &TableKind) -> Result<u64, TableError> {
+        dense_core_len(kind, row_count(kind)?)
+    }
+
     /// Complete owned storage including this descriptor, the generated core's capacity,
     /// and any class-shift capacity. Logical row count is not physical allocation.
     pub fn storage_bytes(&self) -> Option<usize> {
@@ -98,7 +113,8 @@ impl GeneratedTable {
     ///
     /// # Errors
     ///
-    /// [`TableError::Parameter`] for parameters the kind does not allow.
+    /// [`TableError::Parameter`] for parameters the kind does not allow, or [`TableError::Memory`]
+    /// when its dense core cannot be allocated.
     pub fn new(id: TableId, kind: TableKind) -> Result<Self, TableError> {
         let rows = row_count(&kind)?;
         let core = generate_core(&kind, rows)?;
@@ -121,7 +137,8 @@ impl GeneratedTable {
     ///
     /// # Errors
     ///
-    /// [`TableError::Parameter`] for parameters the kind does not allow, then
+    /// [`TableError::Parameter`] for parameters the kind does not allow, or [`TableError::Memory`]
+    /// when its dense core cannot be allocated, then
     /// [`TableError::Log2Rows`] and [`TableError::Digest`] for a `log2_rows` or digest other
     /// than the generated one.
     pub fn from_spec(spec: &TableSpec) -> Result<Self, TableError> {
@@ -406,9 +423,8 @@ fn row_count(kind: &TableKind) -> Result<u64, TableError> {
     }
 }
 
-/// The dense core of the fixed-point kinds (RFC-0008 'Fixed-point generators'); empty for the
-/// others.
-fn generate_core(kind: &TableKind, rows: u64) -> Result<Vec<i64>, TableError> {
+/// The retained dense core's public shape; `row_count` has validated every kind parameter.
+fn dense_core_len(kind: &TableKind, rows: u64) -> Result<u64, TableError> {
     match kind {
         TableKind::Exp { sigma, scale, .. } => {
             // `scale.num() ≥ 1`, checked with the row count.
@@ -420,32 +436,66 @@ fn generate_core(kind: &TableKind, rows: u64) -> Result<Vec<i64>, TableError> {
                     rule: "a zero tail from key 2^24 or earlier",
                 });
             }
-            Ok((0..tail).map(|k| exp_value(k, *sigma, num, den)).collect())
+            Ok(tail)
+        }
+        TableKind::Exp2Frac { .. } => Ok(rows),
+        TableKind::Silu { b, r_by_class, .. } => {
+            Ok(r_by_class.iter().map(|&r| 1u64 << (b - r)).sum())
+        }
+        _ => Ok(0),
+    }
+}
+
+fn core_buffer(values: u64) -> Result<Vec<i64>, TableError> {
+    let capacity = usize::try_from(values).map_err(|_| TableError::Memory)?;
+    let mut core = Vec::new();
+    core.try_reserve_exact(capacity)
+        .map_err(|_| TableError::Memory)?;
+    Ok(core)
+}
+
+/// Generate in canonical order into one reserved allocation; no speculative Vec growth.
+fn generate_core(kind: &TableKind, rows: u64) -> Result<Vec<i64>, TableError> {
+    let length = dense_core_len(kind, rows)?;
+    let mut core = core_buffer(length)?;
+    match kind {
+        TableKind::Exp { sigma, scale, .. } => {
+            for k in 0..length {
+                core.push(exp_value(
+                    k,
+                    *sigma,
+                    scale.num().unsigned_abs(),
+                    scale.den(),
+                ));
+            }
         }
         TableKind::Exp2Frac {
             frac_bits,
             out_bits,
-        } => Ok((0..rows)
-            .map(|f| {
+        } => {
+            for f in 0..rows {
                 let x = (u128::from(f) * LN2) >> frac_bits;
                 // `≤ 2^63 >> (62 − out_bits) = 2^{out_bits + 1} ≤ 2^57`.
-                i64::try_from(exp_pos(x) >> (62 - out_bits)).unwrap_or(i64::MAX)
-            })
-            .collect()),
+                core.push(i64::try_from(exp_pos(x) >> (62 - out_bits)).unwrap_or(i64::MAX));
+            }
+        }
         TableKind::Silu {
             b,
             r_by_class,
             in_exp,
             out_exp,
-        } => Ok(r_by_class
-            .iter()
-            .flat_map(|&r| {
+        } => {
+            for &r in r_by_class {
                 let half = 1i64 << (b - 1 - r);
-                (-half..half).map(move |h| silu_value(h, *in_exp, *out_exp))
-            })
-            .collect()),
-        _ => Ok(Vec::new()),
+                for h in -half..half {
+                    core.push(silu_value(h, *in_exp, *out_exp));
+                }
+            }
+        }
+        _ => {}
     }
+    debug_assert_eq!(core.len() as u64, length);
+    Ok(core)
 }
 
 /// `clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)` in the fixed point of RFC-0008:
@@ -555,4 +605,18 @@ fn bitwise(op: BitOp, key: i64) -> i64 {
 /// The key's low byte, for the byte tables, whose keys have been checked to be bytes.
 fn low_byte(key: i64) -> u8 {
     key.to_le_bytes()[0]
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::*;
+
+    #[test]
+    fn impossible_core_reservation_is_a_typed_refusal_without_allocation() {
+        let measured = allocation_counter::measure(|| {
+            assert_eq!(core_buffer(u64::MAX), Err(TableError::Memory));
+        });
+        assert_eq!(measured.bytes_total, 0);
+        assert_eq!(measured.bytes_max, 0);
+    }
 }

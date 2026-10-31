@@ -12,12 +12,12 @@ use compiler::{Lowering, ModelAdviceLayout, RuntimePlan, schedule::LayerMap};
 use tessera_field::GoldilocksExt2 as F;
 use tessera_ir::{ClaimList, StageId};
 use tessera_sumcheck::SumcheckTranscript;
-use tessera_tables::{GeneratedTable, Table as _};
+use tessera_tables::{GeneratedTable, Table as _, TableError};
 use tessera_witness::WitnessSource as _;
 use tessera_witness::{Engine, Resident, Witness};
 
 use super::plan::{Cells, Pass, PassPlan};
-use super::table_plan::{CHUNK_ROWS, TablePlan};
+use super::table_plan::TablePlan;
 
 pub(super) struct Unit {
     lowering: Lowering,
@@ -30,6 +30,7 @@ pub(super) struct Unit {
     grouped: Option<GroupedLayout>,
     windows: Vec<usize>,
     table_allowance: u64,
+    table_chunk_rows: NonZeroUsize,
     table_retained: u64,
     forest_bytes: u64,
 }
@@ -124,6 +125,12 @@ pub(super) struct CpuBackend<'a> {
 
 fn memory() -> ProverError {
     ProverError::Resource(ErrorCode::ResMemory)
+}
+fn generated_table_error(error: TableError) -> ProverError {
+    match error {
+        TableError::Memory => memory(),
+        _ => internal("selected table regenerates"),
+    }
 }
 fn power(n: u64) -> Result<u64, ProverError> {
     n.checked_next_power_of_two().ok_or_else(memory)
@@ -405,6 +412,7 @@ impl<'a> CpuBackend<'a> {
         let table = plan.table_plan().ok_or_else(memory)?;
         let (table_allowance, table_retained, forest_bytes) =
             (table.working_bytes, table.retained, table.forests);
+        let table_chunk_rows = NonZeroUsize::new(table.chunk_rows).ok_or_else(memory)?;
         Ok((
             Unit {
                 lowering,
@@ -416,6 +424,7 @@ impl<'a> CpuBackend<'a> {
                 grouped,
                 windows: plan.stage_windows().iter().map(|s| s.cut).collect(),
                 table_allowance,
+                table_chunk_rows,
                 table_retained,
                 forest_bytes,
             },
@@ -487,8 +496,7 @@ impl<'a> CpuBackend<'a> {
                     .iter()
                     .find(|t| t.id == i.table)
                     .ok_or_else(|| internal("leaf table exists"))?;
-                let generated = GeneratedTable::from_spec(spec)
-                    .map_err(|_| internal("selected table regenerates"))?;
+                let generated = GeneratedTable::from_spec(spec).map_err(generated_table_error)?;
                 metrics::lookups(i.table.0, i.entries);
                 metrics::table_rows(i.table.0, generated.row_count());
                 let tile = advice.tiles().iter().find(|tile| matches!(tile.tile, compiler::Tile::Table { table } if table == i.table.0))
@@ -515,7 +523,7 @@ impl<'a> CpuBackend<'a> {
         let table_budget = tessera_logup::TableBatchBudget {
             allowance: u.table_allowance,
             source_bytes,
-            chunk_rows: NonZeroUsize::new(CHUNK_ROWS).ok_or_else(memory)?,
+            chunk_rows: u.table_chunk_rows,
         };
         let tensors = actual.tensors();
         let forests = actual.forests();
@@ -812,18 +820,15 @@ impl<'a> CpuBackend<'a> {
             weight_combined,
             scoring,
         };
-        let size = |bytes: Vec<u8>| bytes.len() as u64;
-        metrics::proof_bytes(
-            metrics::ProofPart::Sumcheck,
-            size(tessera_codec::encode(&round2.logup))
-                + size(tessera_codec::encode(&round2.trees))
-                + size(tessera_codec::encode(&round2.stages)),
-        );
-        metrics::proof_bytes(
-            metrics::ProofPart::Openings,
-            size(tessera_codec::encode(&round2.advice_combined))
-                + size(tessera_codec::encode(&round2.weight_combined)),
-        );
+        let mut sumcheck_size = EncodedSize::default();
+        sumcheck_size.add(&round2.logup);
+        sumcheck_size.add(&round2.trees);
+        sumcheck_size.add(&round2.stages);
+        metrics::proof_bytes(metrics::ProofPart::Sumcheck, sumcheck_size.finish());
+        let mut opening_size = EncodedSize::default();
+        opening_size.add(&round2.advice_combined);
+        opening_size.add(&round2.weight_combined);
+        metrics::proof_bytes(metrics::ProofPart::Openings, opening_size.finish());
         let shape = protocol::QueryShape {
             advice_count: p.cfg.params.advice_queries,
             advice_len: encoder.codeword_len() as u64,
@@ -881,6 +886,10 @@ impl CpuBackend<'_> {
             commitment_id: id,
         };
         let mut parts = Vec::new();
+        // RFC-0018: retain exactly the public segment count beside the P1 block/tree.
+        parts
+            .try_reserve_exact(a.segments as usize)
+            .map_err(|_| memory())?;
         for segment in 0..a.segments {
             let mut pass = pcs::StreamingCommitter::new(
                 params,
@@ -1028,10 +1037,7 @@ impl ProverEngine for CpuBackend<'_> {
         };
         metrics::phase(metrics::Phase::Round3, answering.elapsed());
         metrics::pass(Pass::P5, answering.elapsed());
-        metrics::proof_bytes(
-            metrics::ProofPart::Columns,
-            tessera_codec::encode(&round3).len() as u64,
-        );
+        metrics::proof_bytes(metrics::ProofPart::Columns, EncodedSize::of(&round3));
         Ok(round3)
     }
     fn leaf_groups(&self) -> protocol::LeafGroups {
@@ -1041,5 +1047,48 @@ impl ProverEngine for CpuBackend<'_> {
     }
     fn discard(&mut self) {
         self.data = None;
+    }
+}
+
+#[cfg(test)]
+mod memory_error_tests {
+    use super::*;
+    #[test]
+    fn core_resource_failures_keep_their_code_through_every_prover_wrapper() {
+        for error in [TableError::Memory, TableError::Digest] {
+            let expected = if error == TableError::Memory {
+                ErrorCode::ResMemory
+            } else {
+                ErrorCode::Internal
+            };
+            let table = tessera_ir::TableId(11);
+            let gadget = tessera_gadgets::GadgetError::Spec { table, error };
+            let errors = [
+                generated_table_error(error),
+                ProverError::from(tessera_witness::WitnessError::Table { table, error }),
+                ProverError::from(tessera_witness::WitnessError::from(gadget)),
+                ProverError::from(crate::LeafError::from(gadget)),
+                ProverError::from(crate::StageError::from_table(error, "canonical lookup")),
+            ];
+            for outer in errors {
+                assert_eq!(outer.code(), expected, "{outer:?}");
+            }
+            let model =
+                ProverError::from(tessera_compiler::CompileError::ModelTable { table, error });
+            assert_eq!(
+                model.code(),
+                if error == TableError::Memory {
+                    ErrorCode::ResMemory
+                } else {
+                    ErrorCode::QuantArch
+                }
+            );
+        }
+        assert!(matches!(
+            generated_table_error(TableError::Digest),
+            ProverError::Protocol(protocol::ProtocolError::Internal {
+                rule: "selected table regenerates"
+            })
+        ));
     }
 }

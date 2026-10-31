@@ -112,6 +112,8 @@ impl KeyInput<'_> {
         }
     }
     fn fits(&self, plan: RequantPlan, max: u32) -> bool {
+        // Only Range/Requant candidates: their materialized core is empty, so a core
+        // allocation failure cannot turn this public family decision into a fallback.
         self.kinds(plan).into_iter().all(|kind| {
             GeneratedTable::new(TableId(0), kind)
                 .is_ok_and(|table| u32::from(table.spec().log2_rows) <= max)
