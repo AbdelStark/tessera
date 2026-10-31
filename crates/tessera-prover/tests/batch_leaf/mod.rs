@@ -76,7 +76,9 @@ fn check_batch(requests: [(u32, u32); 3], lengths: [u32; 3]) {
         })
         .collect();
     assert_eq!(key_sites.len(), 1, "one LM-head site owns all request keys");
-    let engine = Engine::new(&p.lowering).unwrap();
+    let engine = Engine::new(&p.lowering)
+        .unwrap()
+        .threads(std::num::NonZeroUsize::MIN);
     let mut tokens = vec![0; 12];
     let vocab = model.arch.vocab as usize;
     for (r, &(prompt, outputs)) in requests.iter().enumerate() {
@@ -91,8 +93,22 @@ fn check_batch(requests: [(u32, u32); 3], lengths: [u32; 3]) {
     let witness = engine.run(&model, &Secret::new(tokens)).unwrap();
     let source = Resident::runtime(&engine, &runtime, &model, &witness).unwrap();
     let advice = ModelAdviceLayout::runtime(&p.lowering, &runtime, &p.claims).unwrap();
-    let actual =
-        ModelWitness::new(&layout, &p.lowering, &p.layers, &witness, &source, &advice).unwrap();
+    let mut planned = None;
+    let planning = allocation_counter::measure(|| {
+        planned = Some(ModelWitness::memory(&layout, &p.lowering, &p.layers, &advice).unwrap())
+    });
+    assert_eq!(planning.count_total, 0);
+    let mut actual = None;
+    let owned = allocation_counter::measure(|| {
+        actual = Some(
+            ModelWitness::new(&layout, &p.lowering, &p.layers, &witness, &source, &advice).unwrap(),
+        )
+    });
+    assert_eq!(
+        u64::try_from(owned.bytes_current).unwrap(),
+        planned.unwrap().retained_bytes()
+    );
+    let actual = actual.unwrap();
     for (site, spec) in layout.sites().iter().enumerate() {
         if actual.values(site, 0, ModelColumn::ExpKey).is_none() {
             continue;

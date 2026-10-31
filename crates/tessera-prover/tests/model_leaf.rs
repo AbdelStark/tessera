@@ -26,6 +26,7 @@ mod cpu_api;
 mod model_groups;
 mod model_openings;
 mod model_stages;
+mod model_witness_memory;
 
 fn vectors() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/vectors")
