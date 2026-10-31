@@ -733,3 +733,25 @@ public terms and nested pool-part atom indices. These measure retained capacity
 only, with the same exclusions as graph accounting. Tests compare cloned real
 conformance schedules with allocator measurements after adding spare storage
 and less common nested coefficient/layer ownership (RFC-0037/0018).
+
+### Retained public layout and native-plan metadata
+
+`Lowering::heap_bytes`, `LeafLayout::heap_bytes`, `GroupedLayout::heap_bytes`,
+`GroupLayout::heap_bytes` and `ModelNativePlan::heap_bytes` count owned retained
+vector capacities. Lowering includes graph, table class metadata and binding lists;
+leaf layouts include every affine-form term, domain/axis/read coordinate, site,
+layer and instance block; grouped layouts include polynomial coordinates, fixed
+variables and per-share block/read lists. The native plan includes cloned request
+slots, family windows/nodes/shapes, native output lists and its complete schedule.
+
+`Selection::heap_upper_bound`, `RuntimePlan::heap_upper_bound` and
+`ModelAdviceLayout::heap_upper_bound` also cover the pinned Rust1.95 B-tree nodes.
+The conservative node bound covers all occupied nodes and empty/transient roots;
+it is checked against the actual key/value types. Advice layout ownership adds
+the PCS geometry, tiles and nested share ranges, column sources and bindings.
+Borrowed lowerings are counted by their owner.
+
+These are allocation-free retained-storage queries over public metadata, without
+value reads or validation. Construction/analysis scratch, inline objects, witness
+and proof payloads, driver state and allocator/runtime overhead remain separate.
+They do not change CPU admission or enable the cached route (RFC-0018, #641).

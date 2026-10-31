@@ -145,6 +145,26 @@ pub struct Selection {
 }
 
 impl Selection {
+    /// Conservative retained requested heap bytes, including nested capacities
+    /// and pinned Rust1.95 B-tree nodes (RFC-0006/0018). Does not allocate or
+    /// validate; construction scratch, inline storage and allocator overhead are
+    /// separate. Returns `None` on checked overflow.
+    pub fn heap_upper_bound(&self) -> Option<u64> {
+        use crate::memory::{btree, tables, vector};
+        let Self {
+            gadgets,
+            tables: specs,
+            reads,
+        } = self;
+        let mut bytes = vector(gadgets)?
+            .checked_add(tables(specs)?)?
+            .checked_add(btree::<NodeId, Vec<TableId>>(reads.len() as u64)?)?;
+        for values in reads.values() {
+            bytes = bytes.checked_add(vector(values)?)?;
+        }
+        Some(bytes)
+    }
+
     /// Every lookup of `node`, in canonical order, retaining repeated table ids.
     /// Virtual top limbs and both comparison normalizers are included (RFC-0050).
     /// Returns `None` for a node without a selected gadget.

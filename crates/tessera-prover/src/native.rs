@@ -158,6 +158,64 @@ pub struct ModelNativePlan {
     schedule: StageSchedule,
 }
 impl ModelNativePlan {
+    /// Requested heap bytes owned by the public native plan and its schedule,
+    /// including nested spare capacities (RFC-0037/0018). Reads no witness or
+    /// field values; no allocation or validation. Borrowed lowering, inline data,
+    /// construction work, native prover state and allocator overhead are separate.
+    /// Returns `None` on checked overflow.
+    pub fn heap_bytes(&self) -> Option<u64> {
+        fn vector<T>(v: &Vec<T>) -> Option<u64> {
+            (v.capacity() as u64).checked_mul(size_of::<T>() as u64)
+        }
+        let Self {
+            batch,
+            families,
+            slots,
+            native,
+            schedule,
+        } = self;
+        let mut bytes = schedule
+            .heap_bytes()?
+            .checked_add(vector(families)?)?
+            .checked_add(vector(slots)?)?
+            .checked_add(vector(native)?)?;
+        if let Some(tessera_ir::BatchSlots {
+            slot_len: _,
+            lengths,
+        }) = batch
+        {
+            bytes = bytes.checked_add(vector(lengths)?)?;
+        }
+        for Family {
+            windows,
+            site: _,
+            nodes,
+            shape,
+            lambda: _,
+            kind: _,
+        } in families
+        {
+            bytes = bytes
+                .checked_add(vector(windows)?)?
+                .checked_add(vector(nodes)?)?
+                .checked_add(vector(shape)?)?;
+        }
+        for Native {
+            tag: _,
+            kind: _,
+            node: _,
+            vars: _,
+            degree: _,
+            evaluations: _,
+            zero: _,
+            outputs,
+        } in native
+        {
+            bytes = bytes.checked_add(vector(outputs)?)?;
+        }
+        Some(bytes)
+    }
+
     /// Derive every root coefficient, Softmax relation and padding check from public metadata.
     /// The canonical `layout` must belong to the same lowering, selection and claims.
     ///

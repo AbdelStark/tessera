@@ -547,6 +547,42 @@ pub struct ModelAdviceLayout<'a> {
 }
 
 impl<'a> ModelAdviceLayout<'a> {
+    /// Conservative retained requested heap bytes of this public layout and its
+    /// source bindings (RFC-0011/0018), including nested capacities and pinned
+    /// Rust1.95 B-tree nodes. Borrowed lowering, inline storage, construction work,
+    /// payloads and allocator overhead remain separate. Does not allocate or
+    /// validate; returns `None` on checked overflow.
+    pub fn heap_upper_bound(&self) -> Option<u64> {
+        use crate::memory::{btree, vector};
+        let Self {
+            lowering: _,
+            geometry,
+            tiles,
+            columns,
+            bindings,
+        } = self;
+        let mut bytes = u64::try_from(geometry.heap_bytes()?)
+            .ok()?
+            .checked_add(vector(tiles)?)?
+            .checked_add(vector(columns)?)?
+            .checked_add(btree::<AdviceSource, (usize, usize)>(bindings.len() as u64)?)?;
+        for SequenceTile {
+            tile: _,
+            block: _,
+            shares,
+        } in tiles
+        {
+            bytes = bytes.checked_add(vector(shares)?)?;
+            for crate::Share { tensor: _, ranges } in shares {
+                bytes = bytes.checked_add(vector(ranges)?)?;
+            }
+        }
+        for Columns { sources, tiles: _ } in columns {
+            bytes = bytes.checked_add(vector(sources)?)?;
+        }
+        Some(bytes)
+    }
+
     /// Build a layout for `lowering`'s sequence from its checked public selection.
     /// No weight, token or activation value is read (INV-PCS-1).
     ///
