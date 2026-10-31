@@ -12,6 +12,9 @@ use tessera_ir::{Node, NodeId};
 use tessera_sumcheck::Forest;
 use tessera_witness::WitnessSource;
 
+mod memory;
+pub use memory::ModelWitnessMemory;
+
 struct Column {
     name: ModelColumn,
     domain: Vec<u32>,
@@ -91,6 +94,13 @@ fn buffer<T: Copy>(len: usize, value: T) -> Result<SecretBuf<T>, LeafError> {
     out.resize(len, value);
     Ok(out)
 }
+// RFC-0018: public descriptor counts reserve once; no Vec growth factor in bounds.
+fn descriptors<T>(count: usize) -> Result<Vec<T>, LeafError> {
+    let mut out = Vec::new();
+    out.try_reserve_exact(count)
+        .map_err(|_| LeafError::Memory)?;
+    Ok(out)
+}
 fn tensor(column: ModelColumn, node: &Node) -> Option<tessera_ir::TensorId> {
     match column {
         ModelColumn::Input(i) => node.inputs.get(usize::from(i)).copied(),
@@ -151,7 +161,8 @@ fn scatter<T: Copy>(
     Ok(())
 }
 fn full(column: &mut Column, values: &[i64]) -> Result<(), LeafError> {
-    let ranges: Vec<_> = column.domain.iter().map(|&d| 0..d).collect();
+    let mut ranges = descriptors(column.domain.len())?;
+    ranges.extend(column.domain.iter().map(|&d| 0..d));
     scatter(&mut column.values, &column.domain, &ranges, values, |v| v)?;
     column.written = values.len();
     Ok(())
@@ -169,6 +180,22 @@ fn shared(
 }
 
 impl ModelWitness {
+    /// Plan owned lookup-column/forest buffers and their own constructor metadata.
+    /// Canonical tile generation, borrowed sources/gadgets, lent view arrays, other
+    /// proof phases and allocator overhead remain separate charges (RFC-0018).
+    /// This authenticates no metadata and does not admit a CPU route.
+    ///
+    /// # Errors
+    /// Inconsistent public domains/owners or overflowing/unaddressable buffer sizes.
+    pub fn memory(
+        layout: &LeafLayout<ModelColumn>,
+        lowering: &Lowering,
+        layers: &LayerMap,
+        advice: &ModelAdviceLayout<'_>,
+    ) -> Result<ModelWitnessMemory, LeafError> {
+        ModelWitnessMemory::new(layout, lowering, layers, advice)
+    }
+
     /// Assemble all sources a canonical model layout reads, using the existing full CPU pass
     /// and the canonical resident/regenerating tile source. `advice` supplies its exact public
     /// tile partition. All inputs must belong to the same sequence and public model.
@@ -186,16 +213,24 @@ impl ModelWitness {
         source: &(impl WitnessSource + ?Sized),
         advice: &ModelAdviceLayout<'_>,
     ) -> Result<Self, LeafError> {
-        let mut sites = Vec::new();
+        let mut sites = descriptors(layout.sites().len())?;
         let mut maximum = None;
         for (s, site) in layout.sites().iter().enumerate() {
-            let mut real_layers = Vec::new();
+            let mut real_layers = descriptors(site.layers.len())?;
             for (l, gadget) in site.layers.iter().enumerate() {
                 let node = &lowering.graph.nodes[owner(layers, site.node, l).0 as usize];
-                let mut columns = Vec::new();
-                for read in layout.reads(s, l).ok_or(LeafError::Internal {
+                let reads = layout.reads(s, l).ok_or(LeafError::Internal {
                     rule: "every model site has its ordered reads",
-                })? {
+                })?;
+                let capacity = reads
+                    .len()
+                    .checked_add(usize::from(matches!(
+                        node.op,
+                        tessera_ir::Op::SoftmaxRow { .. }
+                    )))
+                    .ok_or(LeafError::Memory)?;
+                let mut columns = descriptors(capacity)?;
+                for read in reads {
                     let request = gadget
                         .lookups
                         .iter()
@@ -283,17 +318,17 @@ impl ModelWitness {
                 let mut padded = buffer(n.next_power_of_two() as usize, 0)?;
                 padded[..m.len()].copy_from_slice(m);
                 maximum = Some((id, padded));
-                let key_columns: Vec<_> = sites
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(s, layers)| {
+                let keys = || {
+                    sites.iter().enumerate().flat_map(|(s, layers)| {
                         layers.iter().enumerate().flat_map(move |(l, columns)| {
                             columns.iter().enumerate().filter_map(move |(i, c)| {
                                 c.name.is_greedy_key().then_some((s, l, i))
                             })
                         })
                     })
-                    .collect();
+                };
+                let mut key_columns = descriptors(keys().count())?;
+                key_columns.extend(keys());
                 if values.lookups().count() != key_columns.len() {
                     return own();
                 }
@@ -329,7 +364,8 @@ impl ModelWitness {
             };
             let node = &lowering.graph.nodes[id.0 as usize];
             let values = source.tile(tile).map_err(LeafError::Witness)?;
-            let requests: Vec<_> = values.lookups().collect();
+            let mut requests = descriptors(values.lookups().len())?;
+            requests.extend(values.lookups());
             let gadget = &layout.sites()[s].layers[l];
             if requests.len() != gadget.lookups.len()
                 || !requests
@@ -489,6 +525,18 @@ impl ModelWitness {
         layout: &LeafLayout<ModelColumn>,
         lowering: &Lowering,
     ) -> Result<(), LeafError> {
+        let count = self
+            .columns
+            .iter()
+            .filter(|layers| {
+                layers
+                    .first()
+                    .and_then(|columns| columns.iter().find(|c| c.name == ModelColumn::ExpKey))
+                    .and_then(|column| column.domain.last())
+                    .is_some_and(|&keys| keys > 1)
+            })
+            .count();
+        self.forests = descriptors(count)?;
         for (s, site) in layout.sites().iter().enumerate() {
             let Some(column) = self.columns[s][0]
                 .iter()
@@ -612,6 +660,21 @@ mod tests {
             written: values.len(),
         }
     }
+    #[test]
+    fn source_descriptor_arrays_reserve_exact_requested_capacities() {
+        for count in [0, 1, 3, 7, 513] {
+            let mut values = None;
+            let measured = allocation_counter::measure(|| {
+                let mut out = descriptors::<u64>(count).unwrap();
+                out.extend(0..count as u64);
+                values = Some(out);
+            });
+            assert_eq!(values.unwrap().capacity(), count);
+            assert_eq!(measured.bytes_current, (count * size_of::<u64>()) as i64);
+            assert_eq!(measured.bytes_max, (count * size_of::<u64>()) as u64);
+        }
+    }
+
     #[test]
     fn affine_recovery_checks_its_integer_box_and_own_operands() {
         let x = ModelColumn::RootInput;

@@ -316,3 +316,26 @@ both retained storage and replacement overlap. Graph validation, thread runtime,
 allocator bookkeeping, borrowed specifications and every other proof phase remain
 separate. This helper authenticates neither table parameters nor their digests and
 does not change CPU admission.
+
+
+## Padded model lookup sources
+
+`ModelWitness::memory` plans its owned padded lookup columns, public domain arrays,
+Softmax maximum columns, product-forest leaves and optional packed greedy maximum.
+Each ordered read selects its axes from the canonical lookup request. Per-axis
+padding is charged in full; source values and secret sparsity never change the
+plan. A Softmax forest charges its key column times the padded layer count, with
+no forest at key height zero. Runtime maximum and keys remain distinct sources.
+
+Nested site/layer/column descriptors, forests, greedy column indices and borrowed
+request descriptors reserve exact capacities. Own constructor scratch includes
+the public ranges used during scatter, greedy indices and request descriptors.
+Every product, sum and requested array checks overflow and target addressability.
+The planner allocates nothing and authenticates none of its supplied metadata.
+
+The canonical source's simultaneously live tile, gadget cores and construction
+work are additional. Borrowed engine/model/graph, lent view arrays, subsequent
+P2/native/window state, runtime and allocator overhead also remain separate.
+Physical tests assert exact retained bytes and compare the observed constructor
+peak with this owned bound plus a separately measured fixture source peak. That
+fixture measurement is not a public tile bound and cannot admit the real CPU route.
