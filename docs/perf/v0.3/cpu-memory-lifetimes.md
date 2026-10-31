@@ -548,3 +548,33 @@ single-position contexts and dimensions large enough for key scratch to dominate
 Retained native inputs, generic sumcheck wrappers/messages, output vectors,
 windows, stack/runtime and allocator overhead remain separate. No CPU route is
 admitted by this helper.
+
+
+## Regenerated weight work
+
+`WeightLayout::regenerated_work_memory(row_block, draws, channel_claims)` prices
+protocol/1 work without allocating or reading weights. The commitment retains ten
+matrix-type Merkle trees, a cloned layout and its tree descriptors. Constructor
+work includes nested canonical-model validation, row-reader metadata, encoder
+tables/construction powers, one row and encoded block, and column chains. Tree
+growth retains the old leaves while requesting the final node array.
+
+The model-reference count includes the two global tensors and seven per-layer
+types, plus class/multiplier references. It borrows their payloads. Fold work
+includes committed-row indices, all evaluation/proximity coefficient vectors,
+public equality factors/partials, clearing folds/proximity/row buffers, the
+sumcheck input and copied combined output. Every ChannelParams claim is counted,
+including repeated points and zero combinations. Row readers are canonical;
+arbitrary MatrixRows callback allocations remain separate.
+
+Column answers charge the full draw-vector capacity, at most `min(draws, N)`
+candidate columns, one regenerated matrix tree, encoding work, canonical sibling
+storage, proof-index/self-check pairs and public output copies. The sibling bound
+is `min(N - 1, min(draws, N) * log2(N))`; it assumes no favorable query collisions.
+The returned fold/answer peaks cover one matrix at a time. Previously retained
+combined rows or answers are added separately using the all-matrix output bounds,
+as are the persistent commitment and caller-owned model/layout payloads.
+
+This component excludes input/layout/state decoding, original opening targets,
+generic proof/message wrappers, stack/runtime and allocator overhead. The complete
+CPU phase/lifetime bound and cached-route admission remain separate work.

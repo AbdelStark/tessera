@@ -421,25 +421,69 @@ fn regenerated_weight_roots_columns_and_multiproofs_equal_the_resident_reference
     ] {
         let model = Model::new(&mut rng, layers, [(7, 11); 9], &channels);
         let layout = WeightLayout::new(params(width), model.shapes.clone()).unwrap();
+        let mut weights = None;
+        let refs = allocation_counter::measure(|| weights = Some(model.weights()));
+        let weights = weights.unwrap();
         for row_block in [1, 3, 32] {
+            let mut work = None;
+            let planning = allocation_counter::measure(|| {
+                work = Some(
+                    layout
+                        .regenerated_work_memory(block(row_block), 5, 7)
+                        .unwrap(),
+                );
+            });
+            assert_eq!(planning.count_total, 0);
+            let work = work.unwrap();
+            assert!(
+                refs.bytes_max <= work.model_refs_bytes(),
+                "model refs {refs:?} {work:?}"
+            );
             for epoch in [0, 9] {
                 let reference =
                     WeightCommitment::commit(&layout, block(row_block), epoch, &model.weights())
                         .unwrap();
-                let streamed = RegeneratedWeightCommitment::commit(
-                    &layout,
-                    block(row_block),
-                    epoch,
-                    &model.weights(),
-                )
-                .unwrap();
+                let mut streamed = None;
+                let measured = allocation_counter::measure(|| {
+                    streamed = Some(
+                        RegeneratedWeightCommitment::commit(
+                            &layout,
+                            block(row_block),
+                            epoch,
+                            &weights,
+                        )
+                        .unwrap(),
+                    );
+                });
+                assert!(
+                    measured.bytes_max <= work.construction_peak_bytes(),
+                    "constructor {measured:?} {work:?}"
+                );
+                assert!(
+                    u64::try_from(measured.bytes_current).unwrap() <= work.retained_bytes(),
+                    "retained {measured:?} {work:?}"
+                );
+                let streamed = streamed.unwrap();
                 assert_eq!(streamed.public(), reference.public());
                 assert_eq!(streamed.weights_root(), reference.weights_root());
                 for matrix in WeightMatrix::ALL {
                     let n = reference.matrix(matrix).codeword_len() as u64;
                     let queries = [n - 1, 0, n / 2, n - 1, 1];
                     let expected = reference.matrix(matrix).answer(&queries).unwrap();
-                    let found = streamed.answer(matrix, &model.weights(), &queries).unwrap();
+                    let mut found = None;
+                    let measured = allocation_counter::measure(|| {
+                        found = Some(streamed.answer(matrix, &weights, &queries).unwrap());
+                    });
+                    assert!(
+                        measured.bytes_max <= work.answer_peak_bytes(),
+                        "answer {matrix:?} {measured:?} {work:?}"
+                    );
+                    assert!(
+                        u64::try_from(measured.bytes_current).unwrap()
+                            <= work.answer_output_bytes(),
+                        "output {matrix:?} {measured:?} {work:?}"
+                    );
+                    let found = found.unwrap();
                     assert_eq!(
                         found, expected,
                         "{matrix:?}, width={width}, B={row_block}, epoch={epoch}"

@@ -17,6 +17,8 @@
 
 mod commit;
 pub(crate) mod layout;
+mod memory;
+pub use memory::WeightWorkMemory;
 mod opening;
 mod public;
 mod regenerated;

@@ -996,6 +996,16 @@ impl Committed {
 fn check_fold(model: &Model, rng: &mut SplitMix64) {
     let layout = model.layout();
     let weights = model.weights();
+    let mut work = None;
+    let planning = allocation_counter::measure(|| {
+        work = Some(
+            layout
+                .regenerated_work_memory(NonZeroU32::new(ROW_BLOCK).unwrap(), QUERIES as u64, 1)
+                .unwrap(),
+        );
+    });
+    assert_eq!(planning.count_total, 0);
+    let work = work.unwrap();
     for d in define(model) {
         let at = format!("{} {:?}", model.name, d.matrix);
         let found = layout.matrix(d.matrix);
@@ -1008,16 +1018,33 @@ fn check_fold(model: &Model, rng: &mut SplitMix64) {
             continue;
         }
         let challenge = Challenge::random(rng, &d);
-        let mut rows = layout.rows(d.matrix, &weights).expect("valid weights");
-        let fold = WeightFold::new(
-            &layout,
-            d.matrix,
-            &mut rows,
-            challenge.fold_point(&d),
-            &challenge.xi,
-        )
-        .expect("a valid fold");
-        let table = tv_fp2s(&fold.sumcheck_input());
+        let mut fold = None;
+        let measured = allocation_counter::measure(|| {
+            let mut rows = layout.rows(d.matrix, &weights).expect("valid weights");
+            fold = Some(
+                WeightFold::new(
+                    &layout,
+                    d.matrix,
+                    &mut rows,
+                    challenge.fold_point(&d),
+                    &challenge.xi,
+                )
+                .expect("a valid fold"),
+            );
+        });
+        assert!(
+            measured.bytes_max <= work.fold_peak_bytes(),
+            "fold {at} {measured:?} {work:?}"
+        );
+        let retained = u64::try_from(measured.bytes_current).unwrap();
+        let fold = fold.unwrap();
+        let mut input = None;
+        let measured = allocation_counter::measure(|| input = Some(fold.sumcheck_input()));
+        assert!(
+            retained + measured.bytes_max <= work.fold_peak_bytes(),
+            "input {at} {measured:?} {work:?}"
+        );
+        let table = tv_fp2s(&input.unwrap());
         let fold_point = tv_fp2s(challenge.fold_point(&d));
         assert_eq!(
             table,
@@ -1035,9 +1062,19 @@ fn check_fold(model: &Model, rng: &mut SplitMix64) {
                 assert_eq!(part, expected.as_slice(), "{at}: W̃_{layer}(r_o, ·)");
             }
         }
-        let rows = fold
-            .combined_rows(challenge.layer_point(&d), challenge.theta)
-            .expect("a valid layer point");
+        let mut rows = None;
+        let measured = allocation_counter::measure(|| {
+            rows = Some(
+                fold.combined_rows(challenge.layer_point(&d), challenge.theta)
+                    .expect("a valid layer point"),
+            );
+        });
+        assert!(
+            retained + measured.bytes_max <= work.fold_peak_bytes(),
+            "combined {at} {measured:?} {work:?}"
+        );
+        assert!(u64::try_from(measured.bytes_current).unwrap() <= work.combined_output_bytes());
+        let rows = rows.unwrap();
         let (u, u_xi) = defined_rows(
             &d,
             &fold_point,
@@ -2347,4 +2384,59 @@ fn channel_params_opens_several_site_claims_in_one_pass() {
         WeightFold::channel_params(&layout, &mut rows, &[], &[]).map(|_| ()),
         Err(PcsError::NoClaims)
     );
+}
+
+#[test]
+fn weight_work_memory_covers_seven_channel_claims_and_repeated_points() {
+    let mut rng = SplitMix64::new(0x641_0052);
+    for model in conformance_models()
+        .into_iter()
+        .filter(|m| !m.channels.is_empty())
+    {
+        let layout = model.layout();
+        let weights = model.weights();
+        let matrix = WeightMatrix::ChannelParams;
+        let shape = layout.matrix(matrix);
+        let point = fp2s(&mut rng, shape.row_vars() as usize);
+        let points = vec![point.as_slice(); 7];
+        let xi = fp2s(&mut rng, ceil_log2(shape.rows() as usize));
+        let mut work = None;
+        let measured = allocation_counter::measure(|| {
+            work = Some(
+                layout
+                    .regenerated_work_memory(NonZeroU32::new(3).unwrap(), QUERIES as u64, 7)
+                    .unwrap(),
+            );
+        });
+        assert_eq!(measured.count_total, 0);
+        let work = work.unwrap();
+        let mut fold = None;
+        let measured = allocation_counter::measure(|| {
+            let mut rows = layout.rows(matrix, &weights).unwrap();
+            fold = Some(WeightFold::channel_params(&layout, &mut rows, &points, &xi).unwrap());
+        });
+        assert!(
+            measured.bytes_max <= work.fold_peak_bytes(),
+            "CP fold {measured:?} {work:?}"
+        );
+        let retained = u64::try_from(measured.bytes_current).unwrap();
+        let fold = fold.unwrap();
+        let mut input = None;
+        let measured = allocation_counter::measure(|| input = Some(fold.sumcheck_input()));
+        assert!(
+            retained + measured.bytes_max <= work.fold_peak_bytes(),
+            "CP input {measured:?} {work:?}"
+        );
+        drop(input);
+        let mut output = None;
+        let measured = allocation_counter::measure(|| {
+            output = Some(fold.combined_rows(&[], Fp2::ZERO).unwrap())
+        });
+        assert!(
+            retained + measured.bytes_max <= work.fold_peak_bytes(),
+            "CP output {measured:?} {work:?}"
+        );
+        assert!(u64::try_from(measured.bytes_current).unwrap() <= work.combined_output_bytes());
+        assert_eq!(output.unwrap().evaluations.len(), 7);
+    }
 }
