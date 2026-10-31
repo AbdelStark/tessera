@@ -74,7 +74,7 @@ pub use engine::{Engine, SecretGraphInputs, Witness};
 pub use error::WitnessError;
 pub use memory::{CheckpointMemory, TableMemory};
 pub use multiplicity::{MultiplicityColumn, MultiplicityPlan};
-pub use source::{Regenerator, Resident, WitnessSource};
+pub use source::{Regenerator, Resident, SourceMetadataMemory, WitnessSource};
 pub use tensors::{CheckpointTensors, TensorSource};
 pub use tile::{TileLookup, TileWitness};
 

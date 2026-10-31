@@ -99,6 +99,29 @@ fn reader_lists(graph: &Graph) -> Result<Vec<Vec<u32>>, WitnessError> {
 }
 
 impl<'a> Structure<'a> {
+    pub(crate) fn construction_bytes(lowering: &Lowering) -> Result<u64, WitnessError> {
+        use crate::memory::{add, array};
+        let id = lowering.tokens;
+        let tensors = lowering.graph.tensors.len() as u64;
+        let nodes = lowering.graph.nodes.len() as u64;
+        let edges = lowering
+            .graph
+            .nodes
+            .iter()
+            .try_fold(0u64, |sum, node| add(sum, node.inputs.len() as u64, id))?;
+        let mut bytes = array::<Option<u32>>(tensors, id)?;
+        for value in [
+            array::<Option<usize>>(tensors, id)?,
+            array::<usize>(tensors, id)?,
+            array::<Vec<u32>>(tensors, id)?,
+            array::<u32>(edges, id)?,
+            array::<Core>(nodes, id)?,
+        ] {
+            bytes = add(bytes, value, id)?;
+        }
+        Ok(bytes)
+    }
+
     pub(crate) fn heap_bytes(&self) -> Option<usize> {
         self.producer
             .capacity()

@@ -98,3 +98,105 @@ fn runtime_metadata_counts_extra_reads_and_ragged_request_key_columns() {
         );
     }
 }
+
+#[test]
+fn public_construction_bound_covers_resident_and_cached_source_metadata_requests() {
+    for fixture in common::conformance() {
+        for n in [1, 3, 17] {
+            let (lowering, selection) = common::lowered(&fixture.model, n);
+            let engine = Engine::new(&lowering)
+                .unwrap()
+                .threads(std::num::NonZeroUsize::MIN);
+            let tokens = Secret::new(vec![0; n as usize]);
+            let mut plan = None;
+            let planning =
+                measure(|| plan = Some(engine.source_metadata_memory(&selection).unwrap()));
+            assert_eq!(planning.count_total, 0);
+            let plan = plan.unwrap();
+            let witness = engine.run(&fixture.model, &tokens).unwrap();
+            let mut source = None;
+            let construction = measure(|| {
+                source = Some(Resident::new(&engine, &selection, &fixture.model, &witness).unwrap())
+            });
+            assert!(
+                construction.bytes_total <= plan.bytes(),
+                "{construction:?} {plan:?}"
+            );
+            let checkpoints = Checkpoints::new(&engine, &fixture.model, &tokens).unwrap();
+            let cached = tessera_witness::CheckpointTensors::new(
+                &engine,
+                &fixture.model,
+                &tokens,
+                &checkpoints,
+            )
+            .unwrap();
+            let mut cached_source = None;
+            let construction = measure(|| {
+                cached_source = Some(
+                    Resident::from_tensors(&engine, &selection, &fixture.model, &cached).unwrap(),
+                )
+            });
+            assert!(
+                construction.bytes_total <= plan.bytes(),
+                "{construction:?} {plan:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn wrong_requant_role_still_charges_a_large_generated_core_before_rejection() {
+    use tessera_codec::Rational;
+    use tessera_compiler::Gadget;
+    use tessera_ir::{Op, TableId};
+    use tessera_tables::{TableKind, TableSpec};
+    let fixture = &common::conformance()[0];
+    let (lowering, mut selection) = common::lowered(&fixture.model, 1);
+    let node = lowering
+        .graph
+        .nodes
+        .iter()
+        .find(|node| matches!(node.op, Op::Requant { .. }))
+        .unwrap()
+        .id;
+    let table = TableId(selection.tables.iter().map(|spec| spec.id.0).max().unwrap() + 1);
+    selection.tables.push(TableSpec {
+        id: table,
+        log2_rows: 24,
+        digest: [0; 32],
+        kind: TableKind::Exp {
+            key_bits: 24,
+            sigma: 31,
+            scale: Rational::new(1, 1 << 32).unwrap(),
+        },
+    });
+    selection
+        .gadgets
+        .iter_mut()
+        .find(|(id, _)| *id == node)
+        .unwrap()
+        .1 = Gadget::Requant1 { table };
+    let engine = Engine::new(&lowering).unwrap();
+    let mut plan = None;
+    let planning = measure(|| plan = Some(engine.source_metadata_memory(&selection).unwrap()));
+    assert_eq!(planning.count_total, 0);
+    // Every key is far before the Exp zero tail. The malformed digest/role is
+    // deliberate: from_spec constructs this entire core before rejecting it.
+    assert!(plan.unwrap().bytes() >= 8 * (1 << 24));
+}
+
+#[test]
+fn metadata_planning_requires_the_model_lowering_before_allocation() {
+    let fixture = &common::conformance()[0];
+    let (lowering, selection) = common::lowered(&fixture.model, 1);
+    let engine = Engine::for_graph(&lowering.graph, &lowering.tables).unwrap();
+    let measured = measure(|| {
+        assert_eq!(
+            engine.source_metadata_memory(&selection).err(),
+            Some(tessera_witness::WitnessError::Usage {
+                rule: "a model runs on the engine of its lowering",
+            })
+        );
+    });
+    assert_eq!(measured.count_total, 0);
+}

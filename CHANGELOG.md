@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Bound public source/gadget construction metadata from allocator-request counts, including complete root relations, wide requantization, Softmax cores/slack forms and malformed Requant role payloads; keep runtime/replay/tile work and CPU admission separate (RFC-0018/0050, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Plan computed score query/key/maximum buffers from public tensor geometry, reserve raw INT8 inputs exactly and clear them after padding; account for short contexts, GQA and conversion overlap separately from other native work (RFC-0056, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Count retained source metadata and public gadget templates, including wide boxes, dense cores, nested constraint vectors and spare capacities; keep construction and tile scratch separate from these measured charges (RFC-0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).

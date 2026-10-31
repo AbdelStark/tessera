@@ -386,3 +386,46 @@ equality/runtime factors, constructor scratch outside this packing step, stage
 rounds/windows, borrowed data and runtime/allocator overhead remain additional.
 This component does not qualify native construction as a whole, change CPU
 admission or demonstrate a real-model proof.
+
+## Source metadata construction
+
+`TemplateMemory` bounds requested allocation bytes for public gadget construction
+and full Goldilocks constraints. Each associated `memory` method allocates nothing.
+These bounds sum requests, including replaced allocations, so they also cover peak
+and retained heap without relying on deallocation timing. They exclude borrowed
+specs, inline template descriptors, table-list extraction and secret witnesses.
+
+Root geometry has at most 32 root bits, four root bytes and 15 product limbs.
+Its largest schema has 187 committed columns, 189 lookups and 97 relations.
+Only one normalization side per bracket expands the product: every `(a,b,k)`
+appears at one coefficient, giving at most `2*4*4*4 = 128` product terms across
+all coefficients. Charges include temporary NonNeg constraints used to recover
+high affine digits, intermediate comparison metadata, and both the product result
+vectors and the final relation vectors. Tests cover every root width.
+
+Requant charges its wide box, owned classes and temporary expected-sign class.
+The widest constraint form owns at most 24 affine pairs and requests 18 more
+construction pairs. Softmax derives its Exp core without materializing it, includes
+the digest's zero-tail piece, and covers all 49 possible NonNeg limbs, including
+99 committed columns, 100 lookups and seven relations.
+
+Growing-vector charges use the pinned Rust policy: capacity doubles or satisfies
+the larger requested length, with minimum capacities 8/4/1 by element size. Summed
+requests are bounded by four times the larger of that minimum and the maximum
+length reached, including lengths before deduplication. Literal/exact arrays have
+their own charges. Allocation controls test the element-size regimes and isolated
+address/product overflow.
+
+`Engine::source_metadata_memory` composes structure arrays, reader edges, source
+containers, ordered reads/requests and all gadget construction. It includes table
+list/row extraction, boxed auxiliary descriptors and lookup-id validation arrays.
+Every Requant-named table payload is additionally charged in lookup-role order:
+a malformed role can generate a large core before its constructor rejects the kind
+or digest. Repeated ids do not remove an owned-role charge. A public malformed
+Exp fixture pins this charge at 128 MiB without generating the core.
+
+This is resident source construction metadata. Runtime range validation/key columns,
+grouped-column transfers, regenerator input validation, scalar/tile generation,
+borrowed inputs and allocator/runtime overhead remain separate. Current-thread
+allocation tests cover resident and cached tensor sources. No component here
+changes CPU admission or qualifies a real-model proof.
