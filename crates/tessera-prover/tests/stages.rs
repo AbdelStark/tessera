@@ -2980,3 +2980,32 @@ fn stage_state_memory_covers_constructor_and_persisted_claims_parts_and_coordina
         assert_eq!(invalid.count_total, 0);
     }
 }
+
+#[test]
+fn stage_source_geometry_never_reads_witness_values() {
+    struct MetadataOnly;
+    impl WitnessSource for MetadataOnly {
+        fn values(&self, _: TensorId) -> Option<&[i64]> {
+            panic!("public source geometry read witness values")
+        }
+    }
+    for name in MODELS {
+        let (lowering, schedule, _) = setup(name);
+        let prover = StageProver::new(&lowering, &schedule, &MetadataOnly);
+        for k in 1..schedule.stages.len() {
+            let memory = prover
+                .relation_source_memory(u16::try_from(k).unwrap(), |_| {
+                    panic!("graph-only fixture has no native instances")
+                })
+                .unwrap();
+            assert!(memory.metadata_bytes() > 0);
+            assert!(memory.resident_input_bytes() > 0);
+        }
+        assert_eq!(
+            prover.relation_source_memory(u16::MAX, |_| Ok(0)),
+            Err(StageError::Internal {
+                rule: "source memory names a compiled stage"
+            })
+        );
+    }
+}

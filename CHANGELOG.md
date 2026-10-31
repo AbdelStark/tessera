@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Account for canonical stage-source callback captures, column/plan/factor vectors and original resident inputs from public geometry; preserve relation values and keep contraction/construction work separately charged (RFC-0018/0055, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Bound persistent stage-driver claim/part/layer buffers, public challenge maps and constructor metadata from the compiled public schedule; keep pending windows, relation sources and message/evaluation work separately charged (RFC-0018/0037, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Bound additional window-engine specification, state, message and returned-proof storage from public geometry; preserve the existing grid/fold reservation and charge source/wrapper work separately (RFC-0010/0055/0056, [#641](https://github.com/AbdelStark/tessera/issues/641)).

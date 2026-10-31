@@ -16,6 +16,7 @@ use tessera_tables::RopeTable;
 
 use super::columns::Column;
 use super::public::{channel_table, const_add, constant_and_shape, public_table, public_zeros};
+use super::source_memory::{add, array};
 use super::tables::{axis_vars, pad, zeros};
 use super::{StageError, StageProver, WitnessSource};
 
@@ -513,7 +514,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                         })?;
                 match instance.relation {
                     Relation::OneHotVocabulary => {
-                        let outside = Column::generated(arena.streaming, length, move |i| {
+                        let outside = Column::generated(arena.streaming, length, 0, move |i| {
                             Ok(if i % width >= vocab as usize {
                                 Goldilocks::ONE
                             } else {
@@ -529,20 +530,24 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                     }
                     Relation::OneHotCount => {
                         let slots = self.graph.slots.clone();
-                        let selector = Column::generated(arena.streaming, length, move |i| {
-                            Ok(
-                                if slots
-                                    .as_ref()
-                                    .map_or(i / width < positions as usize, |slots| {
-                                        slots.is_real_row(i / width)
-                                    })
-                                {
-                                    Goldilocks::ONE
-                                } else {
-                                    Goldilocks::ZERO
-                                },
-                            )
-                        })?;
+                        let owned = slots
+                            .as_ref()
+                            .map_or(Ok(0), |s| array::<u32>(s.lengths.capacity()))?;
+                        let selector =
+                            Column::generated(arena.streaming, length, owned, move |i| {
+                                Ok(
+                                    if slots
+                                        .as_ref()
+                                        .map_or(i / width < positions as usize, |slots| {
+                                            slots.is_real_row(i / width)
+                                        })
+                                    {
+                                        Goldilocks::ONE
+                                    } else {
+                                        Goldilocks::ZERO
+                                    },
+                                )
+                            })?;
                         Plan::Elementwise {
                             inputs: vec![h, Read::Public(arena.public(selector))],
                             terms: vec![
@@ -561,7 +566,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
                             table: arena.secret(operand(1)?),
                             low_vars: vocab_vars,
                         };
-                        let index = Column::generated(arena.streaming, length, move |i| {
+                        let index = Column::generated(arena.streaming, length, 0, move |i| {
                             Ok(Goldilocks::from_u64_reduced((i % width) as u64))
                         })?;
                         Plan::Elementwise {
@@ -894,12 +899,17 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         let (constant, shape) = constant_and_shape(self.graph, node, c)?;
         let constants = constant.to_vec();
         let width = 1usize << shape.last().map_or(0, |&n| axis_vars(n));
-        Column::generated(true, 1usize << Self::vars_of(shape), move |i| {
-            Ok(constants
-                .get(i % width)
-                .copied()
-                .map_or(Goldilocks::ZERO, Goldilocks::from_i64))
-        })
+        Column::generated(
+            true,
+            1usize << Self::vars_of(shape),
+            array::<i64>(constants.capacity())?,
+            move |i| {
+                Ok(constants
+                    .get(i % width)
+                    .copied()
+                    .map_or(Goldilocks::ZERO, Goldilocks::from_i64))
+            },
+        )
     }
 
     fn shifted(&self, node: &Node, streaming: bool) -> Result<Column, StageError> {
@@ -909,23 +919,31 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         let (constant, shape) = const_add(self.graph, node.id)?;
         let constants = constant.to_vec();
         let shape = shape.to_vec();
-        Column::generated(true, 1usize << Self::vars_of(&shape), move |i| {
-            let mut rest = i;
-            let channel_bits = shape.last().map_or(0, |&n| axis_vars(n));
-            let channel = i & ((1usize << channel_bits) - 1);
-            for &n in shape.iter().rev() {
-                let bits = axis_vars(n);
-                if (rest & ((1usize << bits) - 1)) >= n as usize {
-                    return Ok(Goldilocks::ZERO);
+        Column::generated(
+            true,
+            1usize << Self::vars_of(&shape),
+            add(
+                array::<i64>(constants.capacity())?,
+                array::<u32>(shape.capacity())?,
+            )?,
+            move |i| {
+                let mut rest = i;
+                let channel_bits = shape.last().map_or(0, |&n| axis_vars(n));
+                let channel = i & ((1usize << channel_bits) - 1);
+                for &n in shape.iter().rev() {
+                    let bits = axis_vars(n);
+                    if (rest & ((1usize << bits) - 1)) >= n as usize {
+                        return Ok(Goldilocks::ZERO);
+                    }
+                    rest >>= bits;
                 }
-                rest >>= bits;
-            }
-            Ok(Goldilocks::from_i64(if constants.len() == 1 {
-                constants[0]
-            } else {
-                constants[channel]
-            }))
-        })
+                Ok(Goldilocks::from_i64(if constants.len() == 1 {
+                    constants[0]
+                } else {
+                    constants[channel]
+                }))
+            },
+        )
     }
 
     /// The constant per channel of the `ConstMul` `node`, broadcast over the other axes of its
@@ -1251,9 +1269,12 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         let values = (0..layers.count)
             .map(|l| constant(l).map(Goldilocks::from_i64))
             .collect::<Result<Vec<_>, _>>()?;
-        let table = Column::generated(arena.streaming, block << layers.vars, move |i| {
-            Ok(values.get(i / block).copied().unwrap_or(Goldilocks::ZERO))
-        })?;
+        let table = Column::generated(
+            arena.streaming,
+            block << layers.vars,
+            array::<Goldilocks>(values.capacity())?,
+            move |i| Ok(values.get(i / block).copied().unwrap_or(Goldilocks::ZERO)),
+        )?;
         let c = Read::Public(arena.public(table));
         Ok((
             vec![y, x, c],

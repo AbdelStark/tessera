@@ -665,3 +665,26 @@ schedule. Pending window preparations, relation arenas and source payloads,
 temporary evaluations/claims, returned messages, borrowed inputs, callbacks and
 stack/runtime/allocator overhead remain additional. The helper assumes a compiled
 valid graph/schedule and does not authenticate metadata or change CPU admission.
+
+
+## Canonical relation sources
+
+`StageProver::relation_source_memory(stage, native_tables)` builds public operand
+geometry without loading witness data or drawing challenges. The caller supplies
+every native table before sharing; native payload/instance callback work stays
+separate. This public planner allocates, and its construction work is additional.
+
+`StageSourceMemory::metadata_bytes` charges canonical arena/plan/point/index/factor
+storage, independently grown outer vectors and each nested allocation. Generated
+column/factor functions record their box size and owned captured-vector bytes.
+Nested Broadcast/Spread boxes, tensor shape/layer lists, selection rows, EQ points,
+RoPE frequencies and slot lengths are counted. Shared Arcs are conservatively
+charged for every owning recipe. Counting-allocator fixtures cover spare capacity
+and captured allocations; the original field functions remain the value oracle.
+
+`resident_input_bytes` additionally bounds the original prime-field columns and
+canonical Vec growth requests. Streaming sources retain recipes instead of these
+arrays. Relation contractions/public EQ tables, prepared-window and sumcheck state,
+source replay, construction temporaries, returned messages, borrowed inputs and
+runtime/allocator overhead remain additional. These component charges do not
+admit the cached route or replace the existing resident floor.
