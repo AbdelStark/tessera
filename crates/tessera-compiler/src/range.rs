@@ -40,6 +40,9 @@ use tessera_tables::{TableKind, TableSpec};
 
 use crate::CompileError;
 
+mod memory;
+pub use memory::analysis_memory_bytes;
+
 /// The elements of a tensor that an operation reads: every one, or those whose flat index,
 /// outermost axis first, is set.
 #[derive(Clone, Debug)]

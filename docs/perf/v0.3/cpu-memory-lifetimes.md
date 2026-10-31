@@ -429,3 +429,33 @@ grouped-column transfers, regenerator input validation, scalar/tile generation,
 borrowed inputs and allocator/runtime overhead remain separate. Current-thread
 allocation tests cover resident and cached tensor sources. No component here
 changes CPU admission or qualifies a real-model proof.
+
+## Source runtime and input validation
+
+`Graph::validation_memory_bytes` includes producer ids, per-node borrowed-view
+vectors and the operation checks' temporary shape vectors. `analysis_memory_bytes`
+adds ranges, analysis producers, per-node output ranges, committed-input coverage
+headers and every allocating reverse move. A `BitDecompose` reader follows its own
+move chain; repeated readers of one chain each allocate their own bitsets. Full
+transpose/expand moves avoid a bitset only while coverage is still `All`. Partial
+coverage counts each input element as a byte, plus both coordinate-index vectors.
+The sums include replaced allocations and the returned ranges. They are public,
+allocation-free size calculations for valid graphs, not graph or range validators.
+
+`Engine::runtime_source_metadata_memory` adds that analysis, possible read-vector
+growth and the copied greedy key-column descriptors to source construction.
+A runtime without a certificate adds no runtime allocation. Range/input validation
+still runs in the original order and retains its exact errors.
+`source_replay_validation_memory` separately charges the regenerator's input
+checks: clearing token/channel copies and both the public and clearing position
+vectors, once per input occurrence, plus the checkpoint-shape check's temporary
+id and residual-buffer descriptor vectors. INT8 weights remain borrowed. The bound is
+for canonical lowering shapes and excludes actual replay execution.
+
+`SourceMetadataMemory::with_grouped_columns` includes one caller-owned column
+vector transfer at its supplied capacity and its temporary sorted table-id copy
+at initialized length. Spare capacity counts; every repeated transfer requires
+another charge. These constructor/request sums exclude borrowed input storage,
+checkpoint/cache payloads, returned tile/scalar-gadget work, stack/runtime and
+allocator overhead, and the remaining proof phases. They do not admit the cached
+CPU route or replace the resident-cell floor.

@@ -194,6 +194,8 @@ pub struct Graph {
     pub slots: Option<BatchSlots>,
 }
 
+mod memory;
+
 impl Graph {
     /// The node that produces `tensor`, or `None` for a graph input.
     pub fn producer(&self, tensor: TensorId) -> Option<NodeId> {
