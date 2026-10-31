@@ -20,6 +20,49 @@ fn cfg(mode: Mode) -> ProverConfig {
         release: ReleaseConfig,
     }
 }
+// Optional table-read chunks may shrink before any reduction stage needs windows.
+// Choose the actual ungrouped/unwindowed boundary, not an ample plan's size (#641).
+fn window_budget(
+    plan: &tessera_compiler::ExecutionPlan,
+    model: &IntegerModel,
+    state: &mut WeightCommitmentState,
+    batch: &ProofBatch,
+    config: &ProverConfig,
+    high: u64,
+) -> Option<u64> {
+    let planned = |host, state: &mut WeightCommitmentState| {
+        let mut cfg = config.clone();
+        cfg.memory_budget.host = host;
+        match Prover::new(plan, model, state, cfg).and_then(|p| p.plan(batch)) {
+            Ok(plan) => Some(plan),
+            Err(ProverError::Resource(tessera_codec::error::ErrorCode::ResMemory)) => None,
+            Err(error) => panic!("unexpected fixture planning error: {error}"),
+        }
+    };
+    let (mut low, mut high) = (0, high);
+    while high - low > 1 {
+        let middle = low + (high - low) / 2;
+        let feasible = planned(middle, state).is_some_and(|p| {
+            p.resident_bytes().is_some_and(|bytes| bytes <= middle)
+                && p.leaf_groups() == protocol::LeafGroups::NONE
+                && p.stage_windows().iter().all(|stage| stage.cut == 0)
+        });
+        if feasible {
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    let host = high.checked_sub(1)?;
+    let candidate = planned(host, state)?;
+    (candidate
+        .resident_bytes()
+        .is_some_and(|bytes| bytes <= host)
+        && candidate.leaf_groups() == protocol::LeafGroups::NONE
+        && candidate.stage_windows().iter().any(|stage| stage.cut > 0))
+    .then_some(host)
+}
+
 fn producer<T: tessera_codec::Decode>(bytes: &[u8]) -> T {
     tessera_codec::decode(bytes, DecodeLimits::INTEGER_MODEL).unwrap()
 }
@@ -824,14 +867,14 @@ fn public_cpu_api_selects_real_stage_windows_under_budget() {
                 .plan(&batch)
                 .unwrap();
             let total = resident.resident_bytes().unwrap();
-            let stage = resident
-                .stage_windows()
-                .iter()
-                .map(|s| s.working_bytes)
-                .max()
-                .unwrap();
-            for step in 1..=128 {
-                let host = total - stage * step / 128;
+            if let Some(host) = window_budget(
+                &plan,
+                &model,
+                &mut state,
+                &batch,
+                &cfg(Mode::NonInteractive),
+                total,
+            ) {
                 let mut config = cfg(Mode::NonInteractive);
                 config.memory_budget.host = host;
                 #[cfg(feature = "test-rng")]
@@ -1083,30 +1126,15 @@ fn check_slotted_batch_with_windows(requests: &[(u32, u32)], windows: bool) {
         .plan(&batch)
         .unwrap();
     if windows {
-        let total = resident.resident_bytes().unwrap();
-        let stage = resident
-            .stage_windows()
-            .iter()
-            .map(|s| s.working_bytes)
-            .max()
-            .unwrap();
-        let mut selected = None;
-        for step in 1..=128 {
-            config.memory_budget.host = total - stage * step / 128;
-            let candidate = Prover::new(&plan, &model, &mut state, config.clone())
-                .unwrap()
-                .plan(&batch);
-            if let Ok(candidate) = candidate
-                && candidate.stage_windows().iter().any(|s| s.cut > 0)
-            {
-                selected = Some(candidate);
-                break;
-            }
-        }
-        assert!(
-            selected.is_some(),
-            "the slotted fixture must exercise budget windows"
-        );
+        config.memory_budget.host = window_budget(
+            &plan,
+            &model,
+            &mut state,
+            &batch,
+            &config,
+            resident.resident_bytes().unwrap(),
+        )
+        .expect("the slotted fixture must exercise budget windows");
     }
     let mut prover = Prover::new(&plan, &model, &mut state, config.clone()).unwrap();
     let selected = prover.plan(&batch).unwrap();

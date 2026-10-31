@@ -56,7 +56,7 @@ Done when `cargo xtask gen-vectors --check`, `cargo test --workspace --locked`, 
 
 Passing tests only prove that the tests accept the current code; mutation testing proves that the tests **reject broken code**.
 
-Give the mutation scratch copy its own `CARGO_TARGET_DIR`, separate from normal validation: shared build artifacts can make an unmodified checkout run a mutant binary. Make it a detached `git worktree` of the commit, not a plain copy: `cargo xtask` gates list files through `git ls-files`.
+Give the mutation scratch copy its own `CARGO_TARGET_DIR`, separate from normal validation: shared build artifacts can make an unmodified checkout run a mutant binary. Make it a detached `git worktree` of the commit, not a plain copy: `cargo xtask` gates list files through `git ls-files`. For a standalone Cargo helper outside the checkout, copy the checkout's `rust-toolchain.toml` before any metadata, build or run command. Record the compiler, profile and resolved registry graph: a standalone directory otherwise uses the machine's default compiler (#641).
 
 Count a mutant as caught only when its test fails on its own assertion and the code compiled. trybuild prints its cases' expected `error[E…]` lines, so recognize a compile failure by cargo's `could not compile`, never by `error[`.
 
