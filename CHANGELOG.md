@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Bound canonical matmul, elementwise, rotation, selection and bit-recomposition table construction, retained contractions/public equality tables and borrowed-instance metadata from public geometry; keep original operands and later proof work separate (RFC-0010/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Bound additional window-engine specification, state, message and returned-proof storage from public geometry; preserve the existing grid/fold reservation and charge source/wrapper work separately (RFC-0010/0055/0056, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Bound ordinary batched sumcheck storage from public instance/term geometry, including table bindings, compiled plans, pinned B-tree metadata, kernel scratch and retained outputs; charge delegated computed-state payloads separately and leave CPU admission unchanged (RFC-0010/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
