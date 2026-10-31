@@ -130,6 +130,8 @@ pub struct SoftmaxRow {
     max_context: usize,
 }
 
+mod memory;
+
 impl SoftmaxRow {
     /// Requested owned heap of this public template's table payloads, including
     /// the dense Exp core. Excludes inline `Self`, constructor scratch and every

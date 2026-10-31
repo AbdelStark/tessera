@@ -121,6 +121,7 @@ mod requant;
 mod rsqrt;
 mod softmax;
 mod storage;
+pub use storage::TemplateMemory;
 mod vocab;
 mod witness;
 

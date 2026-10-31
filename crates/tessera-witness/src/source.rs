@@ -15,6 +15,9 @@
 
 use core::fmt;
 
+mod memory;
+pub use memory::SourceMetadataMemory;
+
 use tessera_codec::{Secret, SecretBuf};
 use tessera_compiler::{RuntimePlan, Selection, SequenceTile, Tile};
 use tessera_ir::{IntegerModel, TableId, TensorId};

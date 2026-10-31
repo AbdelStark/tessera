@@ -95,6 +95,8 @@ pub(crate) struct Wide {
     pub(crate) high: GeneratedTable,
 }
 
+mod memory;
+
 impl Requant {
     /// Requested owned heap of this public template, including RequantWide's
     /// boxed descriptor and every owned table payload, even with repeated ids.

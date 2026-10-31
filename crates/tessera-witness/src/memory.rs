@@ -28,13 +28,13 @@ type Result<T> = core::result::Result<T, WitnessError>;
 fn memory(tensor: TensorId) -> WitnessError {
     WitnessError::Memory { tensor }
 }
-fn add(a: u64, b: u64, tensor: TensorId) -> Result<u64> {
+pub(crate) fn add(a: u64, b: u64, tensor: TensorId) -> Result<u64> {
     a.checked_add(b).ok_or_else(|| memory(tensor))
 }
-fn mul(a: u64, b: u64, tensor: TensorId) -> Result<u64> {
+pub(crate) fn mul(a: u64, b: u64, tensor: TensorId) -> Result<u64> {
     a.checked_mul(b).ok_or_else(|| memory(tensor))
 }
-fn array<T>(count: u64, tensor: TensorId) -> Result<u64> {
+pub(crate) fn array<T>(count: u64, tensor: TensorId) -> Result<u64> {
     let bytes = mul(count, size_of::<T>() as u64, tensor)?;
     if usize::try_from(count).is_err() || bytes > isize::MAX as u64 {
         return Err(memory(tensor));
@@ -233,6 +233,22 @@ impl CheckpointMemory {
             .max(self.checkpoint_peak)
             .max(self.cache_peak)
     }
+}
+
+// Total Vec allocation requests under the pinned Rust growth policy. Count the
+// maximum length reached before any deduplication, and include explicit capacity.
+pub(crate) fn growing<T>(count: u64, tensor: TensorId) -> Result<u64> {
+    if count == 0 || size_of::<T>() == 0 {
+        return Ok(0);
+    }
+    let minimum = if size_of::<T>() == 1 {
+        8
+    } else if size_of::<T>() <= 1024 {
+        4
+    } else {
+        1
+    };
+    array::<T>(mul(4, count.max(minimum), tensor)?, tensor)
 }
 
 #[cfg(test)]

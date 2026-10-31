@@ -2,6 +2,8 @@
 
 //! Exact multi-limb reciprocal-square-root brackets (RFC-0009 Lemma 7).
 
+mod memory;
+
 use crate::compare::array_order;
 use crate::{
     Affine, BigIntCompare, Committed, CompareColumn, CompareWitness, GadgetError, Lookup, NonNeg,
