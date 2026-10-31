@@ -44,6 +44,7 @@ fn check_batch(requests: [(u32, u32); 3], lengths: [u32; 3]) {
     let planning = allocation_counter::measure(|| {
         let memory = native.score_input_memory(&p.lowering).unwrap();
         assert_eq!((memory.retained_bytes(), memory.peak_bytes()), (0, 0));
+        assert_eq!(native.score_round_memory_bytes(&p.lowering).unwrap(), 0);
         assert_eq!(
             native.memory(&p.lowering, false).unwrap(),
             native.memory(&p.lowering, true).unwrap(),

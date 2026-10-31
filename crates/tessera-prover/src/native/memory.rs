@@ -30,20 +30,20 @@ impl NativeMemory {
     }
 }
 
-fn add(a: u64, b: u64) -> Result<u64, StageError> {
+pub(super) fn add(a: u64, b: u64) -> Result<u64, StageError> {
     a.checked_add(b).ok_or(StageError::Memory)
 }
-fn mul(a: u64, b: u64) -> Result<u64, StageError> {
+pub(super) fn mul(a: u64, b: u64) -> Result<u64, StageError> {
     a.checked_mul(b).ok_or(StageError::Memory)
 }
-fn array<T>(n: u64) -> Result<u64, StageError> {
+pub(super) fn array<T>(n: u64) -> Result<u64, StageError> {
     let bytes = mul(n, size_of::<T>() as u64)?;
     if usize::try_from(n).is_err() || bytes > isize::MAX as u64 {
         return Err(StageError::Memory);
     }
     Ok(bytes)
 }
-fn growing<T>(n: u64) -> Result<u64, StageError> {
+pub(super) fn growing<T>(n: u64) -> Result<u64, StageError> {
     if n == 0 {
         return Ok(0);
     }

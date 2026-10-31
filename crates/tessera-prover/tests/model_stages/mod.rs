@@ -289,6 +289,7 @@ pub fn prove_stages(
     assert_eq!(prepared.leaf(), leaf);
     let mut plans = None;
     let planning = allocation_counter::measure(|| {
+        assert!(native_plan.score_round_memory_bytes(&p.lowering).unwrap() > 0);
         plans = Some((
             native_plan.memory(&p.lowering, false).unwrap(),
             native_plan.memory(&p.lowering, true).unwrap(),

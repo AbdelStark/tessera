@@ -524,3 +524,27 @@ These bounds exclude the already-owned public plan/lowering, leaf/model witnesse
 sources, sumcheck/computed-round state, windows, claims/openings, stack/runtime and
 allocator overhead. They authenticate no input and do not admit a cached CPU
 route. The remaining phase/lifetime bound and real-model execution are still owed.
+
+
+## Computed score round state
+
+`ModelNativePlan::score_round_memory_bytes` charges both key and forest states
+for every Softmax family without assuming they run at different times. It uses
+matching public lowering geometry and allocates nothing. Slotted batches retain
+the literal representation and contribute zero computed round storage.
+
+One state charges its box and the growing point across all own variables. A key
+round additionally needs a cloned/extended low point, at most `Np` equality
+weights and two dimension-sized clearing folds. The transition after the last
+key binding allocates four full padded `[Lp, Hp, Np]` extension-field row arrays,
+the key equality weights and one dimension-sized fold. Row binding truncates
+these arrays without reducing their capacity; the bound retains their full size.
+The larger scratch phase is added to each state's persistent storage, and every
+state's bound is summed.
+
+Allocator assertions wrap start, each round and each bind in the existing
+literal/computed message differential, including padded layers/heads/positions,
+single-position contexts and dimensions large enough for key scratch to dominate.
+Retained native inputs, generic sumcheck wrappers/messages, output vectors,
+windows, stack/runtime and allocator overhead remain separate. No CPU route is
+admitted by this helper.

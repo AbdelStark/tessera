@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 pub(super) mod inputs;
+mod memory;
 
 use tessera_codec::SecretBuf;
 use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField};
@@ -598,6 +599,7 @@ mod tests {
             inputs: Arc::new(inputs),
             point,
         };
+        memory::check(&score);
         let a = &score.inputs;
         let len = lp * hp * np * np;
         let mut maxima = vec![G::ZERO; len];
@@ -751,6 +753,13 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn structured_key_scratch_dominates_small_row_storage() {
+        // Large dimensions exercise two key folds independently of the four row arrays.
+        check(1, 1, 1, 2, 129, 0x641);
+        check(1, 2, 1, 3, 257, 0x642);
     }
 
     #[test]
