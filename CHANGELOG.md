@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Bound protocol/1 regenerated weight trees, construction/answer scratch, canonical model-reference metadata, folds and all ChannelParams combined rows from public layout geometry; measure the existing resident differential and seven-claim fold storage without admitting the cached route (RFC-0012/0040/0052, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Bound additional computed-score round storage from public geometry, including growing challenge points, boxed state, key folds and four clearing row arrays; measure start/round/bind allocations separately from retained inputs and generic sumcheck work (RFC-0056, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Bound native prover construction, initial preparation and borrowed-instance metadata from public geometry, including computed/literal score modes, all retained tables/masks, runtime coefficient scratch, equality-cache growth and Arc descriptors; keep rounds/windows, openings and CPU admission separate (RFC-0018/0056, [#641](https://github.com/AbdelStark/tessera/issues/641)).
