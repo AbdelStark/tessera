@@ -194,3 +194,30 @@ the existing bounded 32-byte trailer read and preserves secret-digest redaction.
 Retained proof objects, filesystem and manifest bookkeeping, input preparation and
 all earlier phases still require their own charges. This buffer removal changes
 neither CPU admission nor the unresolved complete cached-route phase bound.
+
+## Advice opening allocation plan
+
+`AdviceOpeningMemory` derives the requested live heap storage owned by grouping
+and the complete P4 pass from public layout, commitment parameters and upper
+claim/image/group counts. It retains every image, including zero-weight ones.
+Counts must cover the actual canonical obligations; this helper does not
+authenticate arbitrary supplied metadata or admit a CPU source route.
+
+The grouping peak charges the original-claim-sized descriptor and power arrays,
+column points, all image descriptors/row points, and the proximity point. Repeated
+claims can grow one group's descriptor vector; its old and new arrays coexist
+during reallocation. A full extra image-descriptor array bounds that overlap.
+
+P4 charges private accumulators and their containers, the row/mask block, codeword,
+samples, row numbers and self-check sums. Flush scratch includes coefficients, their
+raw word copy, clearing wide accumulators, and equality factors/partial products.
+Self-check charges both inversion vectors; publication charges retained weights
+and every public combined row while private accumulators remain live. The maximum
+uses these verified lifetimes rather than assuming unrelated scratch coexists.
+
+Physical allocation tests cover short and larger rows, repeated/grouped/zero-weight
+images and output-copy overlap. A separate public synthetic layout matching the
+1B diagnostic's row width/arity gives 8,830,068,048 bytes for these PCS-owned
+allocations without allocating large payloads. This is not whole-model memory
+evidence. Caller claims, layout/P1 tree, encoder, source row, mask generator,
+allocator overhead and other proof phases remain separately charged.

@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Preflight PCS-owned grouping and advice-opening allocation bounds, including repeated-claim descriptor growth, combination scratch and simultaneous private/public rows; caller storage and the full CPU route remain separate (RFC-0011/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Stream NI proof and producer Live packet envelopes through a cleared bounded buffer, retaining exclusive 0600 temporary files, synchronized no-overwrite publication and identical manifest entries (RFC-0003/0014/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Batch generated table/count reads using checked spare public memory, preserving the 256-row fallback and existing window cuts; charge the selected source scratch and retain exact count/proof behavior (RFC-0018/0054, [#641](https://github.com/AbdelStark/tessera/issues/641)).

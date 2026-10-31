@@ -7,6 +7,9 @@
 //! and the completed combinations agree with that column. The driver absorbs those combined
 //! rows before drawing P5's queries. Protocol/2 blinding and the full driver remain separate.
 
+mod memory;
+pub use memory::AdviceOpeningMemory;
+
 use core::fmt;
 
 use tessera_codec::{SecretBuf, Zeroize, error::ErrorCode};
@@ -829,6 +832,244 @@ mod tests {
                 stream.finish().unwrap()
             })
             .collect()
+    }
+
+    #[test]
+    fn opening_memory_bounds_groups_private_buffers_and_publication_overlap() {
+        use allocation_counter::measure;
+        let small = fixture();
+        let large_layout = AdviceLayout::new(
+            LayoutParams {
+                log2_k: 10,
+                ..*small.0.params()
+            },
+            1,
+            &[TileShape {
+                layer: Some(0),
+                values: vec![TensorShape::Dense(DenseShape::new(
+                    vec![Axis::new(13)],
+                    Padding::Zero,
+                ))],
+            }],
+        )
+        .unwrap();
+        let large_params = crate::CommitmentParams {
+            log2_k: 10,
+            ..small.1
+        };
+        let large = (
+            large_layout,
+            large_params,
+            RowEncoder::new(1024, 1, 3).unwrap(),
+        );
+        for (layout, params, encoder) in [small, large] {
+            let mut row_values = vec![Fp::ZERO; encoder.message_len()];
+            let mut masks = || Fp::from_u64_reduced(7);
+            let parts = layout
+                .segments()
+                .iter()
+                .enumerate()
+                .map(|(segment, part)| {
+                    let mut committer = StreamingCommitter::new(
+                        params,
+                        &layout,
+                        segment as u32,
+                        &encoder,
+                        &mut masks,
+                    )
+                    .unwrap();
+                    for row in part.nonzero.iter().cloned().flatten() {
+                        row_values.fill(Fp::from_u64_reduced(row + 3));
+                        committer.push_row(row, &row_values).unwrap();
+                    }
+                    committer.finish().unwrap()
+                })
+                .collect::<Vec<_>>();
+            let state = AdviceOpening::build(&parts, |out| {
+                out.fill(0);
+                Ok(())
+            })
+            .unwrap();
+            let variables = layout.variables() as usize;
+            let k_bits = params.log2_k as usize;
+            let gamma = Fp2::new(Fp::from_u64_reduced(3), Fp::from_u64_reduced(5));
+            let xi = vec![gamma; layout.row_vars() as usize];
+            for (originals, pieces, distinct) in
+                [(0, 0, 0), (1, 1, 1), (1024, 1, 1), (67, 3, 8), (513, 2, 64)]
+            {
+                let claims = (0..originals)
+                    .map(|c| AdviceClaim {
+                        pieces: (0..pieces)
+                            .map(|image| {
+                                let column =
+                                    Fp2::from(Fp::from_u64_reduced((c % distinct + 1) as u64));
+                                let mut point = vec![column; variables];
+                                point[k_bits..]
+                                    .fill(Fp2::from(Fp::from_u64_reduced((image + 2) as u64)));
+                                AdvicePoint {
+                                    point,
+                                    weight: if image % 2 == 0 { Fp2::ONE } else { Fp2::ZERO },
+                                }
+                            })
+                            .collect(),
+                    })
+                    .collect::<Vec<_>>();
+                let mut plan = None;
+                let planning = measure(|| {
+                    plan = Some(
+                        AdviceOpeningMemory::new(
+                            &layout,
+                            params,
+                            originals as u64,
+                            (originals * pieces) as u64,
+                            distinct as u64,
+                        )
+                        .unwrap(),
+                    )
+                });
+                assert_eq!(
+                    planning.count_total, 0,
+                    "planning must not allocate payload"
+                );
+                let plan = plan.unwrap();
+                let mut groups = None;
+                let preparing =
+                    measure(|| groups = Some(state.prepare(&claims, gamma, &xi).unwrap()));
+                let groups = groups.unwrap();
+                assert_eq!(groups.group_count(), distinct);
+                let retained = u64::try_from(preparing.bytes_current).unwrap();
+                assert!(
+                    preparing.bytes_max <= plan.prepare_peak_bytes(),
+                    "prepare {originals}/{pieces}/{distinct}: {preparing:?} {plan:?}"
+                );
+                assert!(
+                    retained <= plan.groups_bytes(),
+                    "retained groups: {preparing:?} {plan:?}"
+                );
+                let mut checked = None;
+                let opening = measure(|| {
+                    let mut masks = || Fp::from_u64_reduced(7);
+                    let mut pass = groups.begin(&encoder, &mut masks).unwrap();
+                    for segment in layout.segments() {
+                        for row in segment.nonzero.iter().cloned().flatten() {
+                            row_values.fill(Fp::from_u64_reduced(row + 3));
+                            pass.push_row(row, &row_values).unwrap();
+                        }
+                    }
+                    checked = Some(pass.finish().unwrap());
+                });
+                assert!(
+                    retained + opening.bytes_max <= plan.peak_bytes(),
+                    "P4 {originals}/{pieces}/{distinct}: {opening:?} {plan:?}"
+                );
+                assert!(
+                    u64::try_from(opening.bytes_current).unwrap() <= plan.output_bytes(),
+                    "public rows: {opening:?} {plan:?}"
+                );
+                assert_eq!(checked.unwrap().combined().len(), distinct + 1);
+            }
+        }
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn opening_memory_plans_production_width_without_allocating_large_buffers() {
+        use allocation_counter::measure;
+        // Public geometry from the two-position1B diagnostic. This synthetic layout
+        // matches its row width/arity; it is not a real-model proof or a whole phase bound.
+        let k = 1u64 << 22;
+        let layout = AdviceLayout::new(
+            LayoutParams {
+                log2_k: 22,
+                segments: 1,
+                layers: 1,
+                group: 1,
+                query_block: 32,
+                max_context: 2,
+            },
+            2,
+            &[TileShape {
+                layer: Some(0),
+                values: vec![TensorShape::Dense(DenseShape::new(
+                    vec![Axis::new(8758), Axis::new(k)],
+                    Padding::Zero,
+                ))],
+            }],
+        )
+        .unwrap();
+        assert_eq!(layout.row_vars(), 14);
+        assert_eq!(layout.rows(), 8758);
+        let params = crate::CommitmentParams {
+            log2_k: 22,
+            log2_inv_rate: 1,
+            mask_coeffs: 200,
+            row_block: NonZeroUsize::new(32).unwrap(),
+            commitment_id: [0; 32],
+        };
+        let mut plan = None;
+        let allocations = measure(|| {
+            plan = Some(AdviceOpeningMemory::new(&layout, params, 7470, 16860, 56).unwrap())
+        });
+        assert_eq!(allocations.count_total, 0);
+        // Independently enumerated payload/descriptor totals, Fp8/Fp2 16 on this target.
+        let plan = plan.unwrap();
+        assert_eq!(plan.groups_bytes(), 4_829_536);
+        assert_eq!(plan.private_pass_bytes(), 4_966_293_696);
+        assert_eq!(plan.output_bytes(), 3_825_390_384);
+        assert_eq!(plan.peak_bytes(), 8_830_068_048);
+    }
+
+    #[test]
+    fn opening_memory_refuses_inconsistent_or_unaddressable_geometry_without_allocating() {
+        use allocation_counter::measure;
+        let (layout, params, _) = fixture();
+        for (claims, images, groups) in [
+            (2, 1, 1),
+            (1, 0, 1),
+            (0, 1, 0),
+            (0, 0, 1),
+            (1, 1, 0),
+            (1, 1, 2),
+        ] {
+            let mut result = None;
+            let measured = measure(|| {
+                result = Some(AdviceOpeningMemory::new(
+                    &layout, params, claims, images, groups,
+                ))
+            });
+            assert_eq!(measured.count_total, 0);
+            assert!(matches!(
+                result.unwrap(),
+                Err(AdviceOpeningError::Invalid(PcsError::LayoutData { .. }))
+            ));
+        }
+        let mut result = None;
+        let measured = measure(|| {
+            result = Some(AdviceOpeningMemory::new(
+                &layout,
+                params,
+                u64::MAX,
+                u64::MAX,
+                1,
+            ))
+        });
+        assert_eq!(measured.count_total, 0);
+        assert_eq!(result.unwrap().unwrap_err().code(), ErrorCode::ResMemory);
+        for other in [
+            crate::CommitmentParams {
+                log2_inv_rate: 2,
+                ..params
+            },
+            crate::CommitmentParams {
+                log2_k: 4,
+                ..params
+            },
+        ] {
+            assert!(matches!(
+                AdviceOpeningMemory::new(&layout, other, 1, 1, 1),
+                Err(AdviceOpeningError::Invalid(PcsError::LayoutData { .. }))
+            ));
+        }
     }
 
     #[test]
