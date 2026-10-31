@@ -360,8 +360,9 @@ pub use layout::{
 pub use ntt::NttPlan;
 pub use opening::{ClaimGroup, CombinedRow, RowClaim};
 pub use streaming::opening::{
-    AdviceClaim, AdviceColumnMemory, AdviceOpening, AdviceOpeningError, AdviceOpeningMemory,
-    AdvicePoint, CheckedOpening, ColumnPass, ColumnPermit, OpeningGroups, OpeningPass,
+    AdviceClaim, AdviceColumnMemory, AdviceCommitmentMemory, AdviceOpening, AdviceOpeningError,
+    AdviceOpeningMemory, AdvicePoint, CheckedOpening, ColumnPass, ColumnPermit, OpeningGroups,
+    OpeningPass,
 };
 pub use streaming::{AdviceCommitment, SegmentDigests, StreamingCommitter, merge_segments};
 pub use weights::{

@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Bound sequential PCS P1 storage, including encoder initialization scratch, all segment chains, active codeword block, merged tree and owned layout; reserve CPU segment descriptors exactly and retain separate caller/whole-route charges (RFC-0011/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Count every nested public advice-layout allocation, including spare capacities, and bound its owned clone; retain constructor scratch as a separate charge (RFC-0011/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Bound PCS-owned P5 columns and publication overlap before query sampling, and reserve canonical Merkle siblings exactly from validated public indices. Repeated draws retain their worst-case charge; full CPU admission remains pending (RFC-0004/0011/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).

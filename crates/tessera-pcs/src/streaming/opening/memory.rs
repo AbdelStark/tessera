@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Requested live heap storage owned by regenerated advice grouping, P4 and P5.
+//! Requested live heap storage owned by regenerated advice commitments and openings.
 
 use super::*;
 
@@ -246,6 +246,106 @@ impl AdviceColumnMemory {
         self.output
     }
     /// Maximum requested live heap while constructing and publishing P5's answer.
+    pub fn peak_bytes(self) -> u64 {
+        self.peak
+    }
+}
+
+/// Checked PCS storage bounds for sequential advice P1 and its owned opening state.
+/// The caller collects all segments in an exactly reserved segment-descriptor vector.
+/// Encoder construction, all retained segment chains, the active codeword block,
+/// merged tree and owned layout clone are included. Caller original layout/source
+/// row, masks, tensor/tile generation, allocator overhead and other phases are separate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AdviceCommitmentMemory {
+    encoder: u64,
+    encoder_peak: u64,
+    segments: u64,
+    commit: u64,
+    merge: u64,
+    retained: u64,
+    peak: u64,
+}
+impl AdviceCommitmentMemory {
+    /// Plan requested heap before encoder construction or P1 without allocating.
+    /// Layout construction has already occurred and remains separately charged.
+    ///
+    /// # Errors
+    /// Inconsistent layout/commitment parameters or unaddressable/overflowing storage.
+    pub fn new(layout: &AdviceLayout, params: crate::CommitmentParams) -> Result<Self> {
+        let shape = params.shape()?;
+        if params.log2_inv_rate != 1 || params.log2_k != layout.params().log2_k {
+            return Err(invalid(
+                "advice commitment memory uses the P1 layout and rate",
+            ));
+        }
+        let k = shape.k as u64;
+        let n = shape.n as u64;
+        let count = layout.segments().len() as u64;
+        let mut block = 0;
+        for segment in layout.segments() {
+            let rows = segment
+                .nonzero
+                .iter()
+                .try_fold(0, |rows, run| plus(rows, run.end - run.start))?;
+            block = block.max(rows.min(params.row_block.get() as u64));
+        }
+        let encoder = allocation::<Fp>(plus(plus(k / 2, n / 2)?, k)?)?;
+        // bit_reversed_powers retains its squares beside its output. At rate1/2,
+        // forward twiddles and spread need log2(k) powers; spread is built last.
+        let encoder_peak = plus(encoder, allocation::<Fp>(u64::from(params.log2_k))?)?;
+        let segments = plus(
+            allocation::<SegmentDigests<'_>>(count)?,
+            allocation::<Digest>(times(count, n)?)?,
+        )?;
+        let commit = plus(
+            plus(encoder, segments)?,
+            allocation::<Fp>(times(block, n)?)?,
+        )?;
+        // AdviceOpening::build reserves its final tree capacity before writing leaves;
+        // MerkleTree::new needs no further allocation. Every segment chain is still live.
+        let tree = allocation::<Digest>(times(2, n)? - 1)?;
+        let layout = layout
+            .heap_bytes()
+            .and_then(|bytes| u64::try_from(bytes).ok())
+            .ok_or_else(|| capacity(u64::MAX, 1))?;
+        let retained = plus(tree, layout)?;
+        let merge = plus(plus(encoder, segments)?, retained)?;
+        Ok(Self {
+            encoder,
+            encoder_peak,
+            segments,
+            commit,
+            merge,
+            retained,
+            peak: encoder_peak.max(commit).max(merge),
+        })
+    }
+    /// Retained public encoder tables; the constructor's square powers are additional.
+    pub fn encoder_bytes(self) -> u64 {
+        self.encoder
+    }
+    /// Encoder construction peak, including its temporary square powers.
+    pub fn encoder_peak_bytes(self) -> u64 {
+        self.encoder_peak
+    }
+    /// All segment chains and an exactly reserved segment-descriptor array.
+    pub fn segments_bytes(self) -> u64 {
+        self.segments
+    }
+    /// Encoder, all segments and the largest sequential committer's codeword block.
+    pub fn commit_peak_bytes(self) -> u64 {
+        self.commit
+    }
+    /// Encoder, all segments, merged tree and simultaneous owned-layout clone.
+    pub fn merge_peak_bytes(self) -> u64 {
+        self.merge
+    }
+    /// Final owned P1 tree/layout after caller encoder and segment vectors drop.
+    pub fn retained_bytes(self) -> u64 {
+        self.retained
+    }
+    /// Maximum requested heap across encoder construction, P1 and owned publication.
     pub fn peak_bytes(self) -> u64 {
         self.peak
     }

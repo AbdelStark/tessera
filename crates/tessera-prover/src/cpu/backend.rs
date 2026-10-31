@@ -886,6 +886,10 @@ impl CpuBackend<'_> {
             commitment_id: id,
         };
         let mut parts = Vec::new();
+        // RFC-0018: retain exactly the public segment count beside the P1 block/tree.
+        parts
+            .try_reserve_exact(a.segments as usize)
+            .map_err(|_| memory())?;
         for segment in 0..a.segments {
             let mut pass = pcs::StreamingCommitter::new(
                 params,

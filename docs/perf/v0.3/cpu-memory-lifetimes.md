@@ -257,3 +257,20 @@ capacity. The helper allocates nothing and returns `None` on checked-count overf
 
 This is retained requested heap only. Inline structs, caller tile shapes, constructor
 scratch and allocator overhead remain separate; the helper does not admit a CPU route.
+
+## Sequential advice commitment allocation plan
+
+`AdviceCommitmentMemory` covers encoder construction and PCS storage for a
+sequential P1 whose caller exactly reserves its segment-descriptor array, as the
+CPU driver now does. It charges all segment chains (including empty segments),
+the largest active codeword block, the merged tree while every chain remains
+live, and the simultaneous owned layout clone. The encoder owns inverse/forward
+NTT tables and spread factors; its constructor also holds a temporary powers
+array beside the table being built. Phase maxima follow those lifetimes.
+
+Physical tests cover multiple segments, different row counts, empty segments,
+partial blocks, private-buffer clearing and publication. The synthetic 1B-width
+fixture plans 2,499,805,280 requested bytes for these allocations without creating
+large buffers. Caller original layout/model-advice metadata, source row, masks,
+checkpoint/tile generation, allocator overhead and other phases remain separate.
+Neither this helper nor exact descriptor reservation changes CPU admission.

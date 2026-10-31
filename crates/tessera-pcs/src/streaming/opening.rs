@@ -8,7 +8,7 @@
 //! rows before drawing P5's queries. Protocol/2 blinding and the full driver remain separate.
 
 mod memory;
-pub use memory::{AdviceColumnMemory, AdviceOpeningMemory};
+pub use memory::{AdviceColumnMemory, AdviceCommitmentMemory, AdviceOpeningMemory};
 
 use core::fmt;
 
@@ -835,6 +835,187 @@ mod tests {
     }
 
     #[test]
+    fn commitment_memory_bounds_encoder_segments_block_tree_and_owned_layout() {
+        use allocation_counter::measure;
+        let (_, base, _) = fixture();
+        for (bits, segments, rows) in [
+            (0, 1, 0),
+            (0, 1, 2),
+            (3, 1, 2),
+            (6, 2, 1),
+            (6, 3, 10),
+            (10, 5, 3),
+        ] {
+            let layout = AdviceLayout::new(
+                LayoutParams {
+                    log2_k: bits,
+                    segments,
+                    layers: 2,
+                    group: 1,
+                    query_block: 1,
+                    max_context: 2,
+                },
+                2,
+                &(0..2)
+                    .map(|layer| TileShape {
+                        layer: Some(layer),
+                        values: vec![TensorShape::Dense(DenseShape::new(
+                            vec![
+                                {
+                                    let real = if rows == 0 {
+                                        0
+                                    } else {
+                                        rows + 4 * u64::from(layer)
+                                    };
+                                    Axis {
+                                        len: real.max(1),
+                                        real,
+                                    }
+                                },
+                                Axis::new(1 << bits),
+                            ],
+                            Padding::Zero,
+                        ))],
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
+            let params = crate::CommitmentParams {
+                log2_k: bits,
+                mask_coeffs: base.mask_coeffs.min(1 << bits),
+                ..base
+            };
+            let mut plan = None;
+            let planning =
+                measure(|| plan = Some(AdviceCommitmentMemory::new(&layout, params).unwrap()));
+            assert_eq!(planning.count_total, 0);
+            let plan = plan.unwrap();
+            let mut encoder = None;
+            let construction = measure(|| {
+                encoder = Some(RowEncoder::new(1 << bits, 1, params.mask_coeffs).unwrap());
+            });
+            assert_eq!(
+                u64::try_from(construction.bytes_current).unwrap(),
+                plan.encoder_bytes()
+            );
+            assert!(construction.bytes_max <= plan.encoder_peak_bytes());
+            let encoder_bytes = u64::try_from(construction.bytes_current).unwrap();
+            let encoder = encoder.unwrap();
+            let mut row_values = vec![Fp::ZERO; encoder.message_len()];
+            let mut masks = || Fp::from_u64_reduced(7);
+            let mut parts = Vec::new();
+            let committing = measure(|| {
+                parts.try_reserve_exact(segments as usize).unwrap();
+                for segment in 0..segments {
+                    let mut pass =
+                        StreamingCommitter::new(params, &layout, segment, &encoder, &mut masks)
+                            .unwrap();
+                    for row in layout.segments()[segment as usize]
+                        .nonzero
+                        .iter()
+                        .cloned()
+                        .flatten()
+                    {
+                        row_values.fill(Fp::from_u64_reduced(row + 3));
+                        pass.push_row(row, &row_values).unwrap();
+                    }
+                    parts.push(pass.finish().unwrap());
+                }
+            });
+            let segments_bytes = u64::try_from(committing.bytes_current).unwrap();
+            assert_eq!(segments_bytes, plan.segments_bytes());
+            assert!(
+                encoder_bytes + committing.bytes_max <= plan.commit_peak_bytes(),
+                "P1 commit: {committing:?} {plan:?}"
+            );
+            let mut owned = None;
+            let merging = measure(|| {
+                owned = Some(
+                    AdviceOpening::build(&parts, |out| {
+                        out.fill(0);
+                        Ok(())
+                    })
+                    .unwrap()
+                    .into_owned(),
+                );
+            });
+            assert!(
+                encoder_bytes + segments_bytes + merging.bytes_max <= plan.merge_peak_bytes(),
+                "P1 merge: {merging:?} {plan:?}"
+            );
+            assert!(u64::try_from(merging.bytes_current).unwrap() <= plan.retained_bytes());
+            assert!(
+                construction
+                    .bytes_max
+                    .max(encoder_bytes + committing.bytes_max)
+                    .max(encoder_bytes + segments_bytes + merging.bytes_max)
+                    <= plan.peak_bytes()
+            );
+            assert_eq!(owned.unwrap().tree.leaves(), encoder.codeword_len());
+        }
+    }
+
+    #[test]
+    fn commitment_memory_refuses_invalid_or_overflowing_geometry_without_allocating() {
+        let (layout, params, _) = fixture();
+        for bad in [
+            crate::CommitmentParams {
+                log2_k: 4,
+                ..params
+            },
+            crate::CommitmentParams {
+                log2_inv_rate: 2,
+                ..params
+            },
+        ] {
+            let mut result = None;
+            let info = allocation_counter::measure(|| {
+                result = Some(AdviceCommitmentMemory::new(&layout, bad))
+            });
+            assert_eq!(info.count_total, 0);
+            assert!(matches!(
+                result.unwrap(),
+                Err(AdviceOpeningError::Invalid(PcsError::LayoutData { .. }))
+            ));
+        }
+        #[cfg(target_pointer_width = "64")]
+        {
+            let layout = AdviceLayout::new(
+                LayoutParams {
+                    log2_k: 31,
+                    segments: 1,
+                    layers: 1,
+                    group: 1,
+                    query_block: 1,
+                    max_context: 2,
+                },
+                2,
+                &[TileShape {
+                    layer: Some(0),
+                    values: vec![TensorShape::Dense(DenseShape::new(
+                        vec![Axis::new(1u64 << 32), Axis::new(1u64 << 31)],
+                        Padding::Zero,
+                    ))],
+                }],
+            )
+            .unwrap();
+            let params = crate::CommitmentParams {
+                log2_k: 31,
+                log2_inv_rate: 1,
+                mask_coeffs: 1,
+                row_block: NonZeroUsize::new(usize::MAX).unwrap(),
+                ..params
+            };
+            let mut result = None;
+            let info = allocation_counter::measure(|| {
+                result = Some(AdviceCommitmentMemory::new(&layout, params))
+            });
+            assert_eq!(info.count_total, 0);
+            assert_eq!(result.unwrap().unwrap_err().code(), ErrorCode::ResMemory);
+        }
+    }
+
+    #[test]
     fn column_memory_bounds_private_public_columns_and_multiproof() {
         use allocation_counter::measure;
         let small = fixture();
@@ -1196,6 +1377,15 @@ mod tests {
         assert_eq!(columns.proof_bytes(), 142_048);
         assert_eq!(columns.output_bytes(), 13_669_032);
         assert_eq!(columns.peak_bytes(), 94_306_424);
+        let mut p1 = None;
+        let allocations =
+            measure(|| p1 = Some(AdviceCommitmentMemory::new(&layout, params).unwrap()));
+        assert_eq!(allocations.count_total, 0);
+        let p1 = p1.unwrap();
+        assert_eq!(p1.encoder_bytes(), 83_886_080);
+        assert_eq!(p1.encoder_peak_bytes(), 83_886_256);
+        assert_eq!(p1.commit_peak_bytes(), 2_499_805_280);
+        assert_eq!(p1.peak_bytes(), 2_499_805_280);
     }
 
     #[test]
