@@ -647,3 +647,21 @@ Caller-owned original specifications and arbitrary spare capacities, source
 callbacks and retained/regenerated witness, transcript encodings, delegated stage
 wrappers, stack/runtime and allocator overhead remain separate. This helper does
 not change proof construction, transcript ordering, memory admission or CPU routing.
+
+
+## Persistent stage-driver state
+
+`StageStateMemory::new(graph, schedule)` counts the canonical `StageProver`
+constructor and persistent state without reading a field value or allocating.
+The constructor charge includes publicness/producer derivation and the pool.
+The retained charge adds all nested claim/part vectors for every declared layer,
+plus every leaf/layer/zero/round coordinate inserted by the complete schedule.
+The coordinate-map bound follows the pinned std/hashbrown bucket growth and
+includes control/alignment bytes. No repeated point or coefficient reduces it.
+
+These are state charges: `construction_peak_bytes` covers `new`/`for_graph` before
+leaf evaluation; `retained_bytes` covers persistent canonical state through the
+schedule. Pending window preparations, relation arenas and source payloads,
+temporary evaluations/claims, returned messages, borrowed inputs, callbacks and
+stack/runtime/allocator overhead remain additional. The helper assumes a compiled
+valid graph/schedule and does not authenticate metadata or change CPU admission.
