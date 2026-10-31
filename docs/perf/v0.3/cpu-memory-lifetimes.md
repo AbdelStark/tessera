@@ -362,3 +362,27 @@ These are retained requested bytes, measured after construction. Borrowed inputs
 constructor temporaries, each returned tile, replay/gadget witness work, stack and
 allocator/runtime overhead still require separate charges. The complete phase bound,
 CPU admission change and real-model proof remain pending.
+
+## Computed score inputs
+
+`ModelNativePlan::score_input_memory` plans the requested clearing buffers used
+by the default native constructor's RFC-0056 score inputs without allocating or
+reading witness values. Each family includes raw INT8 queries/compact GQA keys,
+per-axis padded copies, and the copied base-field maximum. A short context does
+not cap the query/key domain: its head dimension may exceed the position count.
+Slotted batches retain their existing literal route and have no computed inputs.
+The explicit literal oracle is separate from this plan.
+
+The constructor reserves each raw buffer exactly and clears it immediately after
+its padded copy is built. For raw buffers rq/rk, padded buffers pq/pk and maximum
+m (all in bytes), the family peak is
+`pq + max(rq + rk, rk + pk, pk + m)` and retention is `pq + pk + m`.
+Sequential families retain earlier inputs while constructing the next. No input
+is deduplicated by its values. Packing tests independently count requested bytes,
+compare every real coordinate with the engine and check zero padded coordinates.
+
+Arc/container metadata, original maximum tables, all other native operands,
+equality/runtime factors, constructor scratch outside this packing step, stage
+rounds/windows, borrowed data and runtime/allocator overhead remain additional.
+This component does not qualify native construction as a whole, change CPU
+admission or demonstrate a real-model proof.

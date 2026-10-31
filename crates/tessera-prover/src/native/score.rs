@@ -5,6 +5,8 @@
 
 use std::sync::Arc;
 
+pub(super) mod inputs;
+
 use tessera_codec::SecretBuf;
 use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField};
 use tessera_poly::{PolyField, eq_table};
@@ -288,6 +290,182 @@ mod tests {
     use tessera_field::QuadraticExtension;
     use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
     use tessera_sumcheck::{Instance, Prefix, Protocol, Table, Term, prove_batch};
+
+    #[test]
+    fn score_input_packing_has_exact_retention_and_checked_constructor_peak() {
+        use super::super::{Family, Kind, score_inputs};
+        use tessera_codec::{DecodeLimits, Secret, envelope, schema};
+        use tessera_compiler::{PublicModel, lower};
+        use tessera_ir::{IntegerModel, Op};
+        use tessera_witness::Engine;
+        for name in [
+            "tiny-2-minimal",
+            "tiny-2-servable",
+            "tiny-4-servable",
+            "tiny-2-affine",
+        ] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../spec/vectors/models")
+                .join(format!("{name}.d"));
+            let model: IntegerModel = envelope::open(
+                &std::fs::read(path).unwrap(),
+                &schema::INTEGER_MODEL,
+                DecodeLimits::INTEGER_MODEL,
+            )
+            .unwrap();
+            for n in [1, 3, 17] {
+                let lowering = lower(PublicModel::of(&model), n).unwrap();
+                let engine = Engine::new(&lowering)
+                    .unwrap()
+                    .threads(std::num::NonZeroUsize::MIN);
+                let witness = engine
+                    .run(&model, &Secret::new(vec![0; n as usize]))
+                    .unwrap();
+                let nodes = lowering
+                    .graph
+                    .nodes
+                    .iter()
+                    .filter(|node| matches!(node.op, Op::SoftmaxRow { .. }))
+                    .map(|node| node.id)
+                    .collect::<Vec<_>>();
+                for repeat_source in [false, true] {
+                    let mut nodes = nodes.clone();
+                    // A repeated real source exercises a non-power-of-two packing domain;
+                    // this is a buffer test, with no proof/claim or extra model layer.
+                    if repeat_source {
+                        nodes.push(nodes[0]);
+                    }
+                    let family = Family {
+                        windows: Vec::new(),
+                        site: 0,
+                        lambda: nodes.len().next_power_of_two().trailing_zeros(),
+                        nodes,
+                        shape: Vec::new(),
+                        kind: Kind::Softmax {
+                            sigma: 0,
+                            forest: None,
+                        },
+                    };
+                    let mut corrupt = lower(PublicModel::of(&model), n).unwrap();
+                    let (q, k) = inputs::ids(&corrupt, family.nodes[0]).unwrap();
+                    for id in [q, k] {
+                        let original = corrupt.graph.tensors[id.0 as usize].range;
+                        for outside in [
+                            tessera_ir::IntRange { lo: -129, hi: 127 },
+                            tessera_ir::IntRange { lo: -128, hi: 128 },
+                        ] {
+                            corrupt.graph.tensors[id.0 as usize].range = outside;
+                            let invalid = allocation_counter::measure(|| {
+                                assert_eq!(
+                                    inputs::Shape::derive(&family, &corrupt).err(),
+                                    Some(super::super::bad())
+                                );
+                            });
+                            assert_eq!(invalid.count_total, 0);
+                        }
+                        corrupt.graph.tensors[id.0 as usize].range = original;
+                    }
+                    // Change one layer while preserving its own GQA ratio. The family
+                    // still needs one shared geometry, rather than accepting both shapes.
+                    let original_heads = corrupt.graph.tensors[q.0 as usize].shape[0];
+                    let key_heads = corrupt.graph.tensors[k.0 as usize].shape[0];
+                    corrupt.graph.tensors[q.0 as usize].shape[0] += key_heads;
+                    let inconsistent = allocation_counter::measure(|| {
+                        assert_eq!(
+                            inputs::Shape::derive(&family, &corrupt).err(),
+                            Some(super::super::bad())
+                        );
+                    });
+                    assert_eq!(inconsistent.count_total, 0);
+                    corrupt.graph.tensors[q.0 as usize].shape[0] = original_heads;
+                    let softmax = &corrupt.graph.nodes[family.nodes[0].0 as usize];
+                    let product = corrupt.graph.producer(softmax.inputs[0]).unwrap();
+                    corrupt.graph.nodes[product.0 as usize].id = tessera_ir::NodeId(u32::MAX);
+                    let invalid = allocation_counter::measure(|| {
+                        let result =
+                            std::panic::catch_unwind(|| inputs::Shape::derive(&family, &corrupt));
+                        assert!(result.is_ok(), "public metadata must yield a typed error");
+                        if let Ok(value) = result {
+                            assert_eq!(value.err(), Some(super::super::bad()));
+                        }
+                    });
+                    assert_eq!(invalid.count_total, 0);
+                    let shape = inputs::Shape::derive(&family, &lowering).unwrap();
+                    // Pin source identity independently of the helper used by the value oracle.
+                    assert_eq!(
+                        (shape.heads, shape.key_heads, shape.dim),
+                        (
+                            model.arch.n_heads as usize,
+                            model.arch.n_kv_heads as usize,
+                            model.arch.d_head as usize
+                        )
+                    );
+                    let plan = shape.memory().unwrap();
+                    let maxima = SecretBuf::filled(G::ONE, shape.maxima);
+                    let refusal = allocation_counter::measure(|| {
+                        assert_eq!(
+                            score_inputs(&family, &lowering, &witness, &maxima[..maxima.len() - 1])
+                                .err(),
+                            Some(super::super::bad())
+                        );
+                    });
+                    assert_eq!(refusal.count_total, 0);
+                    let mut packed = None;
+                    let construction = allocation_counter::measure(|| {
+                        packed = Some(score_inputs(&family, &lowering, &witness, &maxima).unwrap());
+                    });
+                    assert_eq!(
+                        u64::try_from(construction.bytes_current).unwrap(),
+                        plan.retained_bytes()
+                    );
+                    assert_eq!(construction.bytes_max, plan.peak_bytes());
+                    let packed = packed.unwrap();
+                    // Independent coordinate oracle reads each real tensor directly. Every
+                    // padded coordinate stays zero; no field evaluation or proof is invented.
+                    for (l, &node) in family.nodes.iter().enumerate() {
+                        let (q, k) = inputs::ids(&lowering, node).unwrap();
+                        for (id, columns, heads, padded_heads) in [
+                            (
+                                q,
+                                &packed.queries,
+                                shape.heads,
+                                shape.heads.next_power_of_two(),
+                            ),
+                            (k, &packed.keys, shape.key_heads, shape.key_heads),
+                        ] {
+                            let values = witness.tensor(id).unwrap();
+                            for head in 0..padded_heads {
+                                for pos in 0..(n as usize).next_power_of_two() {
+                                    for d in 0..shape.dim {
+                                        let at = ((l * padded_heads + head)
+                                            * (n as usize).next_power_of_two()
+                                            + pos)
+                                            * shape.dim
+                                            + d;
+                                        let expected = if head < heads && pos < n as usize {
+                                            values[(head * n as usize + pos) * shape.dim + d] as i8
+                                        } else {
+                                            0
+                                        };
+                                        assert_eq!(columns[at], expected);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    assert_eq!(&packed.maxima[..], &maxima[..]);
+                    for columns in [&packed.queries, &packed.keys] {
+                        let block = columns.len() >> family.lambda;
+                        assert!(
+                            columns[family.nodes.len() * block..]
+                                .iter()
+                                .all(|&v| v == 0)
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     fn context() -> SessionContext {
         SessionContext {
