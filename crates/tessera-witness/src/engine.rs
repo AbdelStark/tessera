@@ -149,6 +149,18 @@ impl<'a> Engine<'a> {
         })
     }
 
+    /// Checked owned-buffer bounds for canonical tokens, checkpoints and tensor-cache
+    /// construction, derived from this engine's validated public lowering without allocation.
+    /// Borrowed engine/model/graph data, thread-runtime/stack storage, tile/gadget/native
+    /// work and allocator overhead remain separately charged (RFC-0018).
+    ///
+    /// # Errors
+    /// `Usage` without a lowering or for missing tensor ids, and `Memory` on an
+    /// overflowing or unaddressable buffer count. This does not admit a CPU route.
+    pub fn checkpoint_memory(&self) -> Result<crate::CheckpointMemory, WitnessError> {
+        crate::CheckpointMemory::new(self.require_lowering()?)
+    }
+
     /// The same engine on `threads` threads.
     #[must_use]
     pub fn threads(mut self, threads: NonZeroUsize) -> Self {
@@ -1050,7 +1062,8 @@ impl<'a> Engine<'a> {
                         *bit = (v >> i) & 1;
                     }
                 }
-                let mut outputs = vec![b];
+                let mut outputs = Vec::with_capacity(1 + usize::from(high > 0));
+                outputs.push(b);
                 if high > 0 {
                     let mut h = zeros(out(1), x.len() * high)?;
                     for (bits, &v) in h.chunks_exact_mut(high).zip(x) {
@@ -1063,7 +1076,10 @@ impl<'a> Engine<'a> {
                 outputs
             }
             Op::BitFn { f } => {
-                let ins: Vec<&[i64]> = (0..f.arity()).map(input).collect::<Result<_, _>>()?;
+                let mut ins = Vec::with_capacity(f.arity());
+                for index in 0..f.arity() {
+                    ins.push(input(index)?);
+                }
                 // Range analysis puts them in [0, 1]; an unanalyzed graph could overflow `eval`.
                 if ins.iter().any(|v| v.iter().any(|&b| b != 0 && b != 1)) {
                     return Err(WitnessError::Usage {

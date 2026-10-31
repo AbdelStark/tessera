@@ -71,6 +71,33 @@ pub(crate) struct Structure<'a> {
     kv_heads: u32,
 }
 
+// RFC-0018: one exact-reserved reader slot per public input edge, including duplicates.
+fn reader_lists(graph: &Graph) -> Result<Vec<Vec<u32>>, WitnessError> {
+    let mut counts = vec![0usize; graph.tensors.len()];
+    for node in &graph.nodes {
+        for &tensor in &node.inputs {
+            if let Some(count) = counts.get_mut(tensor.0 as usize) {
+                *count = count
+                    .checked_add(1)
+                    .ok_or(WitnessError::Memory { tensor })?;
+            }
+        }
+    }
+    let mut readers: Vec<Vec<u32>> = counts
+        .iter()
+        .map(|&count| Vec::with_capacity(count))
+        .collect();
+    drop(counts);
+    for node in &graph.nodes {
+        for &tensor in &node.inputs {
+            if let Some(list) = readers.get_mut(tensor.0 as usize) {
+                list.push(node.id.0);
+            }
+        }
+    }
+    Ok(readers)
+}
+
 impl<'a> Structure<'a> {
     /// The structure of `engine`'s lowering, of a model of architecture `arch`.
     ///
@@ -88,16 +115,11 @@ impl<'a> Structure<'a> {
         let graph = &lowering.graph;
         let tensors = graph.tensors.len();
         let mut producer = vec![None; tensors];
-        let mut readers: Vec<Vec<u32>> = vec![Vec::new(); tensors];
+        let readers = reader_lists(graph)?;
         for node in &graph.nodes {
-            for &t in &node.outputs {
-                if let Some(slot) = producer.get_mut(t.0 as usize) {
+            for &tensor in &node.outputs {
+                if let Some(slot) = producer.get_mut(tensor.0 as usize) {
                     *slot = Some(node.id.0);
-                }
-            }
-            for &t in &node.inputs {
-                if let Some(list) = readers.get_mut(t.0 as usize) {
-                    list.push(node.id.0);
                 }
             }
         }
@@ -107,11 +129,14 @@ impl<'a> Structure<'a> {
                 *slot = Some(k);
             }
         }
-        let cores = graph
-            .nodes
-            .iter()
-            .filter_map(|node| core(graph, &producer, &readers, node))
-            .collect();
+        let found = || {
+            graph
+                .nodes
+                .iter()
+                .filter_map(|node| core(graph, &producer, &readers, node))
+        };
+        let mut cores = Vec::with_capacity(found().count());
+        cores.extend(found());
         Ok(Self {
             engine,
             lowering,
@@ -265,4 +290,45 @@ fn core(
         table: exp_table,
         sigma,
     })
+}
+
+#[cfg(test)]
+mod allocation_tests {
+    use super::*;
+    use crate::test_support::fixture;
+
+    #[test]
+    fn reader_and_core_metadata_reserve_exact_public_cardinalities() {
+        let (model, lowering) = fixture(3);
+        let graph = &lowering.graph;
+        let readers = reader_lists(graph).unwrap();
+        assert_eq!(readers.capacity(), graph.tensors.len());
+        for (id, list) in readers.iter().enumerate() {
+            let expected = graph
+                .nodes
+                .iter()
+                .flat_map(|node| {
+                    node.inputs
+                        .iter()
+                        .filter(move |t| t.0 as usize == id)
+                        .map(move |_| node.id.0)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(list, &expected);
+            assert_eq!(list.capacity(), expected.len());
+        }
+        let engine = Engine::new(&lowering).unwrap();
+        let mut structure = None;
+        let info = allocation_counter::measure(|| {
+            structure = Some(Structure::new(&engine, &model.arch).unwrap())
+        });
+        let structure = structure.unwrap();
+        assert_eq!(structure.producer.capacity(), graph.tensors.len());
+        assert_eq!(structure.checkpoint.capacity(), graph.tensors.len());
+        assert_eq!(structure.cores.capacity(), structure.cores.len());
+        let expected = graph.tensors.len()
+            * (size_of::<Option<u32>>() + size_of::<Option<usize>>())
+            + structure.cores.len() * size_of::<Core>();
+        assert_eq!(usize::try_from(info.bytes_current).unwrap(), expected);
+    }
 }

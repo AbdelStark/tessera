@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Plan owned canonical-token, checkpoint and full nonweight-cache constructor buffers, including repeated leaf copies, public position-vector overlap and checked metadata sizes; use exact reader/operand reservations and reverse topological replay cones without a worklist. Borrowed tables, runtime and other proof phases remain separate (RFC-0006/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Bound sequential PCS P1 storage, including encoder initialization scratch, all segment chains, active codeword block, merged tree and owned layout; reserve CPU segment descriptors exactly and retain separate caller/whole-route charges (RFC-0011/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Count every nested public advice-layout allocation, including spare capacities, and bound its owned clone; retain constructor scratch as a separate charge (RFC-0011/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).

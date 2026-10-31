@@ -274,3 +274,29 @@ fixture plans 2,499,805,280 requested bytes for these allocations without creati
 large buffers. Caller original layout/model-advice metadata, source row, masks,
 checkpoint/tile generation, allocator overhead and other phases remain separate.
 Neither this helper nor exact descriptor reservation changes CPU admission.
+
+## Checkpoint and tensor-cache constructor buffers
+
+`Engine::checkpoint_memory` plans canonical u32 token conversion, INT32 checkpoint
+storage, and every nonweight i64 tensor in `CheckpointTensors`, including full scores.
+It uses the engine's validated public lowering without reading a model/token or
+allocating. Graph-input INT8 weights stay borrowed. Counts include both cache
+metadata arrays, checkpoint ids/containers, repeated leaf-input copies, INT64/INT32
+checkpoint overlap, and all public reader/operand/reachability metadata. Cached
+outputs move from `Live`; their union is charged once. The temporary public
+`positions_values` vector coexists with its clearing copy and has its own charge.
+
+Reader edges, attention cores and operand descriptors reserve their public counts
+exactly. Replay closes a requested cone in reverse node order, using RFC-0006's
+validated topological order and stopping at checkpoints (INV-ARCH-3); it needs no
+DFS worklist. Independent set-frontier tests compare all singleton, repeated and
+combined requests, including checkpoints. Physical tests cover normal and slotted
+construction, exact retained storage, intermediate overlap and zero-allocation
+refusals. Address and multiplication boundaries are isolated in allocator-free tests.
+
+These are requested buffers owned by these constructors. Borrowed engine/core tables,
+graph/model data, thread-runtime/stack storage, tile/gadget/native work, allocator
+and instrumentation overhead, input preparation and other proof phases still need
+separate charges. This helper does not change CPU admission or qualify a real-model
+whole-process budget. Physical measurements run on one engine thread so the counting
+allocator observes every buffer allocation under test.
