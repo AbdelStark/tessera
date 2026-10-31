@@ -397,7 +397,8 @@ pub use prover::window::{
     WindowShape, WindowSource, WindowTable,
 };
 pub use prover::{
-    Computed, ComputedState, Instance, Prefix, ProvenBatch, Table, TreeScope, prove_batch,
+    BatchMemory, BatchShape, Computed, ComputedState, Instance, Prefix, ProvenBatch, Table,
+    TreeScope, prove_batch,
 };
 pub use recompose::{Recomposition, RecompositionTables};
 pub use rotate::{Rotate, RotateTables};

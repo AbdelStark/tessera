@@ -2,6 +2,9 @@
 
 //! The batched sumcheck prover (RFC-0010 'Batching within a stage', 'Sumcheck messages').
 
+mod memory;
+pub use memory::{BatchMemory, BatchShape};
+
 pub mod window;
 
 use core::fmt;
