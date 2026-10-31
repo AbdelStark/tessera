@@ -710,3 +710,26 @@ Original borrowed operands/points/kernel, original relation objects retained
 separately, outer relation/instance containers, returned claims and subsequent
 sumcheck/wrapper work, callbacks and runtime/allocator overhead remain additional.
 These are producer charges and leave CPU admission unchanged.
+
+
+## Stage-driver temporary work
+
+`StageProver::work_memory(stage)` sizes canonical driver containers and temporary
+work without allocating or reading field values. `StageWorkMemory` separates
+bookkeeping, evaluation, returned output and leaf padding-validation charges.
+`peak_bytes` conservatively adds them beside the other component reservations.
+
+The ordinary sharing map counts every graph instance's cloned public key and
+nested coordinates/layer descriptors before deduplication. Built/Instance and
+index containers are additional. Evaluation includes actual tensor split/blocked
+EQ geometry, padded public tables, canonical claim points and their outer arrays,
+layer/slot lists, expected/coefficient point temporaries and stage labels. Outputs
+include splits, instance targets and leaf per-layer values plus flattening storage.
+Leaf validation charges producer/pinned/reached arrays, the table cache and the
+established table-constructor bound. `committed_source` walks without allocating.
+
+These driver charges exclude persistent stage state, source arenas/plans, relation
+fields and instance payloads, sumcheck engines, pending next-stage windows,
+transcript/codec callbacks and runtime/allocator overhead. They assume compiled
+valid geometry and canonical native claims; arbitrary callback ownership remains
+additional. CPU admission is unchanged.

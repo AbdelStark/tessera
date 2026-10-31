@@ -3009,3 +3009,73 @@ fn stage_source_geometry_never_reads_witness_values() {
         );
     }
 }
+
+#[test]
+fn driver_work_bounds_leaf_evaluation_split_outputs_and_canonical_state_overlap() {
+    for name in MODELS {
+        let (lowering, schedule, witness) = setup(name);
+        let points = leaf_points(&schedule, 23);
+        let state = StageStateMemory::new(&lowering.graph, &schedule).unwrap();
+        let planner = StageProver::new(&lowering, &schedule, &witness);
+        let mut work = None;
+        let planning = allocation_counter::measure(|| {
+            work = Some(planner.work_memory(0).unwrap());
+        });
+        assert_eq!(planning.count_total, 0);
+        let work = work.unwrap();
+        let budget =
+            state.construction_peak_bytes() + state.retained_bytes() + work.peak_bytes().unwrap();
+        let mut held = None;
+        let measured = allocation_counter::measure(|| {
+            let mut prover = StageProver::new(&lowering, &schedule, &witness);
+            let values = prover.leaf(&points).unwrap();
+            let splits = prover.leaf_split_values().unwrap();
+            held = Some((prover, values, splits));
+        });
+        assert!(
+            measured.bytes_max <= budget,
+            "{name}: {measured:?}, {work:?}, {state:?}"
+        );
+        // Drop all driver state inside a second meter. Add back only its exact
+        // pre-existing constructor allocation; what remains is caller-owned output.
+        let mut retired = None;
+        let base = allocation_counter::measure(|| {
+            retired = Some(StageProver::new(&lowering, &schedule, &witness));
+        });
+        let mut outputs = None;
+        let returned = allocation_counter::measure(|| {
+            let mut prover = retired.take().unwrap();
+            let values = prover.leaf(&points).unwrap();
+            let splits = prover.leaf_split_values().unwrap();
+            drop(prover);
+            outputs = Some((values, splits));
+        });
+        let bytes = returned.bytes_current + base.bytes_current;
+        assert!(
+            u64::try_from(bytes).unwrap() <= work.output_bytes(),
+            "output {name}: {returned:?}, base {base:?}, {work:?}"
+        );
+        let padding = allocation_counter::measure(|| {
+            let _ = tessera_compiler::schedule::tensors_nonzero_at_padding(
+                &lowering.graph,
+                &lowering.tables,
+            )
+            .unwrap();
+        });
+        assert!(
+            padding.bytes_max <= work.padding_bytes(),
+            "padding {name}: {padding:?}, {work:?}"
+        );
+        for k in 1..schedule.stages.len() {
+            let work = planner.work_memory(u16::try_from(k).unwrap()).unwrap();
+            assert!(work.bookkeeping_bytes() > 0);
+            assert!(work.evaluation_bytes() > 0);
+        }
+        assert_eq!(
+            planner.work_memory(u16::MAX),
+            Err(StageError::Internal {
+                rule: "driver memory names a compiled stage"
+            })
+        );
+    }
+}

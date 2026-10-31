@@ -41,8 +41,10 @@
 mod columns;
 mod memory;
 mod source_memory;
+mod work_memory;
 pub use memory::StageStateMemory;
 pub use source_memory::StageSourceMemory;
+pub use work_memory::StageWorkMemory;
 mod padded;
 mod public;
 mod relations;
