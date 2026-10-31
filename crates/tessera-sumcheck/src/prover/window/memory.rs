@@ -170,3 +170,168 @@ impl WindowMemory {
         Err(WindowError::Allocation)
     }
 }
+
+/// Additional window-engine specifications, bookkeeping and message storage.
+/// Add this peak to WindowMemory::working_bytes and the source/callback storage.
+/// The existing field/grid reservation is preserved, including its old margins.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WindowMetadataMemory {
+    peak: u64,
+    output: u64,
+}
+impl WindowMetadataMemory {
+    /// Additional constructor/proof storage beside the field/grid reservation.
+    pub fn peak_bytes(self) -> u64 {
+        self.peak
+    }
+    /// Returned proof, point and evaluation-index heap, included in the peak.
+    pub fn output_bytes(self) -> u64 {
+        self.output
+    }
+    /// Derive from canonical WindowInstance geometry without allocating or
+    /// reading any field value. `terms` bounds each instance before equal weights
+    /// or repeated factors could reduce work. Table/term/factor/EQ vectors must
+    /// use canonical clone/push/collect capacities; arbitrary over-reservation,
+    /// sources and transcript callbacks/encodings remain separately chargeable.
+    ///
+    /// # Errors
+    /// Shape mismatch or overflowing/unaddressable allocations, as WindowMemory.
+    pub fn new<F: tessera_poly::PolyField>(
+        shapes: &[WindowShape],
+        terms: &[u64],
+        degree: usize,
+    ) -> Result<Self, WindowError> {
+        use super::{State, WindowInstance, WindowTable};
+        use crate::Term;
+        use core::ops::Range;
+        use tessera_codec::SecretBuf;
+        if shapes.is_empty() || shapes.len() != terms.len() || degree == 0 || degree > 7 {
+            return Err(WindowError::Shape(
+                "window metadata matches canonical nonempty specs",
+            ));
+        }
+        let n = shapes.len() as u64;
+        // The consumed source descriptor array may overlap the new State array.
+        // The old field planner's retained-count Vec is priced as well.
+        let mut owned = add(
+            growing::<WindowInstance<F>>(n)?,
+            add(allocation_of::<State<F>>(n)?, allocation_of::<u64>(n)?)?,
+        )?;
+        let (mut max_vars, mut max_tables, mut max_radix, mut evaluations) = (0, 0, 0, 0);
+        for (shape, &count) in shapes.iter().zip(terms) {
+            if shape.vars >= usize::BITS as usize
+                || shape.tables == 0
+                || shape.delta == 0
+                || shape.delta > degree
+                || count == 0
+            {
+                return Err(WindowError::Shape(
+                    "window counts cover each table and term",
+                ));
+            }
+            let (v, t) = (shape.vars as u64, shape.tables as u64);
+            max_vars = max_vars.max(v);
+            max_tables = max_tables.max(t);
+            max_radix = max_radix.max(shape.delta as u64 + 1);
+            evaluations = add(evaluations, t)?; // public columns may only reduce actual sends
+            owned = add(
+                owned,
+                add(
+                    growing::<WindowTable>(t)?,
+                    add(
+                        growing::<Term<F>>(count)?,
+                        add(
+                            separate_vectors::<usize>(mul(count, degree as u64)?, count)?,
+                            growing::<Option<F>>(v)?,
+                        )?,
+                    )?,
+                )?,
+            )?;
+            // Folded-table containers persist; the private true-sum buffer is one element.
+            owned = add(
+                owned,
+                add(growing::<SecretBuf<F>>(t)?, allocation_of::<F>(1)?)?,
+            )?;
+        }
+        let output = add(
+            add(
+                allocation_of::<Vec<F>>(max_vars)?,
+                allocation_of::<F>(mul(max_vars, degree as u64)?)?,
+            )?,
+            add(
+                add(allocation_of::<F>(max_vars)?, growing::<F>(evaluations)?)?,
+                add(growing::<usize>(n)?, allocation_of::<Range<usize>>(n)?)?,
+            )?,
+        )?;
+        // One prepare's column containers and Weights::new's temporary Option point.
+        let prepare = add(
+            growing::<SecretBuf<F>>(max_tables)?,
+            allocation_of::<Option<F>>(max_vars)?,
+        )?;
+        // message(): returned values, grid/resident line, Lagrange basis, and suffix EQ.
+        // Charge the message EQ independently of constructor order across instances.
+        let message = add(
+            allocation_of::<F>(degree as u64)?,
+            add(
+                allocation_of::<F>(max_radix)?,
+                add(
+                    growing::<F>(max_radix)?,
+                    add(
+                        allocation_of::<F>(max_tables)?,
+                        allocation_of::<F>(split_weights(max_vars as usize)?)?,
+                    )?,
+                )?,
+            )?,
+        )?;
+        let prefix = "group/".len() + 10 + "/tree/".len() + 10;
+        let labels = growing::<u8>((prefix + "/challenge/".len() + 20) as u64)?;
+        Ok(Self {
+            peak: add(owned, add(output, add(labels, prepare.max(message))?)?)?,
+            output,
+        })
+    }
+}
+fn allocation_of<T>(n: u64) -> Result<u64, WindowError> {
+    let bytes = mul(n, size_of::<T>() as u64)?;
+    if usize::try_from(n).is_err() || bytes > isize::MAX as u64 {
+        return Err(WindowError::Allocation);
+    }
+    Ok(bytes)
+}
+fn growing<T>(n: u64) -> Result<u64, WindowError> {
+    if n == 0 {
+        return Ok(0);
+    }
+    let min = if size_of::<T>() == 1 {
+        8
+    } else if size_of::<T>() <= 1024 {
+        4
+    } else {
+        1
+    };
+    allocation_of::<T>(mul(4, n.max(min))?)
+}
+fn separate_vectors<T>(n: u64, vectors: u64) -> Result<u64, WindowError> {
+    allocation_of::<T>(mul(4, add(n, mul(4, vectors)?)?)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn metadata_allocations_obey_address_and_product_limits() {
+        let measured = allocation_counter::measure(|| {
+            assert_eq!(
+                allocation_of::<u64>(isize::MAX as u64 / 8 + 1),
+                Err(WindowError::Allocation)
+            );
+            assert_eq!(mul(u64::MAX, 2), Err(WindowError::Allocation));
+            assert_eq!(growing::<u64>(u64::MAX), Err(WindowError::Allocation));
+            assert_eq!(
+                separate_vectors::<usize>(1, u64::MAX),
+                Err(WindowError::Allocation)
+            );
+        });
+        assert_eq!(measured.count_total, 0);
+    }
+}

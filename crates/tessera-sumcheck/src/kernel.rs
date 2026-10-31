@@ -49,7 +49,7 @@ pub(crate) const NODES: usize = MAX_DEGREE + 1;
 
 /// Pairs per block of the row loop. A block's rows, `NODES` values per pair, 176 bytes over `Fp2`
 /// and 88 over `Fp`, stay in the first-level cache while each table multiplies into them.
-const BLOCK: usize = 128;
+pub(crate) const BLOCK: usize = 128;
 
 /// The most nodes at which tables over the extension field are zipped: beyond, the values they
 /// keep in registers spill, and the row loop is faster.
@@ -317,7 +317,7 @@ where
 
 /// Pairs per block of the term loop. Its rows hold `N` values per pair, at most 4 in a tree level,
 /// so the line rows of five tables and three work rows take about 32 KB over `Fp2`.
-const TERM_BLOCK: usize = 64;
+pub(crate) const TERM_BLOCK: usize = 64;
 
 /// A table's entries as the term loop reads them, unbound: in the prime subfield or in `F`.
 pub(crate) enum Entries<'a, F: PolyField> {

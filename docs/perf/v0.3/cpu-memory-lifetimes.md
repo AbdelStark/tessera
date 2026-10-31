@@ -602,3 +602,48 @@ derivation, PCS grouping/accumulators, generic messages, stack/runtime and alloc
 overhead. The geometry planner requires the complete runtime selection's tables,
 including the greedy-range table when present; the lowering's initial table list
 is insufficient for a runtime proof. Full CPU admission remains separate work.
+
+
+## Ordinary batched sumcheck storage
+
+`BatchMemory::new::<F>(degree, shapes)` bounds `prove_batch` without reading source
+values or allocating. `BatchShape` declares each own-variable count, every literal
+table, the sum-of-products term count, sent evaluation count and whether rounds
+are delegated. Counts precede relation, table or term-weight deduplication.
+
+The peak includes each half-table binding (or singleton), unread-table evaluation
+scratch, state/binding containers, both identity-map types and per-bucket vectors,
+compiled term-plan construction, generic kernel and term scratch, transient bound
+views, labels, round/evaluation messages and returned point/index metadata. Shared
+scratch growth is charged through its maximum public geometry. The pinned B-tree
+node bound follows Rust 1.95's key/value/edge/header layout and alignment; tests
+measure both actual batch map types. No numeric weight coincidence or pointer
+alias reduces the public charge.
+
+`output_bytes` includes the returned proof and `ProvenBatch` metadata. Borrowed
+instances/tables and their constructors, transcript callbacks/encodings, delegated
+`ComputedState` payloads, stack/runtime and allocator overhead remain additional.
+Native score payloads already have their separate public bound. Window-engine and
+stage-source/wrapper storage are separate; this helper admits no CPU route.
+
+
+## Window-engine descriptor and output storage
+
+`WindowMetadataMemory::new::<F>(shapes, terms, degree)` is an allocation-free
+additional charge beside the unchanged `WindowMemory::working_bytes`. It counts
+the consumed canonical specification array overlapping the prepared states,
+per-instance tables/terms/factor/EQ vectors, folded-column containers and private
+true sums. The output charge includes every round message, point, final evaluation
+and instance/index vector. It assumes no public-column or term cancellation.
+
+The peak adds canonical preparation containers and temporary EQ-point copies,
+message lines and Lagrange bases, labels, and a split suffix-EQ pair independent
+of preparation order. Each independently grown vector receives its own capacity
+slack. The original grid/fold model and its margins remain intact. Tests measure
+canonical specification cloning, preparation and proof output together, including
+singleton relations whose term/unused-column descriptors dominate their payload.
+
+Caller-owned original specifications and arbitrary spare capacities, source
+callbacks and retained/regenerated witness, transcript encodings, delegated stage
+wrappers, stack/runtime and allocator overhead remain separate. This helper does
+not change proof construction, transcript ordering, memory admission or CPU routing.
