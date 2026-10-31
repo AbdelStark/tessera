@@ -46,6 +46,20 @@ The result size is not its replay cone's peak. Reduction consumers still need
 bounded tensor leases or chunked reads and a public bound on simultaneous
 working sets before this interface can replace the resident driver.
 
+`CheckpointTensors` supplies the common integer tensor contract used by tile and
+reduction consumers. It borrows model matrices in their original INT8 allocations
+and owns every nonweight tensor in clearing storage, including complete score
+tensors. Representation availability and selection use public graph/source metadata,
+never secret values (INV-ARCH-2). Its `storage_bytes` reports retained cache storage only: construction
+scratch, the checkpoint store, canonical tokens, engine metadata and the borrowed
+model remain separate allocations. This component does not change CPU admission.
+
+`Engine::canonical_batch_tokens` owns a clearing copy of the canonical packed
+token sequence, including zero slot gaps. A future checkpoint driver can retain
+that copy after the caller releases its batch. Construction temporarily holds
+both the engine's `i64` token input and the new `u32` copy; both belong in its
+phase bound.
+
 ## Evidence required before changing admission
 
 The tensor tests compare every graph tensor with the existing resident engine,

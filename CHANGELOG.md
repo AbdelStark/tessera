@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Allow the complete prover CI suite 45 minutes after both checkpoint-source runs exhausted the 25-minute job budget during final NI/Live checks; preserve every test command, filter and protocol deadline ([#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Clear completed CPU leaf/native/stage working sets before later proof phases, after transferring their remaining obligations; add checkpoint tensor replay with resident equivalence and allocation checks. The resident-cell memory guard and real-model proof requirements remain unchanged (RFC-0018, [#629](https://github.com/AbdelStark/tessera/issues/629)).
 
 - Derive a common Requant family for incompatible Protocol One model layer sites, with independent verifier selection, complete first-use tables and ordered requests; retain the leaf guard, legacy-compatible artifacts and Protocol Two behavior (RFC-0076, [#617](https://github.com/AbdelStark/tessera/issues/617)). Real 1B/8B proofs and whole-model memory qualification remain pending.
@@ -19,6 +21,8 @@ All notable changes to the prover release train are recorded here: the crates un
 - Preflight migration strengths against the existing scale/table bounds before held-out evaluation, then minimize KL over admissible candidates without masking malformed input, scoring or resource errors; reject all-infeasible calibration before BF16 and release each candidate before constructing the next (RFC-0005, [#625](https://github.com/AbdelStark/tessera/issues/625)).
 
 ### Added
+
+- Share canonical integer tensor reads between witness tiles and reduction stages, with signed borrowed INT8 weights, owned clearing checkpoint tensors and canonical batch-token copies; run tensor and request-slot regressions in CI (RFC-0018, [#641](https://github.com/AbdelStark/tessera/issues/641)). CPU driver admission and the resident-cell floor remain unchanged pending complete phase accounting.
 
 - Accept common-family Protocol One Requant selection and its explicit one-time unreleased compatibility decision; actual real-model proofs remain pending (RFC-0076, [#619](https://github.com/AbdelStark/tessera/issues/619), parent #617).
 

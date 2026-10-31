@@ -167,6 +167,10 @@ impl<W: WitnessSource + ?Sized> WitnessSource for PaddedWitness<'_, W> {
         self.witness.values(tensor)
     }
 
+    fn int8_values(&self, tensor: TensorId) -> Option<&[i8]> {
+        self.witness.int8_values(tensor)
+    }
+
     fn padded(&self, tensor: TensorId) -> Option<&[i64]> {
         match self.tables.get(tensor.0 as usize) {
             Some(Some(table)) => Some(table),
@@ -268,15 +272,13 @@ fn zero_padded<W: WitnessSource + ?Sized>(
     tensor: TensorId,
 ) -> Result<SecretBuf<i64>, StageError> {
     let cube = Cube::of(&shape(graph, tensor)?);
-    let values = witness.values(tensor).ok_or(StageError::Internal {
-        rule: "the witness holds every tensor of the graph",
-    })?;
+    let values = super::tables::Integers::real(witness, tensor)?;
     if values.len() != cube.count() {
         return internal("a tensor holds its shape's number of values");
     }
     let mut table = zeros(cube.len())?;
-    for (flat, &v) in values.iter().enumerate() {
-        table[cube.of_flat(flat)] = v;
+    for flat in 0..values.len() {
+        table[cube.of_flat(flat)] = values.at(flat);
     }
     Ok(table)
 }

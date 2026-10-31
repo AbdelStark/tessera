@@ -65,6 +65,7 @@ mod replay;
 mod runtime;
 mod source;
 mod structure;
+mod tensors;
 mod tile;
 
 pub use checkpoint::Checkpoints;
@@ -72,4 +73,5 @@ pub use engine::{Engine, SecretGraphInputs, Witness};
 pub use error::WitnessError;
 pub use multiplicity::MultiplicityColumn;
 pub use source::{Regenerator, Resident, WitnessSource};
+pub use tensors::{CheckpointTensors, TensorSource};
 pub use tile::{TileLookup, TileWitness};
