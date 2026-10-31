@@ -54,6 +54,26 @@ fn every_vector_regenerates_with_its_digest_rows_and_lookups() {
     for case in &cases {
         let name = case["name"].as_str().expect("a name");
         let spec = spec_of(case);
+        // Physical core storage differs from both the logical table and the digest's core.
+        // Exp's boundary is pinned by the independent integer oracle, not the Rust search.
+        let expected_core = match &spec.kind {
+            TableKind::Exp { .. } => case["pieces"][0].as_u64().unwrap(),
+            TableKind::Exp2Frac { .. } => case["rows"].as_u64().unwrap(),
+            TableKind::Silu { b, r_by_class, .. } => {
+                r_by_class.iter().map(|&r| 1u64 << (b - r)).sum()
+            }
+            _ => 0,
+        };
+        let measured = allocation_counter::measure(|| {
+            assert_eq!(
+                GeneratedTable::core_storage_len(&spec.kind),
+                Ok(expected_core)
+            );
+        });
+        assert_eq!(
+            measured.bytes_total, 0,
+            "{name}: geometry allocates no core"
+        );
         assert_eq!(encode(&spec), bytes(&case["spec"]), "{name}: canonical");
         assert_eq!(spec.digest.to_vec(), bytes(&case["digest"]), "{name}");
         let table = GeneratedTable::from_spec(&spec).expect(name);

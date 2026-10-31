@@ -2174,6 +2174,7 @@ dependencies = [
 name = "tessera-tables"
 version = "0.1.0"
 dependencies = [
+ "allocation-counter",
  "serde_json",
  "tessera-codec",
  "tessera-field",

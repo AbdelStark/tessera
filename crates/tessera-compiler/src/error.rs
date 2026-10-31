@@ -53,7 +53,8 @@ pub enum CompileError {
         /// The rule the model breaks.
         rule: &'static str,
     },
-    /// A table the model's public constants define is one RFC-0008 refuses (`ERR-QUANT-ARCH`).
+    /// A table the model's public constants define is one RFC-0008 refuses (`ERR-QUANT-ARCH`),
+    /// or its dense core cannot be allocated (`ERR-RES-MEMORY`).
     ModelTable {
         /// The table's index in the lowering.
         table: TableId,
@@ -89,9 +90,24 @@ pub enum CompileError {
 }
 
 impl CompileError {
+    pub(crate) fn table_generation(node: NodeId, table: TableId, error: TableError) -> Self {
+        match error {
+            TableError::Memory => Self::ModelTable { table, error },
+            _ => Self::Table {
+                node,
+                table,
+                rule: "the generator refuses a table selection built",
+            },
+        }
+    }
+
     /// The stable code of 04 §3.
     pub fn code(&self) -> ErrorCode {
         match self {
+            Self::ModelTable {
+                error: TableError::Memory,
+                ..
+            } => ErrorCode::ResMemory,
             Self::Range { .. } | Self::Unproven { .. } => ErrorCode::CompileRange,
             Self::Wrap { .. } => ErrorCode::CompileWrap,
             Self::Profile { .. } => ErrorCode::CompileProfile,
@@ -137,5 +153,32 @@ impl std::error::Error for CompileError {}
 impl From<IrError> for CompileError {
     fn from(error: IrError) -> Self {
         Self::Graph(error)
+    }
+}
+
+#[cfg(test)]
+mod memory_error_tests {
+    use super::*;
+    #[test]
+    fn table_selection_resource_failures_do_not_become_invalid_model_errors() {
+        let memory = CompileError::table_generation(NodeId(7), TableId(11), TableError::Memory);
+        assert_eq!(memory.code(), ErrorCode::ResMemory);
+        assert!(matches!(
+            memory,
+            CompileError::ModelTable {
+                table: TableId(11),
+                error: TableError::Memory
+            }
+        ));
+        let invalid = CompileError::table_generation(NodeId(7), TableId(11), TableError::Digest);
+        assert_eq!(invalid.code(), ErrorCode::Internal);
+        assert!(matches!(
+            invalid,
+            CompileError::Table {
+                node: NodeId(7),
+                table: TableId(11),
+                rule: "the generator refuses a table selection built"
+            }
+        ));
     }
 }

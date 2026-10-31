@@ -12,7 +12,7 @@ use compiler::{Lowering, ModelAdviceLayout, RuntimePlan, schedule::LayerMap};
 use tessera_field::GoldilocksExt2 as F;
 use tessera_ir::{ClaimList, StageId};
 use tessera_sumcheck::SumcheckTranscript;
-use tessera_tables::{GeneratedTable, Table as _};
+use tessera_tables::{GeneratedTable, Table as _, TableError};
 use tessera_witness::WitnessSource as _;
 use tessera_witness::{Engine, Resident, Witness};
 
@@ -124,6 +124,12 @@ pub(super) struct CpuBackend<'a> {
 
 fn memory() -> ProverError {
     ProverError::Resource(ErrorCode::ResMemory)
+}
+fn generated_table_error(error: TableError) -> ProverError {
+    match error {
+        TableError::Memory => memory(),
+        _ => internal("selected table regenerates"),
+    }
 }
 fn power(n: u64) -> Result<u64, ProverError> {
     n.checked_next_power_of_two().ok_or_else(memory)
@@ -487,8 +493,7 @@ impl<'a> CpuBackend<'a> {
                     .iter()
                     .find(|t| t.id == i.table)
                     .ok_or_else(|| internal("leaf table exists"))?;
-                let generated = GeneratedTable::from_spec(spec)
-                    .map_err(|_| internal("selected table regenerates"))?;
+                let generated = GeneratedTable::from_spec(spec).map_err(generated_table_error)?;
                 metrics::lookups(i.table.0, i.entries);
                 metrics::table_rows(i.table.0, generated.row_count());
                 let tile = advice.tiles().iter().find(|tile| matches!(tile.tile, compiler::Tile::Table { table } if table == i.table.0))
@@ -1041,5 +1046,48 @@ impl ProverEngine for CpuBackend<'_> {
     }
     fn discard(&mut self) {
         self.data = None;
+    }
+}
+
+#[cfg(test)]
+mod memory_error_tests {
+    use super::*;
+    #[test]
+    fn core_resource_failures_keep_their_code_through_every_prover_wrapper() {
+        for error in [TableError::Memory, TableError::Digest] {
+            let expected = if error == TableError::Memory {
+                ErrorCode::ResMemory
+            } else {
+                ErrorCode::Internal
+            };
+            let table = tessera_ir::TableId(11);
+            let gadget = tessera_gadgets::GadgetError::Spec { table, error };
+            let errors = [
+                generated_table_error(error),
+                ProverError::from(tessera_witness::WitnessError::Table { table, error }),
+                ProverError::from(tessera_witness::WitnessError::from(gadget)),
+                ProverError::from(crate::LeafError::from(gadget)),
+                ProverError::from(crate::StageError::from_table(error, "canonical lookup")),
+            ];
+            for outer in errors {
+                assert_eq!(outer.code(), expected, "{outer:?}");
+            }
+            let model =
+                ProverError::from(tessera_compiler::CompileError::ModelTable { table, error });
+            assert_eq!(
+                model.code(),
+                if error == TableError::Memory {
+                    ErrorCode::ResMemory
+                } else {
+                    ErrorCode::QuantArch
+                }
+            );
+        }
+        assert!(matches!(
+            generated_table_error(TableError::Digest),
+            ProverError::Protocol(protocol::ProtocolError::Internal {
+                rule: "selected table regenerates"
+            })
+        ));
     }
 }

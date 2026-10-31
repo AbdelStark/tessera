@@ -91,6 +91,27 @@ capacities, retained messages and every other phase remain separate charges.
 These counts are preparation metadata, not a complete allocation or soundness
 bound. The CPU driver and its conservative resident-cell floor are unchanged.
 
+## Generated table cores
+
+`GeneratedTable::core_storage_len` derives the number of materialized values from
+public table parameters without allocating a core. `Exp` retains the prefix before
+its zero tail, `Exp2Frac` retains its value column, and `Silu` retains each class's
+reduced integer domain in class order. Arithmetic kinds store no dense values even
+when the digest logically enumerates a value column (RFC-0008).
+
+Generation reserves the complete core before writing values and fills it in canonical
+order without speculative buffer growth. A core that cannot fit the target address
+space or be reserved returns `TableError::Memory`. Compiler, gadget, witness, leaf,
+padded-stage, native and CPU error paths report that resource failure as
+`ERR-RES-MEMORY`; malformed parameters and digests keep their existing classifications.
+Resource failure does not choose a different canonical model family.
+
+These counts are not a complete table or proof reservation. Descriptor and class
+capacities, cloned specifications, digest work, engine registries, count backing,
+constructor overlap, allocator bookkeeping and every other phase remain separate.
+Allocation tests measure requested bytes, not whole-process RSS. The CPU resident
+floor and admission rule remain unchanged; real-model qualification is still owed.
+
 ## Evidence required before changing admission
 
 The tensor tests compare every graph tensor with the existing resident engine,

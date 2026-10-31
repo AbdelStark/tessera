@@ -95,7 +95,7 @@ pub enum LeafError {
         /// The rule broken.
         rule: &'static str,
     },
-    /// A gadget refused its selection or its tables (`ERR-INTERNAL`).
+    /// A gadget refused its selection or tables, preserving core allocation failures.
     Gadget(GadgetError),
     /// The canonical witness tile source failed without exposing secret values.
     Witness(tessera_witness::WitnessError),
@@ -109,7 +109,8 @@ impl LeafError {
     /// The stable code of 04 §3.
     pub fn code(&self) -> ErrorCode {
         match self {
-            Self::Internal { .. } | Self::Gadget(_) | Self::LogUp(_) => ErrorCode::Internal,
+            Self::Internal { .. } | Self::LogUp(_) => ErrorCode::Internal,
+            Self::Gadget(error) => error.code(),
             Self::Witness(error) => error.code(),
             Self::Memory => ErrorCode::ResMemory,
         }

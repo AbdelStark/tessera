@@ -35,11 +35,12 @@ impl fmt::Display for Column {
 
 /// Why a gadget, its witness or its LogUp instances could not be built.
 ///
-/// Every variant is `ERR-INTERNAL` (04 §3). The compiler's selection names the gadget and its
+/// Invalid parameters, tables and inputs are `ERR-INTERNAL` (04 §3). The compiler's selection names the gadget and its
 /// tables from public data, and range analysis bounds every input it reads (INV-IR-2), so a
 /// gadget that does not match its tables, a column of the wrong length or an input outside the
 /// gadget's domain is a bug upstream: RFC-0008 'Failure modes' makes an honest key outside its
 /// table `ERR-INTERNAL`.
+/// A table's dense-core allocation failure instead preserves `ERR-RES-MEMORY`.
 ///
 /// The variants carry table identifiers, column names, lengths and rules, never a value: an
 /// error cannot carry a key, a class or a committed value (05 §3).
@@ -93,9 +94,15 @@ pub enum GadgetError {
 }
 
 impl GadgetError {
-    /// The stable error code (04 §3): `ERR-INTERNAL` for every variant.
+    /// The stable error code (04 §3), preserving dense-core resource failures.
     pub fn code(&self) -> ErrorCode {
-        ErrorCode::Internal
+        match self {
+            Self::Spec {
+                error: TableError::Memory,
+                ..
+            } => ErrorCode::ResMemory,
+            _ => ErrorCode::Internal,
+        }
     }
 }
 

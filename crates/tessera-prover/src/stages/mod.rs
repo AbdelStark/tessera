@@ -155,6 +155,13 @@ pub enum StageError {
 }
 
 impl StageError {
+    pub(crate) fn from_table(error: tessera_tables::TableError, rule: &'static str) -> Self {
+        match error {
+            tessera_tables::TableError::Memory => Self::Memory,
+            _ => Self::Internal { rule },
+        }
+    }
+
     /// The stable code of 04 §3.
     pub fn code(&self) -> ErrorCode {
         match self {
