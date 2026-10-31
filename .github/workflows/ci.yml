@@ -212,7 +212,7 @@ jobs:
           cargo test -p tessera-prover --test stages --locked stage_source_geometry -- --test-threads=1
           cargo test -p tessera-prover --lib openings::memory --locked -- --test-threads=1
           cargo test -p tessera-sumcheck --lib prover::memory --locked -- --test-threads=1
-          cargo test -p tessera-sumcheck --test shared --test batch_memory --test window_memory --locked -- --test-threads=1
+          cargo test -p tessera-sumcheck --test shared --test batch_memory --test window_memory --test relation_memory --locked -- --test-threads=1
           cargo test -p tessera-pcs --lib weights::memory --locked -- --test-threads=1
           cargo test -p tessera-pcs --test weights --locked regenerated_weight_roots_columns_and_multiproofs_equal_the_resident_reference -- --test-threads=1
           cargo test -p tessera-pcs --test layout --test request_slots --test weights_opening --locked -- --test-threads=1

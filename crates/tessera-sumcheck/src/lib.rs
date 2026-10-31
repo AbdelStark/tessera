@@ -370,6 +370,8 @@ mod merge;
 mod proof;
 mod prover;
 mod recompose;
+mod relation_memory;
+pub use relation_memory::RelationMemory;
 mod rotate;
 mod select;
 mod terms;
