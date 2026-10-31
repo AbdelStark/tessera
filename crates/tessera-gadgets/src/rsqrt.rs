@@ -95,6 +95,19 @@ pub struct RsqrtRow {
     comparisons: [BigIntCompare; 2],
 }
 impl RsqrtRow {
+    /// Requested owned heap of this public template, including nested comparison
+    /// bounds, carry widths, table arrays and their payload capacities. Excludes
+    /// inline `Self`, constructor scratch and every secret witness (RFC-0018).
+    /// Returns `None` on size overflow and allocates nothing.
+    pub fn heap_bytes(&self) -> Option<usize> {
+        let bytes = crate::storage::table(&self.root)?
+            .checked_add(self.input.heap_bytes()?)?
+            .checked_add(self.digits.heap_bytes()?)?;
+        self.comparisons
+            .iter()
+            .try_fold(bytes, |sum, compare| sum.checked_add(compare.heap_bytes()?))
+    }
+
     /// Construct from claim-list dimension, precision, epsilon and range specifications.
     ///
     /// u's decomposition uses 16-bit limbs (top seven bits). Root bytes keep triple limb

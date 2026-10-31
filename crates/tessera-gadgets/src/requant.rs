@@ -96,6 +96,26 @@ pub(crate) struct Wide {
 }
 
 impl Requant {
+    /// Requested owned heap of this public template, including RequantWide's
+    /// boxed descriptor and every owned table payload, even with repeated ids.
+    /// Excludes inline `Self`, constructor scratch and secret witnesses (RFC-0018).
+    /// Returns `None` on size overflow and allocates nothing.
+    pub fn heap_bytes(&self) -> Option<usize> {
+        match &self.form {
+            Form::One { table, .. } => crate::storage::table(table),
+            Form::Split { low, high, .. } => {
+                crate::storage::table(low)?.checked_add(crate::storage::table(high)?)
+            }
+            Form::Wide(wide) => wide
+                .low
+                .iter()
+                .chain([&wide.mid, &wide.top, &wide.sign, &wide.high])
+                .try_fold(size_of::<Wide>(), |sum, table| {
+                    sum.checked_add(crate::storage::table(table)?)
+                }),
+        }
+    }
+
     /// The gadget the compiler selected, `gadget`, with its tables among `tables`.
     ///
     /// Each table must be among the specifications and regenerate from its kind, and be the one

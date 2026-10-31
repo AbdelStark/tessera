@@ -203,6 +203,8 @@ jobs:
         if: matrix.workspace == 'prover'
         run: |
           cargo test -p tessera-tables --lib --tests --locked -- --test-threads=1
+          cargo test -p tessera-gadgets --test storage --locked -- --test-threads=1
+          cargo test -p tessera-prover --lib score_input --features test-rng,test-params --locked -- --test-threads=1
           cargo test -p tessera-pcs --test layout --test request_slots --test weights_opening --locked -- --test-threads=1
       - name: Opt-in TLS 1.3 Live transport and adversarial framing checks (RFC-0014)
         if: matrix.workspace == 'prover'
@@ -228,7 +230,7 @@ jobs:
         run: |
           cargo test -p tessera-scoring --test sampler --test exact --locked
           cargo test -p tessera-witness --test engine the_engine_computes_the_conformance_vectors --locked
-          cargo nextest run -p tessera-witness --test tensors --test request_slots --test multiplicities --test checkpoint_memory --locked
+          cargo nextest run -p tessera-witness --test tensors --test request_slots --test multiplicities --test checkpoint_memory --test source_memory --locked
           cargo test -p tessera-cli --example recorder_integration --test recorder --locked
           cargo run -p tessera-cli --example recorder_integration --locked -- \
             "$TESSERA_BIN" "$RUNNER_TEMP/recorder-integration"

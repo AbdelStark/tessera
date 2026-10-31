@@ -68,6 +68,19 @@ pub struct BigIntCompare {
 }
 
 impl BigIntCompare {
+    pub(crate) fn heap_bytes(&self) -> Option<usize> {
+        let mut bytes = crate::storage::array::<GeneratedTable>(self.tables.capacity())?;
+        for bounds in &self.bounds {
+            bytes = bytes.checked_add(crate::storage::array::<u64>(bounds.capacity())?)?;
+        }
+        for bits in &self.carry_bits {
+            bytes = bytes.checked_add(bits.capacity())?;
+        }
+        self.tables.iter().try_fold(bytes, |sum, table| {
+            sum.checked_add(crate::storage::table(table)?)
+        })
+    }
+
     /// Build a comparison from inclusive per-limb input bounds and `Range` table specifications.
     ///
     /// `1 ≤ limb_bits ≤ 32`; vectors are nonempty and equally long; every input bound is below

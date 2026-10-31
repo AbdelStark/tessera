@@ -41,6 +41,11 @@ fn check_batch(requests: [(u32, u32); 3], lengths: [u32; 3]) {
         &layout,
     )
     .unwrap();
+    let planning = allocation_counter::measure(|| {
+        let memory = native.score_input_memory(&p.lowering).unwrap();
+        assert_eq!((memory.retained_bytes(), memory.peak_bytes()), (0, 0));
+    });
+    assert_eq!(planning.count_total, 0);
     let runtime_kinds: Vec<_> = native
         .native()
         .iter()

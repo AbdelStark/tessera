@@ -34,6 +34,7 @@ use tessera_ir::{CommitmentClass, GadgetId, Node, NodeKind, Op, OpClass, TableId
 use tessera_tables::{Table, TableKind};
 
 mod auxiliary;
+mod memory;
 
 use auxiliary::{Prepared, requant_role};
 

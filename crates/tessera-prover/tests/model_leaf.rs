@@ -506,6 +506,14 @@ fn check_complete_runtime(model: &IntegerModel, n: u32, maximum: u8, prompt: Opt
         .unwrap();
         assert_eq!(&composed, native_plan.schedule());
     }
+    let mut score_buffers = None;
+    let score_planning = allocation_counter::measure(|| {
+        score_buffers = Some(native_plan.score_input_memory(&p.lowering).unwrap());
+    });
+    assert_eq!(score_planning.count_total, 0);
+    let score_buffers = score_buffers.unwrap();
+    assert!(score_buffers.peak_bytes() >= score_buffers.retained_bytes());
+    assert!(score_buffers.retained_bytes() > 0);
     let stage_plan = native_plan.schedule();
     let gadgets = tv_core::gadgets::Plan::derive(&graph, claims.gadget_policy).unwrap();
     let independent_native = match &tv_runtime {

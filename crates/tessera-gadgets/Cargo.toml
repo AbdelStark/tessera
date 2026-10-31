@@ -18,6 +18,7 @@ tessera-poly = { path = "../tessera-poly" }
 tessera-tables = { path = "../tessera-tables" }
 
 [dev-dependencies]
+allocation-counter = "0.8.1"
 tessera-sumcheck = { path = "../tessera-sumcheck" }
 tessera-hash = { path = "../tessera-hash" }
 tessera-ir = { path = "../tessera-ir" }

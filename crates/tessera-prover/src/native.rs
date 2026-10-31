@@ -23,6 +23,7 @@ mod openings;
 mod runtime;
 mod score;
 use runtime::Runtime;
+pub use score::inputs::ScoreInputMemory;
 
 fn bad() -> StageError {
     StageError::Internal {
@@ -528,119 +529,6 @@ impl<'a> ModelNativeProver<'a> {
         self.tables.push(v);
         self.tables.len() - 1
     }
-    fn score_inputs(
-        &self,
-        f: &Family,
-        lowering: &Lowering,
-        graph: &impl WitnessSource,
-        maximum: usize,
-    ) -> Result<score::Inputs, StageError> {
-        let mut queries = SecretBuf::new();
-        let mut keys = SecretBuf::new();
-        let mut geometry = None;
-        for &id in &f.nodes {
-            let input = lowering.graph.nodes[id.0 as usize].inputs[0];
-            let product = lowering.graph.producer(input).ok_or_else(bad)?;
-            let product = &lowering.graph.nodes[product.0 as usize];
-            if !matches!(
-                product.op,
-                Op::MatMulAct {
-                    transpose_rhs: true
-                }
-            ) {
-                return Err(bad());
-            }
-            let q = product.inputs[0];
-            let mut k = product.inputs[1];
-            // The canonical GQA layout is Reshape(Expand(K, group)). Read K before
-            // repetition so its INT8 resident grows with key heads (RFC-0037/0056).
-            if let Some(r) = lowering.graph.producer(k) {
-                let r = &lowering.graph.nodes[r.0 as usize];
-                if matches!(r.op, Op::Reshape)
-                    && let Some(e) = lowering.graph.producer(r.inputs[0])
-                {
-                    let e = &lowering.graph.nodes[e.0 as usize];
-                    if matches!(e.op, Op::Expand { axis: 1, .. }) {
-                        k = e.inputs[0];
-                    }
-                }
-            }
-            let qt = &lowering.graph.tensors[q.0 as usize];
-            let kt = &lowering.graph.tensors[k.0 as usize];
-            let (&[h, n, d], &[kh, kn, kd]) = (qt.shape.as_slice(), kt.shape.as_slice()) else {
-                return Err(bad());
-            };
-            if kh == 0
-                || h % kh != 0
-                || n != kn
-                || d != kd
-                || qt.range.lo < -128
-                || qt.range.hi > 127
-                || kt.range.lo < -128
-                || kt.range.hi > 127
-            {
-                return Err(bad());
-            }
-            let current = (h as usize, kh as usize, n as usize, d as usize);
-            if geometry.is_some_and(|g| g != current) {
-                return Err(bad());
-            }
-            geometry = Some(current);
-            for (id, out, size) in [
-                (q, &mut queries, h as usize * n as usize * d as usize),
-                (k, &mut keys, kh as usize * n as usize * d as usize),
-            ] {
-                let values = graph.values(id).ok_or_else(bad)?;
-                if values.len() != size {
-                    return Err(bad());
-                }
-                // Range analysis above guarantees INT8. No secret-dependent conversion
-                // branch: a nonconforming supplied witness still owes its graph proof.
-                out.extend(values.iter().map(|&x| x as i8));
-            }
-        }
-        let (heads, key_heads, positions, dim) = geometry.ok_or_else(bad)?;
-        let layers = 1usize.checked_shl(f.lambda).ok_or(StageError::Memory)?;
-        let np = positions.next_power_of_two();
-        let padded =
-            |source: &SecretBuf<i8>, h: usize, hp: usize| -> Result<SecretBuf<i8>, StageError> {
-                let len = layers
-                    .checked_mul(hp)
-                    .and_then(|v| v.checked_mul(np))
-                    .and_then(|v| v.checked_mul(dim))
-                    .ok_or(StageError::Memory)?;
-                let mut out = SecretBuf::try_with_capacity(len).map_err(|_| StageError::Memory)?;
-                out.resize(len, 0);
-                for l in 0..f.nodes.len() {
-                    for head in 0..h {
-                        for q in 0..positions {
-                            let from = ((l * h + head) * positions + q) * dim;
-                            let to = ((l * hp + head) * np + q) * dim;
-                            out[to..to + dim].copy_from_slice(&source[from..from + dim]);
-                        }
-                    }
-                }
-                Ok(out)
-            };
-        let queries = padded(&queries, heads, heads.next_power_of_two())?;
-        let keys = padded(&keys, key_heads, key_heads)?;
-        if self.tables[maximum].len() != layers * heads.next_power_of_two() * np {
-            return Err(bad());
-        }
-        let mut maxima = zeros(self.tables[maximum].len())?;
-        maxima.copy_from_slice(&self.tables[maximum]);
-        Ok(score::Inputs {
-            layers: f.nodes.len(),
-            heads,
-            key_heads,
-            positions,
-            dim,
-            layer_vars: f.lambda as usize,
-            queries,
-            keys,
-            maxima,
-        })
-    }
     fn source(
         &mut self,
         f: &Family,
@@ -940,7 +828,7 @@ impl<'a> ModelNativeProver<'a> {
                         forest.is_some(),
                     );
                 } else {
-                    let inputs = Arc::new(self.score_inputs(f, lowering, graph, max)?);
+                    let inputs = Arc::new(score_inputs(f, lowering, graph, &self.tables[max])?);
                     let mut fixed = self.fixed(f, witness, ModelColumn::ExpKey, p)?;
                     let causal = score::mask(p, heads as usize, n as usize, 1);
                     for (v, &id) in fixed.iter_mut().zip(&f.nodes) {
@@ -1055,6 +943,77 @@ impl<'a> ModelNativeProver<'a> {
         Ok(())
     }
 }
+fn score_inputs(
+    f: &Family,
+    lowering: &Lowering,
+    graph: &impl WitnessSource,
+    maximum: &[G],
+) -> Result<score::Inputs, StageError> {
+    let shape = score::inputs::Shape::derive(f, lowering)?;
+    if maximum.len() != shape.maxima {
+        return Err(bad());
+    }
+    let mut raw_queries =
+        SecretBuf::try_with_capacity(shape.raw_queries).map_err(|_| StageError::Memory)?;
+    let mut raw_keys =
+        SecretBuf::try_with_capacity(shape.raw_keys).map_err(|_| StageError::Memory)?;
+    for &id in &f.nodes {
+        let (q, k) = score::inputs::ids(lowering, id)?;
+        for (id, out, size) in [
+            (q, &mut raw_queries, shape.raw_queries / f.nodes.len()),
+            (k, &mut raw_keys, shape.raw_keys / f.nodes.len()),
+        ] {
+            let values = graph.values(id).ok_or_else(bad)?;
+            if values.len() != size {
+                return Err(bad());
+            }
+            // The public range guarantees INT8; keep the conversion branch-free.
+            out.extend(values.iter().map(|&x| x as i8));
+        }
+    }
+    let (heads, key_heads, positions, dim) =
+        (shape.heads, shape.key_heads, shape.positions, shape.dim);
+    let layers = 1usize.checked_shl(f.lambda).ok_or(StageError::Memory)?;
+    let np = positions.next_power_of_two();
+    let padded =
+        |source: &SecretBuf<i8>, h: usize, hp: usize| -> Result<SecretBuf<i8>, StageError> {
+            let len = layers
+                .checked_mul(hp)
+                .and_then(|v| v.checked_mul(np))
+                .and_then(|v| v.checked_mul(dim))
+                .ok_or(StageError::Memory)?;
+            let mut out = SecretBuf::try_with_capacity(len).map_err(|_| StageError::Memory)?;
+            out.resize(len, 0);
+            for l in 0..f.nodes.len() {
+                for head in 0..h {
+                    for q in 0..positions {
+                        let from = ((l * h + head) * positions + q) * dim;
+                        let to = ((l * hp + head) * np + q) * dim;
+                        out[to..to + dim].copy_from_slice(&source[from..from + dim]);
+                    }
+                }
+            }
+            Ok(out)
+        };
+    let queries = padded(&raw_queries, heads, heads.next_power_of_two())?;
+    drop(raw_queries);
+    let keys = padded(&raw_keys, key_heads, key_heads)?;
+    drop(raw_keys);
+    let mut maxima = zeros(maximum.len())?;
+    maxima.copy_from_slice(maximum);
+    Ok(score::Inputs {
+        layers: f.nodes.len(),
+        heads,
+        key_heads,
+        positions,
+        dim,
+        layer_vars: f.lambda as usize,
+        queries,
+        keys,
+        maxima,
+    })
+}
+
 fn pad(values: &[i64], shape: &[u32], out: &mut [G]) -> Result<(), StageError> {
     if values.len() != shape.iter().map(|&n| n as usize).product::<usize>()
         || out.len() != 1usize.checked_shl(vars(shape)).ok_or(StageError::Memory)?

@@ -6,6 +6,10 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Plan computed score query/key/maximum buffers from public tensor geometry, reserve raw INT8 inputs exactly and clear them after padding; account for short contexts, GQA and conversion overlap separately from other native work (RFC-0056, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
+- Count retained source metadata and public gadget templates, including wide boxes, dense cores, nested constraint vectors and spare capacities; keep construction and tile scratch separate from these measured charges (RFC-0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Plan owned padded model lookup columns, Softmax forests and their constructor descriptors from public domains; reserve nested source metadata exactly while retaining separate tile/gadget work and the existing CPU admission floor (RFC-0018/0050, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Plan engine table-loader buffers, including id gaps, class clones, RoPE frequencies and replacement overlap; reserve registry and frequency capacities exactly without changing table values or CPU admission ([#641](https://github.com/AbdelStark/tessera/issues/641)).

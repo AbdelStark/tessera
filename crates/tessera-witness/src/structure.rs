@@ -99,6 +99,18 @@ fn reader_lists(graph: &Graph) -> Result<Vec<Vec<u32>>, WitnessError> {
 }
 
 impl<'a> Structure<'a> {
+    pub(crate) fn heap_bytes(&self) -> Option<usize> {
+        self.producer
+            .capacity()
+            .checked_mul(size_of::<Option<u32>>())?
+            .checked_add(
+                self.checkpoint
+                    .capacity()
+                    .checked_mul(size_of::<Option<usize>>())?,
+            )?
+            .checked_add(self.cores.capacity().checked_mul(size_of::<Core>())?)
+    }
+
     /// The structure of `engine`'s lowering, of a model of architecture `arch`.
     ///
     /// # Errors
