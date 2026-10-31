@@ -492,3 +492,35 @@ canonical resident/cache borrowers; arbitrary TensorSource callback allocations,
 replay execution, source construction, retained input/template data, encoding,
 stack/runtime and allocator overhead remain outside their scope. The helpers do
 not admit the cached CPU route or replace the resident-cell floor.
+
+## Owned native construction and preparation
+
+`ModelNativePlan::memory(lowering, literal_scores)` derives three allocation-free
+bounds from matching public metadata. `construction_peak_bytes` covers retained
+native storage and constructor overlap; `prepared_peak_bytes` includes one initial
+prepare; `instance_bytes` adds the metadata requests of one instance per tag.
+The methods cover the ordinary computed-score representation and the literal
+oracle, and slotted batches always select the existing literal representation.
+
+Construction includes every owned raw field table, padding/causal mask, table/data
+container, coefficient/factor vector, fixed/point vector and Arc descriptor. Roots
+charge their original root/input columns, byte/top columns and residual table;
+Softmax retains its original maximum, reciprocal and average, plus either literal
+score/broadcast tables or the existing computed input peak. Integer/evaluation
+scratch uses equality halves or blocked evaluation storage, rather than charging
+a full quadratic table for the computed path. Canonical grouped point maps and
+token-axis analysis are included; arbitrary callback allocations are excluded.
+
+Preparation charges equality vectors and cache growth without assuming coincident
+Fiat–Shamir points. Runtime relations include time/vocabulary/output equality
+scratch, public coefficient vectors and term construction. Observe creates and
+clears two coefficient arrays even though it retains no public factors. The
+pinned hash-table estimate includes bucket/control/alignment requests throughout
+growth; allocation tests check it with distinct public keys. Instance metadata
+borrows tables and clones their term/factor descriptions; computed instances
+create no such borrowed-table vectors.
+
+These bounds exclude the already-owned public plan/lowering, leaf/model witnesses,
+sources, sumcheck/computed-round state, windows, claims/openings, stack/runtime and
+allocator overhead. They authenticate no input and do not admit a cached CPU
+route. The remaining phase/lifetime bound and real-model execution are still owed.

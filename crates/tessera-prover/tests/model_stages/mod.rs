@@ -4,7 +4,7 @@
 //! Original source/opening and token/logit debts remain; this is not a model verdict.
 use super::*;
 use tessera_codec::SecretBuf;
-use tessera_prover::native::{ModelNativePlan, ModelNativeProver};
+use tessera_prover::native::{ModelNativePlan, ModelNativeProver, NativeMemory};
 use tessera_prover::stages::{NativeContext, NativeProver, StageError};
 use tessera_sumcheck::{Claim, Instance, Table};
 use tv_core::gadgets::model;
@@ -101,22 +101,70 @@ struct Broken<'a> {
 struct Compared<'a> {
     fast: ModelNativeProver<'a>,
     literal: ModelNativeProver<'a>,
+    fast_memory: NativeMemory,
+    literal_memory: NativeMemory,
+    fast_retained: u64,
+    literal_retained: u64,
 }
 impl NativeProver for Compared<'_> {
     fn prepare(&mut self, ctx: NativeContext<'_>) -> Result<(), StageError> {
-        self.literal.prepare(NativeContext {
-            stage: ctx.stage,
-            layer: ctx.layer,
-            zero: ctx.zero,
-        })?;
-        self.fast.prepare(ctx)
+        let mut result = None;
+        let measured = allocation_counter::measure(|| {
+            result = Some(self.literal.prepare(NativeContext {
+                stage: ctx.stage,
+                layer: ctx.layer,
+                zero: ctx.zero,
+            }))
+        });
+        result.unwrap()?;
+        assert!(
+            measured.bytes_total
+                <= self.literal_memory.prepared_peak_bytes()
+                    - self.literal_memory.construction_peak_bytes(),
+            "literal preparation requests {measured:?} {:?}",
+            self.literal_memory
+        );
+        assert!(
+            self.literal_retained + measured.bytes_max <= self.literal_memory.prepared_peak_bytes(),
+            "literal prepare {measured:?} {:?}",
+            self.literal_memory
+        );
+        let measured = allocation_counter::measure(|| result = Some(self.fast.prepare(ctx)));
+        result.unwrap()?;
+        assert!(
+            measured.bytes_total
+                <= self.fast_memory.prepared_peak_bytes()
+                    - self.fast_memory.construction_peak_bytes(),
+            "computed preparation requests {measured:?} {:?}",
+            self.fast_memory
+        );
+        assert!(
+            self.fast_retained + measured.bytes_max <= self.fast_memory.prepared_peak_bytes(),
+            "computed prepare {measured:?} {:?}",
+            self.fast_memory
+        );
+        Ok(())
     }
     fn claim(&self, tag: u32) -> Result<F, StageError> {
         self.fast.claim(tag)
     }
     fn instance(&self, tag: u32) -> Result<Instance<'_, F>, StageError> {
-        let fast = self.fast.instance(tag)?;
-        let literal = self.literal.instance(tag)?;
+        let mut value = None;
+        let measured = allocation_counter::measure(|| value = Some(self.fast.instance(tag)));
+        let fast = value.unwrap()?;
+        assert!(
+            measured.bytes_total <= self.fast_memory.instance_bytes(),
+            "computed instance {measured:?} {:?}",
+            self.fast_memory
+        );
+        let mut value = None;
+        let measured = allocation_counter::measure(|| value = Some(self.literal.instance(tag)));
+        let literal = value.unwrap()?;
+        assert!(
+            measured.bytes_total <= self.literal_memory.instance_bytes(),
+            "literal instance {measured:?} {:?}",
+            self.literal_memory
+        );
         if fast.computed_vars().is_some() {
             use tessera_sumcheck::{Prefix, Protocol, prove_batch};
             let prove = |i| {
@@ -239,10 +287,44 @@ pub fn prove_stages(
     }
     .unwrap();
     assert_eq!(prepared.leaf(), leaf);
+    let mut plans = None;
+    let planning = allocation_counter::measure(|| {
+        plans = Some((
+            native_plan.memory(&p.lowering, false).unwrap(),
+            native_plan.memory(&p.lowering, true).unwrap(),
+        ))
+    });
+    assert_eq!(planning.count_total, 0);
+    let (fast_memory, literal_memory) = plans.unwrap();
+    let mut fast = None;
+    let measured = allocation_counter::measure(|| {
+        fast =
+            Some(ModelNativeProver::new(native_plan, &p.lowering, actual, witness, proof).unwrap())
+    });
+    assert!(
+        measured.bytes_max <= fast_memory.construction_peak_bytes(),
+        "computed {measured:?} {fast_memory:?}"
+    );
+    let fast_retained = u64::try_from(measured.bytes_current).unwrap();
+    let mut literal = None;
+    let measured = allocation_counter::measure(|| {
+        literal = Some(
+            ModelNativeProver::new_literal(native_plan, &p.lowering, actual, witness, proof)
+                .unwrap(),
+        )
+    });
+    assert!(
+        measured.bytes_max <= literal_memory.construction_peak_bytes(),
+        "literal {measured:?} {literal_memory:?}"
+    );
+    let literal_retained = u64::try_from(measured.bytes_current).unwrap();
     let mut native = Compared {
-        fast: ModelNativeProver::new(native_plan, &p.lowering, actual, witness, proof).unwrap(),
-        literal: ModelNativeProver::new_literal(native_plan, &p.lowering, actual, witness, proof)
-            .unwrap(),
+        fast: fast.unwrap(),
+        literal: literal.unwrap(),
+        fast_memory,
+        literal_memory,
+        fast_retained,
+        literal_retained,
     };
     // Exercise transformations with distinct raw values even when a CPU fixture has equal operands.
     for meta in native_plan.native() {

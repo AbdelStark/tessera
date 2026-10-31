@@ -19,6 +19,8 @@ use tessera_sumcheck::{Claim, Instance, Table, Term};
 use crate::leaf::{LeafClaims, LeafLayout, ModelColumn, ModelWitness, token, tokens};
 use crate::stages::{NativeContext, NativeProver, StageError, WitnessSource};
 
+mod memory;
+pub use memory::NativeMemory;
 mod openings;
 mod runtime;
 mod score;

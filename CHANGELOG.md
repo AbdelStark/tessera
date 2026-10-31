@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Bound native prover construction, initial preparation and borrowed-instance metadata from public geometry, including computed/literal score modes, all retained tables/masks, runtime coefficient scratch, equality-cache growth and Arc descriptors; keep rounds/windows, openings and CPU admission separate (RFC-0018/0056, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Bound resident/cached tile allocation requests, including root comparison polynomials, Softmax witness copies and grouped lookup growth, output/share buffers, padding recounts and runtime keys; charge canonical count backing separately and retain the CPU admission floor (RFC-0018/0050, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Bound public graph/range validation, runtime source setup, replay input checks and grouped-column transfers from allocation requests, including repeated coverage walks and position-vector overlap; preserve validation and the CPU admission floor (RFC-0006/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
