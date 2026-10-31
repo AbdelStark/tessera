@@ -4,7 +4,7 @@
 use super::usage;
 use crate::{Input, io_error};
 use std::{
-    fs::{self, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -23,13 +23,34 @@ impl Drop for Temporary {
         let _ = fs::remove_file(&self.0);
     }
 }
+static NEXT: AtomicU64 = AtomicU64::new(0);
+
 pub(super) fn publish(path: &Path, bytes: &[u8]) -> Result<(), TesseraError> {
-    static NEXT: AtomicU64 = AtomicU64::new(0);
     atomic(path, bytes, &NEXT)?;
     crate::manifest::output_envelope(path, bytes);
     Ok(())
 }
+/// RFC-0003 envelope encoding uses one cleared bounded buffer while the message lives.
+/// Keep the directory protocol's exclusive 0600, sync, and no-clobber publication.
+pub(super) fn publish_envelope<T: Encode + ?Sized>(
+    path: &Path,
+    schema: &'static Schema,
+    value: &T,
+) -> Result<(), TesseraError> {
+    atomic_with(path, &NEXT, |file| {
+        envelope::write(file, schema, value).map(|_| ())
+    })?;
+    crate::manifest::output_file(path, schema);
+    Ok(())
+}
 fn atomic(path: &Path, bytes: &[u8], next: &AtomicU64) -> Result<(), TesseraError> {
+    atomic_with(path, next, |file| file.write_all(bytes))
+}
+fn atomic_with(
+    path: &Path,
+    next: &AtomicU64,
+    contents: impl FnOnce(&mut File) -> std::io::Result<()>,
+) -> Result<(), TesseraError> {
     let parent = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -53,7 +74,7 @@ fn atomic(path: &Path, bytes: &[u8], next: &AtomicU64) -> Result<(), TesseraErro
             Err(_) => return Err(TesseraError::new(ErrorCode::ResIo)),
         };
         let guard = Temporary(tmp);
-        file.write_all(bytes)
+        contents(&mut file)
             .and_then(|_| file.sync_all())
             .map_err(io_error("cannot write protocol output".into()))?;
         drop(file);
@@ -92,10 +113,10 @@ fn receive<T: Decode>(
 fn send<T: Encode>(
     dir: &Path,
     name: &str,
-    schema: &Schema,
+    schema: &'static Schema,
     message: &T,
 ) -> Result<(), TesseraError> {
-    publish(&dir.join(name), &envelope::seal(schema, message))
+    publish_envelope(&dir.join(name), schema, message)
 }
 pub(super) fn run(
     prover: &mut Prover<'_>,
@@ -151,6 +172,89 @@ pub(super) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn streaming_publication_is_exact_bounded_and_never_clobbers() {
+        use allocation_counter::measure;
+        let dir =
+            std::env::temp_dir().join(format!("tessera-stream-publication-{}", std::process::id()));
+        fs::create_dir(&dir).unwrap();
+        for size in [1 << 20, 8 << 20] {
+            let path = dir.join(format!("packet-{size}"));
+            let payload = vec![0xA5u8; size]; // Public synthetic bytes, not a proof.
+            let expected = envelope::seal(&schema::NI_PROOF, &payload);
+            let mut outcome = None;
+            let allocations = measure(|| {
+                outcome = Some(publish_envelope(&path, &schema::NI_PROOF, &payload));
+            });
+            outcome.unwrap().unwrap();
+            assert!(allocations.bytes_max <= 96 << 10, "{allocations:?}");
+            assert_eq!(fs::read(&path).unwrap(), expected);
+            assert_eq!(
+                publish_envelope(&path, &schema::NI_PROOF, &0u64)
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Usage
+            );
+            assert_eq!(fs::read(&path).unwrap(), expected);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::{PermissionsExt, symlink};
+                assert_eq!(
+                    fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                    0o600
+                );
+                let alias = dir.join(format!("alias-{size}"));
+                symlink(&path, &alias).unwrap();
+                assert_eq!(
+                    publish_envelope(&alias, &schema::NI_PROOF, &0u64)
+                        .unwrap_err()
+                        .code,
+                    ErrorCode::Usage
+                );
+                assert_eq!(fs::read(&path).unwrap(), expected);
+                fs::remove_file(alias).unwrap();
+            }
+        }
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
+        // Encoding or I/O failure must leave neither a partial output nor a temporary.
+        let path = dir.join("failed");
+        assert_eq!(
+            atomic_with(&path, &AtomicU64::new(0), |file| {
+                file.write_all(b"partial")?;
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::WriteZero,
+                    "injected",
+                ))
+            })
+            .unwrap_err()
+            .code,
+            ErrorCode::ResIo
+        );
+        assert!(!path.exists());
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
+        // The streaming codec checks that both Encode passes agree before publishing.
+        struct Changing(std::cell::Cell<bool>);
+        impl Encode for Changing {
+            fn encode_to<S: tessera_codec::Sink + ?Sized>(&self, sink: &mut S) {
+                if self.0.replace(true) {
+                    sink.put(b"x");
+                }
+            }
+        }
+        assert_eq!(
+            publish_envelope(
+                &path,
+                &schema::NI_PROOF,
+                &Changing(std::cell::Cell::new(false))
+            )
+            .unwrap_err()
+            .code,
+            ErrorCode::ResIo
+        );
+        assert!(!path.exists());
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
+        fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn publishing_preserves_outputs_and_receive_checks_deadlines_and_envelopes() {
         let dir =

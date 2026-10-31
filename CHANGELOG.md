@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Stream NI proof and producer Live packet envelopes through a cleared bounded buffer, retaining exclusive 0600 temporary files, synchronized no-overwrite publication and identical manifest entries (RFC-0003/0014/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Batch generated table/count reads using checked spare public memory, preserving the 256-row fallback and existing window cuts; charge the selected source scratch and retain exact count/proof behavior (RFC-0018/0054, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Count public proof-byte metrics through the existing TCE encoders without retaining temporary output buffers; preserve reported parts, proof bytes and CPU admission (RFC-0003/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).

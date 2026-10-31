@@ -309,11 +309,12 @@ fn produce(
         )?;
     } else {
         let proof = prover.prove_non_interactive(&batch).map_err(prover_error)?;
-        directory::publish(
+        directory::publish_envelope(
             a.out
                 .as_deref()
                 .ok_or_else(|| usage("proof output required"))?,
-            &envelope::seal(&schema::NI_PROOF, &proof),
+            &schema::NI_PROOF,
+            &proof,
         )?;
     }
     let mut report = serde_json::json!({"schema":"tessera.proof-run/1","protocol":"tessera-protocol/1","params":params.id,"mode":if mode==Mode::Live {"Live"}else{"NonInteractive"},"statement_digest":statement_digest,"weights_root":root,"test_parameters":params.id=="test-small/1","zero_knowledge":false,"verifier_acceptance":false});

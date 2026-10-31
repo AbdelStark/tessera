@@ -24,7 +24,7 @@ and must also appear in any whole-process measurement.
 | P4 advice | Resident witness/source tile, encoder, target/group metadata, row block, sampled column, `(G+1)*(k+P)` clearing extension-field accumulators, and all public combined-row outputs during the final copy |
 | P4 weights | Retained advice outputs and targets, one matrix's regenerated fold, committed weight trees and accumulated weight messages |
 | P5 | Resident witness/source tile, encoder, retained commitment trees, distinct queried columns times all committed rows, public output copies, weight answers and multiproofs |
-| Packet assembly | Retained proof messages and their temporary encodings, including metrics' proof-size encodings |
+| Packet assembly | Retained proof messages, encoder-owned scratch and the bounded envelope writer; manifest metadata remains separate |
 
 `ModelWitness` is freed after native construction: native tables own the leaf
 inputs they need, and reduction stages read the original witness. Once
@@ -141,8 +141,7 @@ Round1, the same sumcheck/opening parts of Round2, and Round3. It retains no enc
 output buffer for those measurements. Labels and part membership stay the same.
 The metrics-only sum saturates at `u64::MAX` and cannot change session state or
 serve as an allocation bound. Allocations inside an encoder, retained proof
-messages and final packet publication remain separate costs. The CLI's envelope
-encoding is not removed by this change.
+messages and final packet publication remain separate costs.
 
 ## Generated table read chunks
 
@@ -176,3 +175,22 @@ schedules. Component measurements cannot stand in for a complete phase bound:
 public group/query bounds, all retained metadata, constructor scratch, output-copy
 peaks and clearing must also be included. The real NI-100 1B proof, full runtime
 soundness budget and the remaining #617 requirements are still owed.
+
+## Packet publication
+
+The NI CLI proof and producer Live messages use the existing streaming TCE envelope
+writer. Its first pass sizes the header, and its second pass writes and hashes the
+same encoding through a clearing buffer of at most 64 KiB. The message remains live;
+there is no complete encoded-envelope allocation beside it. Any allocation an
+encoder itself owns remains separate from this output-buffer bound.
+
+Directory publication still creates temporary files exclusively with mode 0600,
+finishes and syncs the file, and hard-links it to a fresh final path. Existing files
+and symlinks cause the same usage error. Failure removes the unpublished temporary.
+The envelope writer's rename-based file helper is not used because its replacement
+semantics would violate this no-overwrite contract. Manifest artifact metadata uses
+the existing bounded 32-byte trailer read and preserves secret-digest redaction.
+
+Retained proof objects, filesystem and manifest bookkeeping, input preparation and
+all earlier phases still require their own charges. This buffer removal changes
+neither CPU admission nor the unresolved complete cached-route phase bound.

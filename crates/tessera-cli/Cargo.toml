@@ -42,6 +42,7 @@ otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", 
 test-rng = ["tessera-prover/test-rng"]
 
 [dev-dependencies]
+allocation-counter = "0.8"
 # The integration example's simulated issuer draws a public nonce (RFC-0061).
 getrandom = { version = "0.3", features = ["std"] }
 tessera-scoring = { path = "../tessera-scoring" }
