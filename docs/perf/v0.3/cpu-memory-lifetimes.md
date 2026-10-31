@@ -112,6 +112,28 @@ constructor overlap, allocator bookkeeping and every other phase remain separate
 Allocation tests measure requested bytes, not whole-process RSS. The CPU resident
 floor and admission rule remain unchanged; real-model qualification is still owed.
 
+## Multiplicity backing
+
+`MultiplicityPlan` chooses dense counts or fixed weighted updates from public table
+rows and an update bound. It uses `min(8*padded_rows, 16*max_updates)` bytes of backing
+payload; a tie uses dense counts. The actual constructor uses this same plan and
+checks target addressability before reserving storage. Weighted entries remain
+fully initialized, including unused entries; secret sparsity never changes storage
+or traversal length (INV-ARCH-2, OBS-6).
+
+`Engine::runtime_multiplicity_plans` derives the used tables, row counts and update
+bounds through the existing canonical gadget/runtime builders. Bounds include every
+lookup occurrence, per-dimension padding contribution, active request's padded
+runtime keys and the final row-0 tail (RFC-0008/0045/0071). Grouping changes the tail's
+weight, not its number of stored contributions. This method reads no weights,
+tokens or witness values. Its architecture, engine and runtime must describe the
+same canonical proof unit.
+
+The method builds temporary public metadata and may prepare gadget cores. Those
+allocations, retained engine cores, descriptors and constructor overlap remain
+separate charges. A backing plan authenticates neither arbitrary supplied metadata
+nor a host budget. CPU admission and the resident-cell floor remain unchanged.
+
 ## Evidence required before changing admission
 
 The tensor tests compare every graph tensor with the existing resident engine,

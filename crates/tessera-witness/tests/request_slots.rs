@@ -246,6 +246,20 @@ fn resident_and_regenerator_agree_across_batched_runtime_tiles_and_protocols() {
     let slot_len = lowering.graph.slots.as_ref().expect("slots").slot_len;
     let bad_tokens = Secret::new(pack_batch_tokens(slot_len, &[&r0, &wrong_r1, &r2]));
     let engine = Engine::new(&lowering).expect("engine");
+    // Public planning precedes any witness construction, even for a later refused continuation.
+    let plans = engine
+        .runtime_multiplicity_plans(&fixture.model.arch, &runtime)
+        .expect("public plans");
+    assert!(
+        plans
+            .windows(2)
+            .all(|pair| pair[0].table() < pair[1].table())
+    );
+    assert!(
+        plans
+            .iter()
+            .any(|plan| plan.table() == runtime.certificate().unwrap().table)
+    );
     let first = engine
         .run(&fixture.model, &bad_tokens)
         .expect("model pass still runs");
@@ -311,6 +325,24 @@ fn check_batch_runtime_equivalence(
         let runtime =
             RuntimePlan::derive_batch(&lowering, &batch_sel, &claims, requests).expect("runtime");
         let advice = ModelAdviceLayout::runtime(&lowering, &runtime, &claims).expect("advice");
+        let plans = engine
+            .runtime_multiplicity_plans(&model.arch, &runtime)
+            .expect("public count plans");
+        let planned: std::collections::BTreeSet<_> =
+            plans.iter().map(|plan| plan.table()).collect();
+        let required: std::collections::BTreeSet<_> = advice
+            .tiles()
+            .iter()
+            .filter_map(|tile| {
+                if let tessera_compiler::Tile::Table { table } = tile.tile {
+                    Some(tessera_ir::TableId(table))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(plans.len(), planned.len());
+        assert_eq!(planned, required);
         let resident = Resident::runtime(&engine, &runtime, model, &first).expect("resident");
         let borrowed = Resident::runtime_from_tensors(&engine, &runtime, model, &cached)
             .expect("borrowed INT8 source");
@@ -328,6 +360,14 @@ fn check_batch_runtime_equivalence(
         }
         for (idx, tile) in advice.tiles().iter().enumerate() {
             let rt = resident.tile(tile).expect("resident tile");
+            if let Some(column) = rt.multiplicities() {
+                let plan = plans
+                    .iter()
+                    .find(|plan| plan.table() == column.table())
+                    .unwrap();
+                assert_eq!(plan.rows(), column.rows());
+                assert_eq!(plan.payload_bytes(), rt.bytes() as u64);
+            }
             let gt = regenerator.tile(tile).expect("regenerator tile");
             assert_same_tile(&rt, &gt, &format!("protocol={protocol} q={q} tile={idx}"));
             let bt = borrowed.tile(tile).expect("borrowed INT8 tile");
@@ -336,6 +376,85 @@ fn check_batch_runtime_equivalence(
                 &bt,
                 &format!("borrowed protocol={protocol} q={q} tile={idx}"),
             );
+        }
+    }
+}
+
+#[test]
+fn public_count_plans_include_each_runtime_request_without_a_witness() {
+    let fixture = &common::conformance()[0];
+    let public = PublicModel::of(&fixture.model);
+    for protocol in [PROTOCOL_VERSION, PROTOCOL_VERSION_2] {
+        let lengths = [3u32, 4, 2];
+        let lowering = lower_batch_for_protocol(protocol, public, &lengths).expect("lower");
+        let ranges = analyze(&lowering.graph, &lowering.tables).expect("ranges");
+        let policy = common::policy(2);
+        let selection =
+            select(&lowering.graph, &ranges, &lowering.tables, &policy).expect("select");
+        let params = ParamSetId(Ascii::new("test-small/1").expect("ascii"));
+        let claims =
+            claim_list(public, &selection, &policy, common::TEST_SMALL, params).expect("claims");
+        let engine = Engine::new(&lowering).expect("engine");
+        let inactive = [(3, 0), (4, 0), (2, 0)];
+        let base_runtime =
+            RuntimePlan::derive_batch(&lowering, &selection, &claims, &inactive).expect("base");
+        let base = engine
+            .runtime_multiplicity_plans(&fixture.model.arch, &base_runtime)
+            .expect("base plans");
+        for requests in [inactive, [(2, 1), (2, 2), (2, 0)], [(1, 2), (2, 2), (1, 1)]] {
+            let runtime = RuntimePlan::derive_batch(&lowering, &selection, &claims, &requests)
+                .expect("runtime");
+            let plans = engine
+                .runtime_multiplicity_plans(&fixture.model.arch, &runtime)
+                .expect("plans");
+            // Count each active request's padded output/vocabulary rectangle independently of
+            // GreedyKeyColumn::entries and the production update-bound derivation (RFC-0071).
+            let power = |n: u32| {
+                let mut p = 1u64;
+                while p < u64::from(n) {
+                    p *= 2;
+                }
+                p
+            };
+            let entries: u64 = requests
+                .iter()
+                .filter(|&&(_, output)| output != 0)
+                .map(|&(_, output)| power(output) * power(fixture.model.arch.vocab))
+                .sum();
+            let certificate = runtime.certificate();
+            // Use an independent consumer for table coverage: two calls to this planner
+            // could otherwise omit the same table and agree (mutation control, RFC-0018).
+            let advice = ModelAdviceLayout::runtime(&lowering, &runtime, &claims).expect("advice");
+            let expected: std::collections::BTreeSet<_> = advice
+                .tiles()
+                .iter()
+                .filter_map(|tile| {
+                    if let tessera_compiler::Tile::Table { table } = tile.tile {
+                        Some(tessera_ir::TableId(table))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            assert_eq!(
+                plans.iter().map(|plan| plan.table()).collect::<Vec<_>>(),
+                expected.into_iter().collect::<Vec<_>>()
+            );
+            for plan in plans {
+                let baseline = base
+                    .iter()
+                    .find(|p| p.table() == plan.table())
+                    .map_or(1, |p| p.max_updates());
+                let added = if certificate.is_some_and(|c| c.table == plan.table()) {
+                    entries
+                } else {
+                    0
+                };
+                assert_eq!(plan.max_updates(), baseline + added);
+                if let Some(c) = certificate.filter(|c| c.table == plan.table()) {
+                    assert_eq!(plan.rows(), 1u64 << c.range_bits);
+                }
+            }
         }
     }
 }

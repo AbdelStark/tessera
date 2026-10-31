@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Derive multiplicity backing plans from public table and runtime metadata through the same dense/weighted storage decision used by allocation; check addressability before reserving storage and run independent padded-column histograms in CI (RFC-0008/0018/0071, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Preflight materialized lookup-core lengths without allocation, reserve each core once, and report dense-core allocation failures as `ERR-RES-MEMORY`. Table values, digests, parameter bundles and CPU admission remain unchanged (RFC-0008/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Derive public opening geometry through the CPU producer's original-source traversal, using opaque coordinate origins and retaining zero-weight images and all ChannelParams reads. Counts support future memory planning; CPU admission and proof artifacts remain unchanged (RFC-0011/0012/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).

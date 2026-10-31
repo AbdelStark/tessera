@@ -27,6 +27,96 @@ enum Storage {
     Weighted(SecretBuf<Update>),
 }
 
+/// Allocation geometry for one canonical multiplicity column (RFC-0008, RFC-0018).
+/// The public update bound includes every real/weighted padding contribution and the final
+/// row-0 tail. This plan does not derive or authenticate that bound: its caller must do so
+/// from the canonical public graph/runtime metadata, never from secret sparsity.
+///
+/// Counts describe requested backing payload only. Descriptors, constructor overlap,
+/// allocator bookkeeping and all other proof phases remain separate charges.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MultiplicityPlan {
+    table: TableId,
+    actual: u64,
+    rows: u64,
+    max_updates: u64,
+    dense: bool,
+    capacity: usize,
+}
+
+impl MultiplicityPlan {
+    /// Choose the smaller backing from public row/update bounds; a byte tie uses dense storage.
+    /// No allocation or witness read occurs. A zero update bound is preserved, but permits no
+    /// later contribution, including the final row-0 tail.
+    ///
+    /// # Errors
+    /// `Internal` for `actual` outside `1..=2^32`; `MemoryTable` if the chosen buffer cannot
+    /// fit the target address space. Host-budget feasibility remains the caller's responsibility.
+    pub fn new(table: TableId, actual: u64, max_updates: u64) -> Result<Self, WitnessError> {
+        if actual == 0 {
+            return Err(WitnessError::Internal {
+                rule: "a multiplicity table has a row",
+            });
+        }
+        if actual > 1 << 32 {
+            return Err(WitnessError::Internal {
+                rule: "a multiplicity table has at most 2^32 rows",
+            });
+        }
+        let rows = actual.next_power_of_two();
+        let dense_bytes = u128::from(rows) * size_of::<u64>() as u128;
+        let weighted_bytes = u128::from(max_updates) * size_of::<Update>() as u128;
+        let dense = dense_bytes <= weighted_bytes;
+        let entries = if dense { rows } else { max_updates };
+        let element = if dense {
+            size_of::<u64>()
+        } else {
+            size_of::<Update>()
+        };
+        let memory = WitnessError::MemoryTable { table };
+        let capacity = usize::try_from(entries).map_err(|_| memory)?;
+        capacity
+            .checked_mul(element)
+            .filter(|&bytes| bytes <= isize::MAX as usize)
+            .ok_or(memory)?;
+        Ok(Self {
+            table,
+            actual,
+            rows,
+            max_updates,
+            dense,
+            capacity,
+        })
+    }
+
+    /// Canonical public table identity.
+    pub fn table(&self) -> TableId {
+        self.table
+    }
+    /// Padded logical row count, independent of the chosen representation.
+    pub fn rows(&self) -> u64 {
+        self.rows
+    }
+    /// Fixed public bound on all weighted contributions, including the row-0 tail.
+    pub fn max_updates(&self) -> u64 {
+        self.max_updates
+    }
+    /// Whether this plan retains a dense count array rather than fixed weighted updates.
+    pub fn is_dense(&self) -> bool {
+        self.dense
+    }
+    /// Requested backing payload in bytes, excluding descriptors and allocator overhead.
+    pub fn payload_bytes(&self) -> u64 {
+        // The chosen payload never exceeds 8*2^32 bytes, so neither cast nor product overflows.
+        let element = if self.dense {
+            size_of::<u64>()
+        } else {
+            size_of::<Update>()
+        };
+        self.capacity as u64 * element as u64
+    }
+}
+
 /// One canonical multiplicity column, including zero table-tree padding (RFC-0045).
 ///
 /// Physical storage may be dense or fixed-capacity weighted updates. Public table/update
@@ -120,42 +210,29 @@ pub(crate) struct Multiplicities {
 impl Multiplicities {
     /// `max_updates` includes weighted padding contributions and the final row-0 tail.
     pub(crate) fn new(table: TableId, actual: u64, max_updates: u64) -> Result<Self, WitnessError> {
-        if actual == 0 {
-            return Err(WitnessError::Internal {
-                rule: "a multiplicity table has a row",
-            });
-        }
-        if actual > 1 << 32 {
-            return Err(WitnessError::Internal {
-                rule: "a multiplicity table has at most 2^32 rows",
-            });
-        }
-        let rows = actual.next_power_of_two();
+        let plan = MultiplicityPlan::new(table, actual, max_updates)?;
         let memory = WitnessError::MemoryTable { table };
-        let dense_bytes = u128::from(rows) * size_of::<u64>() as u128;
-        let weighted_bytes = u128::from(max_updates) * size_of::<Update>() as u128;
-        let storage = if dense_bytes <= weighted_bytes {
-            let size = usize::try_from(rows).map_err(|_| memory)?;
+        let storage = if plan.dense {
+            let size = plan.capacity;
             let mut counts = SecretBuf::try_with_capacity(size).map_err(|_| memory)?;
             counts.extend(core::iter::repeat_n(0, size));
             Storage::Dense(counts)
         } else {
-            let capacity = usize::try_from(max_updates).map_err(|_| memory)?;
-            capacity.checked_mul(size_of::<Update>()).ok_or(memory)?;
+            let capacity = plan.capacity;
             let mut updates = SecretBuf::try_with_capacity(capacity).map_err(|_| memory)?;
             // Fixed initialized dummy entries keep traversal length/capacity public (OBS-6).
             updates.extend(core::iter::repeat_n(Update { row: 0, count: 0 }, capacity));
             Storage::Weighted(updates)
         };
         Ok(Self {
-            table,
-            actual,
-            max_updates,
+            table: plan.table,
+            actual: plan.actual,
+            max_updates: plan.max_updates,
             updates: 0,
             total: 0,
             column: MultiplicityColumn {
-                table,
-                rows,
+                table: plan.table,
+                rows: plan.rows,
                 storage,
             },
         })
@@ -212,6 +289,125 @@ impl Multiplicities {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn public_backing_plan_matches_allocations_at_dense_weighted_boundaries() {
+        let boundaries = [
+            0u64, 1, 2, 3, 4, 7, 8, 15, 16, 17, 31, 32, 63, 64, 65, 127, 128, 129,
+        ];
+        for actual in boundaries.into_iter().filter(|&n| n != 0) {
+            let mut padded = 1u64;
+            while padded < actual {
+                padded *= 2;
+            }
+            for max_updates in boundaries {
+                let mut plan = None;
+                let planning = allocation_counter::measure(|| {
+                    plan = Some(MultiplicityPlan::new(TableId(7), actual, max_updates).unwrap());
+                });
+                assert_eq!(planning.bytes_total, 0);
+                let plan = plan.unwrap();
+                let dense_bytes = 8 * padded;
+                let weighted_bytes = 16 * max_updates;
+                assert_eq!(plan.rows(), padded);
+                assert_eq!(plan.is_dense(), dense_bytes <= weighted_bytes);
+                assert_eq!(plan.payload_bytes(), dense_bytes.min(weighted_bytes));
+                let mut counts = None;
+                let allocated = allocation_counter::measure(|| {
+                    counts = Some(Multiplicities::new(TableId(7), actual, max_updates).unwrap());
+                });
+                let counts = counts.unwrap();
+                assert_eq!(
+                    u64::try_from(allocated.bytes_current).unwrap(),
+                    plan.payload_bytes()
+                );
+                assert_eq!(allocated.bytes_max, plan.payload_bytes());
+                assert_eq!(counts.column.bytes() as u64, plan.payload_bytes());
+                assert_eq!(counts.column.rows(), padded);
+                match &counts.column.storage {
+                    Storage::Dense(values) => {
+                        assert!(plan.is_dense());
+                        assert_eq!(values.len() as u64, padded);
+                        assert!(values.iter().all(|&value| value == 0));
+                    }
+                    Storage::Weighted(updates) => {
+                        assert!(!plan.is_dense());
+                        assert_eq!(updates.len() as u64, max_updates);
+                        assert!(
+                            updates
+                                .iter()
+                                .all(|update| update.row == 0 && update.count == 0)
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn public_backing_plan_preserves_exact_domain_and_zero_bound_refusals() {
+        for (actual, rule) in [
+            (0, "a multiplicity table has a row"),
+            (
+                (1u64 << 32) + 1,
+                "a multiplicity table has at most 2^32 rows",
+            ),
+        ] {
+            let measured = allocation_counter::measure(|| {
+                assert_eq!(
+                    MultiplicityPlan::new(TableId(7), actual, u64::MAX),
+                    Err(WitnessError::Internal { rule })
+                );
+            });
+            assert_eq!(measured.bytes_total, 0);
+        }
+        let mut counts = Multiplicities::new(TableId(7), 1, 0).unwrap();
+        assert_eq!(
+            counts.add(0, 0),
+            Err(WitnessError::Internal { rule: BOUND })
+        );
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn huge_logical_backing_plans_allocate_nothing_and_never_wrap_update_bytes() {
+        let measured = allocation_counter::measure(|| {
+            let sparse = MultiplicityPlan::new(TableId(7), 1 << 32, 3).unwrap();
+            assert!(!sparse.is_dense());
+            assert_eq!(sparse.rows(), 1 << 32);
+            assert_eq!(sparse.payload_bytes(), 48);
+            let dense = MultiplicityPlan::new(TableId(7), 1 << 32, u64::MAX).unwrap();
+            assert!(dense.is_dense());
+            assert_eq!(dense.payload_bytes(), 8u64 << 32);
+        });
+        assert_eq!(measured.bytes_total, 0);
+        assert_eq!(measured.bytes_max, 0);
+    }
+
+    #[cfg(target_pointer_width = "32")]
+    #[test]
+    fn backing_plan_refuses_an_unaddressable_dense_column_before_allocation() {
+        assert_eq!(
+            MultiplicityPlan::new(TableId(7), 1 << 32, u64::MAX),
+            Err(WitnessError::MemoryTable { table: TableId(7) })
+        );
+    }
+
+    #[test]
+    fn grouped_tail_weight_preserves_the_public_backing_plan() {
+        let plan = MultiplicityPlan::new(TableId(7), 1 << 32, 2).unwrap();
+        for entries in [4u64, 16, 32] {
+            let mut counts = Multiplicities::new(TableId(7), 1 << 32, 2).unwrap();
+            counts.add(7, 3).unwrap();
+            let column = counts.finish(Some(entries)).unwrap();
+            assert_eq!(column.bytes() as u64, plan.payload_bytes());
+            let mut first = SecretBuf::filled(0, 8);
+            column.read_rows(0, &mut first).unwrap();
+            assert_eq!(first[0], entries - 3);
+            assert_eq!(first[7], 3);
+            assert!(first[1..7].iter().all(|&count| count == 0));
+        }
+    }
 
     #[test]
     fn canonical_padding_chunks_and_exact_refusals() {
