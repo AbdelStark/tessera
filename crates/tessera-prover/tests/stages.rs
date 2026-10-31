@@ -3009,3 +3009,121 @@ fn stage_source_geometry_never_reads_witness_values() {
         );
     }
 }
+
+#[test]
+fn public_metadata_heap_counts_graph_nested_spare_capacity() {
+    // RFC-0006/0018: retained public metadata, not tensor payload or validation
+    // scratch. Empty vectors with spare storage must remain in the charge.
+    let mut graph = None;
+    let measured = allocation_counter::measure(|| {
+        let mut nodes = Vec::with_capacity(11);
+        nodes.push(tessera_ir::Node {
+            id: tessera_ir::NodeId(0),
+            op: Op::Transpose {
+                perm: Vec::with_capacity(23),
+            },
+            inputs: Vec::with_capacity(7),
+            outputs: Vec::with_capacity(9),
+        });
+        let mut tensors = Vec::with_capacity(13);
+        tensors.push(tessera_ir::TensorSpec {
+            id: TensorId(0),
+            shape: Vec::with_capacity(17),
+            ty: IntType::I32,
+            range: IntRange { lo: 0, hi: 1 },
+            kind: NodeKind::Virtual,
+        });
+        let mut constants = Vec::with_capacity(19);
+        constants.push(Vec::with_capacity(29));
+        constants.push(Vec::with_capacity(31));
+        let mut shift_classes = Vec::with_capacity(5);
+        shift_classes.push(Vec::with_capacity(37));
+        graph = Some(Graph {
+            nodes,
+            tensors,
+            constants,
+            shift_classes,
+            weights: Vec::with_capacity(3),
+            slots: Some(tessera_ir::BatchSlots {
+                slot_len: 4,
+                lengths: Vec::with_capacity(41),
+            }),
+        });
+    });
+    let graph = graph.unwrap();
+    let sizing = allocation_counter::measure(|| {
+        assert_eq!(
+            graph.heap_bytes(),
+            Some(u64::try_from(measured.bytes_current).unwrap())
+        );
+    });
+    assert_eq!(sizing.count_total, 0);
+    for name in MODELS {
+        let (lowering, _, _) = setup(name);
+        let mut copy = None;
+        let retained = allocation_counter::measure(|| {
+            copy = Some(lowering.graph.clone());
+        });
+        assert_eq!(
+            copy.as_ref().unwrap().heap_bytes(),
+            Some(u64::try_from(retained.bytes_current).unwrap())
+        );
+    }
+}
+
+#[test]
+fn public_metadata_heap_counts_schedule_claims_coefficients_and_layers() {
+    use tessera_compiler::schedule::{Factor, Layers, Member};
+    for name in MODELS {
+        let (_, schedule, _) = setup(name);
+        let mut held = None;
+        let measured = allocation_counter::measure(|| {
+            let mut copy = schedule.clone();
+            copy.sites.reserve(13);
+            copy.stages.reserve(7);
+            copy.pool.reserve(11);
+            for stage in &mut copy.stages {
+                stage.instances.reserve(17);
+                stage.claims.reserve(19);
+                for instance in &mut stage.instances {
+                    instance.point.reserve(23);
+                    instance.challenges.reserve(29);
+                }
+                for claim in &mut stage.claims {
+                    claim.point.reserve(31);
+                    claim.atoms.reserve(7);
+                    claim.public.reserve(5);
+                    claim.parts.reserve(11);
+                }
+            }
+            // Sizing needs no valid witness or claim. Force the less common
+            // nested ownership paths, including zero-length allocated points.
+            let atom = copy
+                .stages
+                .iter_mut()
+                .flat_map(|s| &mut s.claims)
+                .flat_map(|c| &mut c.atoms)
+                .next()
+                .unwrap();
+            atom.layers = Layers::Eq(Vec::with_capacity(37));
+            atom.coefficient.push(vec![Factor::Lt {
+                coords: Vec::with_capacity(41),
+                len: 1,
+            }]);
+            atom.combined.push(Member {
+                kind: atom.kind,
+                coefficient: vec![Vec::with_capacity(43)],
+            });
+            held = Some(copy);
+        });
+        let copy = held.unwrap();
+        let sizing = allocation_counter::measure(|| {
+            assert_eq!(
+                copy.heap_bytes(),
+                Some(u64::try_from(measured.bytes_current).unwrap()),
+                "{name}"
+            );
+        });
+        assert_eq!(sizing.count_total, 0);
+    }
+}

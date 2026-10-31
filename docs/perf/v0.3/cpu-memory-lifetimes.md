@@ -710,3 +710,26 @@ Original borrowed operands/points/kernel, original relation objects retained
 separately, outer relation/instance containers, returned claims and subsequent
 sumcheck/wrapper work, callbacks and runtime/allocator overhead remain additional.
 These are producer charges and leave CPU admission unchanged.
+
+### Retained graph metadata
+
+`Graph::heap_bytes` counts the current requested heap storage of the public graph:
+top-level node, tensor, constant, shift-class and weight-binding capacities;
+every node's input/output and transpose-permutation capacity; tensor shapes;
+each constant and class vector; and optional request-slot lengths. Empty vectors
+with spare capacity still count. It reads no constant or tensor values and does
+not allocate or validate. Exhaustive graph, node, tensor and operation patterns
+make new owning fields require an accounting decision at compile time.
+
+The inline graph, construction and validation scratch, tensor payloads, other
+compiler/layout metadata and allocator overhead remain separate. This getter
+does not alter CPU admission or enable the cached driver (RFC-0006/0018, #641).
+
+`LayerMap::heap_bytes` counts its nested input-kind arrays, checkpoint ids and
+uniformity flags. `StageSchedule::heap_bytes` adds its own layer map, sites,
+stage/instance/claim/pool arrays, all symbolic point and layer coordinates,
+coefficient products and LT-coordinate vectors, combined-selection coefficients,
+public terms and nested pool-part atom indices. These measure retained capacity
+only, with the same exclusions as graph accounting. Tests compare cloned real
+conformance schedules with allocator measurements after adding spare storage
+and less common nested coefficient/layer ownership (RFC-0037/0018).

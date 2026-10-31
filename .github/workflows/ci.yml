@@ -210,6 +210,7 @@ jobs:
           cargo test -p tessera-prover --lib stages:: --locked -- --test-threads=1
           cargo test -p tessera-prover --test stages --locked stage_state_memory_covers -- --test-threads=1
           cargo test -p tessera-prover --test stages --locked stage_source_geometry -- --test-threads=1
+          cargo test -p tessera-prover --test stages --locked public_metadata_heap_counts -- --test-threads=1
           cargo test -p tessera-prover --lib openings::memory --locked -- --test-threads=1
           cargo test -p tessera-sumcheck --lib prover::memory --locked -- --test-threads=1
           cargo test -p tessera-sumcheck --test shared --test batch_memory --test window_memory --test relation_memory --locked -- --test-threads=1

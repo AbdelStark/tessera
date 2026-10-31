@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Count graph, layer-map and stage-schedule public metadata by actual nested vector capacities, including empty vectors with spare storage, separately from validation scratch and tensor payloads (RFC-0006/0037/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Bound canonical matmul, elementwise, rotation, selection and bit-recomposition table construction, retained contractions/public equality tables and borrowed-instance metadata from public geometry; keep original operands and later proof work separate (RFC-0010/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Account for canonical stage-source callback captures, column/plan/factor vectors and original resident inputs from public geometry; preserve relation values and keep contraction/construction work separately charged (RFC-0018/0055, [#641](https://github.com/AbdelStark/tessera/issues/641)).
