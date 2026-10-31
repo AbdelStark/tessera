@@ -14,6 +14,42 @@ use tessera_ir::{
     AdviceLayoutParams, ClaimList, CommitmentLayout, GadgetPolicy, ParamSetId, WeightLayoutParams,
 };
 
+// Deliberately no field operations: public opening geometry must preserve origins by copying.
+fn assert_opaque_points(
+    mapped: &ModelAdviceLayout<'_>,
+    source: AdviceSource,
+    point: &[GoldilocksExt2],
+) {
+    #[derive(Clone, Copy, Debug)]
+    enum Origin {
+        Zero,
+        One,
+        Input(usize),
+    }
+    let origins: Vec<_> = (0..point.len()).map(Origin::Input).collect();
+    let geometry = mapped
+        .claim_points(source, &origins, Origin::Zero, Origin::One)
+        .unwrap()
+        .map(|image| {
+            image
+                .unwrap()
+                .into_iter()
+                .map(|c| match c {
+                    Origin::Zero => GoldilocksExt2::ZERO,
+                    Origin::One => GoldilocksExt2::ONE,
+                    Origin::Input(i) => point[i],
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let actual = mapped
+        .claim(source, point)
+        .unwrap()
+        .map(|image| image.unwrap().point)
+        .collect::<Vec<_>>();
+    assert_eq!(geometry, actual);
+}
+
 fn repeat_points<T: Clone>(points: &mut Vec<(tessera_ir::QuantPoint, T)>, layers: u32) {
     let original = points.clone();
     for copy in 1..16 {
@@ -545,6 +581,7 @@ fn every_model_source_location_point_zero_row_and_segment_matches_the_oracle() {
                 }
 
                 if !matches!(actual.tile, Tile::Attention { .. }) {
+                    assert_opaque_points(&mapped, source, &natural);
                     let images = mapped
                         .claim(source, &natural)
                         .unwrap()
@@ -668,6 +705,7 @@ fn whole_attention_claims_reconstruct_over_the_extension_field_with_partial_boxe
                             }
                         }
                     }
+                    assert_opaque_points(&mapped, source, &r);
                     let images = mapped
                         .claim(source, &r)
                         .unwrap()
@@ -842,6 +880,7 @@ fn runtime_catalog_and_every_tail_location_match_the_independent_oracle() {
                     && place.first_row() >> (bit - layout.params().log2_k) & 1 == 1;
                 image.push(if fixed { Fp2::ONE } else { Fp2::ZERO });
             }
+            assert_opaque_points(&mapped, *source, &natural);
             let actual = mapped
                 .claim(*source, &natural)
                 .unwrap()

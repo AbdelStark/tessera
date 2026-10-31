@@ -1955,6 +1955,28 @@ fn folding_pass_matches_every_independent_weight_opening_vector() {
             let full = layout
                 .channel_point(site_matrix, &ch_pt, &lay_pt)
                 .expect("channel point");
+            #[derive(Clone, Copy)]
+            enum Origin {
+                Zero,
+                One,
+                Channel(usize),
+                Layer(usize),
+            }
+            let channels: Vec<_> = (0..ch_pt.len()).map(Origin::Channel).collect();
+            let layers: Vec<_> = (0..lay_pt.len()).map(Origin::Layer).collect();
+            let symbolic = layout
+                .channel_point_geometry(site_matrix, &channels, &layers, Origin::Zero, Origin::One)
+                .unwrap();
+            let lifted: Vec<_> = symbolic
+                .into_iter()
+                .map(|c| match c {
+                    Origin::Zero => Fp2::ZERO,
+                    Origin::One => Fp2::ONE,
+                    Origin::Channel(i) => ch_pt[i],
+                    Origin::Layer(i) => lay_pt[i],
+                })
+                .collect();
+            assert_eq!(lifted, full);
             let log2_k = layout.matrix(matrix).log2_k() as usize;
             assert_eq!(
                 &full[..log2_k],

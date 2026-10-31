@@ -162,6 +162,8 @@ fn check_api(model: &IntegerModel, n: u32, prompt: u32) {
         protocol::MessageKind::ColumnQueries,
     );
     let proof = prover.prove_non_interactive(&batch).unwrap();
+    let geometry = public_opening_geometry(&plan, &batch, proof.round1.leaf_groups);
+    assert!(proof.round2.advice_combined.len() <= geometry.groups() + 1);
     cli::check(&plan, &batch, &weights, &proof);
     out_of_order(
         prover.prove_non_interactive(&batch),
@@ -710,6 +712,8 @@ fn public_cpu_api_groups_the_leaf_stage_under_a_forced_budget() {
         );
         let proof = proof.unwrap();
         assert_eq!(proof.round1.leaf_groups, groups);
+        let geometry = public_opening_geometry(&plan, &batch, groups);
+        assert!(proof.round2.advice_combined.len() <= geometry.groups() + 1);
         let trees = &proof.round2.trees;
         assert_eq!(trees.groups.len(), 1 << bits);
         assert!(proof.round2.logup.roots.is_empty() && !trees.table_roots.is_empty());
@@ -1099,6 +1103,9 @@ fn check_slotted_batch_with_windows(requests: &[(u32, u32)], windows: bool) {
         );
     }
     let proof = proof.unwrap();
+    let geometry = public_opening_geometry(&plan, &batch, proof.round1.leaf_groups);
+    assert!(proof.round2.advice_combined.len() <= geometry.groups() + 1);
+
     if tv_core::params::ParamSet::accept(&claims.params).is_some() {
         let decoded = tv_codec::decode(
             &tessera_codec::encode(&proof),
@@ -1170,6 +1177,8 @@ fn public_cpu_api_proves_one_layer_models_in_ni_and_live() {
             .unwrap()
             .prove_non_interactive(&batch)
             .unwrap();
+        let geometry = public_opening_geometry(&plan, &batch, proof.round1.leaf_groups);
+        assert!(proof.round2.advice_combined.len() <= geometry.groups() + 1);
         let proof = tv_codec::decode(
             &tessera_codec::encode(&proof),
             &tv_codec::DecodeLimits::MESSAGE,
@@ -1289,4 +1298,61 @@ fn public_cpu_api_proves_heterogeneous_requant_layers() {
         split::Layout::derive(&graph, claims.gadget_policy).unwrap();
         check_api(&model, 3, 1);
     }
+}
+
+// Public metadata only: the helper never reads ProofBatch.tokens or a model weight.
+fn public_opening_geometry(
+    plan: &tessera_compiler::ExecutionPlan,
+    batch: &ProofBatch,
+    groups: protocol::LeafGroups,
+) -> tessera_prover::OpeningGeometry {
+    let c = &plan.claims;
+    let requests: Vec<_> = batch
+        .statement
+        .batch
+        .requests
+        .iter()
+        .map(|r| (r.prompt_len, r.output_len))
+        .collect();
+    let lengths: Vec<_> = requests
+        .iter()
+        .map(|&(p, o)| p.checked_add(o).unwrap())
+        .collect();
+    let lowering = tessera_compiler::lower_batch(PublicModel::of_claims(c), &lengths).unwrap();
+    let ranges = analyze(&lowering.graph, &lowering.tables).unwrap();
+    let selection = select_model(c.protocol_version, &lowering, &ranges, &c.gadget_policy).unwrap();
+    let runtime =
+        tessera_compiler::RuntimePlan::derive_batch(&lowering, &selection, c, &requests).unwrap();
+    let layers = LayerMap::new(&lowering).unwrap();
+    let leaf = LeafLayout::runtime(&lowering, &layers, &runtime, c).unwrap();
+    let native =
+        tessera_prover::native::ModelNativePlan::derive_runtime(&lowering, &runtime, c, &leaf)
+            .unwrap();
+    let advice = ModelAdviceLayout::runtime(&lowering, &runtime, c).unwrap();
+    let weight_layout = tessera_pcs::WeightLayout::new(
+        c.layout.weights,
+        tessera_pcs::WeightShapes {
+            layers: c.arch.n_layers,
+            shapes: c.arch.weight_shapes().unwrap(),
+            channels: lowering
+                .classes
+                .iter()
+                .chain(&lowering.multipliers)
+                .map(|(w, _)| (w.ty.matrix(), w.layer))
+                .collect(),
+        },
+    )
+    .unwrap();
+    let grouped = (groups != protocol::LeafGroups::NONE)
+        .then(|| tessera_prover::leaf::GroupedLayout::new(&leaf, &layers, groups).unwrap());
+    tessera_prover::OpeningGeometry::derive(
+        &lowering,
+        &runtime.selection().tables,
+        &leaf,
+        grouped.as_ref(),
+        &native,
+        &advice,
+        &weight_layout,
+    )
+    .unwrap()
 }

@@ -6,19 +6,22 @@ use crate::leaf::{LeafClaims, LeafLayout, ModelColumn};
 use crate::native::ModelNativePlan;
 use crate::{StageError, StageProver, WitnessSource};
 use core::fmt;
-use tessera_compiler::schedule::{Layers, NodeRef};
+use tessera_compiler::schedule::{Coord, Factor, Layers, NodeRef};
 use tessera_compiler::{AdviceSource, Lowering, ModelAdviceLayout};
 use tessera_field::{Field, GoldilocksExt2 as F};
 use tessera_ir::CommitmentClass;
 use tessera_pcs::{AdviceClaim, AdvicePoint, WeightLayout, WeightMatrix};
+
+mod geometry;
+pub use geometry::OpeningGeometry;
 
 pub(crate) fn bad() -> StageError {
     StageError::Internal {
         rule: "INV-SCH-3: original opening sources, points and order follow the runtime schedule",
     }
 }
-pub(crate) struct OriginalAdvice {
-    pub point: Vec<F>,
+pub(crate) struct OriginalAdvice<C = F> {
+    pub point: Vec<C>,
     pub pieces: Vec<(AdviceSource, F)>,
 }
 /// Every original advice combination and weight point, in canonical claim order.
@@ -61,194 +64,18 @@ impl ModelOpenings {
             advice: Vec::new(),
             weights: core::array::from_fn(|_| Vec::new()),
         };
-        let schedule = native.schedule();
-        for claim in &schedule.pool {
-            let point = stages.point(&claim.point)?;
-            if claim.commitment == CommitmentClass::Advice {
-                let mut pieces = Vec::new();
-                for atom in &claim.atoms {
-                    if stages.point(&atom.point)? != point {
-                        return Err(bad());
-                    }
-                    for (layer, weight) in stages.weights(&atom.layers, None)? {
-                        let tensor = schedule
-                            .layers
-                            .tensor(&lowering.graph, atom.kind, layer)
-                            .ok_or_else(bad)?;
-                        pieces.push((
-                            AdviceSource::Tensor(tensor),
-                            weight * stages.coefficient(&atom.coefficient, layer)?,
-                        ));
-                    }
-                }
-                out.push(advice, OriginalAdvice { point, pieces })?;
-            } else {
-                let [atom] = claim.atoms.as_slice() else {
-                    return Err(bad());
-                };
-                if !atom.is_unit() || stages.point(&atom.point)? != point {
-                    return Err(bad());
-                }
-                let tensor = schedule
-                    .layers
-                    .tensor(&lowering.graph, atom.kind, 0)
-                    .ok_or_else(bad)?;
-                let layer = match &atom.layers {
-                    Layers::Eq(p) => stages.point(p)?,
-                    Layers::None => Vec::new(),
-                    _ => return Err(bad()),
-                };
-                if let Some((weight, _)) = lowering.graph.weights.iter().find(|(_, t)| *t == tensor)
-                {
-                    let matrix = weight.ty.matrix();
-                    let mut full = point;
-                    full.extend(layer);
-                    if full.len()
-                        != (weights.matrix(matrix).log2_k() + weights.matrix(matrix).row_vars())
-                            as usize
-                    {
-                        return Err(bad());
-                    }
-                    out.weights[matrix.index()].push(full);
-                } else {
-                    let (weight, _) = lowering
-                        .classes
-                        .iter()
-                        .chain(&lowering.multipliers)
-                        .find(|(_, t)| *t == tensor)
-                        .ok_or_else(bad)?;
-                    let full = weights
-                        .channel_point(weight.ty.matrix(), &point, &layer)
-                        .map_err(|_| bad())?;
-                    out.weights[WeightMatrix::ChannelParams.index()].push(full);
-                }
-            }
-        }
-        // Fixed local gadgets in graph-node order, then native families in registration order.
-        let mut fixed = Vec::new();
-        for (site_index, site) in leaf_layout.sites().iter().enumerate() {
-            for layer in 0..site.layers.len() {
-                let node = match site.node {
-                    NodeRef::Node(n) => n,
-                    NodeRef::Position(p) => schedule.layers.node(p, layer as u32),
-                };
-                let is_native = matches!(
-                    lowering.graph.nodes[node.0 as usize].op,
-                    tessera_ir::Op::RsqrtRow { .. } | tessera_ir::Op::SoftmaxRow { .. }
-                );
-                let order = if is_native {
-                    (1, site_index, layer)
-                } else {
-                    (0, node.0 as usize, 0)
-                };
-                fixed.push((order, node, site_index, layer));
-            }
-        }
-        fixed.sort_by_key(|&(order, _, _, _)| order);
-        for (_, node, s, l) in fixed {
-            let mut reads = Vec::new();
-            for (r, read) in leaf_layout.reads(s, l).ok_or_else(bad)?.iter().enumerate() {
-                let source = match read.term {
-                    ModelColumn::Output(i) => AdviceSource::Tensor(
-                        *lowering.graph.nodes[node.0 as usize]
-                            .outputs
-                            .get(usize::from(i))
-                            .ok_or_else(bad)?,
-                    ),
-                    ModelColumn::Auxiliary(a) => AdviceSource::Auxiliary(node, a),
-                    _ => continue,
-                };
-                // Where the leaf stage left the tensor's claim (RFC-0054 'The stage's outputs').
-                let point = leaf.read_point(leaf_layout, s, l, r).ok_or_else(bad)?;
-                reads.push((source, point));
-            }
-            reads.sort_by_key(|(source, _)| *source);
-            let definition = &lowering.graph.nodes[node.0 as usize];
-            if matches!(definition.op, tessera_ir::Op::SoftmaxRow { .. }) {
-                let exponential = AdviceSource::Tensor(definition.outputs[0]);
-                let reciprocal = AdviceSource::Tensor(definition.outputs[1]);
-                let row = reads
-                    .iter()
-                    .find(|(s, _)| *s == reciprocal)
-                    .ok_or_else(bad)?
-                    .1
-                    .clone();
-                out.push(
-                    advice,
-                    OriginalAdvice {
-                        point: row.clone(),
-                        pieces: vec![(reciprocal, F::ONE)],
-                    },
-                )?;
-                let n = lowering.graph.tensors[definition.outputs[0].0 as usize]
-                    .shape
-                    .last()
-                    .copied()
-                    .ok_or_else(bad)?;
-                let mut half = vec![
-                    (F::ONE + F::ONE).inverse().ok_or_else(bad)?;
-                    n.next_power_of_two().trailing_zeros() as usize
-                ];
-                half.extend(row);
-                out.push(
-                    advice,
-                    OriginalAdvice {
-                        point: half,
-                        pieces: vec![(exponential, F::ONE)],
-                    },
-                )?;
-                for (source, point) in reads
-                    .iter()
-                    .filter(|(s, _)| matches!(s, AdviceSource::Auxiliary(..)))
-                {
-                    out.push(
-                        advice,
-                        OriginalAdvice {
-                            point: point.clone(),
-                            pieces: vec![(*source, F::ONE)],
-                        },
-                    )?;
-                }
-                let point = reads
-                    .into_iter()
-                    .find(|(s, _)| *s == exponential)
-                    .ok_or_else(bad)?
-                    .1;
-                out.push(
-                    advice,
-                    OriginalAdvice {
-                        point,
-                        pieces: vec![(exponential, F::ONE)],
-                    },
-                )?;
-            } else {
-                for (source, point) in reads {
-                    out.push(
-                        advice,
-                        OriginalAdvice {
-                            point,
-                            pieces: vec![(source, F::ONE)],
-                        },
-                    )?;
-                }
-            }
-        }
-        for original in native.source_openings(lowering, stages)? {
-            out.push(advice, original)?;
-        }
-        if leaf_layout.instances().len() != leaf.instances() {
-            return Err(bad());
-        }
-        for (k, instance) in leaf_layout.instances().iter().enumerate() {
-            let multiplicity = leaf.multiplicity_claim(k).ok_or_else(bad)?;
-            out.push(
-                advice,
-                OriginalAdvice {
-                    point: multiplicity.point.clone(),
-                    pieces: vec![(AdviceSource::Multiplicity(instance.table), F::ONE)],
-                },
-            )?;
-        }
+        walk_model_targets(
+            lowering,
+            leaf_layout,
+            leaf,
+            native,
+            stages,
+            weights,
+            &mut ProofTargets {
+                output: &mut out,
+                layout: advice,
+            },
+        )?;
         Ok(out)
     }
     fn push(
@@ -280,6 +107,286 @@ impl ModelOpenings {
     pub fn weight_points(&self, matrix: WeightMatrix) -> &[Vec<F>] {
         &self.weights[matrix.index()]
     }
+}
+
+// The planner traverses the same originals as the real opening producer. Coordinates remain
+// opaque: only the actual stage source can interpret them as field values.
+#[derive(Clone, Copy)]
+pub(crate) enum PointConstant {
+    Zero,
+    One,
+    Half,
+}
+pub(crate) trait OpeningStage<C: Copy + Eq> {
+    fn point(&self, coords: &[Coord]) -> Result<Vec<C>, StageError>;
+    fn challenge(&self, coord: Coord) -> Option<C>;
+    fn weights(&self, layers: &Layers, each: Option<u32>) -> Result<Vec<(u32, F)>, StageError>;
+    fn coefficient(&self, products: &[Vec<Factor>], layer: u32) -> Result<F, StageError>;
+    fn layer_weight(&self, point: &[C], layer: usize) -> F;
+    fn constant(&self, constant: PointConstant) -> Result<C, StageError>;
+}
+impl<W: WitnessSource + ?Sized> OpeningStage<F> for StageProver<'_, W> {
+    fn point(&self, coords: &[Coord]) -> Result<Vec<F>, StageError> {
+        StageProver::point(self, coords)
+    }
+    fn challenge(&self, coord: Coord) -> Option<F> {
+        StageProver::challenge(self, coord)
+    }
+    fn weights(&self, layers: &Layers, each: Option<u32>) -> Result<Vec<(u32, F)>, StageError> {
+        StageProver::weights(self, layers, each)
+    }
+    fn coefficient(&self, products: &[Vec<Factor>], layer: u32) -> Result<F, StageError> {
+        StageProver::coefficient(self, products, layer)
+    }
+    fn layer_weight(&self, point: &[F], layer: usize) -> F {
+        point.iter().enumerate().fold(F::ONE, |w, (j, &r)| {
+            w * if (layer >> j) & 1 == 0 { F::ONE - r } else { r }
+        })
+    }
+    fn constant(&self, constant: PointConstant) -> Result<F, StageError> {
+        match constant {
+            PointConstant::Zero => Ok(F::ZERO),
+            PointConstant::One => Ok(F::ONE),
+            PointConstant::Half => StageProver::challenge(self, Coord::Half).ok_or_else(bad),
+        }
+    }
+}
+pub(crate) trait OpeningLeaf<C> {
+    fn read_point(
+        &self,
+        layout: &LeafLayout<ModelColumn>,
+        site: usize,
+        layer: usize,
+        read: usize,
+    ) -> Option<Vec<C>>;
+    fn multiplicity_point(&self, instance: usize) -> Option<Vec<C>>;
+    fn instances(&self) -> usize;
+}
+impl<L: LeafClaims + ?Sized> OpeningLeaf<F> for L {
+    fn read_point(
+        &self,
+        layout: &LeafLayout<ModelColumn>,
+        site: usize,
+        layer: usize,
+        read: usize,
+    ) -> Option<Vec<F>> {
+        LeafClaims::read_point(self, layout, site, layer, read)
+    }
+    fn multiplicity_point(&self, instance: usize) -> Option<Vec<F>> {
+        self.multiplicity_claim(instance).map(|c| c.point.clone())
+    }
+    fn instances(&self) -> usize {
+        LeafClaims::instances(self)
+    }
+}
+pub(crate) trait OpeningTargets<C> {
+    fn advice(&mut self, original: OriginalAdvice<C>) -> Result<(), StageError>;
+    fn weight(&mut self, matrix: WeightMatrix, point: Vec<C>) -> Result<(), StageError>;
+}
+struct ProofTargets<'out, 'layout, 'model> {
+    output: &'out mut ModelOpenings,
+    layout: &'layout ModelAdviceLayout<'model>,
+}
+impl OpeningTargets<F> for ProofTargets<'_, '_, '_> {
+    fn advice(&mut self, original: OriginalAdvice) -> Result<(), StageError> {
+        self.output.push(self.layout, original)
+    }
+    fn weight(&mut self, matrix: WeightMatrix, point: Vec<F>) -> Result<(), StageError> {
+        self.output.weights[matrix.index()].push(point);
+        Ok(())
+    }
+}
+
+pub(crate) fn walk_model_targets<
+    C: Copy + Eq,
+    L: OpeningLeaf<C> + ?Sized,
+    S: OpeningStage<C> + ?Sized,
+    T: OpeningTargets<C> + ?Sized,
+>(
+    lowering: &Lowering,
+    leaf_layout: &LeafLayout<ModelColumn>,
+    leaf: &L,
+    native: &ModelNativePlan,
+    stages: &S,
+    weights: &WeightLayout,
+    sink: &mut T,
+) -> Result<(), StageError> {
+    let schedule = native.schedule();
+    for claim in &schedule.pool {
+        let point = stages.point(&claim.point)?;
+        if claim.commitment == CommitmentClass::Advice {
+            let mut pieces = Vec::new();
+            for atom in &claim.atoms {
+                if stages.point(&atom.point)? != point {
+                    return Err(bad());
+                }
+                for (layer, weight) in stages.weights(&atom.layers, None)? {
+                    let tensor = schedule
+                        .layers
+                        .tensor(&lowering.graph, atom.kind, layer)
+                        .ok_or_else(bad)?;
+                    pieces.push((
+                        AdviceSource::Tensor(tensor),
+                        weight * stages.coefficient(&atom.coefficient, layer)?,
+                    ));
+                }
+            }
+            sink.advice(OriginalAdvice { point, pieces })?;
+        } else {
+            let [atom] = claim.atoms.as_slice() else {
+                return Err(bad());
+            };
+            if !atom.is_unit() || stages.point(&atom.point)? != point {
+                return Err(bad());
+            }
+            let tensor = schedule
+                .layers
+                .tensor(&lowering.graph, atom.kind, 0)
+                .ok_or_else(bad)?;
+            let layer = match &atom.layers {
+                Layers::Eq(p) => stages.point(p)?,
+                Layers::None => Vec::new(),
+                _ => return Err(bad()),
+            };
+            if let Some((weight, _)) = lowering.graph.weights.iter().find(|(_, t)| *t == tensor) {
+                let matrix = weight.ty.matrix();
+                let mut full = point;
+                full.extend(layer);
+                if full.len()
+                    != (weights.matrix(matrix).log2_k() + weights.matrix(matrix).row_vars())
+                        as usize
+                {
+                    return Err(bad());
+                }
+                sink.weight(matrix, full)?;
+            } else {
+                let (weight, _) = lowering
+                    .classes
+                    .iter()
+                    .chain(&lowering.multipliers)
+                    .find(|(_, t)| *t == tensor)
+                    .ok_or_else(bad)?;
+                let full = weights
+                    .channel_point_geometry(
+                        weight.ty.matrix(),
+                        &point,
+                        &layer,
+                        stages.constant(PointConstant::Zero)?,
+                        stages.constant(PointConstant::One)?,
+                    )
+                    .map_err(|_| bad())?;
+                sink.weight(WeightMatrix::ChannelParams, full)?;
+            }
+        }
+    }
+    // Fixed local gadgets in graph-node order, then native families in registration order.
+    let mut fixed = Vec::new();
+    for (site_index, site) in leaf_layout.sites().iter().enumerate() {
+        for layer in 0..site.layers.len() {
+            let node = match site.node {
+                NodeRef::Node(n) => n,
+                NodeRef::Position(p) => schedule.layers.node(p, layer as u32),
+            };
+            let is_native = matches!(
+                lowering.graph.nodes[node.0 as usize].op,
+                tessera_ir::Op::RsqrtRow { .. } | tessera_ir::Op::SoftmaxRow { .. }
+            );
+            let order = if is_native {
+                (1, site_index, layer)
+            } else {
+                (0, node.0 as usize, 0)
+            };
+            fixed.push((order, node, site_index, layer));
+        }
+    }
+    fixed.sort_by_key(|&(order, _, _, _)| order);
+    for (_, node, s, l) in fixed {
+        let mut reads = Vec::new();
+        for (r, read) in leaf_layout.reads(s, l).ok_or_else(bad)?.iter().enumerate() {
+            let source = match read.term {
+                ModelColumn::Output(i) => AdviceSource::Tensor(
+                    *lowering.graph.nodes[node.0 as usize]
+                        .outputs
+                        .get(usize::from(i))
+                        .ok_or_else(bad)?,
+                ),
+                ModelColumn::Auxiliary(a) => AdviceSource::Auxiliary(node, a),
+                _ => continue,
+            };
+            // Where the leaf stage left the tensor's claim (RFC-0054 'The stage's outputs').
+            let point = leaf.read_point(leaf_layout, s, l, r).ok_or_else(bad)?;
+            reads.push((source, point));
+        }
+        reads.sort_by_key(|(source, _)| *source);
+        let definition = &lowering.graph.nodes[node.0 as usize];
+        if matches!(definition.op, tessera_ir::Op::SoftmaxRow { .. }) {
+            let exponential = AdviceSource::Tensor(definition.outputs[0]);
+            let reciprocal = AdviceSource::Tensor(definition.outputs[1]);
+            let row = reads
+                .iter()
+                .find(|(s, _)| *s == reciprocal)
+                .ok_or_else(bad)?
+                .1
+                .clone();
+            sink.advice(OriginalAdvice {
+                point: row.clone(),
+                pieces: vec![(reciprocal, F::ONE)],
+            })?;
+            let n = lowering.graph.tensors[definition.outputs[0].0 as usize]
+                .shape
+                .last()
+                .copied()
+                .ok_or_else(bad)?;
+            let mut half = vec![
+                stages.constant(PointConstant::Half)?;
+                n.next_power_of_two().trailing_zeros() as usize
+            ];
+            half.extend(row);
+            sink.advice(OriginalAdvice {
+                point: half,
+                pieces: vec![(exponential, F::ONE)],
+            })?;
+            for (source, point) in reads
+                .iter()
+                .filter(|(s, _)| matches!(s, AdviceSource::Auxiliary(..)))
+            {
+                sink.advice(OriginalAdvice {
+                    point: point.clone(),
+                    pieces: vec![(*source, F::ONE)],
+                })?;
+            }
+            let point = reads
+                .into_iter()
+                .find(|(s, _)| *s == exponential)
+                .ok_or_else(bad)?
+                .1;
+            sink.advice(OriginalAdvice {
+                point,
+                pieces: vec![(exponential, F::ONE)],
+            })?;
+        } else {
+            for (source, point) in reads {
+                sink.advice(OriginalAdvice {
+                    point,
+                    pieces: vec![(source, F::ONE)],
+                })?;
+            }
+        }
+    }
+    for original in native.source_openings(lowering, stages)? {
+        sink.advice(original)?;
+    }
+    if leaf_layout.instances().len() != leaf.instances() {
+        return Err(bad());
+    }
+    for (k, instance) in leaf_layout.instances().iter().enumerate() {
+        let point = leaf.multiplicity_point(k).ok_or_else(bad)?;
+        sink.advice(OriginalAdvice {
+            point,
+            pieces: vec![(AdviceSource::Multiplicity(instance.table), F::ONE)],
+        })?;
+    }
+    Ok(())
 }
 
 /// One original opening target (RFC-0011, RFC-0012): the combination `Σ_t a_t·S̃_t(point)` of

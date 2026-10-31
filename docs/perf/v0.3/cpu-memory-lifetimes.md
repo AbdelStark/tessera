@@ -60,6 +60,37 @@ that copy after the caller releases its batch. Construction temporarily holds
 both the engine's `i64` token input and the new `u32` copy; both belong in its
 phase bound.
 
+## Public opening geometry
+
+`OpeningGeometry::derive` counts the current Protocol One CPU producer's original
+advice combinations, source pieces, expanded images and point coordinates, and
+every matrix's original claims and coordinates. It also bounds the distinct
+advice column points before challenges are sampled. Inputs are the canonical
+public lowering, runtime table catalog and leaf/native/advice/weight layouts for
+one proof unit; the computation reads no witness or model weights.
+
+The geometry and actual `ModelOpenings` share the original-source traversal.
+Coordinate maps accept opaque `Copy` values: they copy and reorder coordinates,
+insert Boolean constants, and retain all attention-share images. They cannot do
+field arithmetic on a coordinate label. The actual producer separately computes
+the original coefficients, including fixed-share weights. Neither numerical zero
+coefficients nor repeated ChannelParams reads remove an opening obligation.
+
+Ordinary leaf sites share their common leaf-point coordinates. Grouped sites use
+the suffix of the global merge point in RFC-0054's original-variable order.
+Equal-height table instances share their global table-batch point; different
+heights keep separate origins, which may overcount. Two distinct origins can
+evaluate equally in the field, so the symbolic column-group count is an upper
+bound. A memory plan must use that upper bound rather than assume a collision.
+
+For message length `k`, mask length `P` and at most `G` column groups, the
+private accumulator and public combined-row payloads coexist during the final
+copy and require `32*(G+1)*(k+P)` bytes of extension-field payload alone.
+Encoder tables, row blocks, self-check scratch, targets/groups, container
+capacities, retained messages and every other phase remain separate charges.
+These counts are preparation metadata, not a complete allocation or soundness
+bound. The CPU driver and its conservative resident-cell floor are unchanged.
+
 ## Evidence required before changing admission
 
 The tensor tests compare every graph tensor with the existing resident engine,

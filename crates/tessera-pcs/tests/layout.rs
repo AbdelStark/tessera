@@ -503,6 +503,25 @@ fn a_claim_on_a_tensor_is_the_claim_on_a_tilde_at_its_point() {
             for _ in 0..2 {
                 let r: Vec<Fp2> = (0..placement.vars()).map(|_| fp2(&mut rng)).collect();
                 let point = placement.point(&r).expect("n_X coordinates");
+                #[derive(Clone, Copy)]
+                enum Origin {
+                    Zero,
+                    One,
+                    Input(usize),
+                }
+                let origins: Vec<_> = (0..r.len()).map(Origin::Input).collect();
+                let geometry = placement
+                    .point_geometry(&origins, Origin::Zero, Origin::One)
+                    .unwrap();
+                let lifted: Vec<_> = geometry
+                    .into_iter()
+                    .map(|c| match c {
+                        Origin::Zero => Fp2::ZERO,
+                        Origin::One => Fp2::ONE,
+                        Origin::Input(i) => r[i],
+                    })
+                    .collect();
+                assert_eq!(lifted, point);
                 assert_eq!(point.len() as u32, layout.variables(), "ν coordinates");
                 assert_eq!(mle(table, &r), mle(&written.matrix, &point));
             }

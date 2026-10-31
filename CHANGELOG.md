@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Derive public opening geometry through the CPU producer's original-source traversal, using opaque coordinate origins and retaining zero-weight images and all ChannelParams reads. Counts support future memory planning; CPU admission and proof artifacts remain unchanged (RFC-0011/0012/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Clear completed CPU leaf/native/stage working sets before later proof phases, after transferring their remaining obligations; add checkpoint tensor replay with resident equivalence and allocation checks. The resident-cell memory guard and real-model proof requirements remain unchanged (RFC-0018, [#629](https://github.com/AbdelStark/tessera/issues/629)).
 
 - Derive a common Requant family for incompatible Protocol One model layer sites, with independent verifier selection, complete first-use tables and ordered requests; retain the leaf guard, legacy-compatible artifacts and Protocol Two behavior (RFC-0076, [#617](https://github.com/AbdelStark/tessera/issues/617)). Real 1B/8B proofs and whole-model memory qualification remain pending.

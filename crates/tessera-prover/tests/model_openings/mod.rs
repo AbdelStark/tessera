@@ -453,7 +453,7 @@ impl<'a> Committed<'a> {
                 rule: "INV-SCH-3: original opening sources, points and order follow the runtime schedule"
             })
         ));
-        tessera_prover::ModelOpenings::derive(
+        let targets = tessera_prover::ModelOpenings::derive(
             &self.p.lowering,
             layout,
             leaf,
@@ -462,7 +462,88 @@ impl<'a> Committed<'a> {
             self.advice,
             &self.weight_layout,
         )
-        .unwrap()
+        .unwrap();
+        let runtime = self.prompt.map(|prompt| {
+            tessera_compiler::RuntimePlan::derive(
+                &self.p.lowering,
+                &self.p.selection,
+                &self.p.claims,
+                prompt,
+                0,
+            )
+            .unwrap()
+        });
+        let tables = runtime
+            .as_ref()
+            .map_or(&self.p.selection.tables, |r| &r.selection().tables);
+        // RFC-0045: equal-height table trees share their global level point, in row order.
+        let mut table_points: Vec<(u8, Vec<F>)> = Vec::new();
+        for (i, instance) in layout.instances().iter().enumerate() {
+            let height = tables
+                .iter()
+                .find(|t| t.id == instance.table)
+                .unwrap()
+                .log2_rows;
+            let point = &tessera_prover::leaf::LeafClaims::multiplicity_claim(leaf, i)
+                .unwrap()
+                .point;
+            if let Some((_, previous)) = table_points.iter().find(|(h, _)| *h == height) {
+                assert_eq!(previous, point);
+            } else {
+                table_points.push((height, point.clone()));
+            }
+        }
+        let geometry = tessera_prover::OpeningGeometry::derive(
+            &self.p.lowering,
+            tables,
+            layout,
+            None,
+            native,
+            self.advice,
+            &self.weight_layout,
+        )
+        .unwrap();
+        assert_eq!(geometry.advice_claims(), targets.advice().len() as u64);
+        assert_eq!(
+            geometry.advice_images(),
+            targets
+                .advice()
+                .iter()
+                .map(|c| c.pieces.len() as u64)
+                .sum::<u64>()
+        );
+        assert_eq!(
+            geometry.advice_coordinates(),
+            targets
+                .advice()
+                .iter()
+                .flat_map(|c| &c.pieces)
+                .map(|p| p.point.len() as u64)
+                .sum::<u64>()
+        );
+        let k = self.advice.layout().params().log2_k as usize;
+        let mut groups: Vec<Vec<F>> = Vec::new();
+        for claim in targets.advice() {
+            let column = &claim.pieces[0].point[..k];
+            if !groups.iter().any(|p| p == column) {
+                groups.push(column.to_vec());
+            }
+        }
+        assert!(
+            groups.len() <= geometry.groups(),
+            "actual {} exceeds public {}",
+            groups.len(),
+            geometry.groups()
+        );
+        for matrix in pcs::WeightMatrix::ALL {
+            let points = targets.weight_points(matrix);
+            assert_eq!(geometry.weight_claims(matrix), points.len() as u64);
+            assert_eq!(
+                geometry.weight_coordinates(matrix),
+                points.iter().map(|p| p.len() as u64).sum::<u64>()
+            );
+        }
+        targets
     }
     #[allow(clippy::too_many_arguments)]
     pub fn check(
