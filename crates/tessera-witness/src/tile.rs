@@ -35,6 +35,7 @@ use tessera_tables::{Table, TableKind};
 
 mod auxiliary;
 mod memory;
+mod work_memory;
 
 use auxiliary::{Prepared, requant_role};
 

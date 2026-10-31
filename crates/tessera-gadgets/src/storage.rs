@@ -5,6 +5,7 @@
 use tessera_tables::GeneratedTable;
 
 pub(crate) mod requests;
+mod witnesses;
 
 pub(crate) fn array<T>(count: usize) -> Option<usize> {
     count.checked_mul(size_of::<T>())
