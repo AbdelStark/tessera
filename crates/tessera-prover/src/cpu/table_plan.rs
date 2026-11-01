@@ -495,7 +495,6 @@ fn vars(dims: &[u32]) -> Result<usize, ProverError> {
     })
 }
 
-#[cfg(test)]
 fn array<T>(n: u64) -> Result<u64, ProverError> {
     let bytes = mul(n, size_of::<T>() as u64)?;
     if usize::try_from(n).is_err() || bytes > isize::MAX as u64 {
@@ -503,7 +502,6 @@ fn array<T>(n: u64) -> Result<u64, ProverError> {
     }
     Ok(bytes)
 }
-#[cfg(test)]
 fn grow<T>(n: u64) -> Result<u64, ProverError> {
     if n == 0 {
         return Ok(0);
@@ -519,7 +517,6 @@ fn grow<T>(n: u64) -> Result<u64, ProverError> {
 }
 
 impl TablePlan {
-    #[cfg(test)]
     pub(super) fn metadata_bytes(&self) -> Result<u64, ProverError> {
         add(
             array::<Shape>(self.trees.capacity() as u64)?,
@@ -529,7 +526,6 @@ impl TablePlan {
 
     // Public planning allocations only. P2 payloads, cores and source backing are
     // already separate fields and must never be replaced by this metadata bill.
-    #[cfg(test)]
     pub(super) fn construction_peak_bytes(
         &self,
         leaf: &LeafLayout<ModelColumn>,

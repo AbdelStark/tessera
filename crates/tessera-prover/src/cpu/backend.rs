@@ -474,7 +474,38 @@ impl<'a> CpuBackend<'a> {
         // storage fits beside the unchanged resident oracle. The cache lives
         // while a second cache is regenerated; construction includes its inputs.
         let mut plan = plan;
-        if plan.check(prepared.cfg.memory_budget).is_ok() {
+        let force_physical = {
+            #[cfg(test)]
+            {
+                physical::FORCE_ROUTE.with(std::cell::Cell::get)
+            }
+            #[cfg(not(test))]
+            {
+                false
+            }
+        };
+        if (force_physical || plan.check(prepared.cfg.memory_budget).is_err())
+            && c.protocol_version == protocol::PROTOCOL_VERSION
+            && grouped.is_none()
+        {
+            let input = physical::Inputs {
+                claims: c,
+                statement: &batch.statement,
+                lowering: &lowering,
+                layers: &layers,
+                runtime: &runtime,
+                advice: &advice,
+                leaf: &leaf,
+                native: &native,
+                grouped: None,
+                weights: &prepared.layout,
+                session: Some(prepared.memory),
+                caller_batch: Some(preparation::caller_batch_bytes(batch).ok_or_else(memory)?),
+                planner_caller: plan.heap_bytes().ok_or_else(memory)?,
+            };
+            plan = physical::select(&input, prepared.cfg.memory_budget.host, plan)?;
+        }
+        if !plan.uses_checkpoints() && plan.check(prepared.cfg.memory_budget).is_ok() {
             let checkpoint = tessera_witness::CheckpointMemory::new(&lowering)?;
             let bytes = checkpoint
                 .retained_bytes()

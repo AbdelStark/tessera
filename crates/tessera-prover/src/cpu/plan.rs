@@ -12,14 +12,17 @@
 //! The cell floor, [`PassPlan::BYTES_PER_CELL`], reserves the cached witness, regenerated witness
 //! scratch and the other proof phases beside the weight commitment; stage grids, construction
 //! scratch and folded tables are charged separately. Counting-allocator regressions check the
-//! whole proof peak under both resident and forced-window budgets. This CPU path retains a
-//! resident witness floor; it does not claim to stream the entire model on arbitrary hardware.
+//! whole proof peak under both resident and forced-window budgets. The resident route keeps
+//! this floor. An ungrouped checkpoint fallback instead uses a complete checked physical
+//! lifetime peak and owns its selected table/window choices. Both refuse before P1 when
+//! their bound does not fit; whole-model resource qualification remains separate.
 
 pub use tessera_codec::metrics::Pass;
 use tessera_protocol::LeafGroups;
 use tessera_sumcheck::{WindowMemory, WindowShape};
 
-/// The cells a CPU proof keeps resident, each counted at its padded size.
+/// Logical graph/lookup/advice cells, each counted at its padded size.
+/// A physical checkpoint plan keeps this census without materializing every cell.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Cells {
     /// Every graph tensor's entries: the witness, and the tables the passes derive from it.
@@ -55,12 +58,14 @@ pub struct PassPlan {
     checkpoint_bytes: u64,
     caller_bytes: u64,
     preparation_bytes: u64,
+    pub(super) physical_peak: Option<u64>,
 }
 
 impl PassPlan {
     /// The bytes charged per resident cell: the measured 32 to 34, up to 16 for a regenerated
     /// witness and its scratch, and margin. Stage grids/folded tables are charged separately.
-    /// This floor is unchanged by window selection.
+    /// This resident-route floor is unchanged by window selection. A separately checked
+    /// physical checkpoint plan uses its complete lifetime bound instead.
     pub const BYTES_PER_CELL: u64 = 64;
 
     /// The plan of a proof of `stages` stages, the leaf stage included, over `cells`, beside a
@@ -81,6 +86,7 @@ impl PassPlan {
             checkpoint_bytes: 0,
             caller_bytes: 0,
             preparation_bytes: 0,
+            physical_peak: None,
         }
     }
 
@@ -92,7 +98,7 @@ impl PassPlan {
 
     /// Whether this plan borrows INT8 weights and retains checkpoint-derived nonweight data.
     pub fn uses_checkpoints(&self) -> bool {
-        self.checkpoint_bytes != 0
+        self.physical_peak.is_some() || self.checkpoint_bytes != 0
     }
 
     // Preserve the full resident floor and add every newly owned replay buffer.
@@ -129,6 +135,48 @@ impl PassPlan {
 
     pub(super) fn tables(mut self, plan: super::table_plan::TablePlan) -> Self {
         self.table_plan = Some(plan);
+        self
+    }
+
+    pub(super) fn heap_bytes(&self) -> Option<u64> {
+        let bytes = (self.passes.capacity() as u64)
+            .checked_mul(size_of::<Pass>() as u64)?
+            .checked_add(
+                (self.stage_shapes.capacity() as u64)
+                    .checked_mul(size_of::<Vec<WindowShape>>() as u64)?,
+            )?
+            .checked_add(
+                (self.stage_windows.capacity() as u64)
+                    .checked_mul(size_of::<WindowMemory>() as u64)?,
+            )?
+            .checked_add(
+                self.table_plan
+                    .as_ref()
+                    .map_or(Some(0), |p| p.metadata_bytes().ok())?,
+            )?;
+        self.stage_shapes.iter().try_fold(bytes, |n, s| {
+            n.checked_add((s.capacity() as u64).checked_mul(size_of::<WindowShape>() as u64)?)
+        })
+    }
+
+    // Only physical::select calls this, after checking every phase and owner.
+    pub(super) fn physical(
+        mut self,
+        table: super::table_plan::TablePlan,
+        windows: Vec<WindowMemory>,
+        peak: u64,
+    ) -> Self {
+        self.stage_shapes = Vec::new();
+        self.stage_windows = windows;
+        self.table_plan = Some(table);
+        self.physical_peak = Some(peak);
+        let mut passes = vec![Pass::P1, Pass::P2];
+        for stage in self.stage_windows.iter().skip(1) {
+            passes.push(Pass::P3);
+            passes.extend(core::iter::repeat_n(Pass::P3b, stage.fold_passes));
+        }
+        passes.extend([Pass::P4, Pass::P5]);
+        self.passes = passes;
         self
     }
 
@@ -237,12 +285,14 @@ impl PassPlan {
         &self.passes
     }
 
-    /// The resident cells.
+    /// The logical padded cell census, also retained by physical checkpoint plans.
     pub fn cells(&self) -> Cells {
         self.cells
     }
 
-    /// The charged peak: the unchanged cell floor and weight commitment, plus the larger
+    /// The charged peak. A selected physical checkpoint plan returns its complete
+    /// checked lifetime maximum. The resident route returns its unchanged cell floor
+    /// and weight commitment, plus the larger
     /// reduction working set or table-batch excess over its named floor reservation.
     /// A selected checkpoint source additionally reserves its retained inputs and
     /// constructor peak; it never reduces the resident-cell floor. Borrowed plan
@@ -250,6 +300,9 @@ impl PassPlan {
     /// also covers checked session preparation. The caller's model is excluded.
     /// Returns `None` on overflow.
     pub fn resident_bytes(&self) -> Option<u64> {
+        if let Some(peak) = self.physical_peak {
+            return Some(peak);
+        }
         let table_extra = self.table_plan.as_ref().map_or(0, |p| {
             p.working_bytes
                 .saturating_sub(self.table_reservation().unwrap_or(0))

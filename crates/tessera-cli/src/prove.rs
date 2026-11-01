@@ -306,6 +306,7 @@ fn produce(
             &batch,
             dir,
             Duration::from_millis(a.timeout_ms.unwrap_or(600_000)),
+            params,
         )?;
     } else {
         let proof = prover.prove_non_interactive(&batch).map_err(prover_error)?;

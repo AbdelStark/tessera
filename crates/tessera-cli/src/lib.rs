@@ -620,11 +620,26 @@ fn dispatch(cli: &Cli) -> (&'static str, Result<ExitCode, TesseraError>) {
 pub(crate) struct Input<'a> {
     path: &'a Path,
     schema: &'static Schema,
+    limits: DecodeLimits,
 }
 
 impl<'a> Input<'a> {
     pub(crate) fn new(path: &'a Path, schema: &'static Schema) -> Self {
-        Self { path, schema }
+        Self {
+            path,
+            schema,
+            limits: if schema.id == schema::INTEGER_MODEL.id {
+                DecodeLimits::INTEGER_MODEL
+            } else {
+                DecodeLimits::MESSAGE
+            },
+        }
+    }
+
+    /// Apply public expected-message limits before envelope reading or allocation.
+    pub(crate) fn limits(mut self, limits: DecodeLimits) -> Self {
+        self.limits = limits;
+        self
     }
 
     /// Checks the artifact's envelope in constant memory: its magic, schema, version, lengths
@@ -638,10 +653,7 @@ impl<'a> Input<'a> {
             return Err(TesseraError::new(ErrorCode::ResIo));
         }
         let file = File::open(self.path).map_err(io_error(format!("cannot read {shown}")))?;
-        let limits = match self.schema.id == schema::INTEGER_MODEL.id {
-            true => DecodeLimits::INTEGER_MODEL,
-            false => DecodeLimits::MESSAGE,
-        };
+        let limits = self.limits;
         // OBS-6: the envelope reader clears its buffer; read-ahead would add an uncleared copy.
         match envelope::verify(file, self.schema, limits) {
             Ok(_) => {
@@ -661,10 +673,7 @@ impl<'a> Input<'a> {
     pub(crate) fn open<T: Decode>(&self) -> Result<T, TesseraError> {
         self.verify()?;
         let shown = self.path.display().to_string();
-        let limits = match self.schema.id == schema::INTEGER_MODEL.id {
-            true => DecodeLimits::INTEGER_MODEL,
-            false => DecodeLimits::MESSAGE,
-        };
+        let limits = self.limits;
         let mut file = File::open(self.path).map_err(io_error(format!("cannot read {shown}")))?;
         let metadata = file
             .metadata()

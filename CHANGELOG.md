@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Admit an ungrouped checkpoint route only after its complete checked physical lifetime plan fits, retaining the resident route as the first choice; bound Live seed/query ingress before allocation and run whole-route independent proof controls in CI (RFC-0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Stream signed INT8 encodings through bounded clearing scratch with unchanged canonical bytes; charge caller token/request capacities in CPU session planning, and cover public physical-planner construction, retained stage state, split outputs and target-transfer lifetimes (RFC-0003/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Charge checked session preparation and borrowed execution-plan/weight-state capacities before P1, including maximum-context row preflight, both weight-layout channel lists and regenerated weight construction; preserve the canonical plan checks and resident-cell floor (RFC-0018/0041/0047, [#641](https://github.com/AbdelStark/tessera/issues/641)).

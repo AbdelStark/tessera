@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! In-progress composition of physical phase bounds for RFC-0018 / #641.
-//! This test-only probe does not admit a route: preparation and protocol ownership
-//! must be completed before its component sums can replace the resident floor.
+//! Checked physical fallback for canonical ungrouped checkpoint sources.
+//! The resident route remains the first choice and the differential oracle.
 
 use super::*;
 use crate::leaf::{GroupedLayout, LeafLayout, ModelColumn, ModelWitness};
@@ -12,6 +12,12 @@ use compiler::{Lowering, ModelAdviceLayout, RuntimePlan};
 use tessera_field::GoldilocksExt2 as F;
 use tessera_sumcheck::{WindowMemory, WindowShape};
 use tessera_witness::Engine;
+
+#[cfg(test)]
+std::thread_local! {
+    // Exercise this exact production chooser even when the resident oracle fits.
+    pub(super) static FORCE_ROUTE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
 
 fn memory() -> ProverError {
     ProverError::Resource(ErrorCode::ResMemory)
@@ -265,19 +271,20 @@ impl DriverWireMemory {
     }
 }
 
-struct Inputs<'a> {
-    claims: &'a tessera_ir::ClaimList,
-    statement: &'a protocol::PublicStatement,
-    lowering: &'a Lowering,
-    layers: &'a LayerMap,
-    runtime: &'a RuntimePlan,
-    advice: &'a ModelAdviceLayout<'a>,
-    leaf: &'a LeafLayout<ModelColumn>,
-    native: &'a ModelNativePlan,
-    grouped: Option<&'a GroupedLayout>,
-    weights: &'a pcs::WeightLayout,
-    session: Option<preparation::SessionMemory>,
-    caller_batch: Option<u64>,
+pub(super) struct Inputs<'a> {
+    pub(super) claims: &'a tessera_ir::ClaimList,
+    pub(super) statement: &'a protocol::PublicStatement,
+    pub(super) lowering: &'a Lowering,
+    pub(super) layers: &'a LayerMap,
+    pub(super) runtime: &'a RuntimePlan,
+    pub(super) advice: &'a ModelAdviceLayout<'a>,
+    pub(super) leaf: &'a LeafLayout<ModelColumn>,
+    pub(super) native: &'a ModelNativePlan,
+    pub(super) grouped: Option<&'a GroupedLayout>,
+    pub(super) weights: &'a pcs::WeightLayout,
+    pub(super) session: Option<preparation::SessionMemory>,
+    pub(super) caller_batch: Option<u64>,
+    pub(super) planner_caller: u64,
 }
 // A candidate owns the choices it priced. Missing lifetime/packet bounds are
 // represented by None, so a partial component report cannot become admission.
@@ -479,10 +486,16 @@ fn candidate_metadata(table: &table_plan::TablePlan, stages: u64) -> Result<u64,
         table.metadata_bytes()?,
         growing::<WindowMemory>(stages)?,
         growing::<StageBill>(stages.checked_sub(1).ok_or_else(memory)?)?,
+        // PassPlan and Unit both retain stage-indexed choices. Checked usize
+        // shifts cap a valid stage at fewer than usize::BITS own variables.
+        growing::<usize>(stages)?,
+        growing::<Pass>(sum([4, times(stages, u64::from(usize::BITS) + 1)?])?)?,
     ])
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+// Component details are retained for allocator controls and diagnostic reports.
+#[cfg_attr(not(test), allow(dead_code))]
 struct StageBill {
     stage: usize,
     source_metadata: u64,
@@ -492,6 +505,8 @@ struct StageBill {
     output: u64,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
+// Component details are retained for allocator controls and diagnostic reports.
+#[cfg_attr(not(test), allow(dead_code))]
 struct ComponentBill {
     lowering_preparation: u64,
     layer_preparation: u64,
@@ -519,6 +534,8 @@ struct ComponentBill {
     geometry_constructor: u64,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
+// Component details are retained for allocator controls and diagnostic reports.
+#[cfg_attr(not(test), allow(dead_code))]
 struct PhysicalCandidate {
     host: u64,
     phases: PhasePeaks,
@@ -531,6 +548,7 @@ struct PhysicalCandidate {
     bill: ComponentBill,
 }
 impl PhysicalCandidate {
+    #[cfg(test)]
     fn retained_metadata_bytes(&self) -> Result<u64, ProverError> {
         sum([
             self.table.metadata_bytes()?,
@@ -594,6 +612,17 @@ impl PhysicalCandidate {
     }
 }
 
+pub(super) fn select(
+    input: &Inputs<'_>,
+    host: u64,
+    oracle: PassPlan,
+) -> Result<PassPlan, ProverError> {
+    let candidate = components(input, host)?;
+    candidate.check_complete(host)?;
+    let peak = required(candidate.phases.complete_peak())?;
+    Ok(oracle.physical(candidate.table, candidate.windows, peak))
+}
+
 struct MetadataOnly;
 impl crate::stages::WitnessSource for MetadataOnly {
     fn values(&self, _: tessera_ir::TensorId) -> Option<&[i64]> {
@@ -617,6 +646,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
         weights,
         session,
         caller_batch,
+        planner_caller,
     } = input;
     let declared_host = host;
     // Unknown caller ownership keeps admission incomplete. A supplied bound is
@@ -708,6 +738,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
         ])?,
     )?;
     let base = sum([
+        *planner_caller,
         unit,
         session.map_or(0, |m| m.caller),
         protocol_work,
@@ -937,6 +968,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     ])?;
     let planning = PlanningMemory {
         borrowed: sum([
+            *planner_caller,
             unit,
             required(advice.heap_upper_bound())?,
             weight_layout,
@@ -963,7 +995,10 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
             caller_batch: *caller_batch,
             session_preparation: session.map(|m| m.peak),
             preparation: Some(preparation),
-            packets: None,
+            // All returned Round1/2/3 owners and query containers coexist in
+            // P5. The same bound covers their later streaming publication after
+            // the backend has cleared Data; no full encoded Vec is constructed.
+            packets: Some(p5_peak),
             p1: p1_peak,
             p2: p2_peak,
             p3: stage_peak,
@@ -1214,6 +1249,7 @@ fn preparation_lifetimes_cover_the_complete_public_constructor_sequence() {
                         weights: &weights,
                         session: None,
                         caller_batch: None,
+                        planner_caller: 0,
                     };
                     let bound =
                         UnitPreparation::derive(&input, &advice, prepared_owner.capacity() as u64)
@@ -1328,6 +1364,7 @@ fn physical_planner_bounds_its_own_live_heap_and_retained_candidate() {
                 weights: &weights,
                 session: None,
                 caller_batch: None,
+                planner_caller: 0,
             };
             let descriptor = pcs::CommitmentDescriptor::Advice {
                 statement_digest: statement.digest(),
@@ -1598,6 +1635,7 @@ fn public_component_probe() {
         weights: &layout,
         session: None,
         caller_batch: None,
+        planner_caller: 0,
     };
     let candidate = components(&input, request["memory_budget_bytes"].as_u64().unwrap()).unwrap();
     assert!(matches!(

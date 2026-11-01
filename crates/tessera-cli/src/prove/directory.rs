@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tessera_codec::{
-    Decode, Encode, envelope,
+    Decode, DecodeLimits, Encode, envelope,
     error::{ErrorCode, TesseraError},
     schema::{self, Schema},
 };
@@ -89,11 +89,43 @@ fn atomic_with(
     }
     Err(TesseraError::new(ErrorCode::ResIo))
 }
+// RFC-0003/0014: both seed messages contain only a 16-byte id and 32-byte value.
+fn seed_limits() -> DecodeLimits {
+    DecodeLimits {
+        max_total_bytes: (envelope::HEADER_LEN + 48 + envelope::DIGEST_LEN) as u64,
+        ..DecodeLimits::MESSAGE
+    }
+}
+
+fn query_limits(params: &tessera_protocol::ParamSet) -> Result<DecodeLimits, TesseraError> {
+    let fail = || TesseraError::new(ErrorCode::ResMemory);
+    let matrices = tessera_protocol::WeightMatrix::ALL.len() as u64;
+    // Fixed u64 TCE lengths: advice Vec, matrix Vec, and each matrix's index Vec.
+    let indices = u64::from(params.weight_queries)
+        .checked_mul(matrices)
+        .and_then(|n| n.checked_add(u64::from(params.advice_queries)))
+        .ok_or_else(fail)?;
+    let max_total_bytes = indices
+        .checked_mul(4)
+        .and_then(|n| n.checked_add(16))
+        .and_then(|n| n.checked_add(matrices.checked_mul(9)?))
+        .and_then(|n| n.checked_add((envelope::HEADER_LEN + envelope::DIGEST_LEN) as u64))
+        .ok_or_else(fail)?;
+    Ok(DecodeLimits {
+        max_total_bytes,
+        max_vec_len: u64::from(params.advice_queries)
+            .max(u64::from(params.weight_queries))
+            .max(matrices),
+        ..DecodeLimits::MESSAGE
+    })
+}
+
 fn receive<T: Decode>(
     dir: &Path,
     name: &str,
     schema: &'static Schema,
     timeout: Duration,
+    limits: DecodeLimits,
 ) -> Result<T, TesseraError> {
     let path = dir.join(name);
     let start = Instant::now();
@@ -102,7 +134,7 @@ fn receive<T: Decode>(
             return Err(TesseraError::new(ErrorCode::ProtoTimeout));
         }
         match fs::symlink_metadata(&path) {
-            Ok(_) => return Input::new(&path, schema).open(),
+            Ok(_) => return Input::new(&path, schema).limits(limits).open(),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 std::thread::sleep(Duration::from_millis(5))
             }
@@ -123,6 +155,7 @@ pub(super) fn run(
     batch: &ProofBatch,
     dir: &Path,
     timeout: Duration,
+    params: &tessera_protocol::ParamSet,
 ) -> Result<(), TesseraError> {
     if !fs::metadata(dir)
         .map_err(io_error("cannot open session directory".into()))?
@@ -132,7 +165,13 @@ pub(super) fn run(
     }
     // Each role is one-shot even when the peer has already started.
     publish(&dir.join(".tessera-prover"), b"")?;
-    let commit = receive(dir, "00-SeedCommit.tce", &schema::SEED_COMMIT, timeout)?;
+    let commit = receive(
+        dir,
+        "00-SeedCommit.tce",
+        &schema::SEED_COMMIT,
+        timeout,
+        seed_limits(),
+    )?;
     let (first, share) = prover.start(batch, &commit).map_err(super::prover_error)?;
     send(dir, "01-Round1.tce", &schema::ROUND1, &first)?;
     send(
@@ -141,7 +180,13 @@ pub(super) fn run(
         &schema::PROVER_SEED_SHARE,
         &share,
     )?;
-    let reveal = receive(dir, "02-SeedReveal.tce", &schema::SEED_REVEAL, timeout)?;
+    let reveal = receive(
+        dir,
+        "02-SeedReveal.tce",
+        &schema::SEED_REVEAL,
+        timeout,
+        seed_limits(),
+    )?;
     let second = prover.on_seed(&reveal).map_err(super::prover_error)?;
     // The seed both transcripts absorb is public; the shares behind it were revealed (RFC-0014).
     crate::manifest::seed(
@@ -159,6 +204,7 @@ pub(super) fn run(
         "04-ColumnQueries.tce",
         &schema::COLUMN_QUERIES,
         timeout,
+        query_limits(params)?,
     )?;
     let third = prover.on_queries(&queries).map_err(super::prover_error)?;
     send(
@@ -172,6 +218,121 @@ pub(super) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn public_live_message_limits_reject_oversized_frames_before_allocation() {
+        use tessera_protocol::{ColumnQueries, MatrixQueries, ParamSet, SeedCommit, WeightMatrix};
+        let dir = std::env::temp_dir().join(format!("tessera-live-limits-{}", std::process::id()));
+        fs::create_dir(&dir).unwrap();
+        let path = dir.join("packet");
+        let seed = SeedCommit {
+            session_id: [0; 16],
+            commitment: [0; 32],
+        };
+        let bytes = envelope::seal(&schema::SEED_COMMIT, &seed);
+        assert_eq!(bytes.len() as u64, seed_limits().max_total_bytes);
+        fs::write(&path, bytes).unwrap();
+        assert_eq!(
+            Input::new(&path, &schema::SEED_COMMIT)
+                .limits(seed_limits())
+                .open::<SeedCommit>()
+                .unwrap(),
+            seed
+        );
+        for size in [49, 1 << 22] {
+            fs::write(
+                &path,
+                envelope::seal(&schema::SEED_COMMIT, &vec![0u8; size]),
+            )
+            .unwrap();
+            let measured = allocation_counter::measure(|| {
+                assert_eq!(
+                    Input::new(&path, &schema::SEED_COMMIT)
+                        .limits(seed_limits())
+                        .open::<SeedCommit>()
+                        .unwrap_err()
+                        .code,
+                    ErrorCode::CodecLimit
+                );
+            });
+            assert!(measured.bytes_max <= 128 << 10, "{measured:?}");
+        }
+        for params in [ParamSet::LIVE_64, ParamSet::NI_100, ParamSet::TEST_SMALL] {
+            let limits = query_limits(&params).unwrap();
+            // The test's allocation size comes from the fixed public bundle,
+            // never a size returned by the implementation being mutated.
+            let expected_vec = u64::from(params.advice_queries)
+                .max(u64::from(params.weight_queries))
+                .max(10);
+            assert!(expected_vec <= 1024);
+            assert_eq!(limits.max_vec_len, expected_vec);
+            let queries = ColumnQueries {
+                advice: vec![0; params.advice_queries as usize],
+                weights: WeightMatrix::ALL
+                    .iter()
+                    .enumerate()
+                    .map(|(matrix, _)| MatrixQueries {
+                        matrix: matrix as u8,
+                        indices: vec![0; params.weight_queries as usize],
+                    })
+                    .collect(),
+            };
+            let bytes = envelope::seal(&schema::COLUMN_QUERIES, &queries);
+            assert_eq!(bytes.len() as u64, limits.max_total_bytes);
+            fs::write(&path, bytes).unwrap();
+            assert_eq!(
+                Input::new(&path, &schema::COLUMN_QUERIES)
+                    .limits(limits)
+                    .open::<ColumnQueries>()
+                    .unwrap(),
+                queries
+            );
+            // Total frame fits: refuse the individual sequence's length before allocation.
+            let malformed = ColumnQueries {
+                advice: vec![0; expected_vec as usize + 1],
+                weights: Vec::new(),
+            };
+            let bytes = envelope::seal(&schema::COLUMN_QUERIES, &malformed);
+            assert!(bytes.len() as u64 <= limits.max_total_bytes);
+            fs::write(&path, bytes).unwrap();
+            assert_eq!(
+                Input::new(&path, &schema::COLUMN_QUERIES)
+                    .limits(limits)
+                    .open::<ColumnQueries>()
+                    .unwrap_err()
+                    .code,
+                ErrorCode::CodecLimit
+            );
+            // A digest-valid frame one byte over the public cap fails envelope admission.
+            fs::write(
+                &path,
+                envelope::seal(
+                    &schema::COLUMN_QUERIES,
+                    &vec![
+                        0u8;
+                        limits.max_total_bytes as usize
+                            - envelope::HEADER_LEN
+                            - envelope::DIGEST_LEN
+                            - 7
+                    ],
+                ),
+            )
+            .unwrap();
+            assert_eq!(
+                fs::metadata(&path).unwrap().len(),
+                limits.max_total_bytes + 1
+            );
+            assert_eq!(
+                Input::new(&path, &schema::COLUMN_QUERIES)
+                    .limits(limits)
+                    .open::<ColumnQueries>()
+                    .unwrap_err()
+                    .code,
+                ErrorCode::CodecLimit
+            );
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn streaming_publication_is_exact_bounded_and_never_clobbers() {
         use allocation_counter::measure;
@@ -300,7 +461,8 @@ mod tests {
                 &dir,
                 "packet",
                 &schema::SEED_COMMIT,
-                Duration::ZERO
+                Duration::ZERO,
+                DecodeLimits::MESSAGE
             )
             .unwrap_err()
             .code,
@@ -311,7 +473,8 @@ mod tests {
                 &dir,
                 "packet",
                 &schema::SEED_COMMIT,
-                Duration::from_secs(1)
+                Duration::from_secs(1),
+                DecodeLimits::MESSAGE
             )
             .unwrap_err()
             .code,
@@ -323,7 +486,8 @@ mod tests {
                 &dir,
                 "not-a-file",
                 &schema::SEED_COMMIT,
-                Duration::from_secs(1)
+                Duration::from_secs(1),
+                DecodeLimits::MESSAGE
             )
             .unwrap_err()
             .code,

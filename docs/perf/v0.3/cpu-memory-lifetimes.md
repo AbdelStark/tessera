@@ -2,15 +2,17 @@
 
 This is the implementation inventory for [#629](https://github.com/AbdelStark/tessera/issues/629),
 under [RFC-0018's memory scheduler](../../rfcs/RFC-0018-gpu-prover-runtime.md#memory-scheduler).
-It is not a replacement allocation bound or a real-model proof qualification.
+The complete checked physical composition is described at the end of this inventory;
+real-model qualification still requires an actual execution and independent acceptance.
 
-The CPU driver selects checkpoint-derived nonweight tensors and borrowed INT8
-weights only when their complete replay reservation fits; otherwise it keeps
-the resident `Witness`. Both routes still charge 64 bytes per logical padded
-cell, plus the separate weight reservation and additional stage/table working
-sets. A smaller measured RSS does not justify
-reducing that reservation. Caller-owned model storage is outside `MemoryBudget.host`
-and must also appear in any whole-process measurement.
+The CPU driver first tries the resident plan, including its optional checkpoint
+source. That plan retains 64 bytes per logical padded cell, the separate weight
+reservation and additional stage/table working sets. If no resident plan fits,
+an ungrouped protocol/1 proof can use the separate physical plan. This plan owns
+its selected table chunks and positive window cuts and checks every lifetime
+before P1. A smaller measured RSS alone cannot admit either route. Caller-owned
+model storage is outside `MemoryBudget.host` and must also appear in any
+whole-process measurement.
 
 | Phase | Storage that must be accounted for |
 |---|---|
@@ -864,7 +866,7 @@ the outstanding phase composition needed to relax that floor.
 
 ## Physical planner construction and caller ownership
 
-The test-only physical composition now carries an explicit planning peak for
+The physical composition carries an explicit planning peak for
 borrowed unit/layout/weight/session owners, opening geometry, generated cores and
 multiplicity metadata, table planning, public stage sizing and returned candidate
 descriptors. It reserves candidate descriptors and caller batch storage before
@@ -879,8 +881,21 @@ after those owners drop. Internal CPU transcript, public encoding and dynamic
 label work is separate from relation kernels and the bounded streaming writer.
 Allocation controls exercise the actual public encodings and driver formats.
 
-This remains a test-only composition. Missing caller batch, session preparation
-or packet bounds refuse admission even with an unlimited host allowance. External
-transport ingress, filesystem/error formatting and telemetry/process ownership
-are not certified by the internal wire scratch bill. The resident-cell floor
-remains in production; no real 1B proof or independent acceptance is claimed.
+The CPU fallback requires known caller batch and session preparation owners.
+Missing owners and overflow refuse admission even with an unlimited host allowance.
+The pre-existing resident pass plan remains live during physical selection and
+receives an explicit capacity charge. The selected table/windows move into the
+returned pass plan; their choices are the ones the backend executes. Grouped
+physical proofs and a reduction with no supported positive cut still refuse;
+the existing resident/grouped route remains available.
+
+Packet publication is bounded by P5: it includes every retained Round1/2/3 object,
+query container and public output beside the bounded envelope writer. After P5
+the backend clears its data, so streaming the retained proof cannot exceed that
+bound. This contract does not include a caller encoding a complete second proof
+into a Vec. The standard Live CLI now bounds seed envelopes at 100 bytes and query
+envelopes by named advice/weight draw counts and ten matrix ids. Envelope and
+individual-vector limits are enforced before input allocation. Filesystem/error
+formatting, arbitrary external transports, telemetry and allocator/process
+ownership remain outside the internal requested-heap bill and must be measured
+separately. No real 1B proof or independent acceptance is claimed here.

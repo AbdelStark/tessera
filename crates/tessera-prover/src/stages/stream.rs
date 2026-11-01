@@ -1052,7 +1052,6 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
     /// Additional window specifications and message work, before sharing.
     /// Native terms are bounded by the canonical native instance allocation
     /// reservation; graph terms follow the same Plan variants as `window`.
-    #[cfg(test)]
     pub(crate) fn window_metadata_memory(
         &self,
         k: u16,

@@ -217,6 +217,8 @@ jobs:
           cargo test -p tessera-gadgets --test storage --locked -- --test-threads=1
           cargo test -p tessera-gadgets --lib rsqrt::memory --locked -- --test-threads=1
           cargo test -p tessera-prover --lib score_input --features test-rng,test-params --locked -- --test-threads=1
+          cargo test -p tessera-prover --lib physical_route_matches_resident_and_independently_verifies --features test-rng,test-params --locked -- --test-threads=1
+          cargo test -p tessera-cli --lib public_live_message_limits --locked -- --test-threads=1
           cargo test -p tessera-prover --lib native::memory --locked -- --test-threads=1
           cargo test -p tessera-prover --lib stages:: --locked -- --test-threads=1
           cargo test -p tessera-prover --test stages --locked driver_work_bounds -- --test-threads=1

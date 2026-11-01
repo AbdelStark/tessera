@@ -32,9 +32,7 @@ impl Sink for EncodedSize {
 }
 
 /// Admission sizing must fail on overflow; metrics deliberately saturate.
-#[cfg(test)]
 pub(super) struct CheckedEncodedSize(Option<u64>);
-#[cfg(test)]
 impl CheckedEncodedSize {
     pub(super) fn of<T: Encode + ?Sized>(value: &T) -> Option<u64> {
         let mut size = Self(Some(0));
@@ -42,7 +40,6 @@ impl CheckedEncodedSize {
         size.0
     }
 }
-#[cfg(test)]
 impl Sink for CheckedEncodedSize {
     fn put(&mut self, bytes: &[u8]) {
         self.0 = self.0.and_then(|n| n.checked_add(bytes.len() as u64));

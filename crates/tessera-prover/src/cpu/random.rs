@@ -244,7 +244,6 @@ impl Stream {
 
 // Two simultaneous stream owners conservatively cover a mask reader and one
 // temporary share/session reader beside the per-proof heap key (OBS-6).
-#[cfg(test)]
 pub(super) const fn heap_bytes() -> u64 {
     32 + 2 * size_of::<Stream>() as u64
 }
