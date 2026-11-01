@@ -18,6 +18,12 @@ use crate::{
 
 type Fp = Goldilocks;
 
+#[derive(Clone, Copy)]
+struct MatrixEncoding {
+    block: NonZeroUsize,
+    threads: NonZeroUsize,
+}
+
 /// The public metadata of a protocol/1 weight commitment (RFC-0040), without resident weights
 /// or codewords. Openings regenerate rows from the caller's validated model.
 ///
@@ -27,7 +33,7 @@ type Fp = Goldilocks;
 pub struct RegeneratedWeightCommitment {
     public: WeightCommitmentPublic,
     layout: WeightLayout,
-    row_block: NonZeroUsize,
+    execution: MatrixEncoding,
     trees: Vec<MerkleTree>,
 }
 
@@ -35,7 +41,7 @@ impl fmt::Debug for RegeneratedWeightCommitment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RegeneratedWeightCommitment")
             .field("public", &self.public)
-            .field("row_block", &self.row_block)
+            .field("row_block", &self.execution.block)
             .finish_non_exhaustive()
     }
 }
@@ -71,17 +77,44 @@ impl RegeneratedWeightCommitment {
         epoch: u32,
         weights: &ModelWeights<'_>,
     ) -> Result<Self, PcsError> {
+        Self::commit_with_threads(layout, row_block, epoch, weights, NonZeroUsize::MIN)
+    }
+
+    /// The same canonical commitment with bounded parallel row transforms.
+    ///
+    /// Workers share public tables and borrow disjoint codeword slices. Reserve
+    /// [`RowEncoder::thread_memory`] beside the ordinary weight working set.
+    ///
+    /// # Errors
+    /// The same validation and allocation errors as [`Self::commit`].
+    pub fn commit_with_threads(
+        layout: &WeightLayout,
+        row_block: NonZeroU32,
+        epoch: u32,
+        weights: &ModelWeights<'_>,
+        threads: NonZeroUsize,
+    ) -> Result<Self, PcsError> {
         let _commit = tessera_codec::span!(INFO, "commit_weights", epoch = epoch).entered();
         let _checked = layout.check(weights)?;
         let block = usize::try_from(row_block.get())
             .ok()
             .and_then(NonZeroUsize::new)
             .ok_or_else(|| capacity(u64::from(row_block.get()), 1))?;
+        let execution = MatrixEncoding { block, threads };
         let mut roots = [Digest::default(); 10];
         let mut trees = Vec::with_capacity(10);
         let mut elements = 0u64;
         for matrix in WeightMatrix::ALL {
-            let leaves = encode_matrix(layout, block, epoch, matrix, weights, &[], |_, _| Ok(()))?;
+            let leaves =
+                encode_matrix(
+                    layout,
+                    execution,
+                    epoch,
+                    matrix,
+                    weights,
+                    &[],
+                    |_, _| Ok(()),
+                )?;
             let tree = MerkleTree::new(leaves)
                 .map_err(|_| invalid("the encoded weight columns form a power-of-two tree"))?;
             roots[matrix.index()] = tree.root();
@@ -121,7 +154,7 @@ impl RegeneratedWeightCommitment {
                 epoch,
             },
             layout: layout.clone(),
-            row_block: block,
+            execution,
             trees,
         })
     }
@@ -178,7 +211,7 @@ impl RegeneratedWeightCommitment {
             .collect::<Result<Vec<_>, _>>()?;
         let leaves = encode_matrix(
             &self.layout,
-            self.row_block,
+            self.execution,
             self.public.epoch,
             matrix,
             weights,
@@ -225,7 +258,7 @@ impl RegeneratedWeightCommitment {
         // The constructor obtained this block from a u32, before converting it to usize.
         let id = descriptor(
             &self.layout,
-            self.row_block.get() as u32,
+            self.execution.block.get() as u32,
             self.public.epoch,
             matrix,
         )
@@ -238,7 +271,7 @@ impl RegeneratedWeightCommitment {
                     .update(&id)
                     .update(&query.to_le_bytes())
                     .finalize();
-                for block in column.chunks(self.row_block.get()) {
+                for block in column.chunks(self.execution.block.get()) {
                     let mut hash = Hasher::new(Domain::ColumnStep);
                     hash.update(&chain);
                     for value in block {
@@ -278,16 +311,17 @@ fn descriptor(
 
 fn encode_matrix(
     layout: &WeightLayout,
-    block: NonZeroUsize,
+    execution: MatrixEncoding,
     epoch: u32,
     matrix: WeightMatrix,
     weights: &ModelWeights<'_>,
     queries: &[u64],
     mut answer: impl FnMut(usize, &[Fp]) -> Result<(), PcsError>,
 ) -> Result<Vec<Digest>, PcsError> {
+    let MatrixEncoding { block, threads } = execution;
     let shape = layout.matrix(matrix);
     let k = shape.message_len();
-    let encoder = RowEncoder::new(k, u32::from(layout.params().log2_inv_rate), 0)?;
+    let encoder = RowEncoder::new(k, u32::from(layout.params().log2_inv_rate), 0)?.threads(threads);
     let n = encoder.codeword_len();
     let descriptor = descriptor(
         layout,

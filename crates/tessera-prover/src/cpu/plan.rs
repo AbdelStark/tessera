@@ -58,6 +58,7 @@ pub struct PassPlan {
     checkpoint_bytes: u64,
     caller_bytes: u64,
     preparation_bytes: u64,
+    thread_bytes: u64,
     physical_peak: Option<u64>,
 }
 
@@ -86,6 +87,7 @@ impl PassPlan {
             checkpoint_bytes: 0,
             caller_bytes: 0,
             preparation_bytes: 0,
+            thread_bytes: 0,
             physical_peak: None,
         }
     }
@@ -93,6 +95,7 @@ impl PassPlan {
     pub(super) fn preparation(mut self, memory: super::preparation::SessionMemory) -> Self {
         self.caller_bytes = memory.caller;
         self.preparation_bytes = memory.peak;
+        self.thread_bytes = memory.thread_bytes;
         self
     }
 
@@ -212,7 +215,8 @@ impl PassPlan {
             .checked_mul(Self::BYTES_PER_CELL)?
             .checked_add(self.weight_bytes)?
             .checked_add(self.checkpoint_bytes)?
-            .checked_add(self.caller_bytes)
+            .checked_add(self.caller_bytes)?
+            .checked_add(self.thread_bytes)
     }
 
     /// Fit reduction stages and the complete table batch before P1. The cell floor remains;
@@ -309,7 +313,7 @@ impl PassPlan {
     /// Returns `None` on overflow.
     pub fn resident_bytes(&self) -> Option<u64> {
         if let Some(peak) = self.physical_peak {
-            return Some(peak);
+            return peak.checked_add(self.thread_bytes);
         }
         let table_extra = self.table_plan.as_ref().map_or(0, |p| {
             p.working_bytes
@@ -323,7 +327,7 @@ impl PassPlan {
                 .unwrap_or(0)
                 .max(table_extra),
         )?;
-        Some(proof_peak.max(self.preparation_bytes))
+        Some(proof_peak.max(self.preparation_bytes.checked_add(self.thread_bytes)?))
     }
 
     /// Whether the plan fits `budget`; `ERR-RES-MEMORY` if not, or if its size overflows.
@@ -352,6 +356,7 @@ mod tests {
             100,
         )
         .preparation(super::super::preparation::SessionMemory {
+            thread_bytes: 0,
             caller: 17,
             peak: 1000,
             weight_construction: 0,
@@ -369,11 +374,52 @@ mod tests {
             ))
         ));
         let plan = plan.preparation(super::super::preparation::SessionMemory {
+            thread_bytes: 0,
             caller: 1000,
             peak: 0,
             weight_construction: 0,
         });
         assert_eq!(plan.resident_bytes(), Some(10 * 64 + 100 + 1000));
+    }
+
+    #[test]
+    fn encoding_threads_are_reserved_beside_resident_preparation_and_physical_peaks() {
+        use super::super::preparation::SessionMemory;
+        let base = PassPlan::new(
+            1,
+            Cells {
+                tensors: 10,
+                ..Cells::default()
+            },
+            100,
+        )
+        .preparation(SessionMemory {
+            caller: 17,
+            peak: 1000,
+            thread_bytes: 99,
+            weight_construction: 0,
+        });
+        assert_eq!(base.base_bytes(), Some(10 * 64 + 100 + 17 + 99));
+        assert_eq!(base.resident_bytes(), Some(1099));
+        assert!(
+            base.check(super::super::MemoryBudget { host: 1099 })
+                .is_ok()
+        );
+        assert!(matches!(
+            base.check(super::super::MemoryBudget { host: 1098 }),
+            Err(super::super::ProverError::Resource(
+                tessera_codec::error::ErrorCode::ResMemory
+            ))
+        ));
+        let mut physical = base;
+        physical.physical_peak = Some(1500);
+        assert_eq!(physical.resident_bytes(), Some(1599));
+        assert!(matches!(
+            physical.check(super::super::MemoryBudget { host: 1598 }),
+            Err(super::super::ProverError::Resource(
+                tessera_codec::error::ErrorCode::ResMemory
+            ))
+        ));
     }
 
     #[test]

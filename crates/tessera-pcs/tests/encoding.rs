@@ -14,7 +14,7 @@ mod common;
 use common::{
     Fp, Replay, SplitMix64, codeword_points, horner, inverse_dft, passes_degree_test, root, seven,
 };
-use tessera_field::Field;
+use tessera_field::{Field, PrimeField};
 use tessera_pcs::{COSET_SHIFT, NttPlan, RowEncoder};
 
 /// Mask counts worth testing for rows of `k` values: none, one, half, all but one, all.
@@ -289,4 +289,70 @@ fn accessors_and_debug_show_the_parameters_only() {
     );
     let plan = NttPlan::new(1 << 10).expect("a supported size");
     assert_eq!(format!("{plan:?}"), "NttPlan { size: 1024, .. }");
+}
+
+#[test]
+fn parallel_rows_preserve_non_send_mask_order_and_refusal_atomicity() {
+    use core::num::NonZeroUsize;
+    use std::{cell::Cell, rc::Rc};
+    let threads = NonZeroUsize::new(4).unwrap();
+    let mut rng = SplitMix64::new(0x7e55_e7a0_0659_0003);
+    for k in [1, 8, 1024, 65536] {
+        let row = rng.fps(k);
+        for rate in [1, 2] {
+            for p in [0, 1, k / 2, k - 1, k] {
+                let scalar = RowEncoder::new(k, rate, p).unwrap();
+                let parallel = scalar.clone().threads(threads);
+                let source = || {
+                    let count = Rc::new(Cell::new(0usize));
+                    let cursor = count.clone();
+                    let feed = move || {
+                        let i = cursor.get();
+                        cursor.set(i + 1);
+                        Fp::from_u64_reduced((i as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15))
+                    };
+                    (count, feed)
+                };
+                let (serial_count, mut serial_feed) = source();
+                let (parallel_count, mut parallel_feed) = source();
+                let n = scalar.codeword_len();
+                let mut expected = vec![Fp::ZERO; n];
+                let mut actual = expected.clone();
+                scalar
+                    .encode_row(&row, &mut serial_feed, &mut expected)
+                    .unwrap();
+                let heap = allocation_counter::measure(|| {
+                    parallel
+                        .encode_row(&row, &mut parallel_feed, &mut actual)
+                        .unwrap();
+                });
+                assert_eq!(actual, expected, "k={k}, rate={rate}, P={p}");
+                assert_eq!(serial_count.get(), p);
+                assert_eq!(parallel_count.get(), p);
+                // Two transforms, at most four participants, 8 KiB control per
+                // participant. A cloned large field row/codeword cannot fit (#659).
+                assert!(heap.bytes_total <= 2 * 4 * 8192, "{heap:?}");
+                assert!(heap.bytes_max <= RowEncoder::thread_memory(n, threads).unwrap());
+                let saved = actual.clone();
+                assert_eq!(
+                    parallel.encode_row(&row[..k - 1], &mut parallel_feed, &mut actual),
+                    Err(tessera_pcs::PcsError::RowLength {
+                        expected: k,
+                        found: k - 1
+                    })
+                );
+                assert_eq!(actual, saved);
+                assert_eq!(parallel_count.get(), p);
+                assert_eq!(
+                    parallel.encode_row(&row, &mut parallel_feed, &mut actual[..n - 1]),
+                    Err(tessera_pcs::PcsError::CodewordLength {
+                        expected: n,
+                        found: n - 1
+                    })
+                );
+                assert_eq!(actual, saved);
+                assert_eq!(parallel_count.get(), p);
+            }
+        }
+    }
 }

@@ -30,16 +30,17 @@
 //! 4. The Gentleman–Sande kernel with the twiddles of `ω_n` evaluates, from bit-reversed
 //!    coefficients, in natural order.
 //!
-//! Every step runs in the codeword buffer, so encoding allocates nothing.
+//! Every field step runs in the codeword buffer. The default scalar execution allocates
+//! nothing per row; opt-in threads allocate only their bounded control state.
 
 use core::fmt;
+use core::num::NonZeroUsize;
 
 use tessera_field::{Field, Goldilocks};
 
 use crate::PcsError;
 use crate::ntt::{
-    Subgroup, TWO_ADICITY, bit_reversed_powers, cooley_tukey, gentleman_sande,
-    inverse_of_power_of_two, reverse_bits, twiddles,
+    Subgroup, TWO_ADICITY, bit_reversed_powers, inverse_of_power_of_two, reverse_bits, twiddles,
 };
 
 type Fp = Goldilocks;
@@ -81,7 +82,8 @@ impl<F: FnMut() -> Goldilocks> MaskSource for F {
 ///
 /// It precomputes three tables, `(1.5 + 2^{r−1})·k` elements (80 MiB at `k = 2^22` and rate 1/2),
 /// once; each row then costs an inverse NTT of size `k`, a coset NTT of size `n` and `P` draws,
-/// and allocates nothing. Encoding is deterministic given the mask coefficients: the same row and
+/// and allocates no field buffer. Scalar execution allocates nothing per row; opt-in workers
+/// require the separate [`Self::thread_memory`] reservation. Encoding is deterministic given the mask coefficients: the same row and
 /// mask give the same codeword.
 #[derive(Clone)]
 pub struct RowEncoder {
@@ -89,6 +91,7 @@ pub struct RowEncoder {
     /// `r`: `n = 2^r·k`.
     log_inv_rate: u32,
     mask_coeffs: usize,
+    threads: NonZeroUsize,
     /// `ω_k^{−rev(t)}` for `t < k/2`: the inverse NTT of the row.
     inverse: Vec<Fp>,
     /// `ω_n^{rev(t)}` for `t < n/2`: the NTT of the masked coefficients.
@@ -149,11 +152,42 @@ impl RowEncoder {
             log_k,
             log_inv_rate: log2_inv_rate,
             mask_coeffs,
+            threads: NonZeroUsize::MIN,
             inverse: twiddles(log_k, true),
             forward,
             spread: bit_reversed_powers(COSET_SHIFT, log_k, inverse_of_power_of_two(log_k)),
             shift_pow_k: COSET_SHIFT.pow(message_len as u64),
         })
+    }
+
+    /// Uses at most `threads` participants for public-size row transforms.
+    ///
+    /// Defaults to one. Workers share the public tables and borrow disjoint codeword
+    /// slices; masks are still drawn serially in their canonical order. Failed OS
+    /// thread creation falls back to scalar work. Small transforms remain scalar.
+    /// Callers must reserve [`Self::thread_memory`] beside their existing buffers.
+    pub fn threads(mut self, threads: NonZeroUsize) -> Self {
+        self.threads = threads;
+        self
+    }
+
+    /// Additional conservative thread stack/control storage during an encoding.
+    ///
+    /// `codeword_len` is the largest transform length. Returns `None` for an
+    /// unsupported size or sizing overflow. This excludes external allocator/OS
+    /// runtime allocations, guard pages and caches, which require a separate whole-process measurement.
+    pub fn thread_memory(codeword_len: usize, threads: NonZeroUsize) -> Option<u64> {
+        crate::ntt::parallel::memory(codeword_len, threads)
+    }
+
+    /// Successful workers for `transform_len` on this caller thread, for test controls.
+    ///
+    /// This method and the reduced test scheduling threshold exist only with `test-rng`,
+    /// which fails release builds. It does not report field, row or mask values.
+    #[cfg(feature = "test-rng")]
+    #[doc(hidden)]
+    pub fn test_worker_spawns(transform_len: usize) -> usize {
+        crate::ntt::parallel::test_spawns(transform_len)
     }
 
     /// The number of values `k` in a row.
@@ -256,7 +290,7 @@ impl RowEncoder {
         // 1. k·f in bit-reversed order, in the first k positions.
         let low = &mut codeword[..k];
         low.copy_from_slice(row);
-        cooley_tukey(low, &self.inverse, &Subgroup);
+        crate::ntt::parallel::ct_parallel(low, &self.inverse, &Subgroup, self.threads.get());
         // 2. f_i·7^i in position 2^r·rev_k(i), zero in the 2^r − 1 positions after it.
         spread(codeword, &self.spread);
         // 3. The mask: −m_i·7^i in position 2^r·rev_k(i), m_i·7^{k+i} in position
@@ -270,7 +304,7 @@ impl RowEncoder {
             power *= COSET_SHIFT;
         }
         // 4. The values of g at 7·ω_n^j, in natural order.
-        gentleman_sande(codeword, &self.forward, &Subgroup);
+        crate::ntt::parallel::gs_parallel(codeword, &self.forward, &Subgroup, self.threads.get());
     }
 }
 

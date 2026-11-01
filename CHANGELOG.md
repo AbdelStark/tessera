@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Honor `tessera prove --threads N` for bounded parallel advice and regenerated-weight row transforms, retaining scalar execution by default, serial mask order and identical proof bytes. Charge configured stacks/control metadata before P1 and verify complete scalar/parallel NI/Live artifacts (RFC-0011/0018, [#659](https://github.com/AbdelStark/tessera/issues/659)).
+
 - Report CPU PCS throughput medians, ranges, variation and raw samples with RFC-0020 warm-ups and a noisy-run retry; retain a boundary/offset scalar NTT oracle for future kernel changes ([#659](https://github.com/AbdelStark/tessera/issues/659)).
 
 - Preserve non-fitting CPU plan reports when neither source strategy fits; expose the selected memory strategy and keep resident grouping searches monotone when a cheaper physical fallback also exists. Extend physical proof controls to affine quantization, recorded continuations and slotted requests with caller-derived verification pins (RFC-0018/0054, [#641](https://github.com/AbdelStark/tessera/issues/641)).

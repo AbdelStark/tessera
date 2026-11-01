@@ -613,6 +613,11 @@ impl PhysicalCandidate {
 }
 
 pub(super) fn select(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, ProverError> {
+    // Reserve workers before discretionary table/window choices; PassPlan adds
+    // the same reserve back to its reported maximum, exactly once (RFC-0018).
+    let host = host
+        .checked_sub(input.session.map_or(0, |m| m.thread_bytes))
+        .ok_or_else(memory)?;
     let candidate = components(input, host)?;
     candidate.check_complete(host)?;
     Ok(candidate)

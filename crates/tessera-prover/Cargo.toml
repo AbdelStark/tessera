@@ -45,7 +45,7 @@ tv-tables = { path = "../../verifier/crates/tv-tables" }
 # Test-only: enable the independent verifier dev-dependency's non-certifying parameters.
 test-params = ["tv-core/test-params"]
 # Test-only: seeded masking randomness, so tests are reproducible. A release build with it fails to compile.
-test-rng = []
+test-rng = ["tessera-pcs/test-rng"]
 # Test-only: dumps secret tensors for debugging (OBS-4). A release build with it fails to compile.
 unsafe-debug-dump = []
 

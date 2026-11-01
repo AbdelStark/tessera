@@ -7,6 +7,7 @@ use super::*;
 pub(super) struct SessionMemory {
     pub(super) caller: u64,
     pub(super) peak: u64,
+    pub(super) thread_bytes: u64,
     #[cfg(test)]
     pub(super) weight_construction: u64,
 }
@@ -16,6 +17,7 @@ impl SessionMemory {
         let fail = || ProverError::Resource(ErrorCode::ResMemory);
         let bytes = caller_batch_bytes(batch).ok_or_else(fail)?;
         Ok(Self {
+            thread_bytes: self.thread_bytes,
             caller: self.caller.checked_add(bytes).ok_or_else(fail)?,
             peak: self.peak.checked_add(bytes).ok_or_else(fail)?,
             #[cfg(test)]
@@ -41,6 +43,7 @@ pub(super) fn session(
     lower: &compiler::Lowering,
     layout: &pcs::WeightLayout,
     plan_metadata: Option<u64>,
+    threads: NonZeroUsize,
 ) -> Result<SessionMemory, ProverError> {
     let fail = || ProverError::Resource(ErrorCode::ResMemory);
     let tables = tessera_witness::Engine::table_memory(&plan.claims.tables)?.peak_bytes();
@@ -53,6 +56,20 @@ pub(super) fn session(
         u64::from(params.weight_queries),
         1,
     )?;
+    let advice = plan.claims.layout.advice;
+    let mut columns = 1usize
+        .checked_shl(u32::from(advice.log2_k) + u32::from(advice.log2_inv_rate))
+        .ok_or_else(fail)?;
+    for matrix in pcs::WeightMatrix::ALL {
+        columns = columns.max(
+            layout
+                .matrix(matrix)
+                .message_len()
+                .checked_shl(u32::from(layout.params().log2_inv_rate))
+                .ok_or_else(fail)?,
+        );
+    }
+    let thread_bytes = pcs::RowEncoder::thread_memory(columns, threads).ok_or_else(fail)?;
     let bytes = (|| {
         let caller = plan.heap_upper_bound()?.checked_add(state.heap_bytes()?)?;
         let lowering = lower.construction_metadata_bytes(model)?;
@@ -70,6 +87,7 @@ pub(super) fn session(
             .max(commit)
             .checked_add(caller)?;
         Some(SessionMemory {
+            thread_bytes,
             caller,
             peak,
             #[cfg(test)]
@@ -280,6 +298,7 @@ mod tests {
                     &lower,
                     &layout,
                     None,
+                    NonZeroUsize::MIN,
                 );
                 assert!(matches!(
                     missing,
@@ -317,6 +336,7 @@ mod batch_tests {
         let bytes = caller_batch_bytes(&batch).unwrap();
         assert_eq!(bytes, observed.bytes_current as u64);
         let memory = SessionMemory {
+            thread_bytes: 0,
             caller: 7,
             peak: 11,
             weight_construction: 3,
