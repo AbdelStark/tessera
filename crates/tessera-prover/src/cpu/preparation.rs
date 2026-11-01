@@ -11,6 +11,29 @@ pub(super) struct SessionMemory {
     pub(super) weight_construction: u64,
 }
 
+impl SessionMemory {
+    pub(super) fn with_batch(self, batch: &ProofBatch) -> Result<Self, ProverError> {
+        let fail = || ProverError::Resource(ErrorCode::ResMemory);
+        let bytes = caller_batch_bytes(batch).ok_or_else(fail)?;
+        Ok(Self {
+            caller: self.caller.checked_add(bytes).ok_or_else(fail)?,
+            peak: self.peak.checked_add(bytes).ok_or_else(fail)?,
+            #[cfg(test)]
+            weight_construction: self
+                .weight_construction
+                .checked_add(bytes)
+                .ok_or_else(fail)?,
+        })
+    }
+}
+
+pub(super) fn caller_batch_bytes(batch: &ProofBatch) -> Option<u64> {
+    tessera_witness::Engine::token_storage_bytes(&batch.tokens)?.checked_add(
+        (batch.statement.batch.requests.capacity() as u64)
+            .checked_mul(size_of::<protocol::RequestRef>() as u64)?,
+    )
+}
+
 pub(super) fn session(
     plan: &ExecutionPlan,
     model: PublicModel<'_>,
@@ -212,6 +235,21 @@ mod tests {
                     let prover = Prover::new(&plan, &model, &mut state, config.clone()).unwrap();
                     prover.plan(&batch).unwrap().resident_bytes().unwrap()
                 };
+                let mut spare_batch = ProofBatch {
+                    statement: batch.statement.clone(),
+                    tokens: Secret::new(Vec::with_capacity(4097)),
+                };
+                // An invalid token count is not read during public planning; its
+                // actual allocation must still be reserved before witness checks.
+                spare_batch.statement.batch.requests.reserve(4097);
+                let spare = {
+                    let prover = Prover::new(&plan, &model, &mut state, config.clone()).unwrap();
+                    prover.plan(&spare_batch).unwrap().resident_bytes().unwrap()
+                };
+                assert_eq!(
+                    spare - before,
+                    caller_batch_bytes(&spare_batch).unwrap() - caller_batch_bytes(&batch).unwrap()
+                );
                 let before_heap = plan.heap_upper_bound().unwrap();
                 let mut text = String::with_capacity(32 << 20);
                 text.push_str(params.id);
@@ -248,6 +286,59 @@ mod tests {
                     Err(ProverError::Resource(ErrorCode::ResMemory))
                 ));
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod batch_tests {
+    use super::*;
+    #[test]
+    fn caller_batch_is_an_additive_owner_and_overflow_refuses() {
+        let mut held = None;
+        let observed = allocation_counter::measure(|| {
+            held = Some(ProofBatch {
+                statement: protocol::PublicStatement {
+                    claim_list_digest: [0; 32],
+                    weights_root: [0; 32],
+                    weights_epoch: 0,
+                    manifest_digest: [0; 32],
+                    batch: protocol::BatchDescriptor {
+                        requests: Vec::with_capacity(31),
+                    },
+                    predictor: protocol::PredictorSpec::Exact {
+                        decoding: protocol::Decoding::Greedy,
+                    },
+                },
+                tokens: Secret::new(Vec::with_capacity(129)),
+            });
+        });
+        let batch = held.unwrap();
+        let bytes = caller_batch_bytes(&batch).unwrap();
+        assert_eq!(bytes, observed.bytes_current as u64);
+        let memory = SessionMemory {
+            caller: 7,
+            peak: 11,
+            weight_construction: 3,
+        };
+        let charged = memory.with_batch(&batch).unwrap();
+        assert_eq!(charged.caller, 7 + bytes);
+        assert_eq!(charged.peak, 11 + bytes);
+        assert_eq!(charged.weight_construction, 3 + bytes);
+        for memory in [
+            SessionMemory {
+                caller: u64::MAX,
+                ..memory
+            },
+            SessionMemory {
+                peak: u64::MAX,
+                ..memory
+            },
+        ] {
+            assert!(matches!(
+                memory.with_batch(&batch),
+                Err(ProverError::Resource(ErrorCode::ResMemory))
+            ));
         }
     }
 }

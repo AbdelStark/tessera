@@ -459,7 +459,7 @@ impl<'a> CpuBackend<'a> {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let plan = PassPlan::new(native.schedule().stages.len(), cells, weight_memory(c)?)
-            .preparation(prepared.memory)
+            .preparation(prepared.memory.with_batch(batch)?)
             .staged(shapes)?
             .tables(TablePlan::new(&leaf, runtime.selection(), None, None)?);
         let (plan, grouped) = plan_groups(

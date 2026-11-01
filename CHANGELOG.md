@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Stream signed INT8 encodings through bounded clearing scratch with unchanged canonical bytes; charge caller token/request capacities in CPU session planning, and cover public physical-planner construction, retained stage state, split outputs and target-transfer lifetimes (RFC-0003/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Charge checked session preparation and borrowed execution-plan/weight-state capacities before P1, including maximum-context row preflight, both weight-layout channel lists and regenerated weight construction; preserve the canonical plan checks and resident-cell floor (RFC-0018/0041/0047, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Bound row mapping, compiler/leaf/advice/PCS/native/schedule construction, table-planner metadata, transcript/streaming-writer and live-session ownership in the test-only physical composition; compose unit-preparation lifetimes and retain priced table/window choices in a typed candidate that refuses incomplete phase bounds; reuse the canonical protocol/1 advice-row preflight and release temporary indexes early, while retaining the CPU admission floor until the remaining bounds and route integration are complete (RFC-0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).

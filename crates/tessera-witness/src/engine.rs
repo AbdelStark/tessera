@@ -242,6 +242,15 @@ impl<'a> Engine<'a> {
         self.run_tokens(model, tokens, true)
     }
 
+    /// Requested bytes of the caller's token allocation, including spare capacity
+    /// (RFC-0018). Reads allocation metadata only: no token value is returned,
+    /// copied or logged. The caller's allocation shape is used for local resource
+    /// planning, not as a proof value. `None` means checked sizing overflow.
+    #[allow(clippy::disallowed_methods)]
+    pub fn token_storage_bytes(tokens: &Secret<Vec<u32>>) -> Option<u64> {
+        (tokens.expose_secret().capacity() as u64).checked_mul(size_of::<u32>() as u64)
+    }
+
     /// Retain a clearing copy of the canonical token tensor for later checkpoint replays.
     /// Input sequences concatenate real requests, as in [`Self::run_batch`]; slot gaps are
     /// inserted as zero tokens. The copy borrows nothing from the caller's secret buffer.
@@ -1629,5 +1638,29 @@ mod table_memory_tests {
             )
         });
         assert_eq!(measured.count_total, 0);
+    }
+}
+
+#[cfg(test)]
+mod token_memory_tests {
+    use super::*;
+    #[test]
+    fn caller_token_capacity_is_counted_without_reading_values() {
+        for spare in [0, 1, 31, 4097] {
+            let mut held = None;
+            let observed = allocation_counter::measure(|| {
+                let mut tokens = Vec::with_capacity(3 + spare);
+                tokens.extend([1u32, 2, 3]);
+                held = Some(Secret::new(tokens));
+            });
+            let tokens = held.unwrap();
+            let sizing = allocation_counter::measure(|| {
+                assert_eq!(
+                    Engine::token_storage_bytes(&tokens),
+                    Some(observed.bytes_current as u64)
+                );
+            });
+            assert_eq!(sizing.count_total, 0);
+        }
     }
 }

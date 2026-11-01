@@ -54,7 +54,11 @@ The borrowed execution plan and weight state remain live in every phase. Their
 charges include spare vector/String capacities and the state's clearing seed
 allocation, without reading that seed. `PassPlan::resident_bytes` adds these caller
 owners beside the existing proof floor and covers the session preparation peak as
-well. The caller's model remains outside `MemoryBudget.host` and must be reported
+well. Public batch planning also adds the caller token vector and request vector
+by their actual capacities, including unused slots. The approved witness engine
+reader returns the token allocation size only; it does not expose any token value.
+These caller batch bytes coexist with each proof phase. Checked addition refuses
+overflow. The caller's model remains outside `MemoryBudget.host` and must be reported
 separately. Stack, allocator and process/runtime overhead are not requested-heap
 allocations; whole-process qualification must still measure them.
 
@@ -214,7 +218,11 @@ The NI CLI proof and producer Live messages use the existing streaming TCE envel
 writer. Its first pass sizes the header, and its second pass writes and hashes the
 same encoding through a clearing buffer of at most 64 KiB. The message remains live;
 there is no complete encoded-envelope allocation beside it. Any allocation an
-encoder itself owns remains separate from this output-buffer bound.
+encoder itself owns remains separate from this output-buffer bound. Signed-byte
+slices now encode through a fixed 4 KiB clearing stack buffer. Sizing and streaming
+model INT8 tensors therefore allocate no whole-slice unsigned copy. Canonical
+two's-complement bytes and length prefixes are unchanged. The stack buffer is
+outside requested-heap accounting and remains part of whole-process measurement.
 
 Directory publication still creates temporary files exclusively with mode 0600,
 finishes and syncs the file, and hard-links it to a fresh final path. Existing files
@@ -852,3 +860,27 @@ non-certifying test parameters, and whole-proof requested allocations are metere
 The one-byte budget regression permits a resident-source fallback while retaining
 the full cell floor. This integration does not qualify a real 1B proof or replace
 the outstanding phase composition needed to relax that floor.
+
+
+## Physical planner construction and caller ownership
+
+The test-only physical composition now carries an explicit planning peak for
+borrowed unit/layout/weight/session owners, opening geometry, generated cores and
+multiplicity metadata, table planning, public stage sizing and returned candidate
+descriptors. It reserves candidate descriptors and caller batch storage before
+discretionary table chunks and windows consume the allowance. Independent
+allocation controls compare live planner heap and exact retained candidate
+capacities across eight request/output shapes.
+
+The phase composition charges grown stage state, all retained stage split and
+sumcheck outputs, and a distinct target-construction peak while native/stage
+owners still live. Target retention replaces target-construction scratch only
+after those owners drop. Internal CPU transcript, public encoding and dynamic
+label work is separate from relation kernels and the bounded streaming writer.
+Allocation controls exercise the actual public encodings and driver formats.
+
+This remains a test-only composition. Missing caller batch, session preparation
+or packet bounds refuse admission even with an unlimited host allowance. External
+transport ingress, filesystem/error formatting and telemetry/process ownership
+are not certified by the internal wire scratch bill. The resident-cell floor
+remains in production; no real 1B proof or independent acceptance is claimed.
