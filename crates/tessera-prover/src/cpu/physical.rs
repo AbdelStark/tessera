@@ -180,11 +180,276 @@ struct Inputs<'a> {
     lowering: &'a Lowering,
     layers: &'a LayerMap,
     runtime: &'a RuntimePlan,
+    advice: &'a ModelAdviceLayout<'a>,
     leaf: &'a LeafLayout<ModelColumn>,
     native: &'a ModelNativePlan,
     grouped: Option<&'a GroupedLayout>,
     weights: &'a pcs::WeightLayout,
 }
+// A candidate owns the choices it priced. Missing lifetime/packet bounds are
+// represented by None, so a partial component report cannot become admission.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PhasePeaks {
+    session_preparation: Option<u64>,
+    preparation: Option<u64>,
+    packets: Option<u64>,
+    p1: u64,
+    p2: u64,
+    p3: u64,
+    p4: u64,
+    p5: u64,
+}
+impl PhasePeaks {
+    fn complete_peak(&self) -> Option<u64> {
+        Some(
+            [
+                self.session_preparation?,
+                self.preparation?,
+                self.packets?,
+                self.p1,
+                self.p2,
+                self.p3,
+                self.p4,
+                self.p5,
+            ]
+            .into_iter()
+            .max()
+            .unwrap_or(0),
+        )
+    }
+
+    fn check(&self, host: u64) -> Result<(), ProverError> {
+        match self.complete_peak() {
+            Some(peak) if peak <= host => Ok(()),
+            _ => Err(memory()),
+        }
+    }
+}
+
+// These are distinct lifetime peaks, not the sum of independently measured
+// constructors. Borrowed model/claim bytes remain outside MemoryBudget.host.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct UnitPreparation {
+    binding: u64,
+    lowering: u64,
+    analysis: u64,
+    selection: u64,
+    runtime: u64,
+    advice: u64,
+    layers: u64,
+    leaf: u64,
+    native: u64,
+}
+impl UnitPreparation {
+    fn peak(&self) -> u64 {
+        [
+            self.binding,
+            self.lowering,
+            self.analysis,
+            self.selection,
+            self.runtime,
+            self.advice,
+            self.layers,
+            self.leaf,
+            self.native,
+        ]
+        .into_iter()
+        .max()
+        .unwrap_or(0)
+    }
+
+    fn derive(
+        input: &Inputs<'_>,
+        advice: &ModelAdviceLayout<'_>,
+        prepared: u64,
+    ) -> Result<Self, ProverError> {
+        let lower = input.lowering;
+        let layers = input.layers;
+        let runtime = input.runtime;
+        let selection = runtime.selection();
+        // The runtime catalog includes every original selected table. Its greedy
+        // extension can only increase this public preparation reservation.
+        let cores = Engine::table_memory(&selection.tables)?.peak_bytes();
+        let lower_heap = required(lower.heap_bytes())?;
+        let analysis = required(compiler::analysis_memory_bytes(&lower.graph))?;
+        let n = input.statement.batch.requests.len() as u64;
+        let requests = sum([
+            request_key_memory(n)?,
+            array::<u32>(n)?,
+            array::<(u32, u32)>(n)?,
+        ])?;
+        let early = sum([prepared, requests, lower_heap])?;
+        let selected = required(selection.heap_upper_bound())?;
+        let retained = sum([prepared, lower_heap, required(runtime.heap_upper_bound())?])?;
+        let laid_out = sum([retained, required(advice.heap_upper_bound())?])?;
+        let layered = sum([laid_out, required(layers.heap_bytes())?])?;
+        Ok(Self {
+            binding: sum([
+                prepared,
+                growing::<u8>(required(encoded_size::CheckedEncodedSize::of(
+                    input.claims,
+                ))?)?,
+            ])?,
+            lowering: sum([
+                prepared,
+                requests,
+                required(lower.construction_metadata_bytes(PublicModel::of_claims(input.claims)))?,
+                cores,
+            ])?,
+            analysis: sum([early, analysis, cores])?,
+            selection: sum([
+                early,
+                analysis,
+                required(selection.construction_metadata_bytes(lower, layers))?,
+                cores,
+            ])?,
+            runtime: sum([
+                early,
+                analysis,
+                selected,
+                required(runtime.construction_peak_bytes(lower))?,
+                cores,
+            ])?,
+            advice: sum([
+                retained,
+                required(advice.construction_peak_bytes(selection, input.claims, layers))?,
+            ])?,
+            layers: sum([
+                laid_out,
+                required(layers.construction_peak_bytes(&lower.graph))?,
+            ])?,
+            leaf: sum([
+                layered,
+                input
+                    .leaf
+                    .construction_peak_bytes(lower, layers, selection)?,
+            ])?,
+            native: sum([
+                layered,
+                required(input.leaf.heap_bytes())?,
+                required(input.native.construction_peak_bytes(lower))?,
+            ])?,
+        })
+    }
+}
+
+fn request_key_memory(n: u64) -> Result<u64, ProverError> {
+    if n == 0 {
+        return Ok(0);
+    }
+    // Pinned Rust1.95 hashbrown: <=7/8 load, geometric old/new bucket overlap.
+    let buckets = sum([times(n, 8)?, 6])?
+        .checked_div(7)
+        .ok_or_else(memory)?
+        .max(4)
+        .checked_next_power_of_two()
+        .ok_or_else(memory)?;
+    let all = times(buckets, 2)?;
+    sum([
+        array::<(([u8; 16], u64), ())>(all)?,
+        array::<u8>(all)?,
+        times(31, u64::from(buckets.trailing_zeros()))?,
+    ])
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StageBill {
+    stage: usize,
+    source_metadata: u64,
+    ordinary_source_inputs: u64,
+    driver: u64,
+    window_metadata: u64,
+    output: u64,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ComponentBill {
+    lowering_preparation: u64,
+    layer_preparation: u64,
+    selection_preparation: u64,
+    runtime_preparation: u64,
+    native_preparation: u64,
+    table_preparation: u64,
+    table_metadata: u64,
+    leaf_preparation: u64,
+    advice_preparation: u64,
+    protocol_work: u64,
+    claims_encoding: u64,
+    unit: u64,
+    base: u64,
+    source: u64,
+    rows: u64,
+    messages: u64,
+    leaf_original: u64,
+    leaf_wire: u64,
+    response_containers: u64,
+    engine_retained: u64,
+    count_total: u64,
+    replay_retained: u64,
+    replay_constructor: u64,
+    geometry_constructor: u64,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PhysicalCandidate {
+    host: u64,
+    phases: PhasePeaks,
+    unit_preparation: UnitPreparation,
+    table: table_plan::TablePlan,
+    windows: Vec<WindowMemory>,
+    stages: Vec<StageBill>,
+    bill: ComponentBill,
+}
+impl PhysicalCandidate {
+    fn check_complete(&self, host: u64) -> Result<(), ProverError> {
+        self.phases.check(host)
+    }
+
+    #[cfg(test)]
+    fn report(&self) -> serde_json::Value {
+        let b = &self.bill;
+        let phases = &self.phases;
+        let stages = self
+            .stages
+            .iter()
+            .map(|s| {
+                serde_json::json!({
+                    "stage":s.stage,"source_metadata":s.source_metadata,
+                    "ordinary_source_inputs":s.ordinary_source_inputs,"driver":s.driver,
+                    "window_metadata":s.window_metadata,"output":s.output,
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut report = serde_json::json!({"complete_bound":false,"route_admitted":false,"proof_generated":false,
+        "lowering_preparation_metadata":b.lowering_preparation,
+        "layer_preparation":b.layer_preparation,"selection_preparation_metadata":b.selection_preparation,
+        "runtime_preparation":b.runtime_preparation,"native_preparation":b.native_preparation,
+        "table_preparation":b.table_preparation,"table_metadata":b.table_metadata,
+        "leaf_preparation":b.leaf_preparation,"advice_preparation":b.advice_preparation,
+        "protocol_work":b.protocol_work,"claims_encoding":b.claims_encoding,
+        "host":self.host});
+        let details = serde_json::json!({"unit_metadata":b.unit,"base":b.base,"source_work":b.source,
+        "source_rows":b.rows,"message_owners":b.messages,"leaf_original":b.leaf_original,
+        "leaf_wire_copy":b.leaf_wire,"response_containers":b.response_containers,
+        "engine_retained":b.engine_retained,"count_backings":b.count_total,
+        "replay_retained":b.replay_retained,"replay_constructor":b.replay_constructor,
+        "geometry_constructor":b.geometry_constructor,
+        "session_preparation":phases.session_preparation,
+        "unit_preparation":self.unit_preparation.peak(),
+        "preparation_components":phases.preparation,"packet_components":phases.packets,
+        "p1_components":phases.p1,"p2_components":phases.p2,"p3_components":phases.p3,
+        "p4_components":phases.p4,"p5_components":phases.p5,
+        "stages":stages,"cuts":self.windows.iter().map(|p|p.cut).collect::<Vec<_>>(),
+        "table_cuts":self.table.cuts,"table_chunk_rows":self.table.chunk_rows,
+        "unpriced":["session preparation and public sizing lifetimes",
+            "complete packet/label/path/error ownership",
+            "caller model and process overhead reporting"]});
+        report
+            .as_object_mut()
+            .unwrap()
+            .extend(details.as_object().unwrap().clone());
+        report
+    }
+}
+
 struct MetadataOnly;
 impl crate::stages::WitnessSource for MetadataOnly {
     fn values(&self, _: tessera_ir::TensorId) -> Option<&[i64]> {
@@ -194,26 +459,26 @@ impl crate::stages::WitnessSource for MetadataOnly {
 
 // Keep all component owners explicit. No favorable field-point collision or
 // secret sparsity removes an opening, operand, table or count backing.
-fn components(input: &Inputs<'_>, host: u64) -> Result<serde_json::Value, ProverError> {
+fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, ProverError> {
     let Inputs {
         claims: c,
         statement,
         lowering,
         layers,
         runtime,
+        advice,
         leaf,
         native,
         grouped,
         weights,
     } = input;
-    let advice = ModelAdviceLayout::runtime(lowering, runtime, c)?;
     let geometry = crate::OpeningGeometry::derive(
         lowering,
         &runtime.selection().tables,
         leaf,
         *grouped,
         native,
-        &advice,
+        advice,
         weights,
     )?;
     let targets = geometry.target_memory(lowering, leaf, native)?;
@@ -285,6 +550,11 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<serde_json::Value, Prover
     // WeightLayout's only heap owner is WeightShapes.channels; MatrixLayout is Copy.
     let weight_layout =
         array::<(pcs::WeightMatrix, u32)>(weights.shapes().channels.capacity() as u64)?;
+    let unit_preparation = UnitPreparation::derive(
+        input,
+        advice,
+        sum([weight_layout, weight.retained_bytes()])?,
+    )?;
     let base = sum([
         unit,
         protocol_work,
@@ -350,7 +620,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<serde_json::Value, Prover
     let response_containers = response_containers(input, &geometry, params)?;
     let messages = sum([leaf_original, leaf_wire, response_containers])?;
     let active = sum([base, source, rows, random::heap_bytes(), messages])?;
-    let leaf_source = ModelWitness::memory(leaf, lowering, layers, &advice)?;
+    let leaf_source = ModelWitness::memory(leaf, lowering, layers, advice)?;
     let stage_state = crate::stages::StageStateMemory::new(&lowering.graph, native.schedule())?;
     let native_memory = native.memory(lowering, true)?;
     let stage_driver = crate::StageProver::new(lowering, native.schedule(), &MetadataOnly);
@@ -391,11 +661,14 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<serde_json::Value, Prover
         max_driver = max_driver.max(driver);
         max_window_metadata = max_window_metadata.max(metadata.peak_bytes());
         stage_outputs = sum([stage_outputs, metadata.output_bytes()])?;
-        stage_rows.push(
-            serde_json::json!({"stage":k,"source_metadata":source.metadata_bytes(),
-            "ordinary_source_inputs":source.resident_input_bytes(),"driver":driver,
-            "window_metadata":metadata.peak_bytes(),"output":metadata.output_bytes()}),
-        );
+        stage_rows.push(StageBill {
+            stage: k,
+            source_metadata: source.metadata_bytes(),
+            ordinary_source_inputs: source.resident_input_bytes(),
+            driver,
+            window_metadata: metadata.peak_bytes(),
+            output: metadata.output_bytes(),
+        });
         stages.push(shapes);
     }
     let stage_fixed = sum([
@@ -410,7 +683,12 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<serde_json::Value, Prover
         stage_outputs,
     ])?;
     let window_allowance = host.checked_sub(stage_fixed).ok_or_else(memory)? / 2;
-    let mut windows = Vec::new();
+    // Use the schedule index directly, including the non-reduction leaf stage.
+    let mut windows = vec![WindowMemory {
+        cut: 0,
+        fold_passes: 0,
+        working_bytes: 0,
+    }];
     for shapes in &stages {
         windows.push(positive_cut(shapes, window_allowance)?);
     }
@@ -458,25 +736,52 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<serde_json::Value, Prover
         weight.answer_output_bytes(),
         stage_outputs,
     ])?;
-    Ok(
-        serde_json::json!({"complete_bound":false,"route_admitted":false,"proof_generated":false,
-        "lowering_preparation_metadata":lowering_preparation,
-        "layer_preparation":layer_preparation,"selection_preparation_metadata":selection_preparation,
-        "runtime_preparation":runtime_preparation,"native_preparation":native_preparation,"table_preparation":table_preparation,"table_metadata":table_metadata,"leaf_preparation":leaf_preparation,"advice_preparation":advice_preparation,"protocol_work":protocol_work,
-        "claims_encoding":claims_encoding,
-        "host":host,"unit_metadata":unit,"base":base,"source_work":source,"source_rows":rows,"message_owners":messages,
-        "leaf_original":leaf_original,"leaf_wire_copy":leaf_wire,"response_containers":response_containers,
-        "engine_retained":tables.retained_bytes(),"count_backings":count_total,
-        "replay_retained":replay.retained_bytes(),"replay_constructor":replay.peak_bytes(),
-        "geometry_constructor":geometry.construction_peak_bytes(lowering,leaf,*grouped,native,&advice)?,
-        "p1_components":p1_peak,"p2_components":p2_peak,"p3_components":stage_peak,
-        "p4_components":p4_peak,"p5_components":p5_peak,
-        "stages":stage_rows,"cuts":windows.iter().map(|p|p.cut).collect::<Vec<_>>(),
-        "unpriced":["public preparation and sizing constructors",
-            "NI and Live packet encodings",
-            "session/query containers","caller model and process overhead"]}),
-    )
+    Ok(PhysicalCandidate {
+        host,
+        phases: PhasePeaks {
+            session_preparation: None,
+            preparation: None,
+            packets: None,
+            p1: p1_peak,
+            p2: p2_peak,
+            p3: stage_peak,
+            p4: p4_peak,
+            p5: p5_peak,
+        },
+        unit_preparation,
+        table,
+        windows,
+        stages: stage_rows,
+        bill: ComponentBill {
+            lowering_preparation,
+            layer_preparation,
+            selection_preparation,
+            runtime_preparation,
+            native_preparation,
+            table_preparation,
+            table_metadata,
+            leaf_preparation,
+            advice_preparation,
+            protocol_work,
+            claims_encoding,
+            unit,
+            base,
+            source,
+            rows,
+            messages,
+            leaf_original,
+            leaf_wire,
+            response_containers,
+            engine_retained: tables.retained_bytes(),
+            count_total,
+            replay_retained: replay.retained_bytes(),
+            replay_constructor: replay.peak_bytes(),
+            geometry_constructor: geometry
+                .construction_peak_bytes(lowering, leaf, *grouped, native, advice)?,
+        },
+    })
 }
+
 fn positive_cut(shapes: &[WindowShape], allowance: u64) -> Result<WindowMemory, ProverError> {
     let rounds = shapes.iter().map(|s| s.vars).max().unwrap_or(0);
     for cut in 1..rounds {
@@ -487,6 +792,218 @@ fn positive_cut(shapes: &[WindowShape], allowance: u64) -> Result<WindowMemory, 
         }
     }
     Err(memory())
+}
+
+#[test]
+fn incomplete_phases_cannot_admit_even_an_unlimited_host() {
+    let complete = PhasePeaks {
+        session_preparation: Some(11),
+        preparation: Some(13),
+        packets: Some(17),
+        p1: 19,
+        p2: 23,
+        p3: 29,
+        p4: 31,
+        p5: 37,
+    };
+    assert!(complete.check(37).is_ok());
+    assert!(matches!(
+        complete.check(36),
+        Err(ProverError::Resource(ErrorCode::ResMemory))
+    ));
+    for phase in 0..3 {
+        let mut partial = complete.clone();
+        match phase {
+            0 => partial.session_preparation = None,
+            1 => partial.preparation = None,
+            _ => partial.packets = None,
+        }
+        assert_eq!(partial.complete_peak(), None);
+        assert!(matches!(
+            partial.check(u64::MAX),
+            Err(ProverError::Resource(ErrorCode::ResMemory))
+        ));
+    }
+    for phase in 0..8 {
+        let mut changed = complete.clone();
+        match phase {
+            0 => changed.session_preparation = Some(101),
+            1 => changed.preparation = Some(101),
+            2 => changed.packets = Some(101),
+            3 => changed.p1 = 101,
+            4 => changed.p2 = 101,
+            5 => changed.p3 = 101,
+            6 => changed.p4 = 101,
+            _ => changed.p5 = 101,
+        }
+        assert!(matches!(
+            changed.check(100),
+            Err(ProverError::Resource(ErrorCode::ResMemory))
+        ));
+        assert!(changed.check(101).is_ok());
+    }
+}
+
+#[test]
+fn request_key_bound_covers_bucket_growth_and_refuses_overflow() {
+    for n in [0, 1, 3, 4, 7, 8, 15, 31, 64, 129, 513] {
+        let measured = allocation_counter::measure(|| {
+            let mut keys = std::collections::HashSet::new();
+            for i in 0..n {
+                assert!(keys.insert(([0u8; 16], i)));
+            }
+        });
+        assert!(
+            measured.bytes_max <= request_key_memory(n).unwrap(),
+            "{n}: {measured:?}"
+        );
+    }
+    for n in [u64::MAX, 1 << 62, 1 << 59] {
+        assert!(matches!(
+            request_key_memory(n),
+            Err(ProverError::Resource(ErrorCode::ResMemory))
+        ));
+    }
+}
+
+#[test]
+fn preparation_lifetimes_cover_the_complete_public_constructor_sequence() {
+    use tessera_codec::{DecodeLimits, envelope, schema};
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../spec/vectors/tamper/claims.tcl");
+    let claims: tessera_ir::ClaimList = envelope::open(
+        &std::fs::read(path).unwrap(),
+        &schema::CLAIM_LIST,
+        DecodeLimits::MESSAGE,
+    )
+    .unwrap();
+    for lengths in [vec![1], vec![3], vec![5], vec![3, 1], vec![1, 3, 5, 2, 4]] {
+        for output in [false, true] {
+            for prepared_bytes in [0usize, 16 << 20] {
+                let requests = lengths
+                    .iter()
+                    .map(|&n| {
+                        (
+                            if output && n > 1 { 1 } else { n },
+                            if output { n - 1 } else { 0 },
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let statement = protocol::PublicStatement {
+                    claim_list_digest: tessera_hash::hash(
+                        tessera_hash::Domain::ClaimList,
+                        &tessera_codec::encode(&claims),
+                    ),
+                    weights_root: [0; 32],
+                    weights_epoch: 0,
+                    manifest_digest: [0; 32],
+                    batch: protocol::BatchDescriptor {
+                        requests: requests
+                            .iter()
+                            .enumerate()
+                            .map(|(i, &(prompt_len, output_len))| protocol::RequestRef {
+                                request_id: i as u64,
+                                session_id: [0; 16],
+                                prompt_len,
+                                output_len,
+                            })
+                            .collect(),
+                    },
+                    predictor: protocol::PredictorSpec::Exact {
+                        decoding: protocol::Decoding::Greedy,
+                    },
+                };
+                let check_planner = lengths == [5] && output && prepared_bytes == 0;
+                let mut bound_result = None;
+                let measured = allocation_counter::measure(|| {
+                    // Mirror Unit's actual drop order. Nothing retained below is
+                    // allocated before the counter starts; caller claims/statement are.
+                    let prepared_owner = vec![0u8; prepared_bytes];
+                    let mut keys = std::collections::HashSet::new();
+                    let mut lengths = Vec::with_capacity(requests.len());
+                    let mut batch_requests = Vec::with_capacity(requests.len());
+                    for r in &statement.batch.requests {
+                        keys.insert((r.session_id, r.request_id));
+                        lengths.push(r.prompt_len + r.output_len);
+                        batch_requests.push((r.prompt_len, r.output_len));
+                    }
+                    let lower =
+                        compiler::lower_batch(PublicModel::of_claims(&claims), &lengths).unwrap();
+                    let ranges = compiler::analyze(&lower.graph, &lower.tables).unwrap();
+                    let selected = compiler::select_model(
+                        claims.protocol_version,
+                        &lower,
+                        &ranges,
+                        &claims.gadget_policy,
+                    )
+                    .unwrap();
+                    let runtime =
+                        RuntimePlan::derive_batch(&lower, &selected, &claims, &batch_requests)
+                            .unwrap();
+                    drop((keys, lengths, batch_requests, selected, ranges));
+                    let advice = ModelAdviceLayout::runtime(&lower, &runtime, &claims).unwrap();
+                    let layers = LayerMap::new(&lower).unwrap();
+                    let leaf = LeafLayout::runtime(&lower, &layers, &runtime, &claims).unwrap();
+                    let native =
+                        ModelNativePlan::derive_runtime(&lower, &runtime, &claims, &leaf).unwrap();
+                    let weights = pcs::WeightLayout::new(
+                        claims.layout.weights,
+                        pcs::WeightShapes {
+                            layers: claims.arch.n_layers,
+                            shapes: claims.arch.weight_shapes().unwrap(),
+                            channels: lower
+                                .classes
+                                .iter()
+                                .chain(&lower.multipliers)
+                                .map(|(w, _)| (w.ty.matrix(), w.layer))
+                                .collect(),
+                        },
+                    )
+                    .unwrap();
+                    let input = Inputs {
+                        claims: &claims,
+                        statement: &statement,
+                        lowering: &lower,
+                        layers: &layers,
+                        runtime: &runtime,
+                        advice: &advice,
+                        leaf: &leaf,
+                        native: &native,
+                        grouped: None,
+                        weights: &weights,
+                    };
+                    let bound =
+                        UnitPreparation::derive(&input, &advice, prepared_owner.capacity() as u64)
+                            .unwrap();
+                    // Capture only the allocation-free bound, not borrowed layouts.
+                    bound_result = Some(bound.peak());
+                    if check_planner {
+                        // Planner ownership has its own allocation scope; it is not
+                        // part of the constructor-sequence measurement above.
+                        allocation_counter::opt_out(|| {
+                            let candidate = components(&input, 64 << 30).unwrap();
+                            assert_eq!(candidate.windows.len(), native.schedule().stages.len());
+                            assert_eq!(candidate.windows[0].cut, 0);
+                            for (k, window) in candidate.windows.iter().enumerate().skip(1) {
+                                assert!(window.cut > 0);
+                                assert_eq!(candidate.stages[k - 1].stage, k);
+                            }
+                            assert!(matches!(
+                                candidate.check_complete(u64::MAX),
+                                Err(ProverError::Resource(ErrorCode::ResMemory))
+                            ));
+                        });
+                    }
+                    std::hint::black_box(&prepared_owner);
+                });
+                let bound = bound_result.unwrap();
+                assert!(
+                    measured.bytes_max <= bound,
+                    "{lengths:?}/{output}/{prepared_bytes}: {measured:?} > {bound}"
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -621,18 +1138,25 @@ fn public_component_probe() {
         },
     )
     .unwrap();
+    let advice = ModelAdviceLayout::runtime(&lower, &runtime, c).unwrap();
     let input = Inputs {
         claims: c,
         statement: &statement,
         lowering: &lower,
         layers: &layers,
         runtime: &runtime,
+        advice: &advice,
         leaf: &leaf,
         native: &native,
         grouped: None,
         weights: &layout,
     };
-    let bill = components(&input, request["memory_budget_bytes"].as_u64().unwrap()).unwrap();
+    let candidate = components(&input, request["memory_budget_bytes"].as_u64().unwrap()).unwrap();
+    assert!(matches!(
+        candidate.check_complete(u64::MAX),
+        Err(ProverError::Resource(ErrorCode::ResMemory))
+    ));
+    let bill = candidate.report();
     use std::io::Write as _;
     let output = std::env::var_os("TESSERA_PHYSICAL_RECEIPT").expect("fresh public receipt path");
     let mut output = std::fs::OpenOptions::new()
