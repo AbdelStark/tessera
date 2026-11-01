@@ -102,6 +102,70 @@ impl<F: PolyField> Scratch<F> {
         nodes: usize,
         mut emit: impl FnMut(usize, F, F),
     ) -> Result<(), WindowError> {
+        // Preserve the original traversal where chunk setup costs more than compaction.
+        if self.numerators.len() < 32 || !self.numerators.len().is_power_of_two() {
+            return self.subtrees_scalar(source, first, height, nodes, emit);
+        }
+        self.stack.fill(F::ZERO);
+        let count = nodes << height;
+        let mut consumed = 0;
+        while consumed < count {
+            let take = self.numerators.len().min(count - consumed);
+            source.read(
+                first + consumed,
+                &mut self.numerators[..take],
+                &mut self.denominators[..take],
+            )?;
+            // RFC-0008: compact only aligned whole subtrees inside this read.
+            // Ragged reads retain the scalar traversal, and no fold crosses an output node.
+            let compact = if take.is_power_of_two() && consumed.is_multiple_of(take) {
+                height.min(take.ilog2() as usize)
+            } else {
+                0
+            };
+            let mut width = take;
+            for _ in 0..compact {
+                for pair in 0..width / 2 {
+                    let left = 2 * pair;
+                    let right = left + 1;
+                    self.numerators[pair] = self.numerators[left] * self.denominators[right]
+                        + self.numerators[right] * self.denominators[left];
+                    self.denominators[pair] = self.denominators[left] * self.denominators[right];
+                }
+                width /= 2;
+            }
+            for row in 0..width {
+                let index = consumed + (row << compact);
+                let mut numerator = self.numerators[row];
+                let mut denominator = self.denominators[row];
+                let mut level = compact;
+                // Public binary carries combine adjacent subcubes in canonical leaf order.
+                while level < height && (index >> level) & 1 == 1 {
+                    let left_n = self.stack[2 * level];
+                    let left_d = self.stack[2 * level + 1];
+                    numerator = left_n * denominator + numerator * left_d;
+                    denominator *= left_d;
+                    level += 1;
+                }
+                self.stack[2 * level] = numerator;
+                self.stack[2 * level + 1] = denominator;
+                if level == height {
+                    emit(index >> height, numerator, denominator);
+                }
+            }
+            consumed += take;
+        }
+        Ok(())
+    }
+
+    fn subtrees_scalar(
+        &mut self,
+        source: &dyn FractionTreeSource<F>,
+        first: usize,
+        height: usize,
+        nodes: usize,
+        mut emit: impl FnMut(usize, F, F),
+    ) -> Result<(), WindowError> {
         self.stack.fill(F::ZERO);
         let count = nodes << height;
         let mut consumed = 0;
@@ -400,3 +464,6 @@ mod tests {
         assert_eq!(d[18], F::from(G::from_u64_reduced(1u64 << 32)));
     }
 }
+
+#[cfg(test)]
+mod differential;

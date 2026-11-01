@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Compact aligned fraction subtrees inside existing clearing row chunks before carrying their roots, preserving ordered nodes, source requests, proof bytes and scratch bounds (RFC-0008/0054, [#663](https://github.com/AbdelStark/tessera/issues/663)).
+
 - Honor `tessera prove --threads N` for bounded parallel advice and regenerated-weight row transforms, retaining scalar execution by default, serial mask order and identical proof bytes. Charge configured stacks/control metadata before P1 and verify complete scalar/parallel NI/Live artifacts (RFC-0011/0018, [#659](https://github.com/AbdelStark/tessera/issues/659)).
 
 - Report CPU PCS throughput medians, ranges, variation and raw samples with RFC-0020 warm-ups and a noisy-run retry; retain a boundary/offset scalar NTT oracle for future kernel changes ([#659](https://github.com/AbdelStark/tessera/issues/659)).
