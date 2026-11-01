@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Cover the CPU fraction regenerator at the planner's 65,536-row maximum, including deep carry/output boundaries, bounded tail reads in a four-billion-leaf domain, exact allocation counts and full raw kernel measurements ([#665](https://github.com/AbdelStark/tessera/issues/665)).
+
 - Compact aligned fraction subtrees inside existing clearing row chunks before carrying their roots, preserving ordered nodes, source requests, proof bytes and scratch bounds (RFC-0008/0054, [#663](https://github.com/AbdelStark/tessera/issues/663)).
 
 - Honor `tessera prove --threads N` for bounded parallel advice and regenerated-weight row transforms, retaining scalar execution by default, serial mask order and identical proof bytes. Charge configured stacks/control metadata before P1 and verify complete scalar/parallel NI/Live artifacts (RFC-0011/0018, [#659](https://github.com/AbdelStark/tessera/issues/659)).

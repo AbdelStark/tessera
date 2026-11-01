@@ -186,3 +186,96 @@ fn zero_denominators_are_preserved_in_every_ordered_node() {
         }
     }
 }
+
+#[test]
+fn maximum_chunks_preserve_deep_nodes_reads_and_allocation_bounds() {
+    struct SeededSource {
+        height: usize,
+        reads: RefCell<Vec<(usize, usize)>>,
+    }
+    fn mix(mut x: u64) -> B {
+        x = x.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        B::from_u64_reduced(x ^ (x >> 31))
+    }
+    impl FractionTreeSource<F> for SeededSource {
+        fn height(&self) -> usize {
+            self.height
+        }
+        fn read(&self, first: usize, n: &mut [F], d: &mut [F]) -> Result<(), WindowError> {
+            if n.len() != d.len()
+                || first
+                    .checked_add(n.len())
+                    .is_none_or(|end| end > 1usize << self.height)
+            {
+                return Err(WindowError::Source);
+            }
+            self.reads.borrow_mut().push((first, n.len()));
+            for (i, (n, d)) in n.iter_mut().zip(d).enumerate() {
+                let x = (first + i) as u64;
+                *n = F::new(mix(x), mix(x ^ 0x6630_6650));
+                // The extension coefficient is one, so no leaf or ancestor denominator is zero.
+                *d = F::new(mix(x ^ 0xa5a5_5a5a), B::ONE);
+            }
+            Ok(())
+        }
+    }
+    const CHUNK: usize = 65_536;
+    let mut cases = vec![
+        (22, 0, 0, 1),       // Complete 2^22-leaf root and carries above the chunk.
+        (22, 4, 3, 11),      // Several chunks per output node.
+        (22, 8, 5, 19),      // Several output nodes per chunk, then a ragged tail.
+        (22, 16, 123, 1027), // 1,024 nodes in the full chunk, then three more.
+        (22, 22, (1usize << 22) - 19, 19), // Original direct-leaf path at the domain's end.
+    ];
+    if usize::BITS == 64 {
+        // Only the final 65,538 leaves, never a full 2^32-leaf traversal or allocation.
+        cases.push((32, 31, (1usize << 31) - 32_769, 32_769));
+    }
+    for (height, depth, first, count) in cases {
+        let source = SeededSource {
+            height,
+            reads: RefCell::new(Vec::with_capacity(128)),
+        };
+        let rows =
+            FractionTreeRows::new(&source, NonZeroUsize::new(CHUNK).unwrap(), u64::MAX).unwrap();
+        let mut n = SecretBuf::filled(F::ZERO, count);
+        let mut d = SecretBuf::filled(F::ZERO, count);
+        // The public observer backing and caller outputs are preallocated outside this scope.
+        let measured =
+            allocation_counter::measure(|| rows.read_level(depth, first, &mut n, &mut d).unwrap());
+        assert!(measured.bytes_max as u64 <= rows.scratch_bytes());
+        assert_eq!(measured.bytes_current, 0);
+        assert_eq!(measured.count_total, if depth == height { 0 } else { 3 });
+        assert!(d.iter().all(|&x| x != F::ZERO));
+        let reads = source.reads.borrow().clone();
+        source.reads.borrow_mut().clear();
+        let below = height - depth;
+        let mut expected = Vec::new();
+        Scratch::new(below, CHUNK.min(count << below))
+            .unwrap()
+            .subtrees_scalar(&source, first << below, below, count, |_, n, d| {
+                expected.push((n, d))
+            })
+            .unwrap();
+        // Pin the fixture's ability to expose an output permutation.
+        assert!(expected.windows(2).all(|pair| pair[0] != pair[1]));
+        assert_eq!(
+            reads,
+            *source.reads.borrow(),
+            "height={height} depth={depth}"
+        );
+        assert!(reads.iter().all(|&(_, len)| len <= CHUNK));
+        assert_eq!(
+            n.iter().copied().zip(d.iter().copied()).collect::<Vec<_>>(),
+            expected,
+            "height={height} depth={depth}"
+        );
+        if depth == 0 {
+            source.reads.borrow_mut().clear();
+            assert_eq!(rows.root().unwrap(), expected[0]);
+            assert_eq!(reads, *source.reads.borrow());
+        }
+    }
+}

@@ -1,0 +1,160 @@
+{
+  "height": 22,
+  "leaves": 4194304,
+  "chunk": 65536,
+  "pairs": 20,
+  "roots_per_run": 4,
+  "scalar_median_ms": 227.6003955,
+  "compacted_median_ms": 158.352765,
+  "paired_ratio_median": 0.6776214850159021,
+  "wins": 20,
+  "scalar_cv": 0.0593607007902089,
+  "compacted_cv": 0.06720600863289379,
+  "samples_ns": [
+    [
+      219605646,
+      147008083
+    ],
+    [
+      219082833,
+      146177541
+    ],
+    [
+      229038823,
+      151484135
+    ],
+    [
+      230969510,
+      170031833
+    ],
+    [
+      249877562,
+      170895291
+    ],
+    [
+      266463250,
+      185910385
+    ],
+    [
+      260180614,
+      175208875
+    ],
+    [
+      252995218,
+      167372875
+    ],
+    [
+      238385218,
+      160290468
+    ],
+    [
+      225279375,
+      156425510
+    ],
+    [
+      232720906,
+      153783114
+    ],
+    [
+      224231614,
+      143686135
+    ],
+    [
+      220992291,
+      158412895
+    ],
+    [
+      228352562,
+      159495364
+    ],
+    [
+      225570854,
+      153295802
+    ],
+    [
+      224324750,
+      158595666
+    ],
+    [
+      222740385,
+      159705666
+    ],
+    [
+      225075208,
+      158292635
+    ],
+    [
+      227145968,
+      146658448
+    ],
+    [
+      228054823,
+      154085812
+    ]
+  ],
+  "schema": "fraction-maximum-chunk-measurement/1",
+  "recorded_utc": "2026-11-01T10:02:06.531592+00:00",
+  "production_source_commit": "4d3c6f37ef7cce03e76e8a1e110553f011b540ff",
+  "scope": "Synthetic public roots at the planner maximum chunk; no real-model proof or full LogUp throughput qualification",
+  "environment": {
+    "cpu": "Apple M1 Max",
+    "memory_bytes": 68719476736,
+    "rustc": "1.95.0 (59807616e 2026-04-14)",
+    "profile": "release, thin LTO, codegen-units=1",
+    "co_runners": "unchanged real 1B proof and full 8B selection"
+  },
+  "warm_up_pairs": 3,
+  "alternating_order": true,
+  "root_equality_every_pair": true,
+  "source_has_secrets": false,
+  "variation_note": "Both CVs exceed the 3% noise threshold; retain all observations, no idle-host regression threshold claimed",
+  "kernel_sha256": "76b619d7e790399285b1970549bb3f917e4793fc8962d6cf27e37a62f9f66f5f",
+  "benchmark_sha256": "4e11c83375db2031e35ede4ead996e4e49ea642194cac0d05007021bdfb35c7e",
+  "root_digest": "40303d9ea4b2163c997c76938d25dc37fa6044db11505cf1d0c1b474683933ca",
+  "legacy_fixture_digests_preserved": true,
+  "criterion_default_profile": {
+    "sample_count": 20,
+    "profile": "isolated default bench, no LTO, codegen-units=16",
+    "mean": {
+      "confidence_interval": {
+        "confidence_level": 0.95,
+        "lower_bound": 167900988.11,
+        "upper_bound": 175546723.685625
+      },
+      "point_estimate": 171493385.45,
+      "standard_error": 1940534.6776855541
+    },
+    "median": {
+      "confidence_interval": {
+        "confidence_level": 0.95,
+        "lower_bound": 169750656.25,
+        "upper_bound": 173858802.25
+      },
+      "point_estimate": 171620187.5,
+      "standard_error": 1297938.4689310223
+    },
+    "cv": 0.05162664572289926,
+    "raw_ns_per_root": [
+      198673854.5,
+      176837395.5,
+      171214604.5,
+      173728187.5,
+      163685771.0,
+      173989417.0,
+      175383458.5,
+      179440104.0,
+      171978312.5,
+      162061875.0,
+      171262062.5,
+      175704479.0,
+      173701562.5,
+      172493666.5,
+      161836979.5,
+      171106854.0,
+      169635250.0,
+      169866062.5,
+      162401312.5,
+      154866500.0
+    ]
+  }
+}

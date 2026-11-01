@@ -8,10 +8,12 @@ use tessera_field::{Goldilocks as B, GoldilocksExt2 as F, PrimeField, QuadraticE
 use tessera_hash::{Domain, hash};
 use tessera_sumcheck::{FractionTreeRows, FractionTreeSource, WindowError};
 
-struct Source;
+struct Source {
+    height: usize,
+}
 impl FractionTreeSource<F> for Source {
     fn height(&self) -> usize {
-        20
+        self.height
     }
     fn read(&self, first: usize, n: &mut [F], d: &mut [F]) -> Result<(), WindowError> {
         for (i, (n, d)) in n.iter_mut().zip(d).enumerate() {
@@ -32,9 +34,10 @@ impl FractionTreeSource<F> for Source {
 fn bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("bounded-fraction-root");
     group.sample_size(20);
-    for chunk in [1, 17, 256, 4096] {
+    for (height, chunk) in [(20, 1), (20, 17), (20, 256), (20, 4096), (22, 65_536)] {
+        let source = Source { height };
         let rows =
-            FractionTreeRows::new(&Source, NonZeroUsize::new(chunk).unwrap(), u64::MAX).unwrap();
+            FractionTreeRows::new(&source, NonZeroUsize::new(chunk).unwrap(), u64::MAX).unwrap();
         let root = rows.root().unwrap();
         let bytes: Vec<_> = [root.0, root.1]
             .iter()
@@ -45,7 +48,7 @@ fn bench(c: &mut Criterion) {
             .iter()
             .map(|x| format!("{x:02x}"))
             .collect();
-        println!("public fixture height=20 chunk={chunk} root_digest={digest}");
+        println!("public fixture height={height} chunk={chunk} root_digest={digest}");
         group.bench_with_input(BenchmarkId::new("chunk", chunk), &rows, |b, r| {
             b.iter(|| black_box(r.root().unwrap()));
         });
