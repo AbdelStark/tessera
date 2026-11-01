@@ -50,6 +50,31 @@ pub struct FractionTreeRows<'a, F: PolyField> {
     leaves: usize,
     chunk: usize,
     scratch_bytes: u64,
+    cache_depth: Option<usize>,
+    cache_bytes: u64,
+    cache: Option<CachedLevel<F>>,
+}
+
+struct CachedLevel<F: PolyField> {
+    depth: usize,
+    numerators: SecretBuf<F>,
+    denominators: SecretBuf<F>,
+}
+
+impl<F: PolyField> FractionTreeSource<F> for CachedLevel<F> {
+    fn height(&self) -> usize {
+        self.depth
+    }
+
+    fn read(&self, first: usize, n: &mut [F], d: &mut [F]) -> Result<(), WindowError> {
+        let end = first.checked_add(n.len()).ok_or(WindowError::Source)?;
+        if n.len() != d.len() || end > self.numerators.len() {
+            return Err(WindowError::Source);
+        }
+        n.copy_from_slice(&self.numerators[first..end]);
+        d.copy_from_slice(&self.denominators[first..end]);
+        Ok(())
+    }
 }
 
 impl<F: PolyField> fmt::Debug for FractionTreeRows<'_, F> {
@@ -58,6 +83,7 @@ impl<F: PolyField> fmt::Debug for FractionTreeRows<'_, F> {
             .field("height", &self.height)
             .field("chunk", &self.chunk)
             .field("scratch_bytes", &self.scratch_bytes)
+            .field("cache_depth", &self.cache_depth)
             .finish_non_exhaustive()
     }
 }
@@ -241,7 +267,80 @@ impl<'a, F: PolyField> FractionTreeRows<'a, F> {
             leaves,
             chunk,
             scratch_bytes,
+            cache_depth: None,
+            cache_bytes: 0,
+            cache: None,
         })
+    }
+
+    /// Request one intermediate level, chosen only from public geometry and budget.
+    ///
+    /// This validates capacity without reading or allocating. [`crate::PreparedTreeBatch`]
+    /// charges every requested cache together, then constructs them before proving.
+    /// Ancestor reads reuse that level; descendant reads retain the original leaf source.
+    /// Outside a prepared batch, reads remain correct through the uncached path.
+    ///
+    /// # Errors
+    /// `Shape` unless `0 < depth < height`; `Allocation` for overflowing capacity or when
+    /// the retained payload and original regeneration scratch exceed `allowance`.
+    pub fn with_cache_depth(mut self, depth: usize, allowance: u64) -> Result<Self, WindowError> {
+        if depth == 0 || depth >= self.height {
+            return Err(WindowError::Shape(
+                "fraction cache is an intermediate level",
+            ));
+        }
+        let bytes = 1usize
+            .checked_shl(u32::try_from(depth).map_err(|_| WindowError::Allocation)?)
+            .and_then(|n| n.checked_mul(2))
+            .and_then(|n| n.checked_mul(size_of::<F>()))
+            .and_then(|n| u64::try_from(n).ok())
+            .ok_or(WindowError::Allocation)?;
+        self.scratch_bytes
+            .checked_add(bytes)
+            .filter(|&n| n <= allowance)
+            .ok_or(WindowError::Allocation)?;
+        self.cache_depth = Some(depth);
+        self.cache_bytes = bytes;
+        self.cache = None;
+        Ok(self)
+    }
+
+    /// Retained cache payload charged for the complete batch, even before construction.
+    /// Its descriptors are already included in [`Self::scratch_bytes`].
+    pub fn retained_bytes(&self) -> u64 {
+        self.cache_bytes
+    }
+
+    pub(crate) fn prepare_cache(&mut self) -> Result<(), WindowError> {
+        let Some(depth) = self.cache_depth else {
+            return Ok(());
+        };
+        if self.cache.is_some() {
+            return Ok(());
+        }
+        let nodes = 1usize << depth;
+        let mut numerators = buffer(nodes)?;
+        let mut denominators = buffer(nodes)?;
+        // RFC-0008: every original leaf contributes, including canonical padding/zero counts.
+        // The cache is installed only after the complete original-source pass succeeds.
+        self.read_level(depth, 0, &mut numerators, &mut denominators)?;
+        self.cache = Some(CachedLevel {
+            depth,
+            numerators,
+            denominators,
+        });
+        Ok(())
+    }
+
+    fn cached_rows<'s>(
+        &self,
+        cache: &'s CachedLevel<F>,
+    ) -> Result<FractionTreeRows<'s, F>, WindowError> {
+        FractionTreeRows::new(
+            cache,
+            NonZeroUsize::new(self.chunk).ok_or(WindowError::Allocation)?,
+            self.scratch_bytes,
+        )
     }
 
     /// Tree height, counted from the root to the leaves.
@@ -249,12 +348,13 @@ impl<'a, F: PolyField> FractionTreeRows<'a, F> {
         self.height
     }
 
-    /// Logical leaf count; none of these leaves are retained by the descriptor.
+    /// Logical leaf count; optional caching retains intermediate nodes, never these leaves.
     pub fn leaves(&self) -> usize {
         self.leaves
     }
 
     /// Bound on this descriptor and its maximum owned regeneration scratch, in bytes.
+    /// Retained cache payload is additional and reported by [`Self::retained_bytes`].
     pub fn scratch_bytes(&self) -> u64 {
         self.scratch_bytes
     }
@@ -270,6 +370,9 @@ impl<'a, F: PolyField> FractionTreeRows<'a, F> {
     /// # Errors
     /// An allocation or source error. A failed pass is discarded.
     pub fn root(&self) -> Result<(F, F), WindowError> {
+        if let Some(cache) = &self.cache {
+            return self.cached_rows(cache)?.root();
+        }
         Scratch::new(self.height, self.chunk)?.subtree(self.source, 0, self.height)
     }
 
@@ -300,6 +403,13 @@ impl<'a, F: PolyField> FractionTreeRows<'a, F> {
         }
         if numerators.is_empty() {
             return Ok(());
+        }
+        if let Some(cache) = &self.cache
+            && depth <= cache.depth
+        {
+            return self
+                .cached_rows(cache)?
+                .read_level(depth, first, numerators, denominators);
         }
         if depth == self.height {
             for (index, (n, d)) in numerators

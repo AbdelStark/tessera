@@ -45,6 +45,8 @@ trees within the mixed lookup/table/forest batch (RFC-0054 'The table batch').
 3. Regeneration scratch is at most `2*e*(min(C,T_i)+h_i+1)` bytes per active
    regenerator, plus fixed metadata. It is reused across consecutive nodes, never
    cached across all table nodes. Caller-provided output chunks are charged too.
+   An optional intermediate-level cache is additional retained storage; its full
+   batch charge and selection policy are described in [fraction-level caching](../fraction-level-cache.md).
 4. Roots (`2*e` each) and small public shape/state metadata remain for all trees.
    They are required before the first level and retain original tree order.
 5. An oversized level streams one round per halving until its folded tables fit.
@@ -101,6 +103,8 @@ still owed.
 The batch bound currently charges:
 
 - Caller-declared coexisting source/merge capacity and metadata.
+- The sum of every requested intermediate-level cache payload, charged before
+  cache construction or source reads, even while earlier caches remain live.
 - All resident fraction allocations, forest levels and the input vector's actual
   capacity, even while states are being constructed.
 - Conservative retained metadata/output: `65536 + I*(v+1)*(v+8)*(256+8*e)`,

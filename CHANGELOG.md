@@ -4,6 +4,10 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ## [Unreleased]
 
+### Changed
+
+- Reuse a bounded intermediate fraction-tree level from spare physical-route budget while preserving original leaves, window cuts, proof messages and verifier obligations (RFC-0018/0054, [#667](https://github.com/AbdelStark/tessera/issues/667)).
+
 ### Fixed
 
 - Cover the CPU fraction regenerator at the planner's 65,536-row maximum, including deep carry/output boundaries, bounded tail reads in a four-billion-leaf domain, exact allocation counts and full raw kernel measurements ([#665](https://github.com/AbdelStark/tessera/issues/665)).
