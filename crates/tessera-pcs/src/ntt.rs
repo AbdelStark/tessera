@@ -513,3 +513,105 @@ impl NttPlan {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The pre-optimization scalar traversal, independently spelling out each butterfly.
+    // Preserve it as the INV-FIELD-5 / INV-TCE-1 oracle for fused leaf stages (#659).
+    fn reference<S: Shift>(values: &mut [Fp], table: &[Fp], shift: &S, inverse: bool) {
+        let n = values.len();
+        for stage in 0..n.trailing_zeros() {
+            let half = if inverse {
+                1 << stage
+            } else {
+                n >> (stage + 1)
+            };
+            for (group, chunk) in values.chunks_exact_mut(2 * half).enumerate() {
+                let c = shift.twiddle(table[group], half.trailing_zeros());
+                let (lo, hi) = chunk.split_at_mut(half);
+                for (u, v) in lo.iter_mut().zip(hi) {
+                    let (a, b) = (*u, *v);
+                    if inverse {
+                        *u = a + b;
+                        *v = (a - b) * c;
+                    } else {
+                        let t = b * c;
+                        *u = a + t;
+                        *v = a - t;
+                    }
+                }
+            }
+        }
+    }
+
+    fn compare<S: Shift>(input: &[Fp], table: &[Fp], shift: &S, offset: usize) {
+        for inverse in [false, true] {
+            let mut expected = input.to_vec();
+            reference(&mut expected, table, shift, inverse);
+            let mut backing = vec![Fp::ONE; input.len() + offset + 3];
+            backing[offset..offset + input.len()].copy_from_slice(input);
+            let actual = &mut backing[offset..offset + input.len()];
+            if inverse {
+                gentleman_sande(actual, table, shift);
+            } else {
+                cooley_tukey(actual, table, shift);
+            }
+            assert_eq!(
+                actual,
+                expected,
+                "n={}, offset={offset}, gs={inverse}",
+                input.len()
+            );
+            assert!(backing[..offset].iter().all(|x| *x == Fp::ONE));
+            assert!(
+                backing[offset + input.len()..]
+                    .iter()
+                    .all(|x| *x == Fp::ONE)
+            );
+        }
+    }
+
+    #[test]
+    fn transforms_match_scalar_stages_at_boundaries_and_offsets() {
+        let boundary = [
+            0,
+            1,
+            Fp::MODULUS - 1,
+            (1 << 32) - 1,
+            1 << 32,
+            Fp::MODULUS - (1 << 32),
+            u64::MAX,
+        ];
+        let mut state = 0x7e55_e7a0_0659_0001u64;
+        for log_n in 0..=14 {
+            let n = 1 << log_n;
+            for inverse_table in [false, true] {
+                let table = twiddles(log_n, inverse_table);
+                for offset in 0..4 {
+                    let input: Vec<_> = (0..n)
+                        .map(|i| {
+                            state ^= state << 13;
+                            state ^= state >> 7;
+                            state ^= state << 17;
+                            Fp::from_u64_reduced(if offset == 0 {
+                                boundary[i % boundary.len()]
+                            } else {
+                                state
+                            })
+                        })
+                        .collect();
+                    compare(&input, &table, &Subgroup, offset);
+                    compare(&input, &table, &Coset::new(Fp::from_u64_reduced(7)), offset);
+                    compare(
+                        &input,
+                        &table,
+                        &Coset::new(Fp::from_u64_reduced(Fp::MODULUS - 1)),
+                        offset,
+                    );
+                }
+            }
+        }
+    }
+}

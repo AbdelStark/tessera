@@ -2,6 +2,9 @@
 
 This directory holds measured performance: the CPU microbenchmarks' baselines now, and the v0.1 H100 unit-cost reports of [RFC-0020](../rfcs/RFC-0020-cost-model.md#measurement-protocol-v01-gate) once they are measured. Every number in [08](../spec/08-performance-budget.md) stays a projection until a file here replaces it. Every JSON file here is a report whose JSON Schema is in [`spec/schemas/`](../../spec/schemas/README.md), and `cargo xtask lint` validates it. [`examples/`](examples/) holds example reports: `tessera bench model --source-defaults --json`'s, `tessera params check --json`'s for `live-64` and `ni-100` at the 405B statement, the calibration's and a tiny model's fidelity. Tests keep them current. [`v0.2/`](v0.2/README.md) holds the compiler's commitment reports for Llama-3.1-405B, which settle RISK-2 and the table bound `B_max`.
 
+The [CPU row NTT measurements](cpu-row-ntt.md) record the real row geometry, cost counts,
+loaded-host variability and a rejected fusion experiment.
+
 ## CPU microbenchmarks
 
 `tessera-bench`'s `primitives` benchmark times the prover's primitives at fixed sizes, single-threaded ([08 §6](../spec/08-performance-budget.md#6-regression-gates)):

@@ -9,7 +9,9 @@
 //! - the one-time precomputation of an `NttPlan` of 2^23 points and a `RowEncoder` for
 //!   `k = 2^22`, per twiddle-table entry.
 //!
-//! `cargo bench -p tessera-pcs` runs it and reports the fastest of several runs. Without
+//! `cargo bench -p tessera-pcs` reports RFC-0020 statistics (3 warm-ups and 10 samples),
+//! repeating once when the coefficient of variation exceeds 3%. It prints raw samples and
+//! retains any discarded first run. Without
 //! `--bench`, as under `cargo test --benches`, it runs once at small sizes as a smoke test.
 
 #![forbid(unsafe_code)]
@@ -19,6 +21,7 @@
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
+use tessera_bench::Statistics;
 use tessera_field::{Goldilocks, PrimeField};
 use tessera_pcs::{COSET_SHIFT, NttPlan, RowEncoder};
 
@@ -45,15 +48,55 @@ impl SplitMix64 {
     }
 }
 
-/// The fastest of `runs` runs of `run`, each of which times what it measures.
-fn fastest(runs: usize, mut run: impl FnMut() -> Duration) -> Duration {
-    (0..runs).map(|_| run()).min().unwrap_or_default()
+/// Nanoseconds per run, with a noisy first run retained when it was repeated.
+struct Measurement {
+    samples: Vec<f64>,
+    rejected: Option<Vec<f64>>,
 }
 
-fn report(what: &str, log_n: u32, elements: usize, unit: &str, time: Duration) {
-    let ns = time.as_secs_f64() * 1e9 / elements as f64;
-    let ms = time.as_secs_f64() * 1e3;
-    println!("{what:<30} 2^{log_n:<3} {ns:>7.3} ns per {unit:<15} {ms:>9.2} ms");
+fn measure(runs: usize, mut run: impl FnMut() -> Duration) -> Measurement {
+    let mut sample = || {
+        for _ in 0..if runs > 1 { 3 } else { 0 } {
+            run();
+        }
+        (0..runs)
+            .map(|_| run().as_secs_f64() * 1e9)
+            .collect::<Vec<_>>()
+    };
+    let first = sample();
+    if runs > 1 && Statistics::of(&first).expect("finite timings").noisy() {
+        Measurement {
+            samples: sample(),
+            rejected: Some(first),
+        }
+    } else {
+        Measurement {
+            samples: first,
+            rejected: None,
+        }
+    }
+}
+
+fn report(what: &str, log_n: u32, elements: usize, unit: &str, time: &Measurement) {
+    let stats = Statistics::of(&time.samples).expect("finite timings");
+    let ns = stats.median / elements as f64;
+    let ms = stats.median / 1e6;
+    println!("{what:<30} 2^{log_n:<3} {ns:>7.3} ns per {unit:<15} {ms:>9.2} ms median");
+    println!(
+        "  min={:.2} ms max={:.2} ms CV={:.2}%{} samples_ns={:?}",
+        stats.min / 1e6,
+        stats.max / 1e6,
+        stats.cv * 100.,
+        if stats.noisy() {
+            " NOISY: repeat on an idle host"
+        } else {
+            ""
+        },
+        time.samples
+    );
+    if let Some(first) = &time.rejected {
+        println!("  discarded noisy first run, samples_ns={first:?}");
+    }
 }
 
 /// A transform of `values`, timed on a fresh copy of `input` each run.
@@ -61,12 +104,13 @@ fn transform(
     runs: usize,
     input: &[Fp],
     mut f: impl FnMut(&mut [Fp]) -> Result<(), tessera_pcs::PcsError>,
-) -> Duration {
+) -> Measurement {
     let mut values = input.to_vec();
-    fastest(runs, || {
+    measure(runs, || {
         values.copy_from_slice(input);
         let start = Instant::now();
         f(black_box(&mut values)).expect("matching length");
+        black_box(&values);
         start.elapsed()
     })
 }
@@ -76,14 +120,14 @@ fn transforms(rng: &mut SplitMix64, log_n: u32, runs: usize, coset: bool) {
     let plan = NttPlan::new(n).expect("a supported size");
     let input = rng.fps(n);
     let time = transform(runs, &input, |v| plan.ntt(v));
-    report("ntt", log_n, n, "point", time);
+    report("ntt", log_n, n, "point", &time);
     let time = transform(runs, &input, |v| plan.intt(v));
-    report("intt", log_n, n, "point", time);
+    report("intt", log_n, n, "point", &time);
     if coset {
         let time = transform(runs, &input, |v| plan.coset_ntt(v, COSET_SHIFT));
-        report("coset_ntt, shift 7", log_n, n, "point", time);
+        report("coset_ntt, shift 7", log_n, n, "point", &time);
         let time = transform(runs, &input, |v| plan.coset_intt(v, COSET_SHIFT));
-        report("coset_intt, shift 7", log_n, n, "point", time);
+        report("coset_intt, shift 7", log_n, n, "point", &time);
     }
 }
 
@@ -93,29 +137,30 @@ fn encoding(rng: &mut SplitMix64, log_k: u32, mask_coeffs: usize, runs: usize) {
     let row = rng.fps(k);
     let mut codeword = vec![Fp::default(); 2 * k];
     let mut masks = SplitMix64(0x7E55_E7A0_0047_0402);
-    let time = fastest(runs, || {
+    let time = measure(runs, || {
         let start = Instant::now();
         encoder
             .encode_row(black_box(&row), &mut || masks.fp(), &mut codeword)
             .expect("matching lengths");
+        black_box(&codeword);
         start.elapsed()
     });
     let what = format!("encode_row, P = {mask_coeffs}");
-    report(&what, log_k, k, "row value", time);
-    report("  the same", log_k + 1, 2 * k, "codeword symbol", time);
+    report(&what, log_k, k, "row value", &time);
+    report("  the same", log_k + 1, 2 * k, "codeword symbol", &time);
 }
 
 fn precomputation(log_n: u32, runs: usize) {
     let n = 1usize << log_n;
-    let time = fastest(runs, || {
+    let time = measure(runs, || {
         let start = Instant::now();
         black_box(NttPlan::new(n).expect("a supported size"));
         start.elapsed()
     });
     // Two tables of n/2 entries.
-    report("NttPlan::new", log_n, n, "table entry", time);
+    report("NttPlan::new", log_n, n, "table entry", &time);
     let k = n / 2;
-    let time = fastest(runs, || {
+    let time = measure(runs, || {
         let start = Instant::now();
         black_box(RowEncoder::new(k, 1, 200).expect("valid parameters"));
         start.elapsed()
@@ -126,7 +171,7 @@ fn precomputation(log_n: u32, runs: usize) {
         log_n - 1,
         k * 5 / 2,
         "table entry",
-        time,
+        &time,
     );
 }
 
@@ -146,11 +191,11 @@ fn main() {
     let mut rng = SplitMix64(0x7E55_E7A0_0047_0401);
     if std::env::args().any(|arg| arg == "--bench") {
         warm_up(Duration::from_millis(500));
-        transforms(&mut rng, 16, 50, false);
+        transforms(&mut rng, 16, 10, false);
         transforms(&mut rng, 20, 10, false);
-        transforms(&mut rng, 23, 5, true);
-        encoding(&mut rng, 22, 200, 5);
-        precomputation(23, 3);
+        transforms(&mut rng, 23, 10, true);
+        encoding(&mut rng, 22, 200, 10);
+        precomputation(23, 10);
     } else {
         transforms(&mut rng, 10, 1, true);
         encoding(&mut rng, 9, 200, 1);

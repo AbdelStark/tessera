@@ -21,6 +21,7 @@ tessera-field = { path = "../tessera-field" }
 tessera-hash = { path = "../tessera-hash" }
 
 [dev-dependencies]
+tessera-bench = { path = "../tessera-bench" }
 allocation-counter = "0.8"
 serde_json = "1"
 # The verifier's independent opening checks, field and hashing: every opening the tests produce
