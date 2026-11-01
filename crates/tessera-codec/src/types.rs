@@ -44,6 +44,12 @@ impl Ascii {
         }
     }
 
+    /// Retained text allocation, including spare capacity, in bytes (RFC-0018).
+    /// Does not allocate or expose any additional text.
+    pub fn heap_bytes(&self) -> usize {
+        self.0.capacity()
+    }
+
     /// The text.
     pub fn as_str(&self) -> &str {
         &self.0

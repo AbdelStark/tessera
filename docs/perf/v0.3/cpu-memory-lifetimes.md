@@ -4,9 +4,11 @@ This is the implementation inventory for [#629](https://github.com/AbdelStark/te
 under [RFC-0018's memory scheduler](../../rfcs/RFC-0018-gpu-prover-runtime.md#memory-scheduler).
 It is not a replacement allocation bound or a real-model proof qualification.
 
-The CPU driver still keeps the complete `Witness`. Its planner still charges
-64 bytes per logical padded cell, plus the separate weight reservation and
-additional stage/table working sets. A smaller measured RSS does not justify
+The CPU driver selects checkpoint-derived nonweight tensors and borrowed INT8
+weights only when their complete replay reservation fits; otherwise it keeps
+the resident `Witness`. Both routes still charge 64 bytes per logical padded
+cell, plus the separate weight reservation and additional stage/table working
+sets. A smaller measured RSS does not justify
 reducing that reservation. Caller-owned model storage is outside `MemoryBudget.host`
 and must also appear in any whole-process measurement.
 
@@ -31,6 +33,36 @@ inputs they need, and reduction stages read the original witness. Once
 `ModelOpenings::derive` has transferred every opening obligation, the stage and
 native working sets are freed before P4 begins. Neither release removes an
 opening target, changes a challenge, or changes a committed source row.
+
+## Session preparation
+
+`check_plan_with_memory` performs the same canonical checks as `check_plan` and
+returns a checked metadata bound. It accounts for the one-position lowering,
+range analysis, selection, emitted claim list, tiles and the maximum-context
+lowering and row-count preflight already used by that check. It reuses those
+lowerings; it does not expand the maximum-context attention placements for sizing.
+Generated table and RoPE payloads are additional to this compiler metadata bill.
+
+Before regenerated weight commitment construction, `Prover::new` checks the
+maximum of public/model validation, canonical plan checking, its fresh lowering
+and the weight constructor. The weight phase retains lowering metadata, canonical
+model-reference descriptors and the original weight layout beside the constructor's
+own cloned layout and trees. `WeightLayout::heap_bytes` counts both the supplied
+channel list and its separate sorted index; they are distinct allocations.
+
+The borrowed execution plan and weight state remain live in every phase. Their
+charges include spare vector/String capacities and the state's clearing seed
+allocation, without reading that seed. `PassPlan::resident_bytes` adds these caller
+owners beside the existing proof floor and covers the session preparation peak as
+well. The caller's model remains outside `MemoryBudget.host` and must be reported
+separately. Stack, allocator and process/runtime overhead are not requested-heap
+allocations; whole-process qualification must still measure them.
+
+Allocator controls cover maximum-context row counting, complete session construction,
+spare plan text/tile/table capacities, both channel lists and empty opened-column
+vectors with spare capacity. The session gate refuses one byte below its checked
+peak before constructing weight commitments. This does not complete the physical
+route's public sizing, packet ownership or whole-model proof qualification.
 
 ## Tensor regeneration
 

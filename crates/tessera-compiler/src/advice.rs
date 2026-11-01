@@ -424,6 +424,70 @@ pub(crate) fn allocated_rows(
     allocated_runtime_rows(lowering, selection, claims, None)
 }
 
+// RFC-0011/0047: the maximum-context counter holds one node's descriptions,
+// never the repeated attention placements. Dense geometry clones are short-lived.
+pub(crate) fn preflight_memory_bytes(lowering: &Lowering, selection: &Selection) -> Option<u64> {
+    use crate::memory::{array, btree, grow, map, sum};
+    let graph = &lowering.graph;
+    let nt = graph.tensors.len() as u64;
+    let rank = graph
+        .tensors
+        .iter()
+        .map(|t| t.shape.len() as u64)
+        .max()
+        .unwrap_or(0)
+        .max(2);
+    let arity = graph
+        .nodes
+        .iter()
+        .map(|n| n.outputs.len() as u64)
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    // Rsqrt's twelve limb arrays and Softmax's slacks have at least as many
+    // lookup requests as auxiliary columns; Wide adds at most three columns.
+    let columns = graph
+        .nodes
+        .iter()
+        .map(|n| {
+            (n.outputs.len() as u64)
+                .checked_add(selection.reads(n.id).map_or(0, |r| r.len()) as u64)?
+                .checked_add(3)
+        })
+        .try_fold(1u64, |max, n| Some(max.max(n?)))?;
+    let slots = graph.slots.as_ref().map_or(0, |s| s.lengths.len() as u64);
+    let classes = selection
+        .tables
+        .iter()
+        .map(|t| match &t.kind {
+            TableKind::Requant { r_by_class, .. } | TableKind::Silu { r_by_class, .. } => {
+                r_by_class.len() as u64
+            }
+            _ => 0,
+        })
+        .max()
+        .unwrap_or(0);
+    let shape = sum([
+        array::<Axis>(rank)?,
+        grow::<usize>(rank)?,
+        array::<u32>(slots)?,
+    ])?;
+    sum([
+        array::<Option<u8>>(nt)?,
+        grow::<Option<u8>>(arity)?,
+        array::<Option<(NodeId, u32)>>(nt)?,
+        array::<bool>(nt)?.checked_mul(3)?,
+        map::<TableId, bool>(selection.tables.len() as u64)?,
+        btree::<TableId, ()>(selection.tables.len() as u64)?,
+        grow::<u8>(classes)?,
+        grow::<AdviceSource>(columns)?,
+        grow::<TensorShape>(columns)?,
+        // Original shapes plus check/geometry clones from the row counter.
+        columns.checked_add(3)?.checked_mul(shape)?,
+        array::<u32>(slots)?.checked_mul(3)?,
+    ])
+}
+
 fn allocated_runtime_rows(
     lowering: &Lowering,
     selection: &Selection,
@@ -1030,4 +1094,51 @@ pub struct AdviceClaimImage<F: Field> {
     pub weight: F,
     /// Point in the full advice extension, LSB-first.
     pub point: Vec<F>,
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::*;
+    use tessera_codec::{DecodeLimits, envelope, schema};
+
+    #[test]
+    fn row_counter_peak_is_bounded_without_expanding_attention_placements() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../spec/vectors/tamper/claims.tcl");
+        let mut claims: ClaimList = envelope::open(
+            &std::fs::read(path).unwrap(),
+            &schema::CLAIM_LIST,
+            DecodeLimits::MESSAGE,
+        )
+        .unwrap();
+        claims.arch.max_context = claims.arch.max_context.max(129);
+        for lengths in [
+            vec![1],
+            vec![65],
+            vec![129],
+            vec![3, 1, 5],
+            vec![65, 129, 1],
+        ] {
+            let lower = crate::lower_batch(PublicModel::of_claims(&claims), &lengths).unwrap();
+            let ranges = crate::analyze(&lower.graph, &lower.tables).unwrap();
+            let selected = crate::select_model(
+                claims.protocol_version,
+                &lower,
+                &ranges,
+                &claims.gadget_policy,
+            )
+            .unwrap();
+            let mut bound = None;
+            let sizing =
+                allocation_counter::measure(|| bound = preflight_memory_bytes(&lower, &selected));
+            assert_eq!(sizing.count_total, 0);
+            let observed = allocation_counter::measure(|| {
+                allocated_rows(&lower, &selected, &claims).unwrap();
+            });
+            assert!(
+                observed.bytes_max <= bound.unwrap(),
+                "{lengths:?}: {observed:?} > {bound:?}"
+            );
+        }
+    }
 }

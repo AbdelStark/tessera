@@ -185,6 +185,7 @@ struct Inputs<'a> {
     native: &'a ModelNativePlan,
     grouped: Option<&'a GroupedLayout>,
     weights: &'a pcs::WeightLayout,
+    session: Option<preparation::SessionMemory>,
 }
 // A candidate owns the choices it priced. Missing lifetime/packet bounds are
 // represented by None, so a partial component report cannot become admission.
@@ -471,6 +472,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
         native,
         grouped,
         weights,
+        session,
     } = input;
     let geometry = crate::OpeningGeometry::derive(
         lowering,
@@ -547,16 +549,20 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
         required(native.heap_bytes())?,
         grouped.map_or(Ok(0), |g| required(g.heap_bytes()))?,
     ])?;
-    // WeightLayout's only heap owner is WeightShapes.channels; MatrixLayout is Copy.
-    let weight_layout =
-        array::<(pcs::WeightMatrix, u32)>(weights.shapes().channels.capacity() as u64)?;
+    // Both the supplied channel list and the sorted private index remain live.
+    let weight_layout = required(weights.heap_bytes())?;
     let unit_preparation = UnitPreparation::derive(
         input,
         advice,
-        sum([weight_layout, weight.retained_bytes()])?,
+        sum([
+            weight_layout,
+            weight.retained_bytes(),
+            session.map_or(0, |m| m.caller),
+        ])?,
     )?;
     let base = sum([
         unit,
+        session.map_or(0, |m| m.caller),
         protocol_work,
         required(advice.heap_upper_bound())?,
         weight_layout,
@@ -701,6 +707,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     ])?;
     let p1_peak = sum([
         unit,
+        session.map_or(0, |m| m.caller),
         protocol_work,
         weight.retained_bytes(),
         weight_layout,
@@ -739,7 +746,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     Ok(PhysicalCandidate {
         host,
         phases: PhasePeaks {
-            session_preparation: None,
+            session_preparation: session.map(|m| m.peak),
             preparation: None,
             packets: None,
             p1: p1_peak,
@@ -971,6 +978,7 @@ fn preparation_lifetimes_cover_the_complete_public_constructor_sequence() {
                         native: &native,
                         grouped: None,
                         weights: &weights,
+                        session: None,
                     };
                     let bound =
                         UnitPreparation::derive(&input, &advice, prepared_owner.capacity() as u64)
@@ -1150,6 +1158,7 @@ fn public_component_probe() {
         native: &native,
         grouped: None,
         weights: &layout,
+        session: None,
     };
     let candidate = components(&input, request["memory_budget_bytes"].as_u64().unwrap()).unwrap();
     assert!(matches!(

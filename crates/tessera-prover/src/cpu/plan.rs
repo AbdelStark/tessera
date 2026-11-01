@@ -53,6 +53,8 @@ pub struct PassPlan {
     stage_windows: Vec<WindowMemory>,
     table_plan: Option<super::table_plan::TablePlan>,
     checkpoint_bytes: u64,
+    caller_bytes: u64,
+    preparation_bytes: u64,
 }
 
 impl PassPlan {
@@ -77,7 +79,15 @@ impl PassPlan {
             stage_windows: Vec::new(),
             table_plan: None,
             checkpoint_bytes: 0,
+            caller_bytes: 0,
+            preparation_bytes: 0,
         }
+    }
+
+    pub(super) fn preparation(mut self, memory: super::preparation::SessionMemory) -> Self {
+        self.caller_bytes = memory.caller;
+        self.preparation_bytes = memory.peak;
+        self
     }
 
     /// Whether this plan borrows INT8 weights and retains checkpoint-derived nonweight data.
@@ -145,7 +155,8 @@ impl PassPlan {
             .total()?
             .checked_mul(Self::BYTES_PER_CELL)?
             .checked_add(self.weight_bytes)?
-            .checked_add(self.checkpoint_bytes)
+            .checked_add(self.checkpoint_bytes)?
+            .checked_add(self.caller_bytes)
     }
 
     /// Fit reduction stages and the complete table batch before P1. The cell floor remains;
@@ -234,21 +245,24 @@ impl PassPlan {
     /// The charged peak: the unchanged cell floor and weight commitment, plus the larger
     /// reduction working set or table-batch excess over its named floor reservation.
     /// A selected checkpoint source additionally reserves its retained inputs and
-    /// constructor peak; it never reduces the resident-cell floor.
+    /// constructor peak; it never reduces the resident-cell floor. Borrowed plan
+    /// and weight-state storage is charged beside the proof; the returned peak
+    /// also covers checked session preparation. The caller's model is excluded.
     /// Returns `None` on overflow.
     pub fn resident_bytes(&self) -> Option<u64> {
         let table_extra = self.table_plan.as_ref().map_or(0, |p| {
             p.working_bytes
                 .saturating_sub(self.table_reservation().unwrap_or(0))
         });
-        self.base_bytes()?.checked_add(
+        let proof_peak = self.base_bytes()?.checked_add(
             self.stage_windows
                 .iter()
                 .map(|s| s.working_bytes)
                 .max()
                 .unwrap_or(0)
                 .max(table_extra),
-        )
+        )?;
+        Some(proof_peak.max(self.preparation_bytes))
     }
 
     /// Whether the plan fits `budget`; `ERR-RES-MEMORY` if not, or if its size overflows.
@@ -265,6 +279,41 @@ impl PassPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preparation_and_caller_owners_are_charged_without_lowering_the_cell_floor() {
+        let plan = PassPlan::new(
+            1,
+            Cells {
+                tensors: 10,
+                ..Cells::default()
+            },
+            100,
+        )
+        .preparation(super::super::preparation::SessionMemory {
+            caller: 17,
+            peak: 1000,
+            weight_construction: 0,
+        });
+        assert_eq!(plan.base_bytes(), Some(10 * 64 + 100 + 17));
+        assert_eq!(plan.resident_bytes(), Some(1000));
+        assert!(
+            plan.check(super::super::MemoryBudget { host: 1000 })
+                .is_ok()
+        );
+        assert!(matches!(
+            plan.check(super::super::MemoryBudget { host: 999 }),
+            Err(super::super::ProverError::Resource(
+                tessera_codec::error::ErrorCode::ResMemory
+            ))
+        ));
+        let plan = plan.preparation(super::super::preparation::SessionMemory {
+            caller: 1000,
+            peak: 0,
+            weight_construction: 0,
+        });
+        assert_eq!(plan.resident_bytes(), Some(10 * 64 + 100 + 1000));
+    }
 
     #[test]
     fn stage_working_sets_select_windows_and_count_each_capped_fold() {

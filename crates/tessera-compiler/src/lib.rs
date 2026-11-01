@@ -57,7 +57,10 @@ pub use lower::{
     Lowering, PublicModel, check_profile, lower, lower_batch, lower_batch_for_protocol,
     positions_values, settle, validate,
 };
-pub use plan::{ExecutionPlan, QueryBlock, SequenceTile, Share, Tile, check_plan, plan, tiles};
+pub use plan::{
+    ExecutionPlan, QueryBlock, SequenceTile, Share, Tile, check_plan, check_plan_with_memory, plan,
+    tiles,
+};
 pub use range::{HALF_FIELD, Range, Ranges, analysis_memory_bytes, analyze, analyze_fragment};
 pub use report::{
     CommitmentReport, Growth, Holding, SCHEMA as REPORT_SCHEMA, StageTables, TableClass, TableUse,

@@ -17,6 +17,7 @@ mod error;
 #[cfg(test)]
 mod physical;
 mod plan;
+mod preparation;
 mod random;
 mod table_plan;
 use encoded_size::EncodedSize;
@@ -112,6 +113,7 @@ struct Prepared<'a> {
     threads: NonZeroUsize,
     layout: pcs::WeightLayout,
     weights: pcs::RegeneratedWeightCommitment,
+    memory: preparation::SessionMemory,
 }
 
 /// A one-shot CPU proof session. Live refusals use the existing RFC-0036 state machine.
@@ -181,7 +183,8 @@ impl<'a> Prover<'a> {
             ));
         }
         compiler::validate(model)?;
-        compiler::check_plan(plan, PublicModel::of(model), &plan.claims)?;
+        let plan_metadata =
+            compiler::check_plan_with_memory(plan, PublicModel::of(model), &plan.claims)?;
         backend::check_weight_memory(&plan.claims, cfg.memory_budget)?;
         let lowering = compiler::lower(PublicModel::of(model), 1)?;
         let source = backend::model_weights(model, &lowering)?;
@@ -201,6 +204,17 @@ impl<'a> Prover<'a> {
                     .collect(),
             },
         )?;
+        let memory = preparation::session(
+            plan,
+            PublicModel::of(model),
+            weights,
+            &lowering,
+            &layout,
+            plan_metadata,
+        )?;
+        if memory.peak > cfg.memory_budget.host {
+            return Err(ProverError::Resource(ErrorCode::ResMemory));
+        }
         let actual = pcs::RegeneratedWeightCommitment::commit(
             &layout,
             NonZeroU32::new(plan.claims.layout.advice.row_block)
@@ -229,6 +243,7 @@ impl<'a> Prover<'a> {
                 threads,
                 layout,
                 weights: actual,
+                memory,
             }),
             session: None,
         })
