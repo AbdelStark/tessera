@@ -383,7 +383,31 @@ mod tests {
         let plans = [MultiplicityPlan::new(TableId(0), 1 << 29, 5).unwrap()];
         assert!(!plans[0].is_dense());
         let dense = TablePlan::new(&leaf, &selection, None, None).unwrap();
-        let physical = TablePlan::new(&leaf, &selection, None, Some(&plans)).unwrap();
+        let mut physical = None;
+        let measured = allocation_counter::measure(|| {
+            physical = Some(TablePlan::new(&leaf, &selection, None, Some(&plans)).unwrap());
+        });
+        let physical = physical.unwrap();
+        let mut metadata = None;
+        let sizing = allocation_counter::measure(|| {
+            metadata = Some(physical.construction_peak_bytes(&leaf, None).unwrap())
+        });
+        assert_eq!(sizing.bytes_total, 0);
+        assert!(
+            measured.bytes_max <= metadata.unwrap(),
+            "{measured:?} > {metadata:?}"
+        );
+        let mut selected = None;
+        let selection_allocations = allocation_counter::measure(|| {
+            selected = Some(physical.clone().select(64 << 20).unwrap())
+        });
+        assert!(selection_allocations.bytes_max <= metadata.unwrap());
+        let selected = selected.unwrap();
+        assert_eq!(
+            u64::try_from(selection_allocations.bytes_current).unwrap(),
+            selected.metadata_bytes().unwrap()
+        );
+        drop(selected);
         assert_eq!(dense.trees, physical.trees);
         assert_eq!(dense.scratch, physical.scratch);
         assert_eq!(dense.forests, physical.forests);
@@ -471,7 +495,74 @@ fn vars(dims: &[u32]) -> Result<usize, ProverError> {
     })
 }
 
+#[cfg(test)]
+fn array<T>(n: u64) -> Result<u64, ProverError> {
+    let bytes = mul(n, size_of::<T>() as u64)?;
+    if usize::try_from(n).is_err() || bytes > isize::MAX as u64 {
+        return Err(memory());
+    }
+    Ok(bytes)
+}
+#[cfg(test)]
+fn grow<T>(n: u64) -> Result<u64, ProverError> {
+    if n == 0 {
+        return Ok(0);
+    }
+    let minimum = if size_of::<T>() == 1 {
+        8
+    } else if size_of::<T>() <= 1024 {
+        4
+    } else {
+        1
+    };
+    array::<T>(mul(4, n.max(minimum))?)
+}
+
 impl TablePlan {
+    #[cfg(test)]
+    pub(super) fn metadata_bytes(&self) -> Result<u64, ProverError> {
+        add(
+            array::<Shape>(self.trees.capacity() as u64)?,
+            array::<usize>(self.cuts.capacity() as u64)?,
+        )
+    }
+
+    // Public planning allocations only. P2 payloads, cores and source backing are
+    // already separate fields and must never be replaced by this metadata bill.
+    #[cfg(test)]
+    pub(super) fn construction_peak_bytes(
+        &self,
+        leaf: &LeafLayout<ModelColumn>,
+        grouped: Option<&GroupedLayout>,
+    ) -> Result<u64, ProverError> {
+        let trees = self.trees.len() as u64;
+        let rank = leaf
+            .sites()
+            .iter()
+            .flat_map(|s| &s.layers)
+            .flat_map(|g| &g.lookups)
+            .map(|l| l.domain.len() as u64)
+            .max()
+            .unwrap_or(0);
+        let mut bytes = add(
+            mul(2, self.metadata_bytes()?)?,
+            add(grow::<WindowShape>(trees)?, array::<u64>(trees)?)?,
+        )?;
+        bytes = add(bytes, grow::<u32>(rank)?)?;
+        if let Some(grouped) = grouped {
+            let forests = leaf.sites().len() as u64;
+            let polynomials = add(grouped.polynomials().len() as u64, forests)?;
+            bytes = add(bytes, mul(2, grow::<MergePolynomial>(polynomials)?)?)?;
+            let groups = grouped.groups();
+            let bits = add(u64::from(groups.token_bits), u64::from(groups.layer_bits))?;
+            bytes = add(bytes, mul(forests, grow::<usize>(bits)?)?)?;
+            for polynomial in grouped.polynomials() {
+                bytes = add(bytes, array::<usize>(polynomial.group_vars.len() as u64)?)?;
+            }
+        }
+        Ok(bytes)
+    }
+
     pub(super) fn new(
         leaf: &LeafLayout<ModelColumn>,
         selection: &Selection,

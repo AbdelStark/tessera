@@ -216,6 +216,57 @@ impl ModelNativePlan {
         Some(bytes)
     }
 
+    /// Conservative public heap peak of canonical native-plan and composed
+    /// schedule construction (RFC-0018/0037/0050). Includes output/growth, root
+    /// templates, temporary layer maps, deferred sources and runtime projections.
+    /// Borrowed lowering/selection/claims/leaf layout and allocator overhead are
+    /// separate. Does not allocate or authenticate inputs; overflow returns `None`.
+    pub fn construction_peak_bytes(&self, lowering: &Lowering) -> Option<u64> {
+        fn array<T>(n: u64) -> Option<u64> {
+            let bytes = n.checked_mul(size_of::<T>() as u64)?;
+            (usize::try_from(n).is_ok() && bytes <= isize::MAX as u64).then_some(bytes)
+        }
+        let mut bytes = self.heap_bytes()?.checked_mul(2)?;
+        let nodes = u64::from(self.schedule.layers.count).max(1);
+        let rank = self
+            .families
+            .iter()
+            .map(|f| f.shape.len() as u64)
+            .max()
+            .unwrap_or(0);
+        let outputs = self
+            .native
+            .iter()
+            .map(|n| n.outputs.len() as u64)
+            .max()
+            .unwrap_or(0);
+        let deferred = (lowering.graph.nodes.len() as u64).checked_add(2)?;
+        let root = if self
+            .families
+            .iter()
+            .any(|f| matches!(f.kind, Kind::Root { .. }))
+        {
+            RsqrtRow::memory()?.template_bytes()
+        } else {
+            0
+        };
+        for extra in [
+            self.schedule.construction_peak_bytes(&lowering.graph)?,
+            self.schedule
+                .layers
+                .construction_peak_bytes(&lowering.graph)?,
+            array::<NodeId>(nodes)?,
+            array::<u32>(rank)?,
+            array::<NativeOutput>(outputs)?,
+            // Deferred Vec grows from empty; count old/new allocation overlap.
+            array::<tessera_compiler::schedule::Deferred>(deferred.max(4).checked_mul(4)?)?,
+            root,
+        ] {
+            bytes = bytes.checked_add(extra)?;
+        }
+        Some(bytes)
+    }
+
     /// Derive every root coefficient, Softmax relation and padding check from public metadata.
     /// The canonical `layout` must belong to the same lowering, selection and claims.
     ///

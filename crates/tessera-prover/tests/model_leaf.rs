@@ -1867,6 +1867,47 @@ fn public_preparation_bounds_cover_actual_constructors() {
                     advice_peak <= advice_bound.unwrap(),
                     "{name}/{n}/{prompt}: advice {advice_peak} > {advice_bound:?}"
                 );
+                let (native, native_peak, _) = peak(|| {
+                    tessera_prover::native::ModelNativePlan::derive_runtime(
+                        &lowering, &runtime, &p.claims, &leaf,
+                    )
+                    .unwrap()
+                });
+                let mut native_bound = None;
+                let native_sizing = allocation_counter::measure(|| {
+                    native_bound = native.construction_peak_bytes(&lowering);
+                });
+                assert_eq!(native_sizing.bytes_total, 0);
+                assert!(
+                    native_peak <= native_bound.unwrap(),
+                    "{name}/{n}/{prompt}: native {native_peak} > {native_bound:?}"
+                );
+                let descriptors = tessera_compiler::schedule::model_natives(
+                    &lowering,
+                    if prompt == n {
+                        tessera_compiler::schedule::Request::Prefill
+                    } else {
+                        tessera_compiler::schedule::Request::Generate
+                    },
+                )
+                .unwrap();
+                let (schedule, schedule_peak, _) = peak(|| {
+                    tessera_compiler::schedule::derive_composed_schedule(
+                        &lowering,
+                        &descriptors.deferred,
+                        &descriptors.native,
+                    )
+                    .unwrap()
+                });
+                let mut schedule_bound = None;
+                let schedule_sizing = allocation_counter::measure(|| {
+                    schedule_bound = schedule.construction_peak_bytes(&lowering.graph)
+                });
+                assert_eq!(schedule_sizing.bytes_total, 0);
+                assert!(
+                    schedule_peak <= schedule_bound.unwrap(),
+                    "{name}/{n}/{prompt}: schedule {schedule_peak} > {schedule_bound:?}"
+                );
                 let mut leaf_bound = None;
                 let leaf_sizing = allocation_counter::measure(|| {
                     leaf_bound = Some(
@@ -1951,6 +1992,25 @@ fn batch_runtime_preparation_bound_includes_growing_request_columns() {
             let actual_advice = allocation_counter::measure(|| {
                 advice = Some(ModelAdviceLayout::runtime(&lowering, &runtime, &p.claims).unwrap());
             });
+            let leaf = LeafLayout::runtime(&lowering, &layers, &runtime, &p.claims).unwrap();
+            let mut native = None;
+            let actual_native = allocation_counter::measure(|| {
+                native = Some(
+                    tessera_prover::native::ModelNativePlan::derive_runtime(
+                        &lowering, &runtime, &p.claims, &leaf,
+                    )
+                    .unwrap(),
+                );
+            });
+            let bound_native = native
+                .as_ref()
+                .unwrap()
+                .construction_peak_bytes(&lowering)
+                .unwrap();
+            assert!(
+                actual_native.bytes_max <= bound_native,
+                "{count}/{outputs}: native {actual_native:?} > {bound_native}"
+            );
             let bound_advice = advice
                 .as_ref()
                 .unwrap()
