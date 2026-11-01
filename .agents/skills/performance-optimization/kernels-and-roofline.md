@@ -58,6 +58,12 @@ Hardware and algebraic reference for optimizing Tessera's six critical kernel fa
 2. **Tiled matrix transpose before column hashing**: never read column $j$ with stride $n$ across $m$ rows directly into Blake3 when $m \times n$ exceeds L2 cache. Transpose $64 \times 64$ (or $8 \times 8$ cache-line) tiles into contiguous column buffers and hash 4–8 columns in parallel.
 3. **Precomputed twiddle powers**: cache the roots of unity $\omega^{0}, \omega^{1}, \dots, \omega^{n/2 - 1}$ once per domain size $\log_2 n$.
 
+For CPU row kernels, consume the completed codeword in the benchmark and retain raw timings.
+Changing co-runners can move the scalar median more than a proposed speedup: flag CV above
+RFC-0020's 3%, and use alternating same-process comparisons before attributing a difference
+to the kernel. Preserve a scalar stage oracle; discard fusion complexity that does not exceed
+paired measurement noise (#659).
+
 ## 5. Poseidon2 (`tessera-hash`, `RFC-0004`)
 
 ### Roofline Profile
