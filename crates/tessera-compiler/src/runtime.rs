@@ -103,6 +103,22 @@ impl RuntimePlan {
             .checked_add(crate::memory::vector(key_columns)?)
     }
 
+    /// Upper bound on heap requests live during [`Self::derive`] or
+    /// [`Self::derive_batch`] for this canonical result (RFC-0053/0018).
+    /// Includes the returned selection, table-vector growth, greedy columns and
+    /// range-analysis scratch. Borrowed inputs and allocator overhead are separate.
+    /// Reads public geometry without allocating or validating. `None` means overflow.
+    pub fn construction_peak_bytes(&self, lowering: &Lowering) -> Option<u64> {
+        use crate::memory::{grow, sum};
+        sum([
+            self.heap_upper_bound()?,
+            // A cloned catalog may coexist with its grown replacement.
+            grow::<tessera_tables::TableSpec>(self.selection.tables.len() as u64)?,
+            grow::<GreedyKeyColumn>(self.key_columns.len() as u64)?,
+            crate::analysis_memory_bytes(&lowering.graph)?,
+        ])
+    }
+
     /// Extend checked model metadata for one request. Empty outputs add no maximum or table.
     ///
     /// # Errors

@@ -80,6 +80,42 @@ impl LayerMap {
         Some(bytes)
     }
 
+    /// Requested-byte upper bound during canonical layer-map construction.
+    /// Covers the returned map, producer/public-input indexes, checkpoint ends,
+    /// per-position layer sources and two simultaneous constant comparisons.
+    /// Borrowed graph/tables, allocator and runtime storage are separate.
+    /// Does not allocate or validate; overflow returns `None`.
+    pub fn construction_peak_bytes(&self, graph: &Graph) -> Option<u64> {
+        use crate::memory::{array, grow, sum};
+        let nt = graph.tensors.len() as u64;
+        let inputs = graph
+            .nodes
+            .iter()
+            .map(|n| n.inputs.len() as u64)
+            .max()
+            .unwrap_or(0);
+        let layers = u64::from(self.count);
+        let constants = graph
+            .constants
+            .iter()
+            .map(|v| v.len() as u64)
+            .max()
+            .unwrap_or(0);
+        sum([
+            self.heap_bytes()?,
+            array::<Option<(NodeId, u32)>>(nt)?,
+            // public_tensors() constructs its own producer index.
+            array::<Option<(NodeId, u32)>>(nt)?,
+            array::<bool>(nt)?,
+            array::<u32>(self.checkpoints.len() as u64)?,
+            array::<Vec<Source>>(inputs)?,
+            inputs.checked_mul(grow::<Source>(layers)?)?,
+            array::<Kind>(inputs)?,
+            array::<TensorId>(layers)?,
+            2u64.checked_mul(grow::<Goldilocks>(constants)?)?,
+        ])
+    }
+
     /// The layers of `lowering`'s graph, from its checkpoints: [`LayerMap::of`].
     ///
     /// # Errors

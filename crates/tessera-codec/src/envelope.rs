@@ -72,6 +72,14 @@ const AT_PAYLOAD_LEN: u64 = 12;
 /// dropped: a payload may be secret-class data (05 §3, OBS-2, OBS-6).
 const CHUNK: usize = 64 << 10;
 
+/// Writer-owned heap requests of successful [`write()`] calls (RFC-0003/0018).
+/// The bounded staging buffer never grows past one chunk. Borrowed encoded data,
+/// the caller's writer, file/path handling, I/O error values and allocator
+/// overhead are separate. This query does not allocate or encode the value.
+pub const fn write_memory_bytes() -> u64 {
+    CHUNK as u64
+}
+
 /// An envelope digest.
 pub type Digest = [u8; DIGEST_LEN];
 

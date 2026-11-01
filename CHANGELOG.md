@@ -6,7 +6,7 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
-- Add checked advice-row mapping storage and a test-only composition of physical phase components; retain the CPU admission floor while preparation and encoding bounds are completed (RFC-0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+- Add checked row mapping, compiler preparation metadata, transcript/streaming-writer and live-session ownership reservations to the test-only physical phase composition; retain the CPU admission floor while the remaining constructor and encoding bounds are completed (RFC-0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Use checkpoint-derived nonweight tensors and borrow model INT8 weights when their complete replay reservation fits beside the unchanged resident-cell floor; preserve the resident fallback and verify byte-identical independently accepted proofs (RFC-0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 

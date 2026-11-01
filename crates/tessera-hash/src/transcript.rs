@@ -106,6 +106,23 @@ impl<H: TranscriptHash> core::fmt::Debug for Transcript<H> {
 }
 
 impl Transcript {
+    /// Maximum simultaneous heap requests made by the production transcript's
+    /// absorption or proof-of-work buffer (RFC-0004/0018), for labels no longer
+    /// than `max_pow_label_bytes`. Borrowed messages/context and caller-created
+    /// labels are separate. Does not allocate; unaddressable lengths return `None`.
+    pub fn work_memory_bytes(max_pow_label_bytes: u64) -> Option<u64> {
+        let pow = 32u64
+            .checked_add(8)?
+            .checked_add(max_pow_label_bytes)?
+            .checked_add(8)?;
+        if usize::try_from(pow).is_err() || pow > isize::MAX as u64 {
+            return None;
+        }
+        // Each staged append needs fewer than STAGE bytes. Rust1.95 Vec growth
+        // doubles at most: old + replacement requests remain below 3 * STAGE.
+        Some(pow.max(3 * STAGE as u64))
+    }
+
     /// A transcript over BLAKE3: `state = H("transcript-init", TCE(context))`.
     pub fn new(context: &SessionContext) -> Self {
         Self::with_hash(context, Blake3)

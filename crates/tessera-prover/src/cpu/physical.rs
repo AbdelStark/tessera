@@ -143,6 +143,10 @@ fn response_containers(
     let wq = u64::from(params.weight_queries);
     let indices = sum([aq, times(matrices, wq)?])?;
     let mut heap = sum([
+        required(protocol::prover_session_memory_bytes(
+            requests,
+            times(4, matrices.max(4))?,
+        ))?,
         // Caller statement, backend copy, sent Round1 and transient public clones.
         times(4, growing::<protocol::RequestRef>(requests)?)?,
         growing::<protocol::StageProof>(input.native.schedule().stages.len() as u64)?,
@@ -247,6 +251,23 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<serde_json::Value, Prover
         u64::from(params.weight_queries),
         geometry.weight_claims(pcs::WeightMatrix::ChannelParams),
     )?;
+    let protocol_work = sum([
+        required(Transcript::work_memory_bytes(9))?,
+        tessera_codec::envelope::write_memory_bytes(),
+        // SessionContext construction owns both public ASCII identifiers.
+        "tessera-protocol/1".len() as u64,
+        params.id.len() as u64,
+    ])?;
+    let claims_encoding = required(encoded_size::CheckedEncodedSize::of(*c))?;
+    let lowering_preparation =
+        required(lowering.construction_metadata_bytes(PublicModel::of_claims(c)))?;
+    let layer_preparation = required(layers.construction_peak_bytes(&lowering.graph))?;
+    let selection_preparation = required(
+        runtime
+            .selection()
+            .construction_metadata_bytes(lowering, layers),
+    )?;
+    let runtime_preparation = required(runtime.construction_peak_bytes(lowering))?;
     let replay = tessera_witness::CheckpointMemory::new(lowering)?;
     let tables = Engine::table_memory(&lowering.tables)?;
     let unit = sum([
@@ -262,6 +283,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<serde_json::Value, Prover
         array::<(pcs::WeightMatrix, u32)>(weights.shapes().channels.capacity() as u64)?;
     let base = sum([
         unit,
+        protocol_work,
         required(advice.heap_upper_bound())?,
         weight_layout,
         weight.retained_bytes(),
@@ -395,6 +417,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<serde_json::Value, Prover
     ])?;
     let p1_peak = sum([
         unit,
+        protocol_work,
         weight.retained_bytes(),
         weight_layout,
         tables.peak_bytes(),
@@ -431,6 +454,10 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<serde_json::Value, Prover
     ])?;
     Ok(
         serde_json::json!({"complete_bound":false,"route_admitted":false,"proof_generated":false,
+        "lowering_preparation_metadata":lowering_preparation,
+        "layer_preparation":layer_preparation,"selection_preparation_metadata":selection_preparation,
+        "runtime_preparation":runtime_preparation,"protocol_work":protocol_work,
+        "claims_encoding":claims_encoding,
         "host":host,"unit_metadata":unit,"base":base,"source_work":source,"source_rows":rows,"message_owners":messages,
         "leaf_original":leaf_original,"leaf_wire_copy":leaf_wire,"response_containers":response_containers,
         "engine_retained":tables.retained_bytes(),"count_backings":count_total,

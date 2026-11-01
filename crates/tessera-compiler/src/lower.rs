@@ -420,7 +420,7 @@ fn refuse<T>(rule: &'static str) -> Result<T, CompileError> {
 }
 
 /// The rescale sites of a layer of `profile`, in RFC-0005's order.
-fn sites(profile: Profile) -> &'static [Site] {
+pub(crate) fn sites(profile: Profile) -> &'static [Site] {
     match profile {
         Profile::Servable => &[
             Site::AttnNorm,
