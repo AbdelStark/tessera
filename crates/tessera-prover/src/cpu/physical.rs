@@ -536,7 +536,7 @@ struct ComponentBill {
 #[derive(Clone, Debug, PartialEq, Eq)]
 // Component details are retained for allocator controls and diagnostic reports.
 #[cfg_attr(not(test), allow(dead_code))]
-struct PhysicalCandidate {
+pub(super) struct PhysicalCandidate {
     host: u64,
     phases: PhasePeaks,
     unit_preparation: UnitPreparation,
@@ -612,15 +612,18 @@ impl PhysicalCandidate {
     }
 }
 
-pub(super) fn select(
-    input: &Inputs<'_>,
-    host: u64,
-    oracle: PassPlan,
-) -> Result<PassPlan, ProverError> {
+pub(super) fn select(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, ProverError> {
     let candidate = components(input, host)?;
     candidate.check_complete(host)?;
-    let peak = required(candidate.phases.complete_peak())?;
-    Ok(oracle.physical(candidate.table, candidate.windows, peak))
+    Ok(candidate)
+}
+
+impl PhysicalCandidate {
+    pub(super) fn into_plan(self, oracle: PassPlan) -> Result<PassPlan, ProverError> {
+        self.check_complete(self.host)?;
+        let peak = required(self.phases.complete_peak())?;
+        Ok(oracle.physical(self.table, self.windows, peak))
+    }
 }
 
 struct MetadataOnly;

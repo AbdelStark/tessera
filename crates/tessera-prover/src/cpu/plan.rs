@@ -58,7 +58,7 @@ pub struct PassPlan {
     checkpoint_bytes: u64,
     caller_bytes: u64,
     preparation_bytes: u64,
-    pub(super) physical_peak: Option<u64>,
+    physical_peak: Option<u64>,
 }
 
 impl PassPlan {
@@ -99,6 +99,14 @@ impl PassPlan {
     /// Whether this plan borrows INT8 weights and retains checkpoint-derived nonweight data.
     pub fn uses_checkpoints(&self) -> bool {
         self.physical_peak.is_some() || self.checkpoint_bytes != 0
+    }
+
+    /// Whether the reported peak uses the complete physical checkpoint lifetime
+    /// bound instead of the resident route's logical-cell floor (RFC-0018).
+    /// This distinguishes two memory strategies; it does not qualify model size,
+    /// proof soundness parameters or whole-process memory use.
+    pub fn uses_physical_bound(&self) -> bool {
+        self.physical_peak.is_some()
     }
 
     // Preserve the full resident floor and add every newly owned replay buffer.

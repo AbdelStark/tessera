@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Preserve non-fitting CPU plan reports when neither source strategy fits; expose the selected memory strategy and keep resident grouping searches monotone when a cheaper physical fallback also exists. Extend physical proof controls to affine quantization, recorded continuations and slotted requests with caller-derived verification pins (RFC-0018/0054, [#641](https://github.com/AbdelStark/tessera/issues/641)).
+
 - Admit an ungrouped checkpoint route only after its complete checked physical lifetime plan fits, retaining the resident route as the first choice; bound Live seed/query ingress before allocation and run whole-route independent proof controls in CI (RFC-0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).
 
 - Stream signed INT8 encodings through bounded clearing scratch with unchanged canonical bytes; charge caller token/request capacities in CPU session planning, and cover public physical-planner construction, retained stage state, split outputs and target-transfer lifetimes (RFC-0003/0018, [#641](https://github.com/AbdelStark/tessera/issues/641)).

@@ -253,7 +253,9 @@ impl<'a> Prover<'a> {
     /// The pass plan of a proof of `batch`, from public data alone: its passes, its resident
     /// cells and bytes (RFC-0018 'Pass structure', 'Memory scheduler'). Proving fails with
     /// `ERR-RES-MEMORY` before P1 when the bytes exceed `ProverConfig.memory_budget`. The plan is
-    /// available until the session starts.
+    /// available until the session starts. If no source strategy fits, it can report a
+    /// non-fitting resident plan; use [`PassPlan::check`] to test admission and
+    /// [`PassPlan::uses_physical_bound`] to identify the reported memory strategy.
     pub fn plan(&self, batch: &ProofBatch) -> Result<PassPlan, ProverError> {
         let prepared = self
             .prepared

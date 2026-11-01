@@ -503,7 +503,13 @@ impl<'a> CpuBackend<'a> {
                 caller_batch: Some(preparation::caller_batch_bytes(batch).ok_or_else(memory)?),
                 planner_caller: plan.heap_bytes().ok_or_else(memory)?,
             };
-            plan = physical::select(&input, prepared.cfg.memory_budget.host, plan)?;
+            match physical::select(&input, prepared.cfg.memory_budget.host) {
+                Ok(candidate) => plan = candidate.into_plan(plan)?,
+                // Prover::plan reports the non-fitting resident plan when neither
+                // route fits. commit_batch still checks it before P1 (RFC-0018).
+                Err(error) if error.code() == ErrorCode::ResMemory => {}
+                Err(error) => return Err(error),
+            }
         }
         if !plan.uses_checkpoints() && plan.check(prepared.cfg.memory_budget).is_ok() {
             let checkpoint = tessera_witness::CheckpointMemory::new(&lowering)?;

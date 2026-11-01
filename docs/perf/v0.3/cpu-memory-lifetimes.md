@@ -899,3 +899,19 @@ individual-vector limits are enforced before input allocation. Filesystem/error
 formatting, arbitrary external transports, telemetry and allocator/process
 ownership remain outside the internal requested-heap bill and must be measured
 separately. No real 1B proof or independent acceptance is claimed here.
+
+
+### Inspecting a plan that does not fit
+
+`Prover::plan` still reports the resident plan when no supported physical choice
+fits; `PassPlan::check` and actual proving refuse it before P1. A reported plan
+is not itself admission. `uses_physical_bound` distinguishes a complete physical
+lifetime maximum from a resident-cell reservation, while `uses_checkpoints`
+identifies the tensor source used by either strategy.
+
+Grouping feasibility is monotone within the resident strategy. Across both
+strategies, a lower allowance can admit an ungrouped physical proof below a
+resident grouped interval. A binary search for a resident grouping threshold
+must exclude physical candidates; otherwise it can enter that lower interval
+and test a different source strategy. Grouping/order/pass-count controls retain
+their exact assertions and exercise the resident route separately.

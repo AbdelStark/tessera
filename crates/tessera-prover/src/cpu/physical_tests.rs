@@ -19,9 +19,20 @@ impl Drop for Route {
 
 #[test]
 fn physical_route_matches_resident_and_independently_verifies() {
+    // One test serializes the process-wide pass registry across all fixtures.
+    for (name, requests) in [
+        ("tiny-2-servable", &[(3, 0)][..]),
+        ("tiny-2-affine", &[(1, 1)][..]),
+        ("tiny-2-servable", &[(2, 1), (1, 0)][..]),
+    ] {
+        physical_case(name, requests);
+    }
+}
+
+fn physical_case(name: &str, requests: &[(u32, u32)]) {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/vectors");
     let mut model: IntegerModel = envelope::open(
-        &std::fs::read(root.join("models/tiny-2-servable.d")).unwrap(),
+        &std::fs::read(root.join(format!("models/{name}.d"))).unwrap(),
         &schema::INTEGER_MODEL,
         DecodeLimits::INTEGER_MODEL,
     )
@@ -65,6 +76,27 @@ fn physical_route_matches_resident_and_independently_verifies() {
                 .1;
         }
     }
+    if name != "tiny-2-servable" {
+        for (point, shifts) in &mut model.quant.public.shift_class_sets {
+            let base = if matches!(
+                point,
+                tessera_ir::QuantPoint::Layer {
+                    site: tessera_ir::Site::Silu,
+                    ..
+                }
+            ) {
+                12
+            } else {
+                24
+            };
+            for (class, shift) in shifts.iter_mut().enumerate() {
+                *shift = base + class as i8;
+            }
+        }
+        for (_, shift) in &mut model.quant.public.affine_sites {
+            *shift = 24;
+        }
+    }
     let shapes = model.arch.weight_shapes().unwrap();
     for weight in &mut model.weights {
         let shape = shapes[weight.ty as usize];
@@ -84,7 +116,8 @@ fn physical_route_matches_resident_and_independently_verifies() {
             channel.multiplier.resize(n, value);
         }
     }
-    let lower = compiler::lower(PublicModel::of(&model), 3).unwrap();
+    let lengths: Vec<_> = requests.iter().map(|(p, o)| p + o).collect();
+    let lower = compiler::lower_batch(PublicModel::of(&model), &lengths).unwrap();
     let ranges = compiler::analyze(&lower.graph, &lower.tables).unwrap();
     let policy = tessera_ir::GadgetPolicy {
         max_log2_rows: 18,
@@ -125,6 +158,22 @@ fn physical_route_matches_resident_and_independently_verifies() {
     )
     .unwrap();
     let mut state = pcs::WeightCommitmentState::new(*weight.public()).unwrap();
+    let mut recorded = Vec::new();
+    for &(prompt, output) in requests {
+        let n = prompt + output;
+        let one = compiler::lower(PublicModel::of(&model), n).unwrap();
+        let engine = tessera_witness::Engine::new(&one).unwrap();
+        let mut tokens: Vec<_> = (0..n).map(|i| i % model.arch.vocab).collect();
+        for position in prompt..n {
+            let witness = engine.run(&model, &Secret::new(tokens.clone())).unwrap();
+            let vocab = model.arch.vocab as usize;
+            let row = &witness.tensor(one.logits).unwrap()
+                [(position as usize - 1) * vocab..position as usize * vocab];
+            let maximum = row.iter().max().unwrap();
+            tokens[position as usize] = row.iter().position(|v| v == maximum).unwrap() as u32;
+        }
+        recorded.extend(tokens);
+    }
     let batch = ProofBatch {
         statement: protocol::PublicStatement {
             claim_list_digest: tessera_hash::hash(
@@ -135,18 +184,22 @@ fn physical_route_matches_resident_and_independently_verifies() {
             weights_epoch: 0,
             manifest_digest: [0; 32],
             batch: protocol::BatchDescriptor {
-                requests: vec![protocol::RequestRef {
-                    request_id: 0,
-                    session_id: [0; 16],
-                    prompt_len: 3,
-                    output_len: 0,
-                }],
+                requests: requests
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &(prompt_len, output_len))| protocol::RequestRef {
+                        request_id: i as u64,
+                        session_id: [i as u8; 16],
+                        prompt_len,
+                        output_len,
+                    })
+                    .collect(),
             },
             predictor: protocol::PredictorSpec::Exact {
                 decoding: protocol::Decoding::Greedy,
             },
         },
-        tokens: Secret::new(vec![0, 1, 2]),
+        tokens: Secret::new(recorded),
     };
     let config = ProverConfig {
         backend: Backend::Cpu { threads: 1 },
@@ -165,7 +218,7 @@ fn physical_route_matches_resident_and_independently_verifies() {
         .unwrap()
         .plan(&batch)
         .unwrap();
-    assert!(planned.physical_peak.is_some());
+    assert!(planned.uses_physical_bound());
     assert!(planned.uses_checkpoints());
     assert!(planned.stage_windows().iter().skip(1).all(|w| w.cut > 0));
     metrics::reset();
@@ -223,22 +276,75 @@ fn physical_route_matches_resident_and_independently_verifies() {
         limits: Default::default(),
         accept_bound: tv_core::protocol::FixedBits(0),
     };
-    let expected = decoded.round1.statement.clone();
+    // Caller pins come from the public input, never from the generated proof.
+    let expected = tv_core::protocol::PublicStatement {
+        claim_list_digest: vc.digest(),
+        weights_root: batch.statement.weights_root,
+        weights_epoch: batch.statement.weights_epoch,
+        manifest_digest: batch.statement.manifest_digest,
+        batch: tv_core::protocol::BatchDescriptor {
+            requests: batch
+                .statement
+                .batch
+                .requests
+                .iter()
+                .map(|r| tv_core::protocol::RequestRef {
+                    request_id: r.request_id,
+                    session_id: r.session_id,
+                    prompt_len: r.prompt_len,
+                    output_len: r.output_len,
+                })
+                .collect(),
+        },
+        predictor: tv_core::protocol::PredictorSpec::Exact {
+            decoding: tv_core::protocol::Decoding::Greedy,
+        },
+    };
     let verdict = tv_core::verify_non_interactive(&vc, &expected, &decoded, &vcfg);
     assert!(
         matches!(verdict, tv_core::Verdict::Accept(_)),
         "{verdict:?}"
     );
     let mut tampered = proof.clone();
-    tampered.round1.advice.root[0] ^= 1;
+    let stage = tampered.round2.stages[0].stage.0;
+    // Compressed round messages reconstruct p(1) from the claim (RFC-0010).
+    // A changed evaluation fails at the final public relation, at round n.
+    let final_round = tampered.round2.stages[0].sumcheck.rounds.len() as u32;
+    tampered.round2.stages[0].sumcheck.rounds[0][0] +=
+        <tessera_field::GoldilocksExt2 as tessera_field::Field>::ONE;
     let verdict = tv_core::verify_non_interactive(&vc, &expected, &decode(&tampered), &vcfg);
+    assert!(
+        matches!(verdict, tv_core::Verdict::Reject(tv_core::RejectReason::Sumcheck {
+        stage: rejected, round,
+    }) if rejected == stage && round == final_round),
+        "{name}/{requests:?}: {verdict:?}"
+    );
+
+    if name == "tiny-2-servable" && requests == [(3, 0)] {
+        let mut root = proof.clone();
+        root.round1.advice.root[0] ^= 1;
+        let verdict = tv_core::verify_non_interactive(&vc, &expected, &decode(&root), &vcfg);
+        assert!(
+            matches!(
+                verdict,
+                tv_core::Verdict::Reject(tv_core::RejectReason::TreeLevel {
+                    group: 0,
+                    level: 1,
+                    round: 1,
+                })
+            ),
+            "{verdict:?}"
+        );
+    }
+
+    let mut wrong_statement = proof.clone();
+    wrong_statement.round1.statement.manifest_digest[0] ^= 1;
+    let verdict = tv_core::verify_non_interactive(&vc, &expected, &decode(&wrong_statement), &vcfg);
     assert!(
         matches!(
             verdict,
-            tv_core::Verdict::Reject(tv_core::RejectReason::TreeLevel {
-                group: 0,
-                level: 1,
-                round: 1
+            tv_core::Verdict::Reject(tv_core::RejectReason::StatementMismatch {
+                field: tv_core::validation::StatementField::ManifestDigest,
             })
         ),
         "{verdict:?}"
@@ -307,11 +413,8 @@ fn physical_route_matches_resident_and_independently_verifies() {
         let mut cfg = config.clone();
         cfg.memory_budget.host = mid;
         match Prover::new(&plan, &model, &mut state, cfg).and_then(|p| p.plan(&batch)) {
-            Ok(p) => {
-                assert!(p.resident_bytes().unwrap() <= mid);
-                high = mid;
-            }
-            Err(ProverError::Resource(ErrorCode::ResMemory)) => low = mid,
+            Ok(p) if p.resident_bytes().is_some_and(|bytes| bytes <= mid) => high = mid,
+            Ok(_) | Err(ProverError::Resource(ErrorCode::ResMemory)) => low = mid,
             Err(e) => panic!("unexpected public planning error: {e}"),
         }
     }

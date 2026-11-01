@@ -781,7 +781,9 @@ fn public_cpu_api_groups_the_leaf_stage_under_a_forced_budget() {
     for bits in 1..=3u8 {
         // Find the lowest feasible public budget with at most this many group bits. Stage
         // windows now share the memory budget, so one byte below the resident total may use
-        // windows first. The minimal grouping and its layer-before-token order remain pinned.
+        // windows first. Physical fallback can create a lower-budget ungrouped island;
+        // restrict this monotone search to the resident/grouped strategy (RFC-0018).
+        // Its minimal grouping and layer-before-token order remain pinned.
         let (mut low, mut high) = (0, ungrouped.resident_bytes().unwrap());
         while high - low > 1 {
             let middle = low + (high - low) / 2;
@@ -789,7 +791,8 @@ fn public_cpu_api_groups_the_leaf_stage_under_a_forced_budget() {
                 .unwrap()
                 .plan(&batch);
             let fits = candidate.is_ok_and(|p| {
-                p.resident_bytes().is_some_and(|bytes| bytes <= middle)
+                !p.uses_physical_bound()
+                    && p.resident_bytes().is_some_and(|bytes| bytes <= middle)
                     && u16::from(p.leaf_groups().token_bits) + u16::from(p.leaf_groups().layer_bits)
                         <= u16::from(bits)
             });
