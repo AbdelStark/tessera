@@ -14,6 +14,8 @@ use tessera_protocol::{self as protocol, ProverEngine};
 mod backend;
 mod encoded_size;
 mod error;
+#[cfg(test)]
+mod physical;
 mod plan;
 mod random;
 mod table_plan;

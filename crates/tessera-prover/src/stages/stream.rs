@@ -1049,6 +1049,49 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         Ok(super::StageSourceMemory { metadata, inputs })
     }
 
+    /// Additional window specifications and message work, before sharing.
+    /// Native terms are bounded by the canonical native instance allocation
+    /// reservation; graph terms follow the same Plan variants as `window`.
+    #[cfg(test)]
+    pub(crate) fn window_metadata_memory(
+        &self,
+        k: u16,
+        native_shape: impl Fn(u32) -> Result<tessera_sumcheck::WindowShape, StageError>,
+        native_terms: u64,
+    ) -> Result<tessera_sumcheck::WindowMetadataMemory, StageError> {
+        let stage = self
+            .schedule
+            .stages
+            .get(usize::from(k))
+            .ok_or(StageError::Internal {
+                rule: "window memory names a compiled stage",
+            })?;
+        let mut arena = Arena {
+            streaming: true,
+            geometry_only: true,
+            ..Arena::default()
+        };
+        let mut shapes = Vec::new();
+        let mut terms = Vec::new();
+        for instance in &stage.instances {
+            let (shape, count) = match instance.relation {
+                Relation::Native { tag, .. } => (native_shape(tag)?, native_terms),
+                _ => {
+                    let plan = self.plan(stage, instance, &mut arena)?;
+                    let count = match &plan {
+                        Plan::Elementwise { terms, .. } => terms.len() as u64,
+                        Plan::Recomposition { h, .. } => 2 + u64::from(h.is_some()),
+                        _ => 1,
+                    };
+                    (plan.memory_shape(instance.vars as usize), count)
+                }
+            };
+            shapes.push(shape);
+            terms.push(count);
+        }
+        tessera_sumcheck::WindowMetadataMemory::new::<F>(&shapes, &terms, 7).map_err(map_error)
+    }
+
     /// Public operand/grid geometry; called before P1 with a source that lends no witness data.
     pub(crate) fn window_shapes(
         &self,

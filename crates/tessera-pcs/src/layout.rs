@@ -780,6 +780,19 @@ impl Placement {
         Ok(point)
     }
 
+    /// Requested heap bytes of the axis descriptors retained by [`Self::row_indices`].
+    /// This reads public rank metadata and allocates nothing. Caller-owned source
+    /// shapes, field rows, iterator stack storage and allocator overhead are separate.
+    /// Returns `None` if the single vector would be unaddressable or overflow.
+    pub fn row_mapping_memory_bytes(&self) -> Option<usize> {
+        let rank = match &self.geometry {
+            Geometry::Dense { axes, .. } => axes.len(),
+            Geometry::Scores { .. } => 3,
+        };
+        let bytes = rank.checked_mul(size_of::<SourceAxis>())?;
+        (bytes <= isize::MAX as usize).then_some(bytes)
+    }
+
     /// Natural row-major source indices for the tensor-covered columns of `row`.
     /// `shape` is the source's public, unpadded shape in natural axis order. Each item is
     /// `Some(index)` for an element of that shape or `None` for per-axis length padding.
