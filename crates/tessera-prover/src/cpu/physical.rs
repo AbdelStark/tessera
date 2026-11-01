@@ -268,6 +268,9 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<serde_json::Value, Prover
             .construction_metadata_bytes(lowering, layers),
     )?;
     let runtime_preparation = required(runtime.construction_peak_bytes(lowering))?;
+    let leaf_preparation = leaf.construction_peak_bytes(lowering, layers, runtime.selection())?;
+    let advice_preparation =
+        required(advice.construction_peak_bytes(runtime.selection(), c, layers))?;
     let replay = tessera_witness::CheckpointMemory::new(lowering)?;
     let tables = Engine::table_memory(&lowering.tables)?;
     let unit = sum([
@@ -456,7 +459,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<serde_json::Value, Prover
         serde_json::json!({"complete_bound":false,"route_admitted":false,"proof_generated":false,
         "lowering_preparation_metadata":lowering_preparation,
         "layer_preparation":layer_preparation,"selection_preparation_metadata":selection_preparation,
-        "runtime_preparation":runtime_preparation,"protocol_work":protocol_work,
+        "runtime_preparation":runtime_preparation,"leaf_preparation":leaf_preparation,"advice_preparation":advice_preparation,"protocol_work":protocol_work,
         "claims_encoding":claims_encoding,
         "host":host,"unit_metadata":unit,"base":base,"source_work":source,"source_rows":rows,"message_owners":messages,
         "leaf_original":leaf_original,"leaf_wire_copy":leaf_wire,"response_containers":response_containers,

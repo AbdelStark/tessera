@@ -583,6 +583,72 @@ impl<'a> ModelAdviceLayout<'a> {
         Some(bytes)
     }
 
+    /// Conservative heap peak of canonical model/runtime advice construction
+    /// (RFC-0011/0018/0041), beside borrowed lowering, selection and claims.
+    /// Includes row preflight, source descriptions, plan expansion, temporary
+    /// layer/index maps and PCS construction. Does not allocate or authenticate
+    /// the pairing of inputs; allocator overhead is separate. `None` means overflow.
+    pub fn construction_peak_bytes(
+        &self,
+        selection: &Selection,
+        claims: &ClaimList,
+        layers: &LayerMap,
+    ) -> Option<u64> {
+        use crate::memory::{array, btree, claim_clone_bytes, grow, map, sum};
+        let graph = &self.lowering.graph;
+        let nt = graph.tensors.len() as u64;
+        let tile_count = self.tiles.len() as u64;
+        let values = self.geometry.tensors().len() as u64;
+        let rank = graph
+            .tensors
+            .iter()
+            .map(|t| t.shape.len() as u64)
+            .max()
+            .unwrap_or(0)
+            .max(1);
+        let slots = graph.slots.as_ref().map_or(0, |s| s.lengths.len() as u64);
+        let reads = selection.gadgets.iter().try_fold(0u64, |n, (id, _)| {
+            n.checked_add(selection.reads(*id)?.len() as u64)
+        })?;
+        let columns = self
+            .columns
+            .iter()
+            .map(|c| c.sources.len() as u64)
+            .max()
+            .unwrap_or(0);
+        sum([
+            self.heap_upper_bound()?.checked_mul(2)?,
+            self.geometry.construction_peak_bytes()?,
+            claim_clone_bytes(claims)?,
+            layers.construction_peak_bytes(graph)?.checked_mul(2)?,
+            grow::<Tile>(tile_count)?,
+            grow::<TableId>(reads)?,
+            btree::<TableId, ()>(selection.tables.len() as u64)?,
+            array::<TileShape>(tile_count)?,
+            grow::<TensorShape>(values)?,
+            // Each dense description owns axes, layout order and optional slots.
+            values.checked_mul(sum([
+                array::<Axis>(rank)?,
+                grow::<usize>(rank)?,
+                array::<u32>(slots)?,
+            ])?)?,
+            // A preflight shape/column can be replaced while its caller keeps it.
+            grow::<AdviceSource>(columns)?,
+            grow::<TensorShape>(columns)?,
+            columns.checked_mul(sum([
+                array::<Axis>(rank)?,
+                grow::<usize>(rank)?,
+                array::<u32>(slots)?,
+            ])?)?,
+            array::<Option<u8>>(nt)?.checked_mul(2)?,
+            array::<bool>(nt)?.checked_mul(4)?,
+            array::<Option<(NodeId, u32)>>(nt)?.checked_mul(2)?,
+            map::<TableId, bool>(selection.tables.len() as u64)?.checked_mul(2)?,
+            // attention, its row counter and a nested batch layout own slot copies.
+            array::<u32>(slots)?.checked_mul(3)?,
+        ])
+    }
+
     /// Build a layout for `lowering`'s sequence from its checked public selection.
     /// No weight, token or activation value is read (INV-PCS-1).
     ///
@@ -657,6 +723,7 @@ impl<'a> ModelAdviceLayout<'a> {
             tiles: order,
         };
         let tiles = plan.expand(lowering)?;
+        drop(plan);
         let mut groups = Vec::<Columns>::new();
         let mut prior = None;
         let mut descriptions = Vec::with_capacity(tiles.len());

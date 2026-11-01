@@ -280,6 +280,118 @@ pub struct LeafLayout<T = Term> {
     ungroupable: Option<&'static str>,
 }
 
+impl LeafLayout<super::ModelColumn> {
+    /// Conservative heap peak of canonical model/runtime leaf construction
+    /// (RFC-0018/0045/0050), beside borrowed lowering, layer map and selection.
+    /// Includes returned layout, gadget templates/constraints, source remapping,
+    /// token axes, lookup indexes and stable-sort scratch. Does not allocate or
+    /// authenticate the pairing of inputs. Allocator overhead is separate.
+    ///
+    /// # Errors
+    /// `Memory` on checked overflow/unaddressable requests, or a gadget geometry
+    /// error when the supplied public table metadata cannot be sized.
+    pub fn construction_peak_bytes(
+        &self,
+        lowering: &Lowering,
+        layers: &LayerMap,
+        selection: &Selection,
+    ) -> Result<u64, LeafError> {
+        fn add(a: u64, b: u64) -> Result<u64, LeafError> {
+            a.checked_add(b).ok_or(LeafError::Memory)
+        }
+        fn array<T>(n: u64) -> Result<u64, LeafError> {
+            let bytes = n
+                .checked_mul(size_of::<T>() as u64)
+                .ok_or(LeafError::Memory)?;
+            if usize::try_from(n).is_err() || bytes > isize::MAX as u64 {
+                return Err(LeafError::Memory);
+            }
+            Ok(bytes)
+        }
+        let graph = &lowering.graph;
+        let mut template = 0;
+        let mut constraints = 0;
+        for node in &graph.nodes {
+            let plan = match node.op {
+                tessera_ir::Op::Requant { .. } => Some(Requant::memory().ok_or(LeafError::Memory)?),
+                tessera_ir::Op::RsqrtRow { .. } => {
+                    Some(tessera_gadgets::RsqrtRow::memory().ok_or(LeafError::Memory)?)
+                }
+                tessera_ir::Op::SoftmaxRow { exp_table, .. } => Some(
+                    tessera_gadgets::SoftmaxRow::memory(exp_table, &selection.tables)?,
+                ),
+                _ => None,
+            };
+            if let Some(plan) = plan {
+                template = template.max(plan.template_bytes());
+                constraints = constraints.max(plan.constraints_bytes());
+            }
+        }
+        let rank = graph
+            .tensors
+            .iter()
+            .map(|t| t.shape.len() as u64)
+            .max()
+            .unwrap_or(0);
+        let outputs = graph
+            .nodes
+            .iter()
+            .map(|n| n.outputs.len() as u64)
+            .max()
+            .unwrap_or(0);
+        let blocks = self
+            .instances
+            .iter()
+            .map(|i| i.blocks.len() as u64)
+            .max()
+            .unwrap_or(0);
+        let tables = self.instances.len() as u64;
+        // Rust1.95 B-tree B=6: eleven keys/values, twelve edges, parent and
+        // two u16s. Allow alignment at both node levels and transient splits.
+        let align = align_of::<TableId>()
+            .max(align_of::<Vec<Block>>())
+            .max(align_of::<usize>()) as u64;
+        let node = add(
+            add(
+                size_of::<usize>() as u64 + 4,
+                11 * (size_of::<TableId>() + size_of::<Vec<Block>>()) as u64,
+            )?,
+            add(12 * size_of::<usize>() as u64, 7 * (align - 1))?,
+        )?;
+        let tree = tables
+            .checked_add(1)
+            .and_then(|n| n.checked_mul(2))
+            .and_then(|n| n.checked_mul(node))
+            .ok_or(LeafError::Memory)?;
+        let mut bytes = self
+            .heap_bytes()
+            .and_then(|n| n.checked_mul(2))
+            .ok_or(LeafError::Memory)?;
+        for extra in [
+            template,
+            constraints,
+            tree,
+            array::<Option<u8>>(graph.tensors.len() as u64)?,
+            array::<Option<u8>>(outputs)?,
+            array::<NodeRef>(
+                (graph.nodes.len() as u64)
+                    .max(4)
+                    .checked_mul(4)
+                    .ok_or(LeafError::Memory)?,
+            )?,
+            array::<NodeId>(u64::from(layers.count).max(1))?,
+            array::<Block>(blocks)?,
+            array::<usize>(rank)?,
+            array::<u32>(rank)?,
+            // A repeated term's trial projection is discarded by reads_of.
+            array::<u32>(4 * u64::from(MAX_BLOCK_VARS))?,
+        ] {
+            bytes = add(bytes, extra)?;
+        }
+        Ok(bytes)
+    }
+}
+
 impl<T: Copy + Eq> LeafLayout<T> {
     /// Requested heap bytes of the public leaf layout, including nested spare
     /// capacities (RFC-0045/0018). Reads no field values and does not allocate or

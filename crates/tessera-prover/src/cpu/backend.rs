@@ -385,13 +385,24 @@ impl<'a> CpuBackend<'a> {
             lengths.push(n);
             requests.push((r.prompt_len, r.output_len));
         }
-        compiler::check_batch_advice_rows(c, &requests)?;
+        // Only protocol/1 shares the canonical lowering below. Preserve the
+        // version-specific row preflight for other protocols.
+        if c.protocol_version != protocol::PROTOCOL_VERSION {
+            compiler::check_batch_advice_rows(c, &requests)?;
+        }
         let lowering = compiler::lower_batch(PublicModel::of(prepared.model), &lengths)?;
         let n = lowering.graph.tensors[lowering.tokens.0 as usize].shape[0];
         let ranges = compiler::analyze(&lowering.graph, &lowering.tables)?;
         let selected =
             compiler::select_model(c.protocol_version, &lowering, &ranges, &c.gadget_policy)?;
         let runtime = RuntimePlan::derive_batch(&lowering, &selected, c, &requests)?;
+        // RFC-0018: runtime owns its selection; none of these public preparation
+        // temporaries must remain live beside the expanded layouts.
+        drop((keys, lengths, requests, selected, ranges));
+        // runtime() checks the same allocated_runtime_rows geometry as
+        // check_batch_advice_rows, before expanding attention shares. Reuse the
+        // canonical lowering instead of building a second complete pipeline.
+        let advice = ModelAdviceLayout::runtime(&lowering, &runtime, c)?;
         let layers = LayerMap::new(&lowering)?;
         let leaf = LeafLayout::runtime(&lowering, &layers, &runtime, c)?;
         let native = ModelNativePlan::derive_runtime(&lowering, &runtime, c, &leaf)?;
@@ -426,7 +437,6 @@ impl<'a> CpuBackend<'a> {
                 )
                 .ok_or_else(memory)?;
         }
-        let advice = ModelAdviceLayout::runtime(&lowering, &runtime, c)?;
         cells.advice = advice
             .layout()
             .rows()

@@ -1724,3 +1724,55 @@ fn layout_heap_plan_counts_every_retained_vector_and_its_clone() {
     }
     seen.check();
 }
+
+#[test]
+fn constructor_bound_covers_dense_row_runs_and_slotted_ownership() {
+    let params = LayoutParams {
+        log2_k: 4,
+        max_context: 256,
+        group: 1,
+        layers: 2,
+        query_block: 2,
+        segments: 4,
+    };
+    for count in [1usize, 2, 3, 5, 17] {
+        let lengths = (0..count).map(|r| [1, 3, 7][r % 3]).collect::<Vec<_>>();
+        for rank in [1, 2, 3, 8] {
+            let mut axes = vec![Axis::new(8 * count as u64)];
+            axes.extend((1..rank).map(|a| Axis::new(if a % 2 == 0 { 3 } else { 4 })));
+            let value = TensorShape::Dense(DenseShape::with_slots(
+                axes,
+                Padding::Zero,
+                0,
+                8,
+                lengths.clone(),
+            ));
+            let tiles = vec![
+                TileShape {
+                    layer: None,
+                    values: vec![value.clone()],
+                },
+                TileShape {
+                    layer: Some(0),
+                    values: vec![value.clone()],
+                },
+                TileShape {
+                    layer: Some(1),
+                    values: vec![value],
+                },
+            ];
+            let mut layout = None;
+            let observed = allocation_counter::measure(|| {
+                layout = Some(AdviceLayout::new_batch(params, 8, &lengths, &tiles).unwrap());
+            });
+            let layout = layout.unwrap();
+            let mut bound = None;
+            let sizing = allocation_counter::measure(|| bound = layout.construction_peak_bytes());
+            assert_eq!(sizing.bytes_total, 0);
+            assert!(
+                observed.bytes_max <= bound.unwrap(),
+                "{count}/{rank}: {observed:?} > {bound:?}"
+            );
+        }
+    }
+}

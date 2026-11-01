@@ -1853,6 +1853,33 @@ fn public_preparation_bounds_cover_actual_constructors() {
                 let (runtime, runtime_peak, _) = peak(|| {
                     RuntimePlan::derive(&lowering, &selection, &p.claims, prompt, 0).unwrap()
                 });
+                let (leaf, leaf_peak, leaf_retained) =
+                    peak(|| LeafLayout::runtime(&lowering, &layers, &runtime, &p.claims).unwrap());
+                let (advice, advice_peak, _) =
+                    peak(|| ModelAdviceLayout::runtime(&lowering, &runtime, &p.claims).unwrap());
+                let mut advice_bound = None;
+                let advice_sizing = allocation_counter::measure(|| {
+                    advice_bound =
+                        advice.construction_peak_bytes(runtime.selection(), &p.claims, &layers);
+                });
+                assert_eq!(advice_sizing.bytes_total, 0);
+                assert!(
+                    advice_peak <= advice_bound.unwrap(),
+                    "{name}/{n}/{prompt}: advice {advice_peak} > {advice_bound:?}"
+                );
+                let mut leaf_bound = None;
+                let leaf_sizing = allocation_counter::measure(|| {
+                    leaf_bound = Some(
+                        leaf.construction_peak_bytes(&lowering, &layers, runtime.selection())
+                            .unwrap(),
+                    );
+                });
+                assert_eq!(leaf_sizing.bytes_total, 0);
+                assert!(
+                    leaf_peak <= leaf_bound.unwrap(),
+                    "{name}/{n}/{prompt}: leaf {leaf_peak} > {leaf_bound:?}"
+                );
+                assert!(leaf_retained <= leaf_bound.unwrap());
                 let mut bounds = None;
                 let sizing = allocation_counter::measure(|| {
                     bounds = Some((
@@ -1919,6 +1946,21 @@ fn batch_runtime_preparation_bound_includes_growing_request_columns() {
                 );
             });
             let runtime = runtime.unwrap();
+            let layers = LayerMap::new(&lowering).unwrap();
+            let mut advice = None;
+            let actual_advice = allocation_counter::measure(|| {
+                advice = Some(ModelAdviceLayout::runtime(&lowering, &runtime, &p.claims).unwrap());
+            });
+            let bound_advice = advice
+                .as_ref()
+                .unwrap()
+                .construction_peak_bytes(runtime.selection(), &p.claims, &layers)
+                .unwrap();
+            assert!(
+                actual_advice.bytes_max <= bound_advice,
+                "{count}/{outputs}: advice {actual_advice:?} > {bound_advice}"
+            );
+
             let mut bound = None;
             let sizing =
                 allocation_counter::measure(|| bound = runtime.construction_peak_bytes(&lowering));

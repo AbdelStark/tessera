@@ -95,6 +95,63 @@ pub(crate) fn btree<K, V>(n: u64) -> Option<u64> {
         .checked_add(7u64.checked_mul(align.checked_sub(1)?)?)?;
     2u64.checked_mul(n.checked_add(1)?)?.checked_mul(node)
 }
+pub(crate) fn map<K, V>(n: u64) -> Option<u64> {
+    if n == 0 {
+        return Some(0);
+    }
+    // Rust1.95 hashbrown: <=7/8 load; sum geometric bucket growth and control bytes.
+    let buckets = (n.checked_mul(8)?.checked_add(6)? / 7)
+        .max(4)
+        .checked_next_power_of_two()?;
+    let all = buckets.checked_mul(2)?;
+    sum([
+        array::<(K, V)>(all)?,
+        array::<u8>(all)?,
+        31u64.checked_mul(u64::from(buckets.trailing_zeros()))?,
+    ])
+}
+
+pub(crate) fn claim_clone_bytes(claims: &tessera_ir::ClaimList) -> Option<u64> {
+    let tessera_ir::ClaimList {
+        protocol_version: _,
+        arch: _,
+        profile: _,
+        quant,
+        silu_in_exponents,
+        tables: specs,
+        gadget_policy: _,
+        layout: _,
+        params,
+    } = claims;
+    let tessera_ir::PublicQuantSpec {
+        act_exponents,
+        residual_exponent: _,
+        residual_bits: _,
+        rsqrt_kappa: _,
+        rms_eps_int: _,
+        exp_sigma: _,
+        score_scales,
+        shift_class_sets,
+        affine_sites,
+        rope: _,
+        logits_bits: _,
+        logits_exponent: _,
+    } = quant;
+    let mut bytes = sum([
+        vector(act_exponents)?,
+        vector(score_scales)?,
+        vector(shift_class_sets)?,
+        vector(affine_sites)?,
+        vector(silu_in_exponents)?,
+        tables(specs)?,
+        params.0.as_str().len() as u64,
+    ])?;
+    for (_, shifts) in shift_class_sets {
+        bytes = bytes.checked_add(vector(shifts)?)?;
+    }
+    Some(bytes)
+}
+
 impl Lowering {
     /// Conservative metadata peak while lowering the given public model
     /// (RFC-0006/0018), computed from this canonical lowering's geometry.
@@ -204,6 +261,50 @@ mod tests {
                 "{n}: {observed:?}"
             );
         }
+    }
+
+    #[test]
+    fn cloned_claims_fit_the_public_container_bound() {
+        use tessera_codec::{DecodeLimits, envelope, schema};
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../spec/vectors/tamper/claims.tcl");
+        let claims: tessera_ir::ClaimList = envelope::open(
+            &std::fs::read(path).unwrap(),
+            &schema::CLAIM_LIST,
+            DecodeLimits::MESSAGE,
+        )
+        .unwrap();
+        let mut owned = None;
+        let observed = allocation_counter::measure(|| owned = Some(claims.clone()));
+        let mut bound = None;
+        let sizing = allocation_counter::measure(|| bound = claim_clone_bytes(&claims));
+        assert_eq!(sizing.bytes_total, 0);
+        assert!(
+            observed.bytes_max <= bound.unwrap(),
+            "{observed:?} > {bound:?}"
+        );
+        drop(owned);
+    }
+
+    #[test]
+    fn padding_table_map_requests_fit_the_pinned_bucket_bound() {
+        use std::collections::HashMap;
+        use tessera_ir::TableId;
+        for n in [0u64, 1, 2, 4, 5, 13, 129, 513] {
+            let actual = allocation_counter::measure(|| {
+                let mut values = HashMap::new();
+                for i in 0..n {
+                    values.insert(TableId(i as u32), i % 2 == 0);
+                }
+                std::hint::black_box(&values);
+            });
+            assert!(
+                actual.bytes_total <= map::<TableId, bool>(n).unwrap(),
+                "{n}: {actual:?}"
+            );
+        }
+        assert_eq!(map::<TableId, bool>(u64::MAX), None);
+        assert_eq!(map::<TableId, bool>(1 << 61), None);
     }
 
     #[test]
