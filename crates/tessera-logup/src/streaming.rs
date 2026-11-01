@@ -34,6 +34,12 @@ pub trait TableSource<B: PrimeField> {
     fn rows(&self) -> usize;
     /// Whether this table has values. `Range` has none.
     fn has_values(&self) -> bool;
+    /// Optional intermediate fraction level selected only from public geometry/budget.
+    /// The batch owns clearing storage for this level and charges all requested caches
+    /// together before construction. `None` retains the original regeneration path.
+    fn fraction_cache_depth(&self) -> Option<usize> {
+        None
+    }
     /// Extra temporary allocation bound for a read of at most `rows` entries.
     /// Backing storage is charged separately by [`TableBatchBudget::source_bytes`].
     fn read_scratch_bytes(&self, _rows: usize) -> Option<u64> {
@@ -114,6 +120,15 @@ struct Fractions<'a, F: PolyField> {
     alpha: F,
     beta: F,
 }
+impl<F: PolyField> Fractions<'_, F> {
+    fn rows(&self, budget: TableBatchBudget) -> Result<FractionTreeRows<'_, F>, WindowError> {
+        let rows = FractionTreeRows::new(self, budget.chunk_rows, budget.allowance)?;
+        match self.table.fraction_cache_depth() {
+            Some(depth) => rows.with_cache_depth(depth, budget.allowance),
+            None => Ok(rows),
+        }
+    }
+}
 impl<F: PolyField> FractionTreeSource<F> for Fractions<'_, F> {
     fn height(&self) -> usize {
         self.height
@@ -192,7 +207,8 @@ fn check_construction<'a, F: PolyField>(
             alpha: F::ZERO,
             beta: F::ZERO,
         };
-        let rows = FractionTreeRows::new(&source, budget.chunk_rows, budget.allowance)?;
+        let rows = source.rows(budget)?;
+        owned = add(owned, rows.retained_bytes())?;
         scratch = scratch.max(add(
             rows.scratch_bytes(),
             mul(rows.chunk_rows() as u64, mul(4, e)?)?,
@@ -334,7 +350,7 @@ where
     }
     let mut table_rows = sources
         .iter()
-        .map(|source| FractionTreeRows::new(source, budget.chunk_rows, budget.allowance).map(Some))
+        .map(|source| source.rows(budget).map(Some))
         .collect::<Result<Vec<_>, _>>()?;
     let trees = schedule
         .iter()
@@ -453,10 +469,7 @@ where
         .collect();
     let trees = sources
         .iter()
-        .map(|source| {
-            FractionTreeRows::new(source, budget.chunk_rows, budget.allowance)
-                .map(BoundedTree::Generated)
-        })
+        .map(|source| source.rows(budget).map(BoundedTree::Generated))
         .collect::<Result<Vec<_>, _>>()?;
     let batch = PreparedTreeBatch::new(
         TreeScope::Tables,
@@ -504,6 +517,7 @@ mod tests {
         largest: Cell<usize>,
         reads: Cell<usize>,
         fail: Cell<bool>,
+        cache_depth: Cell<Option<usize>>,
     }
     impl TableSource<B> for Source {
         fn rows(&self) -> usize {
@@ -511,6 +525,9 @@ mod tests {
         }
         fn has_values(&self) -> bool {
             self.values.is_some()
+        }
+        fn fraction_cache_depth(&self) -> Option<usize> {
+            self.cache_depth.get()
         }
         fn read(
             &self,
@@ -573,6 +590,7 @@ mod tests {
                     largest: Cell::new(0),
                     reads: Cell::new(0),
                     fail: Cell::new(false),
+                    cache_depth: Cell::new(None),
                 },
             }
         }
@@ -650,49 +668,58 @@ mod tests {
         let forests = [Forest::new(&forest, 3)];
         let mut schedule = vec![TreeId::Forest(0)];
         schedule.extend(TreeId::paired(literal.len()).into_iter().rev());
-        for chunk in [1, 3, 17, 256] {
-            for mode in [Mode::Live, Mode::NonInteractive] {
-                for input in &inputs {
-                    input.table.largest.set(0);
+        for cache in [false, true] {
+            for input in &inputs {
+                let height = input.table.counts.len().ilog2() as usize;
+                input
+                    .table
+                    .cache_depth
+                    .set((cache && height > 1).then(|| height - 1));
+            }
+            for chunk in [1, 3, 17, 256] {
+                for mode in [Mode::Live, Mode::NonInteractive] {
+                    for input in &inputs {
+                        input.table.largest.set(0);
+                    }
+                    let mut before = transcript(mode);
+                    let expected =
+                        prove_logup::<F, _>(&mut before, &literal, &forests, &schedule).unwrap();
+                    let mut after = transcript(mode);
+                    let actual = prove_logup_bounded::<F, _>(
+                        &mut after,
+                        &streamed,
+                        &forests,
+                        &schedule,
+                        budget(u64::MAX, chunk, 0),
+                    )
+                    .unwrap();
+                    assert_eq!(actual.roots(), expected.roots());
+                    assert_eq!(actual.values(), expected.values());
+                    assert_eq!(actual.claims(), expected.claims());
+                    assert_eq!(actual.forest_claims(), expected.forest_claims());
+                    assert_eq!(actual.leaf_claims(), expected.leaf_claims());
+                    assert_levels(actual.levels(), expected.levels());
+                    assert_eq!(after.challenge_fp2("next"), before.challenge_fp2("next"));
+                    assert!(inputs.iter().all(|i| i.table.largest.get() <= chunk));
+                    let alpha = F::from(B::from_u64_reduced(1_000_003));
+                    let beta = F::from(B::from_u64_reduced(53));
+                    let mut before = transcript(mode);
+                    let expected = prove_table_batch(&mut before, alpha, beta, &literal).unwrap();
+                    let mut after = transcript(mode);
+                    let actual = prove_table_batch_bounded(
+                        &mut after,
+                        alpha,
+                        beta,
+                        &sources,
+                        budget(u64::MAX, chunk, 0),
+                    )
+                    .unwrap();
+                    assert_eq!(actual.roots(), expected.roots());
+                    assert_eq!(actual.multiplicities(), expected.multiplicities());
+                    assert_levels(actual.levels(), expected.levels());
+                    assert_eq!(after.challenge_fp2("next"), before.challenge_fp2("next"));
+                    assert!(inputs.iter().all(|i| i.table.largest.get() <= chunk));
                 }
-                let mut before = transcript(mode);
-                let expected =
-                    prove_logup::<F, _>(&mut before, &literal, &forests, &schedule).unwrap();
-                let mut after = transcript(mode);
-                let actual = prove_logup_bounded::<F, _>(
-                    &mut after,
-                    &streamed,
-                    &forests,
-                    &schedule,
-                    budget(u64::MAX, chunk, 0),
-                )
-                .unwrap();
-                assert_eq!(actual.roots(), expected.roots());
-                assert_eq!(actual.values(), expected.values());
-                assert_eq!(actual.claims(), expected.claims());
-                assert_eq!(actual.forest_claims(), expected.forest_claims());
-                assert_eq!(actual.leaf_claims(), expected.leaf_claims());
-                assert_levels(actual.levels(), expected.levels());
-                assert_eq!(after.challenge_fp2("next"), before.challenge_fp2("next"));
-                assert!(inputs.iter().all(|i| i.table.largest.get() <= chunk));
-                let alpha = F::from(B::from_u64_reduced(1_000_003));
-                let beta = F::from(B::from_u64_reduced(53));
-                let mut before = transcript(mode);
-                let expected = prove_table_batch(&mut before, alpha, beta, &literal).unwrap();
-                let mut after = transcript(mode);
-                let actual = prove_table_batch_bounded(
-                    &mut after,
-                    alpha,
-                    beta,
-                    &sources,
-                    budget(u64::MAX, chunk, 0),
-                )
-                .unwrap();
-                assert_eq!(actual.roots(), expected.roots());
-                assert_eq!(actual.multiplicities(), expected.multiplicities());
-                assert_levels(actual.levels(), expected.levels());
-                assert_eq!(after.challenge_fp2("next"), before.challenge_fp2("next"));
-                assert!(inputs.iter().all(|i| i.table.largest.get() <= chunk));
             }
         }
     }
@@ -704,6 +731,13 @@ mod tests {
             Input::new(5, true),
             Input::new((1 << 14) - 3, true),
         ];
+        for input in &inputs {
+            let height = input.table.counts.len().ilog2() as usize;
+            input
+                .table
+                .cache_depth
+                .set((height > 4).then(|| height - 4));
+        }
         let literal: Vec<_> = inputs.iter().map(Input::literal).collect();
         let streamed: Vec<_> = inputs.iter().map(Input::streaming).collect();
         let source_bytes = inputs.iter().map(Input::bytes).sum::<u64>()
@@ -827,6 +861,7 @@ mod tests {
             largest: Cell::new(0),
             reads: Cell::new(0),
             fail: Cell::new(false),
+            cache_depth: Cell::new(None),
         };
         let config = budget(u64::MAX, 3, 0);
         for (instance, error) in [
@@ -889,6 +924,7 @@ mod tests {
         );
         assert_eq!(input.table.reads.get(), 0);
         input.table.fail.set(true);
+        input.table.cache_depth.set(Some(1));
         assert_eq!(
             prove_logup_bounded::<F, _>(
                 &mut tr,

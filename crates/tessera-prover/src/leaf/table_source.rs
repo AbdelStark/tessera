@@ -15,6 +15,7 @@ pub(crate) struct GeneratedCounts {
     tile: TileWitness,
     key_0: [G; 1],
     value_0: Option<[G; 1]>,
+    cache_depth: Option<usize>,
 }
 
 impl GeneratedCounts {
@@ -39,7 +40,12 @@ impl GeneratedCounts {
             tile,
             key_0: [key],
             value_0,
+            cache_depth: None,
         })
+    }
+    pub(crate) fn with_cache_depth(mut self, depth: Option<usize>) -> Self {
+        self.cache_depth = depth;
+        self
     }
     pub(crate) fn id(&self) -> TableId {
         self.table.spec().id
@@ -73,6 +79,9 @@ impl TableSource<G> for GeneratedCounts {
     }
     fn has_values(&self) -> bool {
         self.value_0.is_some()
+    }
+    fn fraction_cache_depth(&self) -> Option<usize> {
+        self.cache_depth
     }
     fn read_scratch_bytes(&self, rows: usize) -> Option<u64> {
         (rows as u64).checked_mul(size_of::<u64>() as u64)

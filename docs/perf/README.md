@@ -5,6 +5,9 @@ This directory holds measured performance: the CPU microbenchmarks' baselines no
 The [CPU row NTT measurements](cpu-row-ntt.md) record the real row geometry, cost counts,
 loaded-host variability and a rejected fusion experiment.
 
+The [fraction-level cache](fraction-level-cache.md) records its complete-batch
+measurements, allocation bounds and equivalence controls.
+
 ## CPU microbenchmarks
 
 `tessera-bench`'s `primitives` benchmark times the prover's primitives at fixed sizes, single-threaded ([08 §6](../spec/08-performance-budget.md#6-regression-gates)):

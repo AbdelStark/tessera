@@ -15,11 +15,16 @@ use tessera_sumcheck::WindowError;
 struct Source {
     rows: usize,
     reads: Cell<u64>,
+    cache_depth: Option<usize>,
+    chunk: usize,
 }
 
 impl TableSource<B> for Source {
     fn rows(&self) -> usize {
         self.rows
+    }
+    fn fraction_cache_depth(&self) -> Option<usize> {
+        self.cache_depth
     }
     fn has_values(&self) -> bool {
         true
@@ -66,7 +71,7 @@ fn run(source: &Source) -> ProvenTables<F> {
         TableBatchBudget {
             allowance: u64::MAX,
             source_bytes: size_of::<Source>() as u64,
-            chunk_rows: NonZeroUsize::new(256).unwrap(),
+            chunk_rows: NonZeroUsize::new(source.chunk).unwrap(),
         },
     )
     .unwrap()
@@ -112,6 +117,8 @@ fn bench(c: &mut Criterion) {
         let source = Source {
             rows: 1 << height,
             reads: Cell::new(0),
+            cache_depth: None,
+            chunk: 256,
         };
         let proof = run(&source);
         println!(
@@ -129,6 +136,44 @@ fn bench(c: &mut Criterion) {
                 });
             },
         );
+    }
+    group.finish();
+    let mut group = c.benchmark_group("bounded-table-cache");
+    group
+        .sample_size(10)
+        .warm_up_time(Duration::from_secs(1))
+        .measurement_time(Duration::from_secs(3));
+    for height in [14, 18] {
+        let mut expected = None;
+        for cache_depth in [None, Some(height - 4)] {
+            let source = Source {
+                rows: 1 << height,
+                reads: Cell::new(0),
+                cache_depth,
+                chunk: 65_536,
+            };
+            let actual = digest(&run(&source));
+            if let Some(ref expected) = expected {
+                assert_eq!(&actual, expected);
+            } else {
+                expected = Some(actual.clone());
+            }
+            println!(
+                "cache fixture height={height} depth={} chunk=65536 reads={} digest={actual}",
+                cache_depth.unwrap_or(0),
+                source.reads.get()
+            );
+            group.bench_with_input(
+                BenchmarkId::new(format!("h{height}"), cache_depth.unwrap_or(0)),
+                &source,
+                |b, source| {
+                    b.iter(|| {
+                        source.reads.set(0);
+                        let _ = black_box(run(source));
+                    });
+                },
+            );
+        }
     }
     group.finish();
 }

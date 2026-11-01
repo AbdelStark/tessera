@@ -232,6 +232,7 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
         .unwrap();
     assert!(planned.uses_physical_bound());
     assert!(planned.uses_checkpoints());
+    assert!(planned.table_plan().unwrap().cache_log_rows.is_some());
     assert!(planned.stage_windows().iter().skip(1).all(|w| w.cut > 0));
     metrics::reset();
     let mut proof = None;

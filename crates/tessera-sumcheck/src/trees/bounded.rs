@@ -353,6 +353,7 @@ impl<'a, F: PolyField> PreparedTreeBatch<'a, F> {
                     (tree.height, 0)
                 }
                 BoundedTree::Generated(rows) => {
+                    owned = add(owned, rows.retained_bytes())?;
                     scratch = scratch.max(add(
                         rows.scratch_bytes(),
                         mul(rows.chunk_rows() as u64, mul(4, size_of::<F>() as u64)?)?,
@@ -469,7 +470,8 @@ impl<'a, F: PolyField> PreparedTreeBatch<'a, F> {
                         claim,
                     })
                 }
-                BoundedTree::Generated(rows) => {
+                BoundedTree::Generated(mut rows) => {
+                    rows.prepare_cache()?;
                     let root = rows.root()?;
                     let claim = (h == 0).then(|| {
                         LevelClaim::Fraction(FractionClaim {
@@ -700,6 +702,41 @@ mod tests {
             trees.push(BoundedTree::Resident(Tree::Forest(Forest::new(forest, 3))));
         }
         trees
+    }
+
+    #[test]
+    fn all_retained_caches_are_charged_before_any_allocation_or_source_read() {
+        let sources = [source(12), source(11)];
+        let trees: Vec<_> = sources
+            .iter()
+            .map(|s| {
+                BoundedTree::Generated(
+                    FractionTreeRows::new(s, NonZeroUsize::new(1).unwrap(), u64::MAX)
+                        .unwrap()
+                        .with_cache_depth(s.height - 2, u64::MAX)
+                        .unwrap(),
+                )
+            })
+            .collect();
+        let metadata = 65_536 + 2 * 13 * 20 * (256 + 8 * size_of::<F>() as u64);
+        let input_bytes = (trees.capacity() * size_of::<BoundedTree<'_, F>>()) as u64;
+        let caches = 32 * ((1 << 10) + (1 << 9));
+        let scratch = match &trees[0] {
+            BoundedTree::Generated(rows) => rows.scratch_bytes() + 4 * size_of::<F>() as u64,
+            _ => unreachable!(),
+        };
+        let allowance = metadata + input_bytes + caches + scratch - 1;
+        let measured = allocation_counter::measure(|| {
+            assert!(matches!(
+                PreparedTreeBatch::new(TreeScope::Tables, trees, allowance, 0),
+                Err(WindowError::Allocation)
+            ));
+        });
+        assert_eq!(
+            measured.count_total, 0,
+            "refusal precedes cache/planning allocations"
+        );
+        assert!(sources.iter().all(|s| s.largest.get() == 0));
     }
 
     #[test]

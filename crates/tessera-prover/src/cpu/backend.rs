@@ -31,6 +31,7 @@ pub(super) struct Unit {
     windows: Vec<usize>,
     table_allowance: u64,
     table_chunk_rows: NonZeroUsize,
+    table_cache_log_rows: Option<usize>,
     table_retained: u64,
     forest_bytes: u64,
     checkpoint_sources: bool,
@@ -527,6 +528,7 @@ impl<'a> CpuBackend<'a> {
         let (table_allowance, table_retained, forest_bytes) =
             (table.working_bytes, table.retained, table.forests);
         let table_chunk_rows = NonZeroUsize::new(table.chunk_rows).ok_or_else(memory)?;
+        let table_cache_log_rows = table.cache_log_rows;
         Ok((
             Unit {
                 lowering,
@@ -539,6 +541,7 @@ impl<'a> CpuBackend<'a> {
                 windows: plan.stage_windows().iter().map(|s| s.cut).collect(),
                 table_allowance,
                 table_chunk_rows,
+                table_cache_log_rows,
                 table_retained,
                 forest_bytes,
                 checkpoint_sources: plan.uses_checkpoints(),
@@ -616,7 +619,11 @@ impl<'a> CpuBackend<'a> {
                 metrics::table_rows(i.table.0, generated.row_count());
                 let tile = advice.tiles().iter().find(|tile| matches!(tile.tile, compiler::Tile::Table { table } if table == i.table.0))
                     .ok_or_else(|| internal("the advice plan has each leaf table's canonical count tile"))?;
-                GeneratedCounts::new(generated, source.tile(tile)?).map_err(ProverError::Leaf)
+                GeneratedCounts::new(generated, source.tile(tile)?)
+                    .map(|table| table.with_cache_depth(table_plan::cache_depth(
+                        usize::from(spec.log2_rows), u.table_cache_log_rows,
+                    )))
+                    .map_err(ProverError::Leaf)
             })
             .collect::<Result<_, _>>()?;
         // `bytes()` includes each used descriptor; charge the vector's unused slots too.

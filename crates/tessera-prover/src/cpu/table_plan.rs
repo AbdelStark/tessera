@@ -10,6 +10,15 @@ use tessera_sumcheck::{MergePolynomial, WindowMemory, WindowShape};
 
 pub(super) const CHUNK_ROWS: usize = 256;
 const MAX_CHUNK_ROWS: usize = 65_536;
+const MAX_CACHE_LOG_ROWS: usize = 20;
+
+pub(super) fn cache_depth(height: usize, log_rows: Option<usize>) -> Option<usize> {
+    // Retain at most the selected public cap and keep at least four original leaf bits.
+    height
+        .checked_sub(4)
+        .map(|depth| depth.min(log_rows.unwrap_or(0)))
+        .filter(|&d| d > 0)
+}
 const NATIVE_DESCRIPTOR_BYTES_PER_TREE: u64 = 4096;
 // A collected Result<Vec<_>> may retain four slots for one source. Its descriptors
 // and public class/container metadata coexist with the generic batch constructor.
@@ -44,7 +53,58 @@ mod tests {
             working_bytes: 0,
             cuts: Vec::new(),
             chunk_rows: CHUNK_ROWS,
+            cache_log_rows: None,
         }
+    }
+
+    #[test]
+    fn caches_use_only_spare_budget_and_preserve_the_uncached_plan() {
+        for generated in [false, true] {
+            for allowance in [0, 80 << 20, 84 << 20, 96 << 20, 128 << 20, u64::MAX] {
+                let reference = stress(generated).select(allowance);
+                let cached = stress(generated).select_cached(allowance);
+                assert_eq!(reference.is_ok(), cached.is_ok());
+                if let (Ok(reference), Ok(cached)) = (reference, cached) {
+                    assert_eq!(cached.cuts, reference.cuts);
+                    assert_eq!(cached.chunk_rows, reference.chunk_rows);
+                    assert!(cached.working_bytes <= allowance);
+                    assert_eq!(
+                        cached.working_bytes - reference.working_bytes,
+                        cached.cache_bytes().unwrap()
+                    );
+                    if !generated {
+                        assert_eq!(cached.cache_log_rows, None);
+                    }
+                    assert_eq!(cached.clone().select_cached(allowance).unwrap(), cached);
+                    assert_eq!(cached.select(allowance).unwrap(), reference);
+                }
+            }
+        }
+        let ample = stress(true).select_cached(u64::MAX).unwrap();
+        assert_eq!(ample.cache_log_rows, Some(MAX_CACHE_LOG_ROWS));
+        assert_eq!(cache_depth(20, ample.cache_log_rows), Some(16));
+        let base = stress(true).select(84 << 20).unwrap();
+        let tight = ample.select_cached(base.working_bytes).unwrap();
+        assert_eq!(tight.cache_log_rows, None);
+        assert_eq!(tight.working_bytes, base.working_bytes);
+        assert_eq!(tight.cuts, base.cuts);
+        for height in 0..=4 {
+            assert_eq!(cache_depth(height, Some(MAX_CACHE_LOG_ROWS)), None);
+        }
+        let mut multiple = stress(true);
+        multiple.trees.push(Shape {
+            height: 18,
+            trees_log: 0,
+            fraction: true,
+            generated: true,
+        });
+        let baseline = multiple.clone().select(u64::MAX).unwrap();
+        let cached = multiple.select_cached(u64::MAX).unwrap();
+        assert_eq!(cached.cache_bytes().unwrap(), 32 * ((1 << 16) + (1 << 14)));
+        assert_eq!(
+            cached.working_bytes - baseline.working_bytes,
+            cached.cache_bytes().unwrap()
+        );
     }
 
     #[test]
@@ -210,6 +270,7 @@ mod tests {
                 working_bytes: 0,
                 cuts: Vec::new(),
                 chunk_rows: CHUNK_ROWS,
+                cache_log_rows: None,
             }
             .select(u64::MAX)
             .unwrap();
@@ -312,6 +373,7 @@ mod tests {
                 working_bytes: 0,
                 cuts: Vec::new(),
                 chunk_rows: CHUNK_ROWS,
+                cache_log_rows: None,
             }
             .select(u64::MAX)
             .unwrap();
@@ -471,6 +533,7 @@ pub(super) struct TablePlan {
     pub(super) working_bytes: u64,
     pub(super) cuts: Vec<usize>,
     pub(super) chunk_rows: usize,
+    pub(super) cache_log_rows: Option<usize>,
 }
 
 fn add(a: u64, b: u64) -> Result<u64, ProverError> {
@@ -761,6 +824,7 @@ impl TablePlan {
             working_bytes: 0,
             cuts: Vec::new(),
             chunk_rows: CHUNK_ROWS,
+            cache_log_rows: None,
         }
         .select(u64::MAX)
     }
@@ -775,7 +839,7 @@ impl TablePlan {
             }
         }
         add(
-            add(self.fixed, scratch)?,
+            add(add(self.fixed, scratch)?, self.cache_bytes()?)?,
             mul(
                 self.trees.len() as u64,
                 TABLE_BATCH_CONSTRUCTION_BYTES_PER_TREE,
@@ -785,6 +849,47 @@ impl TablePlan {
 
     pub(super) fn select(self, allowance: u64) -> Result<Self, ProverError> {
         self.select_with_chunk_limit(allowance, MAX_CHUNK_ROWS)
+    }
+
+    fn cache_bytes(&self) -> Result<u64, ProverError> {
+        self.trees
+            .iter()
+            .filter(|tree| tree.generated)
+            .try_fold(0, |bytes, tree| {
+                let Some(depth) = cache_depth(tree.height, self.cache_log_rows) else {
+                    return Ok(bytes);
+                };
+                add(
+                    bytes,
+                    mul(
+                        power(depth)?,
+                        2 * size_of::<tessera_field::GoldilocksExt2>() as u64,
+                    )?,
+                )
+            })
+    }
+
+    pub(super) fn select_cached(self, allowance: u64) -> Result<Self, ProverError> {
+        let mut plan = self.select(allowance)?;
+        let window_peak = plan
+            .working_bytes
+            .checked_sub(plan.fixed_bytes(plan.chunk_rows)?)
+            .ok_or_else(memory)?;
+        for log_rows in (1..=MAX_CACHE_LOG_ROWS).rev() {
+            plan.cache_log_rows = Some(log_rows);
+            if plan.cache_bytes().ok().is_some_and(|bytes| bytes > 0)
+                && let Some(bytes) = plan
+                    .fixed_bytes(plan.chunk_rows)
+                    .ok()
+                    .and_then(|fixed| fixed.checked_add(window_peak))
+                    .filter(|&bytes| bytes <= allowance)
+            {
+                plan.working_bytes = bytes;
+                return Ok(plan);
+            }
+        }
+        plan.cache_log_rows = None;
+        Ok(plan)
     }
 
     fn select_with_chunk_limit(
@@ -799,6 +904,7 @@ impl TablePlan {
         // chunk may consume spare public budget, never add a streaming round (RFC-0018).
         // `scratch` remains the original charge, so repeated selection can shrink again.
         self.chunk_rows = CHUNK_ROWS;
+        self.cache_log_rows = None;
         let fixed = self.fixed_bytes(CHUNK_ROWS)?;
         if fixed > allowance {
             return Err(memory());

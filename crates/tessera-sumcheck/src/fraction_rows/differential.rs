@@ -58,6 +58,199 @@ fn source(height: usize) -> Source {
 }
 
 #[test]
+fn cached_intermediate_levels_preserve_ordered_nodes_and_original_descendants() {
+    for height in 2..=7 {
+        for cache_depth in 1..height {
+            for chunk in [1, 3, 32, 65] {
+                for zeros in [false, true] {
+                    let mut source = source(height);
+                    source.zero_denominators = zeros;
+                    let reference =
+                        FractionTreeRows::new(&source, NonZeroUsize::new(chunk).unwrap(), u64::MAX)
+                            .unwrap();
+                    let mut cached =
+                        FractionTreeRows::new(&source, NonZeroUsize::new(chunk).unwrap(), u64::MAX)
+                            .unwrap()
+                            .with_cache_depth(cache_depth, u64::MAX)
+                            .unwrap();
+                    assert!(source.reads.borrow().is_empty());
+                    cached.prepare_cache().unwrap();
+                    let constructed = source.reads.replace(Vec::new());
+                    let expected: Vec<_> = (0..1usize << height)
+                        .step_by(chunk)
+                        .map(|first| (first, chunk.min((1usize << height) - first)))
+                        .collect();
+                    assert_eq!(constructed, expected, "every original leaf is read once");
+                    assert_eq!(cached.root().unwrap(), reference.root().unwrap());
+                    for depth in 0..=height {
+                        let nodes = 1usize << depth;
+                        for first in [0, 1.min(nodes), nodes / 2, nodes.saturating_sub(3), nodes] {
+                            for count in
+                                [0, 1.min(nodes - first), 3.min(nodes - first), nodes - first]
+                            {
+                                let mut n = SecretBuf::filled(F::ZERO, count);
+                                let mut d = SecretBuf::filled(F::ZERO, count);
+                                let mut expected_n = SecretBuf::filled(F::ZERO, count);
+                                let mut expected_d = SecretBuf::filled(F::ZERO, count);
+                                source.reads.borrow_mut().clear();
+                                cached.read_level(depth, first, &mut n, &mut d).unwrap();
+                                let reads = source.reads.replace(Vec::new());
+                                reference
+                                    .read_level(depth, first, &mut expected_n, &mut expected_d)
+                                    .unwrap();
+                                assert!(n[..] == expected_n[..] && d[..] == expected_d[..]);
+                                if depth <= cache_depth {
+                                    assert!(reads.is_empty(), "ancestors reuse the prepared level");
+                                } else {
+                                    assert_eq!(reads, *source.reads.borrow());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn cache_geometry_and_allowance_refuse_without_reads_or_allocations() {
+    let source = source(8);
+    let rows = || FractionTreeRows::new(&source, NonZeroUsize::new(17).unwrap(), u64::MAX).unwrap();
+    for depth in [0, 8, 9, usize::MAX] {
+        assert!(matches!(
+            rows().with_cache_depth(depth, u64::MAX),
+            Err(WindowError::Shape(_))
+        ));
+    }
+    let needed = rows().scratch_bytes() + (1 << 6) * 2 * size_of::<F>() as u64;
+    let measured = allocation_counter::measure(|| {
+        assert!(matches!(
+            rows().with_cache_depth(6, needed - 1),
+            Err(WindowError::Allocation)
+        ));
+    });
+    assert_eq!(measured.count_total, 0);
+    assert!(source.reads.borrow().is_empty());
+    assert_eq!(
+        rows().with_cache_depth(6, needed).unwrap().retained_bytes(),
+        2048
+    );
+    let huge = self::source(usize::BITS as usize - 1);
+    let measured = allocation_counter::measure(|| {
+        let rows = FractionTreeRows::new(&huge, NonZeroUsize::new(1).unwrap(), u64::MAX).unwrap();
+        assert!(matches!(
+            rows.with_cache_depth(usize::BITS as usize - 2, u64::MAX),
+            Err(WindowError::Allocation)
+        ));
+    });
+    assert_eq!(measured.count_total, 0);
+    assert!(huge.reads.borrow().is_empty());
+}
+
+#[test]
+fn cached_levels_match_the_scalar_fold_over_every_supported_field() {
+    struct Generic;
+    impl<T: PolyField> FractionTreeSource<T> for Generic {
+        fn height(&self) -> usize {
+            7
+        }
+        fn read(&self, first: usize, n: &mut [T], d: &mut [T]) -> Result<(), WindowError> {
+            for (i, (n, d)) in n.iter_mut().zip(d).enumerate() {
+                let at = (first + i) as u64;
+                *n = T::from(T::Base::from_u64_reduced(u64::MAX - at));
+                *d = T::from(T::Base::from_u64_reduced(at + 1));
+            }
+            Ok(())
+        }
+    }
+    fn check<T: PolyField>() {
+        for chunk in [1, 3, 32, 65] {
+            let mut cached =
+                FractionTreeRows::<T>::new(&Generic, NonZeroUsize::new(chunk).unwrap(), u64::MAX)
+                    .unwrap()
+                    .with_cache_depth(4, u64::MAX)
+                    .unwrap();
+            cached.prepare_cache().unwrap();
+            for depth in 0..=7 {
+                let mut n = SecretBuf::filled(T::ZERO, 1 << depth);
+                let mut d = SecretBuf::filled(T::ZERO, 1 << depth);
+                cached.read_level(depth, 0, &mut n, &mut d).unwrap();
+                let mut expected = Vec::new();
+                Scratch::<T>::new(7 - depth, 3)
+                    .unwrap()
+                    .subtrees_scalar(&Generic, 0, 7 - depth, 1 << depth, |_, n, d| {
+                        expected.push((n, d))
+                    })
+                    .unwrap();
+                for (at, &(en, ed)) in expected.iter().enumerate() {
+                    assert_eq!((n[at], d[at]), (en, ed));
+                }
+            }
+        }
+    }
+    check::<B>();
+    check::<F>();
+    check::<tessera_field::F65537>();
+    check::<tessera_field::F65537Ext2>();
+}
+
+#[test]
+fn descendants_keep_original_high_leaf_offsets_with_an_installed_cache() {
+    if usize::BITS < 64 {
+        return;
+    }
+    let source = source(32);
+    let mut rows = FractionTreeRows::new(&source, NonZeroUsize::new(3).unwrap(), u64::MAX)
+        .unwrap()
+        .with_cache_depth(1, u64::MAX)
+        .unwrap();
+    // No 2^32 scan: this white-box cache may only serve depth <= 1.
+    rows.cache = Some(CachedLevel {
+        depth: 1,
+        numerators: SecretBuf::filled(F::ZERO, 2),
+        denominators: SecretBuf::filled(F::ZERO, 2),
+    });
+    let first = usize::try_from((1u64 << 32) - 5).unwrap();
+    let mut n = SecretBuf::filled(F::ZERO, 5);
+    let mut d = SecretBuf::filled(F::ZERO, 5);
+    rows.read_level(32, first, &mut n, &mut d).unwrap();
+    assert_eq!(*source.reads.borrow(), [(first, 3), (first + 3, 2)]);
+    let mut en = SecretBuf::filled(F::ZERO, 5);
+    let mut ed = SecretBuf::filled(F::ZERO, 5);
+    source.read(first, &mut en, &mut ed).unwrap();
+    assert!(n[..] == en[..] && d[..] == ed[..]);
+}
+
+#[test]
+fn cache_construction_and_error_drop_stay_in_clearing_allocation_bounds() {
+    for fail in [None, Some(17)] {
+        let mut source = source(10);
+        source.fail = fail;
+        source.reads.borrow_mut().reserve(1024);
+        let mut rows = FractionTreeRows::new(&source, NonZeroUsize::new(17).unwrap(), u64::MAX)
+            .unwrap()
+            .with_cache_depth(6, u64::MAX)
+            .unwrap();
+        let bound = rows.scratch_bytes() + rows.retained_bytes();
+        let measured = allocation_counter::measure(|| {
+            let result = rows.prepare_cache();
+            if fail.is_some() {
+                assert_eq!(result, Err(WindowError::Source));
+                assert!(rows.cache.is_none());
+            } else {
+                result.unwrap();
+                assert!(rows.cache.is_some());
+            }
+            drop(rows);
+        });
+        assert_eq!(measured.bytes_current, 0);
+        assert!(measured.bytes_max as u64 <= bound);
+        assert_eq!(measured.count_total, 5);
+    }
+}
+
+#[test]
 fn every_subrange_matches_scalar_nodes_and_exact_source_reads() {
     for height in 0..=7 {
         let source = source(height);

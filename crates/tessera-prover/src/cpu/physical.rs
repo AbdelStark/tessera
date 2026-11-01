@@ -834,7 +834,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     let result_metadata = candidate_metadata(&table, native.schedule().stages.len() as u64)?;
     p2_fixed = sum([p2_fixed, result_metadata])?;
     let table_allowance = host.checked_sub(p2_fixed).ok_or_else(memory)?;
-    let table = table.select(table_allowance)?;
+    let table = table.select_cached(table_allowance)?;
     if candidate_metadata(&table, native.schedule().stages.len() as u64)? > result_metadata {
         return Err(memory());
     }
