@@ -26,3 +26,8 @@ harness = false
 name = "table-batch"
 path = "src/table_batch.rs"
 harness = false
+
+[[bench]]
+name = "fraction-rows"
+path = "src/fraction_rows.rs"
+harness = false

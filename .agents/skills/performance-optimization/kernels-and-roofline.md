@@ -45,6 +45,13 @@ Hardware and algebraic reference for optimizing Tessera's six critical kernel fa
 2. **Contiguous layer arena**: allocate a single flat buffer of size $2 \cdot 2^L$ for all tree layers rather than $L$ separate `Vec` allocations per column.
 3. **Factored `eq(r, x)` tables**: when evaluating $\widetilde{eq}(r, x)$ over $x \in \{0, 1\}^\ell$, precompute the hypercube table via doubling ($2^\ell$ additions + $2^\ell$ multiplications total) rather than $O(\ell \cdot 2^\ell)$ point-wise products.
 
+For bounded fraction folding, measure one-row and ragged chunks beside larger aligned
+chunks: per-chunk setup can regress the smallest case even when large chunks improve.
+Keep the scalar path for geometries that do not benefit. The primary ordered-node oracle
+uses nonzero denominators; several zero leaves collapse ancestors to `(0, 0)` and can hide
+permutations. Exercise zero denominators separately (#663).
+
+
 ## 4. Ligero PCS & NTT (`tessera-pcs`, `RFC-0011`, `RFC-0012`)
 
 ### Roofline Profile

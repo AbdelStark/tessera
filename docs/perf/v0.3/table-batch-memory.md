@@ -381,3 +381,90 @@ request's validation record.
 | OBS-6 and redacted errors | New count chunks, fraction carry stacks, partner chunks and window folds use `SecretBuf`; generated descriptors contain public row-zero values and geometry. Source/allocation errors propagate without substituting values and carry static errors only. Borrowers are registered in `secret-access.toml`; no new accessor is exposed. The unchanged canary CLI redaction scan passes for both log formats, with NI/Live proofs and injected-leak controls. |
 | RFC-0018 complete component allowance | Public CPU planning retains the cell floor and all sources/group merge state. Batch preparation plans every level before generated roots. The additional construction preflight addresses the two measured over-allocation refusal cases above. Native source metadata and generic constructor wrappers have separate reservations, checked together in the singleton/repeated-source regression. Complete-batch and whole-CPU/grouped counting regressions passed. |
 | SP-6 and protocol scope | No verifier source/dependency, schema, label, parameter set, table definition or verdict semantics change. Verifier default and test-parameter suites, formatting and Clippy passed. Protocol/1 remains non-hiding; this change establishes no formal zero-knowledge property. |
+
+
+## Aligned fraction chunks (#663)
+
+The real 1B NI-100 run completed P1 with 8,758 rows in eight segments. A later live
+sample placed all 82 main-thread samples in Round 2's generated fraction-root
+construction. This identifies work to measure; it proves neither whole-run cost nor
+independent acceptance. The original model run keeps its frozen executable.
+
+`FractionTreeRows` now compacts aligned power-of-two subtrees inside its existing
+numerator/denominator buffers, then carries their roots at the original subtree
+height. It restores every root's original leaf offset before emitting ordered nodes.
+The source-read sequence and the original tree boundaries stay fixed. Buffers shorter
+than 32 elements or with a ragged capacity use the unchanged scalar traversal.
+An initial candidate regressed one-row chunks, which is why this fallback remains.
+
+For `N` leaves and `R` output nodes, both traversals compute exactly `N-R` parents,
+each with three extension-field products and one extension-field sum. There is no
+algebraic shortcut, denominator test or secret-dependent choice. A logical parent
+reads four and writes two field values: 96 bytes at 16 bytes per `Fp2`, or 1/24
+extension-field operations per logical byte. At `N=2^20`, a root has 1,048,575 parents
+and 100,663,200 logical bytes. A hypothetical 400 GB/s stream would move those bytes
+in 0.252 ms; cache reuse, arithmetic and control flow prevent treating that division
+as a measured hardware limit. No issue-width or hardware-counter roofline is claimed.
+
+The allocation inventory is unchanged: two `chunk`-element clearing field buffers,
+one `2*(height+1)`-element clearing stack, their descriptors and the original
+source-read scratch. The in-place destinations precede unread pairs; unused tails
+remain in their clearing owners. Allocation controls retain exactly three owned
+allocations, no retained scratch and the original `scratch_bytes()` bound. No plan
+charge or host allowance was reduced.
+
+The isolated benchmark workspace adds a public synthetic root fixture with `2^20`
+leaves, both extension coefficients, and chunks 1, 17, 256 and 4,096:
+
+```sh
+cargo bench --manifest-path crates/tessera-sumcheck/benches/windowed/Cargo.toml \
+  --bench fraction-rows --locked -- --save-baseline before
+# After changing the kernel:
+cargo bench --manifest-path crates/tessera-sumcheck/benches/windowed/Cargo.toml \
+  --bench fraction-rows --locked -- --baseline before
+```
+
+Criterion 0.5.1 uses 3 seconds of warm-up and 20 samples. Completed roots are consumed
+and their public fixture digest printed. Both revisions produce
+`0be4ad72fd531bd8d6bb6fb3d6d17aed2f7cb309d513ab930551a54d9ca63240`.
+The host is the same M1 Max/64 GiB used for the row measurements, with the 1B proof
+and 8B calibration co-running. Raw samples and noisy initial candidates are retained;
+these are kernel observations, not H100 or complete proof qualification.
+
+The controls compare every ordered node and exact source request for all valid
+subranges through height 7, nine chunk capacities, field boundaries and both
+extension coefficients. Nonzero denominators keep upper nodes informative; separate
+cases preserve zeros. The unchanged resident fraction/LogUp engines check full
+levels, mixed and table-only messages, challenges and outstanding claims. Four
+compiled faults—crossing output-node boundaries, wrong leaf stride, lost root offset
+and wrong carry height—fail the node oracle. Source errors and pre-read public
+validation remain fatal with their original typed errors.
+
+
+### Measurements
+
+The [raw record](../../../crates/tessera-sumcheck/benches/windowed/measurements/fraction-rows.json)
+retains both compiler profiles and every corrected paired sample. In a same-process
+production-profile comparison (thin LTO, one codegen unit), three warm-up pairs preceded
+20 alternating measured pairs, each timing four complete roots per implementation:
+
+| Chunk | Scalar median, ms | Compacted/fallback median, ms | Median paired ratio | Scalar/candidate CV |
+|---:|---:|---:|---:|---:|
+| 1 | 60.39 | 59.22 | 0.969 | 7.21% / 4.82% |
+| 3 | 61.01 | 61.22 | 0.982 | 7.09% / 6.05% |
+| 17 | 62.84 | 56.71 | 0.891 | 4.58% / 4.47% |
+| 256 | 62.23 | 43.41 | 0.708 | 3.07% / 5.46% |
+| 4,096 | 64.80 | 44.52 | 0.669 | 6.46% / 9.59% |
+
+Both larger chunks won all 20 pairs in that run. A second comparison with the isolated
+benchmark's default profile (no LTO, 16 codegen units) gave median ratios 0.804 and 0.767,
+with 19/20 wins for each. The large-chunk benefit repeats across these profiles. Small
+cases remain inconclusive: the default-profile paired ratios were 1.032, 0.991 and 1.070
+for chunks 1, 3 and 17, unlike the production-profile observations above.
+
+The corrected serial Criterion comparison reported lower large-chunk cost, but still
+reported regressions in the small cases against its earlier saved baseline. All cases
+had variation above 3%; those observations are retained rather than presented as a clean
+regression threshold. Changing co-runners and compiler layout limit attribution. The
+scalar fallback is kept, and an idle-host run is still required for throughput qualification.
+No cost-model or end-to-end proof multiplier was re-fit from these kernel timings.
