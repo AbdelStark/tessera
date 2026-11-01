@@ -1659,6 +1659,7 @@ fn retained_public_layout_memory_matches_owned_allocations() {
                 assert_eq!(native.heap_bytes(), Some(native_bytes), "native {name}/{n}");
             });
             assert_eq!(sizing.count_total, 0);
+            check_geometry_constructor_memory(&p, &runtime, &leaf, &native, None, &advice);
             if n > 1 {
                 let (grouped, bytes) = retained(|| {
                     GroupedLayout::new(
@@ -1672,6 +1673,14 @@ fn retained_public_layout_memory_matches_owned_allocations() {
                     .unwrap()
                 });
                 assert_eq!(grouped.heap_bytes(), Some(bytes), "grouped {name}/{n}");
+                check_geometry_constructor_memory(
+                    &p,
+                    &runtime,
+                    &leaf,
+                    &native,
+                    Some(&grouped),
+                    &advice,
+                );
                 for h in 0..grouped.count() {
                     let (group, bytes) = retained(|| grouped.group(h).unwrap());
                     let sizing = allocation_counter::measure(|| {
@@ -1718,4 +1727,59 @@ fn retained_public_layout_memory_matches_owned_allocations() {
         ModelNativePlan::derive_runtime(&p.lowering, &runtime, &p.claims, &leaf).unwrap()
     });
     assert_eq!(native.heap_bytes(), Some(bytes));
+    check_geometry_constructor_memory(&p, &runtime, &leaf, &native, None, &advice);
+}
+
+fn check_geometry_constructor_memory(
+    p: &Public,
+    runtime: &tessera_compiler::RuntimePlan,
+    leaf: &LeafLayout<ModelColumn>,
+    native: &tessera_prover::native::ModelNativePlan,
+    grouped: Option<&tessera_prover::leaf::GroupedLayout>,
+    advice: &ModelAdviceLayout<'_>,
+) {
+    let weights = tessera_pcs::WeightLayout::new(
+        p.claims.layout.weights,
+        tessera_pcs::WeightShapes {
+            layers: p.claims.arch.n_layers,
+            shapes: p.claims.arch.weight_shapes().unwrap(),
+            channels: p
+                .lowering
+                .classes
+                .iter()
+                .chain(&p.lowering.multipliers)
+                .map(|(w, _)| (w.ty.matrix(), w.layer))
+                .collect(),
+        },
+    )
+    .unwrap();
+    let mut held = None;
+    let measured = allocation_counter::measure(|| {
+        held = Some(
+            tessera_prover::OpeningGeometry::derive(
+                &p.lowering,
+                &runtime.selection().tables,
+                leaf,
+                grouped,
+                native,
+                advice,
+                &weights,
+            )
+            .unwrap(),
+        );
+    });
+    let geometry = held.unwrap();
+    let mut bound = None;
+    let sizing = allocation_counter::measure(|| {
+        bound = Some(
+            geometry
+                .construction_peak_bytes(&p.lowering, leaf, grouped, native, advice)
+                .unwrap(),
+        );
+    });
+    assert_eq!(sizing.count_total, 0);
+    assert!(
+        measured.bytes_max <= bound.unwrap(),
+        "geometry constructor {measured:?}, bound {bound:?}"
+    );
 }

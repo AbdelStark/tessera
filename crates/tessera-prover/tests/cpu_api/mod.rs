@@ -558,6 +558,74 @@ fn public_cpu_api_test_seed_produces_identical_messages_across_thread_counts() {
     }
 }
 
+// RFC-0018 / SP-6: the same actual proof bytes must result from borrowed INT8
+// and resident i64 operands, including nonzero time padding and affine sites.
+#[cfg(feature = "test-rng")]
+#[test]
+fn public_cpu_api_checkpoint_and_resident_sources_produce_identical_proofs() {
+    for name in ["tiny-2-servable", "tiny-2-minimal", "tiny-2-affine"] {
+        let model = bounded_model_named(name);
+        let (plan, batch, weights) = fixture(&model, 3, 1);
+        let (claims, statement, vcfg) = independent(&plan, &batch, &weights);
+        let mut state = WeightCommitmentState::new(weights).unwrap();
+        let mut config = cfg(Mode::NonInteractive);
+        config.mask_rng = MaskRng::Seeded(17);
+        let cached = Prover::new(&plan, &model, &mut state, config.clone())
+            .unwrap()
+            .plan(&batch)
+            .unwrap();
+        assert!(cached.uses_checkpoints());
+        let mut messages = Vec::new();
+        for (host, checkpoint) in [
+            (config.memory_budget.host, true),
+            (cached.resident_bytes().unwrap() - 1, false),
+        ] {
+            config.memory_budget.host = host;
+            let planned = Prover::new(&plan, &model, &mut state, config.clone())
+                .unwrap()
+                .plan(&batch)
+                .unwrap();
+            assert_eq!(planned.uses_checkpoints(), checkpoint);
+            assert_eq!(planned.leaf_groups(), protocol::LeafGroups::NONE);
+            assert!(planned.stage_windows().iter().all(|s| s.cut == 0));
+            let mut proof = None;
+            let allocations = allocation_counter::measure(|| {
+                proof = Some(
+                    Prover::new(&plan, &model, &mut state, config.clone())
+                        .unwrap()
+                        .prove_non_interactive(&batch)
+                        .unwrap(),
+                );
+            });
+            assert!(allocations.bytes_max <= planned.resident_bytes().unwrap());
+            let bytes = tessera_codec::encode(&proof.unwrap());
+            let decoded = tv_codec::decode(
+                &bytes,
+                &tv_codec::DecodeLimits::MESSAGE,
+                tv_core::protocol::NiProof::decode,
+            )
+            .unwrap();
+            let verdict = tv_core::verify_non_interactive(&claims, &statement, &decoded, &vcfg);
+            if tv_core::params::ParamSet::accept(&claims.params).is_some() {
+                assert!(
+                    matches!(verdict, tv_core::Verdict::Accept(_)),
+                    "{name}: {verdict:?}"
+                );
+            } else {
+                assert!(
+                    matches!(
+                        verdict,
+                        tv_core::Verdict::Reject(tv_core::RejectReason::Params { .. })
+                    ),
+                    "{name}: {verdict:?}"
+                );
+            }
+            messages.push(bytes);
+        }
+        assert_eq!(messages[0], messages[1], "{name}");
+    }
+}
+
 /// The pass plan bounds what a proof keeps resident (RFC-0018 'Memory scheduler', #132). A
 /// counting allocator measures the whole of `Prover::new` and a non-interactive proof on one
 /// thread, the only thread the CPU backend then uses: the peak fits the plan on every
@@ -615,8 +683,8 @@ fn the_pass_plan_bounds_the_measured_peak_and_the_budget_refuses_before_p1() {
                     .is_ok(),
                 "{name}, n = {n}: the plan's own budget"
             );
-            // One byte short, the planner reduces the stage working set or groups the leaf.
-            // Both paths retain the complete measured peak and before-P1 refusal checks.
+            // One byte short, reduce stage/table work, group the leaf or choose
+            // the resident source. Every choice keeps the complete cell floor.
             let grouped = Prover::new(&plan, &model, &mut state, budgeted(bytes - 1))
                 .unwrap()
                 .plan(&batch)
@@ -625,6 +693,7 @@ fn the_pass_plan_bounds_the_measured_peak_and_the_budget_refuses_before_p1() {
                 grouped.leaf_groups() != protocol::LeafGroups::NONE
                     || grouped.stage_windows().iter().any(|s| s.cut > 0)
                     || grouped.table_cuts().iter().any(|&cut| cut > 0)
+                    || (passes.uses_checkpoints() && !grouped.uses_checkpoints())
             );
             let grouped_bytes = grouped.resident_bytes().unwrap();
             assert!(grouped_bytes < bytes);

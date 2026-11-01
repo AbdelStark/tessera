@@ -778,3 +778,45 @@ These are allocation-free retained-storage queries over public metadata, without
 value reads or validation. Construction/analysis scratch, inline objects, witness
 and proof payloads, driver state and allocator/runtime overhead remain separate.
 They do not change CPU admission or enable the cached route (RFC-0018, #641).
+
+### Physical P2 source and opening-geometry preparation
+
+The P2 planner accepts canonical public multiplicity plans for its generated table
+source reservation. This path counts generated-core/class storage plus the selected
+dense or fixed-capacity weighted backing, checks table identities and padded row
+counts, and preserves all lookup columns, forest inputs, group state and engine
+work. The resident caller continues using its existing dense source reservation.
+This input alone does not enable the cached route or change the 64-byte cell floor.
+
+`OpeningGeometry::construction_peak_bytes` covers its derivation's requested heap
+peak separately from its scalar retained result. The shared generic target walk
+uses the existing numeric target-constructor bound scaled by the `Origin`/field
+element size ratio. Geometry-only leaf points, grouped token-axis/index work and
+prefix hash-set storage are added explicitly. Tests measure the hash set separately
+and compare actual constructor peaks across ordinary, grouped and slotted models.
+Borrowed inputs, inline storage and allocator/runtime overhead remain separate.
+
+### Checkpoint driver integration with the resident floor
+
+The CPU driver can retain `CheckpointTensors` and their canonical token/checkpoint
+inputs instead of widening model weights into a resident `Witness`. P1, tile reads,
+reductions and P4/P5 consume the same `TensorSource`. Window regeneration rebuilds
+only the nonweight cache from the retained inputs; the model remains borrowed.
+All derived values retain their existing clearing owners (INV-ARCH-6).
+
+Selection first fits the unchanged resident plan, including the dense P2 source
+reservation and 64 bytes per logical cell. It then adds
+`CheckpointMemory::retained_bytes() + CheckpointMemory::peak_bytes()` in full.
+This charges the original cache, tokens and checkpoints beside a second cache's
+constructor, including its inputs and scratch. If this additional reservation
+does not fit, the driver uses the existing resident source. No allocation or
+witness value is needed to decide; `CheckpointMemory::new` reads public lowering
+geometry only. The allowance still excludes the caller's model.
+
+The differential CPU test fixes masking randomness and compares complete proof
+bytes for resident and checkpoint sources on three models with nonzero time
+padding and affine sites. Both proofs are independently verified with explicit
+non-certifying test parameters, and whole-proof requested allocations are metered.
+The one-byte budget regression permits a resident-source fallback while retaining
+the full cell floor. This integration does not qualify a real 1B proof or replace
+the outstanding phase composition needed to relax that floor.

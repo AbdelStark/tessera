@@ -52,6 +52,7 @@ pub struct PassPlan {
     stage_shapes: Vec<Vec<WindowShape>>,
     stage_windows: Vec<WindowMemory>,
     table_plan: Option<super::table_plan::TablePlan>,
+    checkpoint_bytes: u64,
 }
 
 impl PassPlan {
@@ -75,7 +76,19 @@ impl PassPlan {
             stage_shapes: Vec::new(),
             stage_windows: Vec::new(),
             table_plan: None,
+            checkpoint_bytes: 0,
         }
+    }
+
+    /// Whether this plan borrows INT8 weights and retains checkpoint-derived nonweight data.
+    pub fn uses_checkpoints(&self) -> bool {
+        self.checkpoint_bytes != 0
+    }
+
+    // Preserve the full resident floor and add every newly owned replay buffer.
+    pub(super) fn checkpoints(mut self, bytes: u64) -> Self {
+        self.checkpoint_bytes = bytes;
+        self
     }
 
     pub(crate) fn staged(
@@ -131,7 +144,8 @@ impl PassPlan {
         self.cells
             .total()?
             .checked_mul(Self::BYTES_PER_CELL)?
-            .checked_add(self.weight_bytes)
+            .checked_add(self.weight_bytes)?
+            .checked_add(self.checkpoint_bytes)
     }
 
     /// Fit reduction stages and the complete table batch before P1. The cell floor remains;
@@ -219,6 +233,8 @@ impl PassPlan {
 
     /// The charged peak: the unchanged cell floor and weight commitment, plus the larger
     /// reduction working set or table-batch excess over its named floor reservation.
+    /// A selected checkpoint source additionally reserves its retained inputs and
+    /// constructor peak; it never reduces the resident-cell floor.
     /// Returns `None` on overflow.
     pub fn resident_bytes(&self) -> Option<u64> {
         let table_extra = self.table_plan.as_ref().map_or(0, |p| {
@@ -308,6 +324,39 @@ mod tests {
                 .for_budget(super::super::MemoryBudget { host: base - 1 })
                 .is_err()
         );
+    }
+
+    #[test]
+    fn checkpoint_storage_is_additional_to_the_unchanged_resident_floor() {
+        let plan = PassPlan::new(
+            2,
+            Cells {
+                tensors: 7,
+                ..Cells::default()
+            },
+            19,
+        );
+        let baseline = plan.resident_bytes().unwrap();
+        assert!(!plan.uses_checkpoints());
+        let replay = plan.checkpoints(131);
+        assert!(replay.uses_checkpoints());
+        assert_eq!(replay.resident_bytes(), Some(baseline + 131));
+        assert!(
+            replay
+                .check(super::super::MemoryBudget {
+                    host: baseline + 131
+                })
+                .is_ok()
+        );
+        assert!(matches!(
+            replay.check(super::super::MemoryBudget {
+                host: baseline + 130
+            }),
+            Err(super::super::ProverError::Resource(
+                tessera_codec::error::ErrorCode::ResMemory
+            ))
+        ));
+        assert_eq!(replay.checkpoints(u64::MAX).resident_bytes(), None);
     }
 
     #[test]

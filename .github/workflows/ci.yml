@@ -118,13 +118,24 @@ jobs:
         feature: [default, otel]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install the pinned toolchain and syscall tracer
+      - name: Install the pinned toolchain
         run: |
           channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
           rustup toolchain install "$channel" --profile minimal --component clippy --no-self-update
           echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
-          sudo apt-get update -qq
-          sudo apt-get install --no-install-recommends -y strace libssl-dev pkg-config
+      - name: Ensure syscall tracer and OpenSSL development files
+        run: |
+          # Runner images may already have these tools; unrelated index mirrors
+          # must not consume the entire telemetry job before its checks run.
+          if ! command -v strace >/dev/null || ! command -v pkg-config >/dev/null || ! pkg-config --exists openssl; then
+            apt_options=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+            timeout 90s sudo apt-get "${apt_options[@]}" install --no-install-recommends -y strace libssl-dev pkg-config || {
+              timeout 90s sudo apt-get "${apt_options[@]}" update
+              timeout 90s sudo apt-get "${apt_options[@]}" install --no-install-recommends -y strace libssl-dev pkg-config
+            }
+          fi
+          strace --version
+          pkg-config --exists openssl
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: telemetry-${{ matrix.feature }}
@@ -212,6 +223,7 @@ jobs:
           cargo test -p tessera-prover --test stages --locked stage_state_memory_covers -- --test-threads=1
           cargo test -p tessera-prover --test stages --locked stage_source_geometry -- --test-threads=1
           cargo test -p tessera-prover --test stages --locked public_metadata_heap_counts -- --test-threads=1
+          cargo test -p tessera-prover --lib openings::geometry::tests --locked -- --test-threads=1
           cargo test -p tessera-compiler --lib memory:: --locked -- --test-threads=1
           cargo test -p tessera-prover --test model_leaf retained_public_layout_memory --features test-rng,test-params --locked -- --test-threads=1
           cargo test -p tessera-prover --lib openings::memory --locked -- --test-threads=1
