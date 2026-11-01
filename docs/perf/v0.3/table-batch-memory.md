@@ -468,3 +468,49 @@ had variation above 3%; those observations are retained rather than presented as
 regression threshold. Changing co-runners and compiler layout limit attribution. The
 scalar fallback is kept, and an idle-host run is still required for throughput qualification.
 No cost-model or end-to-end proof multiplier was re-fit from these kernel timings.
+
+
+### Production maximum chunk (#665)
+
+The CPU table planner already chooses a power-of-two chunk up to 65,536 rows when
+checked spare budget permits, without changing the original feasible cuts. This
+policy predates the compacted kernel. The measurements above stop at 4,096 rows;
+the new benchmark case covers the planner maximum with `2^22` synthetic leaves.
+
+An alternating comparison of the exact merged methods and preserved scalar kernel
+uses three warm-up pairs and 20 measured pairs, four complete roots per run. Scalar
+and compacted medians were 227.60 ms and 158.35 ms; the median per-pair ratio was
+0.6776, with the candidate faster in all 20 pairs. CVs of 5.94% and 6.72% remain
+flagged noisy. The [full raw record](../../../crates/tessera-sumcheck/benches/windowed/measurements/fraction-maximum-chunk.json)
+pins the source, release profile and co-runners. This extends kernel observations;
+it does not credit the frozen real 1B run with code it does not use.
+
+```sh
+cargo bench --manifest-path crates/tessera-sumcheck/benches/windowed/Cargo.toml \
+  --bench fraction-rows --locked -- 'chunk/65536'
+cargo test -p tessera-sumcheck --lib \
+  maximum_chunks_preserve_deep_nodes_reads_and_allocation_bounds --locked
+```
+
+The regression compares ordered nodes and exact source reads with the scalar
+traversal through deep carries, multiple nodes per chunk and ragged tails. Its
+seeded public source has a denominator extension coefficient of one, preventing
+zero leaves or zero ancestors; adjacent expected nodes must differ so that a
+permutation is observable. On 64-bit targets it also reads only the final 65,538
+leaves of a `2^32` domain. Preallocated observer/output backing is separate from
+the counted scratch. Derived-level calls retain exactly three scratch allocations
+and direct leaf reads retain none, with zero retained scratch and the original
+`scratch_bytes()` bound. Production kernels, source contracts, planner policy,
+parameter sets and allowances are unchanged by this qualification work.
+
+
+The isolated Criterion case (default bench profile, no LTO and 16 codegen units)
+recorded a 171.62 ms median over 20 samples, with CV 5.16%. Its completed root digest
+is `40303d9ea4b2163c997c76938d25dc37fa6044db11505cf1d0c1b474683933ca`;
+all four older `2^20` fixture digests remain unchanged. This is a separate profile
+from the paired release run, so the medians are not a before/after comparison.
+Six compiled faults fail the large oracle: crossing node boundaries, wrong leaf
+stride, lost root offsets, wrong carry height, reversed emitted nodes and truncating
+the high source offset. The last fault leaves all small cases intact and fails at
+height 32 / depth 31. All seven baseline/restored controls pass, and mutation
+sources restore exactly.
