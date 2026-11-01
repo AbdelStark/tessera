@@ -12,14 +12,17 @@
 //! The cell floor, [`PassPlan::BYTES_PER_CELL`], reserves the cached witness, regenerated witness
 //! scratch and the other proof phases beside the weight commitment; stage grids, construction
 //! scratch and folded tables are charged separately. Counting-allocator regressions check the
-//! whole proof peak under both resident and forced-window budgets. This CPU path retains a
-//! resident witness floor; it does not claim to stream the entire model on arbitrary hardware.
+//! whole proof peak under both resident and forced-window budgets. The resident route keeps
+//! this floor. An ungrouped checkpoint fallback instead uses a complete checked physical
+//! lifetime peak and owns its selected table/window choices. Both refuse before P1 when
+//! their bound does not fit; whole-model resource qualification remains separate.
 
 pub use tessera_codec::metrics::Pass;
 use tessera_protocol::LeafGroups;
 use tessera_sumcheck::{WindowMemory, WindowShape};
 
-/// The cells a CPU proof keeps resident, each counted at its padded size.
+/// Logical graph/lookup/advice cells, each counted at its padded size.
+/// A physical checkpoint plan keeps this census without materializing every cell.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Cells {
     /// Every graph tensor's entries: the witness, and the tables the passes derive from it.
@@ -53,12 +56,16 @@ pub struct PassPlan {
     stage_windows: Vec<WindowMemory>,
     table_plan: Option<super::table_plan::TablePlan>,
     checkpoint_bytes: u64,
+    caller_bytes: u64,
+    preparation_bytes: u64,
+    physical_peak: Option<u64>,
 }
 
 impl PassPlan {
     /// The bytes charged per resident cell: the measured 32 to 34, up to 16 for a regenerated
     /// witness and its scratch, and margin. Stage grids/folded tables are charged separately.
-    /// This floor is unchanged by window selection.
+    /// This resident-route floor is unchanged by window selection. A separately checked
+    /// physical checkpoint plan uses its complete lifetime bound instead.
     pub const BYTES_PER_CELL: u64 = 64;
 
     /// The plan of a proof of `stages` stages, the leaf stage included, over `cells`, beside a
@@ -77,12 +84,29 @@ impl PassPlan {
             stage_windows: Vec::new(),
             table_plan: None,
             checkpoint_bytes: 0,
+            caller_bytes: 0,
+            preparation_bytes: 0,
+            physical_peak: None,
         }
+    }
+
+    pub(super) fn preparation(mut self, memory: super::preparation::SessionMemory) -> Self {
+        self.caller_bytes = memory.caller;
+        self.preparation_bytes = memory.peak;
+        self
     }
 
     /// Whether this plan borrows INT8 weights and retains checkpoint-derived nonweight data.
     pub fn uses_checkpoints(&self) -> bool {
-        self.checkpoint_bytes != 0
+        self.physical_peak.is_some() || self.checkpoint_bytes != 0
+    }
+
+    /// Whether the reported peak uses the complete physical checkpoint lifetime
+    /// bound instead of the resident route's logical-cell floor (RFC-0018).
+    /// This distinguishes two memory strategies; it does not qualify model size,
+    /// proof soundness parameters or whole-process memory use.
+    pub fn uses_physical_bound(&self) -> bool {
+        self.physical_peak.is_some()
     }
 
     // Preserve the full resident floor and add every newly owned replay buffer.
@@ -122,6 +146,48 @@ impl PassPlan {
         self
     }
 
+    pub(super) fn heap_bytes(&self) -> Option<u64> {
+        let bytes = (self.passes.capacity() as u64)
+            .checked_mul(size_of::<Pass>() as u64)?
+            .checked_add(
+                (self.stage_shapes.capacity() as u64)
+                    .checked_mul(size_of::<Vec<WindowShape>>() as u64)?,
+            )?
+            .checked_add(
+                (self.stage_windows.capacity() as u64)
+                    .checked_mul(size_of::<WindowMemory>() as u64)?,
+            )?
+            .checked_add(
+                self.table_plan
+                    .as_ref()
+                    .map_or(Some(0), |p| p.metadata_bytes().ok())?,
+            )?;
+        self.stage_shapes.iter().try_fold(bytes, |n, s| {
+            n.checked_add((s.capacity() as u64).checked_mul(size_of::<WindowShape>() as u64)?)
+        })
+    }
+
+    // Only physical::select calls this, after checking every phase and owner.
+    pub(super) fn physical(
+        mut self,
+        table: super::table_plan::TablePlan,
+        windows: Vec<WindowMemory>,
+        peak: u64,
+    ) -> Self {
+        self.stage_shapes = Vec::new();
+        self.stage_windows = windows;
+        self.table_plan = Some(table);
+        self.physical_peak = Some(peak);
+        let mut passes = vec![Pass::P1, Pass::P2];
+        for stage in self.stage_windows.iter().skip(1) {
+            passes.push(Pass::P3);
+            passes.extend(core::iter::repeat_n(Pass::P3b, stage.fold_passes));
+        }
+        passes.extend([Pass::P4, Pass::P5]);
+        self.passes = passes;
+        self
+    }
+
     fn table_reservation(&self) -> Option<u64> {
         self.cells
             .table_rows
@@ -145,7 +211,8 @@ impl PassPlan {
             .total()?
             .checked_mul(Self::BYTES_PER_CELL)?
             .checked_add(self.weight_bytes)?
-            .checked_add(self.checkpoint_bytes)
+            .checked_add(self.checkpoint_bytes)?
+            .checked_add(self.caller_bytes)
     }
 
     /// Fit reduction stages and the complete table batch before P1. The cell floor remains;
@@ -226,29 +293,37 @@ impl PassPlan {
         &self.passes
     }
 
-    /// The resident cells.
+    /// The logical padded cell census, also retained by physical checkpoint plans.
     pub fn cells(&self) -> Cells {
         self.cells
     }
 
-    /// The charged peak: the unchanged cell floor and weight commitment, plus the larger
+    /// The charged peak. A selected physical checkpoint plan returns its complete
+    /// checked lifetime maximum. The resident route returns its unchanged cell floor
+    /// and weight commitment, plus the larger
     /// reduction working set or table-batch excess over its named floor reservation.
     /// A selected checkpoint source additionally reserves its retained inputs and
-    /// constructor peak; it never reduces the resident-cell floor.
+    /// constructor peak; it never reduces the resident-cell floor. Borrowed plan
+    /// and weight-state storage is charged beside the proof; the returned peak
+    /// also covers checked session preparation. The caller's model is excluded.
     /// Returns `None` on overflow.
     pub fn resident_bytes(&self) -> Option<u64> {
+        if let Some(peak) = self.physical_peak {
+            return Some(peak);
+        }
         let table_extra = self.table_plan.as_ref().map_or(0, |p| {
             p.working_bytes
                 .saturating_sub(self.table_reservation().unwrap_or(0))
         });
-        self.base_bytes()?.checked_add(
+        let proof_peak = self.base_bytes()?.checked_add(
             self.stage_windows
                 .iter()
                 .map(|s| s.working_bytes)
                 .max()
                 .unwrap_or(0)
                 .max(table_extra),
-        )
+        )?;
+        Some(proof_peak.max(self.preparation_bytes))
     }
 
     /// Whether the plan fits `budget`; `ERR-RES-MEMORY` if not, or if its size overflows.
@@ -265,6 +340,41 @@ impl PassPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preparation_and_caller_owners_are_charged_without_lowering_the_cell_floor() {
+        let plan = PassPlan::new(
+            1,
+            Cells {
+                tensors: 10,
+                ..Cells::default()
+            },
+            100,
+        )
+        .preparation(super::super::preparation::SessionMemory {
+            caller: 17,
+            peak: 1000,
+            weight_construction: 0,
+        });
+        assert_eq!(plan.base_bytes(), Some(10 * 64 + 100 + 17));
+        assert_eq!(plan.resident_bytes(), Some(1000));
+        assert!(
+            plan.check(super::super::MemoryBudget { host: 1000 })
+                .is_ok()
+        );
+        assert!(matches!(
+            plan.check(super::super::MemoryBudget { host: 999 }),
+            Err(super::super::ProverError::Resource(
+                tessera_codec::error::ErrorCode::ResMemory
+            ))
+        ));
+        let plan = plan.preparation(super::super::preparation::SessionMemory {
+            caller: 1000,
+            peak: 0,
+            weight_construction: 0,
+        });
+        assert_eq!(plan.resident_bytes(), Some(10 * 64 + 100 + 1000));
+    }
 
     #[test]
     fn stage_working_sets_select_windows_and_count_each_capped_fold() {

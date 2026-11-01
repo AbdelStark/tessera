@@ -30,10 +30,7 @@ use tessera_codec::{Decode, Encode};
 use tessera_ir::{ClaimList, CommitmentClass, Graph, Node, NodeKind, Op, OpClass, TensorId};
 
 use crate::schedule::LayerMap;
-use crate::{
-    CompileError, Lowering, PublicModel, Selection, analyze, claim_list_for_protocol, lower,
-    select_model,
-};
+use crate::{CompileError, Lowering, PublicModel, Selection, analyze, lower, select_model};
 
 /// A `query_block` that is not a power of two: RFC-0007 step 6 refuses its claim list as `Layout`
 /// (RFC-0039).
@@ -159,6 +156,16 @@ pub struct Share {
 }
 
 impl ExecutionPlan {
+    /// Retained requested heap of the caller-owned plan, including spare claim
+    /// and tile capacities (RFC-0018). No allocation or validation is performed;
+    /// inline storage and allocator overhead are separate. `None` means overflow.
+    pub fn heap_upper_bound(&self) -> Option<u64> {
+        crate::memory::claim_clone_bytes(&self.claims)?
+            .checked_sub(self.claims.params.0.as_str().len() as u64)?
+            .checked_add(self.claims.params.0.heap_bytes() as u64)?
+            .checked_add(crate::memory::vector(&self.tiles)?)
+    }
+
     /// The tiles of the sequence `lowering` covers, in production order, with the elements each
     /// holds (RFC-0041 'Tiles'): each attention tile becomes its `N / Q'` query blocks, in order.
     /// `lowering` is `D`'s lowering of any length.
@@ -293,6 +300,14 @@ pub fn tiles(
     lowering: &Lowering,
     selection: &Selection,
 ) -> Result<Vec<Tile>, CompileError> {
+    tiles_with_memory(model, lowering, selection).map(|(tiles, _)| tiles)
+}
+
+fn tiles_with_memory(
+    model: PublicModel<'_>,
+    lowering: &Lowering,
+    selection: &Selection,
+) -> Result<(Vec<Tile>, Option<u64>), CompileError> {
     let layers = LayerMap::new(lowering)?;
     let graph = &lowering.graph;
     let mut tiles = vec![Tile::Tokens];
@@ -315,10 +330,19 @@ pub fn tiles(
             rule: "every selected gadget has its ordered lookup requests",
         })?);
     }
+    let reads = read.capacity() as u64;
     read.sort_unstable();
     read.dedup();
     tiles.extend(read.into_iter().map(|table| Tile::Table { table: table.0 }));
-    Ok(tiles)
+    let metadata = (|| {
+        crate::memory::sum([
+            layers.construction_peak_bytes(graph)?,
+            selection.construction_metadata_bytes(lowering, &layers)?,
+            crate::memory::grow::<tessera_ir::TableId>(reads)?,
+            crate::memory::grow::<Tile>(tiles.len() as u64)?,
+        ])
+    })();
+    Ok((tiles, metadata))
 }
 
 /// The execution plan of `claims`, `model`'s claim list (RFC-0041 'The plan'): the claim list, and
@@ -328,11 +352,18 @@ pub fn tiles(
 /// # Errors
 ///
 /// - [`CompileError::Usage`] for a claim list whose `query_block` is not a power of two, or that is
-///   not the one [`claim_list_for_protocol`] emits for `model` under the claim list's own protocol
+///   not the one [`crate::claim_list_for_protocol`] emits for `model` under the claim list's own protocol
 ///   version, gadget policy, layout and parameter set;
 /// - the errors of [`lower`] and [`select_model`], for a model or a gadget policy they refuse;
 /// - [`CompileError::Schedule`] for a lowering whose layers are not one template.
 pub fn plan(model: PublicModel<'_>, claims: &ClaimList) -> Result<ExecutionPlan, CompileError> {
+    plan_with_memory(model, claims).map(|(plan, _)| plan)
+}
+
+fn plan_with_memory(
+    model: PublicModel<'_>,
+    claims: &ClaimList,
+) -> Result<(ExecutionPlan, Option<u64>), CompileError> {
     let policy = &claims.gadget_policy;
     // Every length's expansion takes `Q`'s logarithm.
     query_block(policy.query_block, 1)?;
@@ -347,23 +378,37 @@ pub fn plan(model: PublicModel<'_>, claims: &ClaimList) -> Result<ExecutionPlan,
         });
     }
     let selection = select_model(claims.protocol_version, &lowering, &ranges, policy)?;
-    if claim_list_for_protocol(
+    let (emitted, claim_memory) = crate::claim::with_memory(
         claims.protocol_version,
         model,
         &selection,
         policy,
         claims.layout,
         claims.params.clone(),
-    )? != *claims
-    {
+    )?;
+    if emitted != *claims {
         return Err(CompileError::Usage {
             rule: NOT_THE_MODELS,
         });
     }
-    Ok(ExecutionPlan {
-        claims: claims.clone(),
-        tiles: tiles(model, &lowering, &selection)?,
-    })
+    drop(emitted);
+    let (tiles, tile_memory) = tiles_with_memory(model, &lowering, &selection)?;
+    let metadata = (|| {
+        crate::memory::sum([
+            lowering.construction_metadata_bytes(model)?,
+            crate::analysis_memory_bytes(&lowering.graph)?,
+            claim_memory?,
+            tile_memory?,
+            crate::memory::claim_clone_bytes(claims)?,
+        ])
+    })();
+    Ok((
+        ExecutionPlan {
+            claims: claims.clone(),
+            tiles,
+        },
+        metadata,
+    ))
 }
 
 /// Checks that `plan` is `D`'s (RFC-0041 'The plan'): its claim list is `claims`, the claim list of
@@ -379,13 +424,31 @@ pub fn check_plan(
     model: PublicModel<'_>,
     claims: &ClaimList,
 ) -> Result<(), CompileError> {
+    check_plan_with_memory(plan, model, claims).map(|_| ())
+}
+
+/// Check the same canonical plan as [`check_plan`] and report its metadata
+/// allocation bound (RFC-0018/0041/0047), including the maximum-context row
+/// preflight. Reuses that check's lowerings; it does not build another layout.
+/// Generated table/RoPE cores, borrowed inputs, runtime/stack and allocator
+/// overhead are additional. `None` means checked sizing overflow, not acceptance
+/// of a memory budget. The plan/claim checks and their error order are unchanged.
+///
+/// # Errors
+/// Those of [`check_plan`].
+pub fn check_plan_with_memory(
+    plan: &ExecutionPlan,
+    model: PublicModel<'_>,
+    claims: &ClaimList,
+) -> Result<Option<u64>, CompileError> {
     if plan.claims != *claims {
         return Err(CompileError::Usage { rule: OTHER_CLAIMS });
     }
-    if plan.tiles != self::plan(model, claims)?.tiles {
+    let (expected, memory) = plan_with_memory(model, claims)?;
+    if plan.tiles != expected.tiles {
         return Err(CompileError::Usage { rule: OTHER_TILES });
     }
-    Ok(())
+    Ok(memory)
 }
 
 /// `Q' = min(Q, N)` for a sequence padded to `padded` positions, after checking that `Q` is a power

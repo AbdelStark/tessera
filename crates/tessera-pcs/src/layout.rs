@@ -780,6 +780,19 @@ impl Placement {
         Ok(point)
     }
 
+    /// Requested heap bytes of the axis descriptors retained by [`Self::row_indices`].
+    /// This reads public rank metadata and allocates nothing. Caller-owned source
+    /// shapes, field rows, iterator stack storage and allocator overhead are separate.
+    /// Returns `None` if the single vector would be unaddressable or overflow.
+    pub fn row_mapping_memory_bytes(&self) -> Option<usize> {
+        let rank = match &self.geometry {
+            Geometry::Dense { axes, .. } => axes.len(),
+            Geometry::Scores { .. } => 3,
+        };
+        let bytes = rank.checked_mul(size_of::<SourceAxis>())?;
+        (bytes <= isize::MAX as usize).then_some(bytes)
+    }
+
     /// Natural row-major source indices for the tensor-covered columns of `row`.
     /// `shape` is the source's public, unpadded shape in natural axis order. Each item is
     /// `Some(index)` for an element of that shape or `None` for per-axis length padding.
@@ -1031,6 +1044,56 @@ impl AdviceLayout {
         }
         Some(bytes)
     }
+    /// Conservative requested heap peak while constructing this canonical layout
+    /// (RFC-0011/0018), excluding borrowed TileShape inputs and allocator overhead.
+    /// Includes output/growth overlap, segment indexes and row-run scratch. Reads
+    /// public capacities only; does not allocate or authenticate constructor inputs.
+    /// Returns `None` on checked overflow or unaddressable arrays.
+    pub fn construction_peak_bytes(&self) -> Option<u64> {
+        fn array<T>(n: u64) -> Option<u64> {
+            let bytes = n.checked_mul(size_of::<T>() as u64)?;
+            (usize::try_from(n).is_ok() && bytes <= isize::MAX as u64).then_some(bytes)
+        }
+        let runs = self
+            .tensors
+            .iter()
+            .map(|t| t.nonzero.len() as u64)
+            .max()
+            .unwrap_or(0);
+        let rank = self
+            .tensors
+            .iter()
+            .map(|t| match &t.geometry {
+                Geometry::Dense { axes, .. } => axes.len() as u64,
+                Geometry::Scores { .. } => 0,
+            })
+            .max()
+            .unwrap_or(0);
+        // dense_rows repeats nonempty runs without decreasing their count. Its
+        // current/outer run arrays fit the final count; allow Vec growth minimums.
+        let run_scratch = if runs == 0 {
+            0
+        } else {
+            array::<Range<u64>>(runs.max(4).checked_mul(4)?)?.checked_mul(2)?
+        };
+        let parts = if rank == 0 {
+            0
+        } else {
+            array::<(u64, u32)>(rank.max(4).checked_mul(4)?)?
+        };
+        let mut bytes = u64::try_from(self.heap_bytes()?).ok()?.checked_mul(2)?;
+        for extra in [
+            run_scratch,
+            parts,
+            array::<u32>(self.tiles.len() as u64)?,
+            array::<Option<u64>>(self.segments.len() as u64)?,
+            array::<Range<u32>>(self.segments.len() as u64)?,
+        ] {
+            bytes = bytes.checked_add(extra)?;
+        }
+        Some(bytes)
+    }
+
     /// The layout of a sequence of `positions` whose tiles, in production order (RFC-0041
     /// 'Production order'), are `tiles`, under `params`.
     ///

@@ -689,3 +689,56 @@ fn taking_the_engine_back_aborts_a_session_not_done() {
         );
     }
 }
+
+#[test]
+fn live_phase_memory_covers_sent_state_and_query_shape_overlap() {
+    let mut engine = Engine::new(73);
+    let coin = Coin::new(91);
+    let query_shape = shape(&MATRICES);
+    engine.calls.reserve(4);
+    for count in [0, 1, 2, 5, 17, 129] {
+        engine.statement.batch.requests.resize(
+            count,
+            tessera_protocol::RequestRef {
+                request_id: 1,
+                session_id: [0; 16],
+                prompt_len: 1,
+                output_len: 0,
+            },
+        );
+        let mut result = None;
+        let mut query_owner = None;
+        let mut session = ProverSession::new(&mut engine);
+        let actual = allocation_counter::measure(|| {
+            result = Some(session.start(&coin.commit).unwrap());
+            query_owner = Some(query_shape.clone());
+        });
+        // Remove the returned Round1 clone. Engine call records use the
+        // pre-existing capacity, leaving exactly the private owner allocation.
+        let caller = count as u64 * size_of::<tessera_protocol::RequestRef>() as u64;
+        let bound =
+            tessera_protocol::prover_session_memory_bytes(count as u64, MATRICES.len() as u64)
+                .unwrap();
+        assert_eq!(actual.bytes_max, bound + caller, "{count}: {actual:?}");
+        assert_eq!(u64::try_from(actual.bytes_current).unwrap() - caller, bound);
+        drop(query_owner);
+        drop(result);
+        drop(session);
+        engine.calls.clear();
+    }
+    let sizing = allocation_counter::measure(|| {
+        assert_eq!(
+            tessera_protocol::prover_session_memory_bytes(u64::MAX, 0),
+            None
+        );
+        assert_eq!(
+            tessera_protocol::prover_session_memory_bytes(0, u64::MAX),
+            None
+        );
+        assert_eq!(
+            tessera_protocol::prover_session_memory_bytes(1 << 61, 0),
+            None
+        );
+    });
+    assert_eq!(sizing.bytes_total, 0);
+}

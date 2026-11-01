@@ -718,6 +718,10 @@ fn a_plan_with_other_tiles_is_refused() {
             };
             let error = check_plan(&other, public, &claims).expect_err(&what);
             assert_eq!(
+                tessera_compiler::check_plan_with_memory(&other, public, &claims),
+                Err(error)
+            );
+            assert_eq!(
                 error,
                 CompileError::Usage { rule: OTHER_TILES },
                 "{name}: {what}"
@@ -1168,4 +1172,28 @@ fn argmax_adds_its_range_multiplicities_to_the_plan() {
         1
     );
     assert!(plan.contains(&Tile::Node { node: id.0 }));
+}
+
+#[test]
+fn retained_plan_heap_counts_every_capacity_including_ascii() {
+    let model = model_file("tiny-2-servable.d");
+    let claims = claims(&model, 4);
+    let template = plan(PublicModel::of(&model), &claims).unwrap();
+    for spare in [0, 31, 4097] {
+        let mut held = None;
+        let observed = allocation_counter::measure(|| {
+            let mut plan = template.clone();
+            let mut text = String::with_capacity(claims.params.0.as_str().len() + spare);
+            text.push_str(claims.params.0.as_str());
+            plan.claims.params.0 = Ascii::new(text).unwrap();
+            plan.tiles.reserve(spare);
+            plan.claims.tables.reserve(spare);
+            held = Some(plan);
+        });
+        let plan = held.unwrap();
+        let sizing = allocation_counter::measure(|| {
+            assert_eq!(plan.heap_upper_bound(), Some(observed.bytes_current as u64));
+        });
+        assert_eq!(sizing.count_total, 0);
+    }
 }

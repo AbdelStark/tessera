@@ -1783,3 +1783,315 @@ fn check_geometry_constructor_memory(
         "geometry constructor {measured:?}, bound {bound:?}"
     );
 }
+
+#[test]
+fn public_preparation_bounds_cover_actual_constructors() {
+    use tessera_compiler::RuntimePlan;
+    fn peak<T>(build: impl FnOnce() -> T) -> (T, u64, u64) {
+        let mut held = None;
+        let observed = allocation_counter::measure(|| held = Some(build()));
+        (
+            held.unwrap(),
+            observed.bytes_max,
+            u64::try_from(observed.bytes_current).unwrap(),
+        )
+    }
+    for name in [
+        "tiny-2-servable",
+        "tiny-2-minimal",
+        "tiny-2-affine",
+        "tiny-4-servable",
+    ] {
+        let model = bounded_model_named(name);
+        for n in [1, 3, 5] {
+            let policy = GadgetPolicy {
+                max_log2_rows: 18,
+                query_block: 2,
+                ..GadgetPolicy::default()
+            };
+            let (lowering, lower_peak, _) =
+                peak(|| tessera_compiler::lower(PublicModel::of(&model), n).unwrap());
+            let ranges = analyze(&lowering.graph, &lowering.tables).unwrap();
+            let (layers, layers_peak, _) = peak(|| LayerMap::new(&lowering).unwrap());
+            let (selection, selection_peak, selection_retained) = peak(|| {
+                select_model(tessera_ir::PROTOCOL_VERSION, &lowering, &ranges, &policy).unwrap()
+            });
+            let p = public(&model, n, policy);
+            let cores = Engine::table_memory(&lowering.tables).unwrap().peak_bytes();
+            let bound = lowering
+                .construction_metadata_bytes(PublicModel::of(&model))
+                .unwrap()
+                + cores;
+            assert!(
+                lower_peak <= bound,
+                "{name}/{n}: lower {lower_peak} > {bound}"
+            );
+            let bound = layers.construction_peak_bytes(&lowering.graph).unwrap();
+            assert!(
+                layers_peak <= bound,
+                "{name}/{n}: layers {layers_peak} > {bound}"
+            );
+            let metadata = selection
+                .construction_metadata_bytes(&lowering, &layers)
+                .unwrap();
+            assert!(
+                selection_retained <= metadata,
+                "{name}/{n}: selection retained {selection_retained} > {metadata}"
+            );
+            let cores = Engine::table_memory(&selection.tables)
+                .unwrap()
+                .peak_bytes();
+            let bound = selection
+                .construction_metadata_bytes(&lowering, &layers)
+                .unwrap()
+                + cores;
+            assert!(
+                selection_peak <= bound,
+                "{name}/{n}: selection {selection_peak} > {bound}"
+            );
+            for prompt in [1, n] {
+                let (runtime, runtime_peak, _) = peak(|| {
+                    RuntimePlan::derive(&lowering, &selection, &p.claims, prompt, 0).unwrap()
+                });
+                let (leaf, leaf_peak, leaf_retained) =
+                    peak(|| LeafLayout::runtime(&lowering, &layers, &runtime, &p.claims).unwrap());
+                let (advice, advice_peak, _) =
+                    peak(|| ModelAdviceLayout::runtime(&lowering, &runtime, &p.claims).unwrap());
+                let mut advice_bound = None;
+                let advice_sizing = allocation_counter::measure(|| {
+                    advice_bound =
+                        advice.construction_peak_bytes(runtime.selection(), &p.claims, &layers);
+                });
+                assert_eq!(advice_sizing.bytes_total, 0);
+                assert!(
+                    advice_peak <= advice_bound.unwrap(),
+                    "{name}/{n}/{prompt}: advice {advice_peak} > {advice_bound:?}"
+                );
+                let (native, native_peak, _) = peak(|| {
+                    tessera_prover::native::ModelNativePlan::derive_runtime(
+                        &lowering, &runtime, &p.claims, &leaf,
+                    )
+                    .unwrap()
+                });
+                let mut native_bound = None;
+                let native_sizing = allocation_counter::measure(|| {
+                    native_bound = native.construction_peak_bytes(&lowering);
+                });
+                assert_eq!(native_sizing.bytes_total, 0);
+                assert!(
+                    native_peak <= native_bound.unwrap(),
+                    "{name}/{n}/{prompt}: native {native_peak} > {native_bound:?}"
+                );
+                let descriptors = tessera_compiler::schedule::model_natives(
+                    &lowering,
+                    if prompt == n {
+                        tessera_compiler::schedule::Request::Prefill
+                    } else {
+                        tessera_compiler::schedule::Request::Generate
+                    },
+                )
+                .unwrap();
+                let (schedule, schedule_peak, _) = peak(|| {
+                    tessera_compiler::schedule::derive_composed_schedule(
+                        &lowering,
+                        &descriptors.deferred,
+                        &descriptors.native,
+                    )
+                    .unwrap()
+                });
+                let mut schedule_bound = None;
+                let schedule_sizing = allocation_counter::measure(|| {
+                    schedule_bound = schedule.construction_peak_bytes(&lowering.graph)
+                });
+                assert_eq!(schedule_sizing.bytes_total, 0);
+                assert!(
+                    schedule_peak <= schedule_bound.unwrap(),
+                    "{name}/{n}/{prompt}: schedule {schedule_peak} > {schedule_bound:?}"
+                );
+                let mut leaf_bound = None;
+                let leaf_sizing = allocation_counter::measure(|| {
+                    leaf_bound = Some(
+                        leaf.construction_peak_bytes(&lowering, &layers, runtime.selection())
+                            .unwrap(),
+                    );
+                });
+                assert_eq!(leaf_sizing.bytes_total, 0);
+                assert!(
+                    leaf_peak <= leaf_bound.unwrap(),
+                    "{name}/{n}/{prompt}: leaf {leaf_peak} > {leaf_bound:?}"
+                );
+                assert!(leaf_retained <= leaf_bound.unwrap());
+                let mut bounds = None;
+                let sizing = allocation_counter::measure(|| {
+                    bounds = Some((
+                        lowering
+                            .construction_metadata_bytes(PublicModel::of(&model))
+                            .unwrap(),
+                        layers.construction_peak_bytes(&lowering.graph).unwrap(),
+                        selection
+                            .construction_metadata_bytes(&lowering, &layers)
+                            .unwrap(),
+                        runtime.construction_peak_bytes(&lowering).unwrap(),
+                    ));
+                });
+                assert_eq!(sizing.bytes_total, 0);
+                let bound = bounds.unwrap().3;
+                assert!(
+                    runtime_peak <= bound,
+                    "{name}/{n}/{prompt}: runtime {runtime_peak} > {bound}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn batch_runtime_preparation_bound_includes_growing_request_columns() {
+    use tessera_compiler::RuntimePlan;
+    let model = bounded_model_named("tiny-2-servable");
+    let p = public(
+        &model,
+        3,
+        GadgetPolicy {
+            max_log2_rows: 18,
+            query_block: 2,
+            ..GadgetPolicy::default()
+        },
+    );
+    for count in [1, 2, 5, 9, 17] {
+        for outputs in [false, true] {
+            let requests = (0..count)
+                .map(|i| {
+                    if outputs && i % 2 == 0 {
+                        (1, 2)
+                    } else {
+                        (3, 0)
+                    }
+                })
+                .collect::<Vec<_>>();
+            let lowering =
+                tessera_compiler::lower_batch(PublicModel::of(&model), &vec![3; count]).unwrap();
+            let ranges = analyze(&lowering.graph, &lowering.tables).unwrap();
+            let selection = select_model(
+                p.claims.protocol_version,
+                &lowering,
+                &ranges,
+                &p.claims.gadget_policy,
+            )
+            .unwrap();
+            assert_eq!(selection.tables, p.claims.tables);
+            let mut runtime = None;
+            let actual = allocation_counter::measure(|| {
+                runtime = Some(
+                    RuntimePlan::derive_batch(&lowering, &selection, &p.claims, &requests).unwrap(),
+                );
+            });
+            let runtime = runtime.unwrap();
+            let layers = LayerMap::new(&lowering).unwrap();
+            let mut advice = None;
+            let actual_advice = allocation_counter::measure(|| {
+                advice = Some(ModelAdviceLayout::runtime(&lowering, &runtime, &p.claims).unwrap());
+            });
+            let leaf = LeafLayout::runtime(&lowering, &layers, &runtime, &p.claims).unwrap();
+            let mut native = None;
+            let actual_native = allocation_counter::measure(|| {
+                native = Some(
+                    tessera_prover::native::ModelNativePlan::derive_runtime(
+                        &lowering, &runtime, &p.claims, &leaf,
+                    )
+                    .unwrap(),
+                );
+            });
+            let bound_native = native
+                .as_ref()
+                .unwrap()
+                .construction_peak_bytes(&lowering)
+                .unwrap();
+            assert!(
+                actual_native.bytes_max <= bound_native,
+                "{count}/{outputs}: native {actual_native:?} > {bound_native}"
+            );
+            let bound_advice = advice
+                .as_ref()
+                .unwrap()
+                .construction_peak_bytes(runtime.selection(), &p.claims, &layers)
+                .unwrap();
+            assert!(
+                actual_advice.bytes_max <= bound_advice,
+                "{count}/{outputs}: advice {actual_advice:?} > {bound_advice}"
+            );
+
+            let mut bound = None;
+            let sizing =
+                allocation_counter::measure(|| bound = runtime.construction_peak_bytes(&lowering));
+            assert_eq!(sizing.bytes_total, 0);
+            assert!(
+                actual.bytes_max <= bound.unwrap(),
+                "{count}/{outputs}: {actual:?} {bound:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn transcript_bound_covers_staging_growth_and_pow_labels() {
+    use tessera_codec::{Encode, Sink};
+    struct Pieces<'a>(&'a [u8]);
+    impl Encode for Pieces<'_> {
+        fn encode_to<S: Sink + ?Sized>(&self, sink: &mut S) {
+            for _ in 0..(3 * 65536 / self.0.len() + 3) {
+                sink.put(self.0);
+            }
+        }
+    }
+    let context = SessionContext {
+        protocol: Ascii::new("tessera-protocol/1").unwrap(),
+        mode: Mode::NonInteractive,
+        params: ParamSetId(Ascii::new("test-small/1").unwrap()),
+        statement_digest: [0; 32],
+        session_id: [0; 16],
+    };
+    for width in [1, 3, 7, 31, 4095, 8191, 65535, 65536, 70001] {
+        let bytes = vec![0xA5; width];
+        let mut transcript = Transcript::new(&context);
+        let observed = allocation_counter::measure(|| transcript.absorb("round2", &Pieces(&bytes)));
+        assert!(
+            observed.bytes_max <= Transcript::work_memory_bytes(9).unwrap(),
+            "{width}: {observed:?}"
+        );
+    }
+    for len in [0, 9, 262145] {
+        let label = "p".repeat(len);
+        let mut transcript = Transcript::new(&context);
+        let observed = allocation_counter::measure(|| assert_eq!(transcript.grind(&label, 0), 0));
+        assert!(
+            observed.bytes_max <= Transcript::work_memory_bytes(len as u64).unwrap(),
+            "{len}: {observed:?}"
+        );
+    }
+    assert_eq!(Transcript::work_memory_bytes(u64::MAX), None);
+    assert_eq!(Transcript::work_memory_bytes(isize::MAX as u64), None);
+}
+
+#[test]
+fn streamed_envelope_bound_covers_large_small_write_payloads() {
+    use tessera_codec::{Encode, Sink};
+    struct Pieces<'a>(&'a [u8]);
+    impl Encode for Pieces<'_> {
+        fn encode_to<S: Sink + ?Sized>(&self, sink: &mut S) {
+            for _ in 0..(3 * 65536 / self.0.len() + 3) {
+                sink.put(self.0);
+            }
+        }
+    }
+    for width in [1, 7, 31, 4095, 8191, 65535, 65536, 70001] {
+        let bytes = vec![0xA5; width];
+        let observed = allocation_counter::measure(|| {
+            envelope::write(&mut std::io::sink(), &schema::NI_PROOF, &Pieces(&bytes)).unwrap();
+        });
+        assert!(
+            observed.bytes_max <= envelope::write_memory_bytes(),
+            "{width}: {observed:?}"
+        );
+    }
+}

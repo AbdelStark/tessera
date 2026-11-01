@@ -27,6 +27,45 @@ struct Planned<'a> {
     native: Option<&'a Native>,
 }
 
+pub(super) fn construction_scratch_bytes(
+    schedule: &super::StageSchedule,
+    graph: &tessera_ir::Graph,
+    coords: u64,
+) -> Option<u64> {
+    use crate::memory::{array, grow, sum};
+    let instances = schedule
+        .stages
+        .iter()
+        .map(|s| s.instances.len() as u64)
+        .max()
+        .unwrap_or(0);
+    let claims = schedule
+        .stages
+        .iter()
+        .map(|s| s.claims.len() as u64)
+        .max()
+        .unwrap_or(0);
+    let outputs = graph
+        .nodes
+        .iter()
+        .map(|n| n.outputs.len() as u64)
+        .max()
+        .unwrap_or(0);
+    sum([
+        // Planned entries, stable origin sorting and bit_checks' returned list.
+        grow::<Planned<'_>>(instances)?.checked_mul(2)?,
+        instances
+            .checked_mul(grow::<Coord>(coords)?)?
+            .checked_mul(2)?,
+        grow::<(NodeRef, &Node, Kind)>(graph.nodes.len() as u64)?,
+        grow::<(TensorId, u32, u32)>(outputs)?,
+        // Output projections and concat/operand temporaries in evaluations().
+        grow::<(Kind, Vec<Coord>, Layers)>(claims)?.checked_mul(4)?,
+        claims.checked_mul(grow::<Coord>(coords)?)?.checked_mul(4)?,
+        array::<Coord>(coords)?.checked_mul(2)?,
+    ])
+}
+
 /// Stage `index`: an instance per virtual part of the stage before's claims `previous`, in order,
 /// then in stage 1 the OneHot and equality zero-checks in node order, the natives' among them,
 /// then the bit zero-checks in node order ([`bit_checks`]), and the claims their evaluations

@@ -521,6 +521,22 @@ struct Selected {
     axis: u8,
 }
 
+pub(super) fn construction_scratch_bytes(raw: u64, coords: u64, layers: u64) -> Option<u64> {
+    use crate::memory::{array, grow, sum};
+    sum([
+        // Original atoms and combine's selected/taken/member indexes coexist.
+        grow::<Atom>(raw)?,
+        array::<Option<Selected>>(raw)?,
+        array::<bool>(raw)?,
+        grow::<usize>(raw)?,
+        raw.checked_mul(grow::<Coord>(coords)?)?,
+        raw.checked_mul(grow::<Coord>(layers)?)?,
+        // parts() groups committed atoms before cloning their pool memberships.
+        grow::<(CommitmentClass, &[Coord], Vec<usize>)>(raw)?,
+        grow::<usize>(raw)?.checked_mul(2)?,
+    ])
+}
+
 /// RFC-0072 'Combined selections' on one claim's `atoms`, `selects` saying what a virtual atom
 /// selects, `None` for one that is no selection's output. Two or more virtual atoms that select
 /// rows of one input tensor along one axis, at one point with one set of layer weights, become

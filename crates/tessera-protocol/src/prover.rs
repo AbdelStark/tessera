@@ -188,6 +188,22 @@ struct Sent {
     round1: Round1,
 }
 
+/// Requested heap bound for the live prover session's private phase owners
+/// (RFC-0036/0018): boxed sent state, retained Round1 request capacity and query
+/// shape capacity. Sent and the returned query shape can overlap during on_seed.
+/// Engine data, returned messages, packet encodings, inline session storage and
+/// allocator overhead are separate. Does not allocate or validate. Returns
+/// `None` on overflowing or unaddressable capacities.
+pub fn prover_session_memory_bytes(request_capacity: u64, matrix_capacity: u64) -> Option<u64> {
+    fn array<T>(n: u64) -> Option<u64> {
+        let bytes = n.checked_mul(size_of::<T>() as u64)?;
+        (usize::try_from(n).is_ok() && bytes <= isize::MAX as u64).then_some(bytes)
+    }
+    (size_of::<Sent>() as u64)
+        .checked_add(array::<crate::RequestRef>(request_capacity)?)?
+        .checked_add(array::<crate::MatrixCodeword>(matrix_capacity)?)
+}
+
 /// The engine a session holds, which is always there: only `into_engine` takes it, and it
 /// consumes the session.
 fn held<E>(engine: &mut Option<E>) -> &mut E {

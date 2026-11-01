@@ -156,6 +156,21 @@ pub struct WeightLayout {
 }
 
 impl WeightLayout {
+    /// Retained requested heap of both the supplied channel list and its sorted
+    /// index, including spare capacities (RFC-0018/0040). Matrix descriptors are
+    /// inline. Does not allocate or validate; overflow is `None`.
+    pub fn heap_bytes(&self) -> Option<u64> {
+        let Self {
+            params: _,
+            shapes,
+            channels,
+            matrices: _,
+        } = self;
+        (shapes.channels.capacity() as u64)
+            .checked_add(channels.capacity() as u64)?
+            .checked_mul(size_of::<(WeightMatrix, u32)>() as u64)
+    }
+
     /// The layout of every matrix (RFC-0040 'The matrices').
     ///
     /// # Errors
@@ -925,5 +940,42 @@ impl MatrixRows for WeightRows<'_, '_> {
         self.layout
             .fill_row(self.matrix, &self.checked, row, index, out);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::*;
+
+    #[test]
+    fn channel_index_and_supplied_list_are_distinct_retained_allocations() {
+        for spare in [0, 1, 31, 4097] {
+            let mut held = None;
+            let observed = allocation_counter::measure(|| {
+                let mut channels = Vec::with_capacity(3 + spare);
+                channels.extend((0..3).rev().map(|layer| (WeightMatrix::Q, layer)));
+                held = Some(
+                    WeightLayout::new(
+                        WeightLayoutParams {
+                            log2_k: 3,
+                            log2_inv_rate: 2,
+                            mask_coeffs: 0,
+                            blinding_rows: 0,
+                        },
+                        WeightShapes {
+                            layers: 3,
+                            shapes: [WeightShape { out: 3, inputs: 2 }; 9],
+                            channels,
+                        },
+                    )
+                    .unwrap(),
+                );
+            });
+            let layout = held.unwrap();
+            let sizing = allocation_counter::measure(|| {
+                assert_eq!(layout.heap_bytes(), Some(observed.bytes_current as u64));
+            });
+            assert_eq!(sizing.count_total, 0);
+        }
     }
 }

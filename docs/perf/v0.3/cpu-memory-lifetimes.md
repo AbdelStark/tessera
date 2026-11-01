@@ -2,13 +2,17 @@
 
 This is the implementation inventory for [#629](https://github.com/AbdelStark/tessera/issues/629),
 under [RFC-0018's memory scheduler](../../rfcs/RFC-0018-gpu-prover-runtime.md#memory-scheduler).
-It is not a replacement allocation bound or a real-model proof qualification.
+The complete checked physical composition is described at the end of this inventory;
+real-model qualification still requires an actual execution and independent acceptance.
 
-The CPU driver still keeps the complete `Witness`. Its planner still charges
-64 bytes per logical padded cell, plus the separate weight reservation and
-additional stage/table working sets. A smaller measured RSS does not justify
-reducing that reservation. Caller-owned model storage is outside `MemoryBudget.host`
-and must also appear in any whole-process measurement.
+The CPU driver first tries the resident plan, including its optional checkpoint
+source. That plan retains 64 bytes per logical padded cell, the separate weight
+reservation and additional stage/table working sets. If no resident plan fits,
+an ungrouped protocol/1 proof can use the separate physical plan. This plan owns
+its selected table chunks and positive window cuts and checks every lifetime
+before P1. A smaller measured RSS alone cannot admit either route. Caller-owned
+model storage is outside `MemoryBudget.host` and must also appear in any
+whole-process measurement.
 
 | Phase | Storage that must be accounted for |
 |---|---|
@@ -31,6 +35,40 @@ inputs they need, and reduction stages read the original witness. Once
 `ModelOpenings::derive` has transferred every opening obligation, the stage and
 native working sets are freed before P4 begins. Neither release removes an
 opening target, changes a challenge, or changes a committed source row.
+
+## Session preparation
+
+`check_plan_with_memory` performs the same canonical checks as `check_plan` and
+returns a checked metadata bound. It accounts for the one-position lowering,
+range analysis, selection, emitted claim list, tiles and the maximum-context
+lowering and row-count preflight already used by that check. It reuses those
+lowerings; it does not expand the maximum-context attention placements for sizing.
+Generated table and RoPE payloads are additional to this compiler metadata bill.
+
+Before regenerated weight commitment construction, `Prover::new` checks the
+maximum of public/model validation, canonical plan checking, its fresh lowering
+and the weight constructor. The weight phase retains lowering metadata, canonical
+model-reference descriptors and the original weight layout beside the constructor's
+own cloned layout and trees. `WeightLayout::heap_bytes` counts both the supplied
+channel list and its separate sorted index; they are distinct allocations.
+
+The borrowed execution plan and weight state remain live in every phase. Their
+charges include spare vector/String capacities and the state's clearing seed
+allocation, without reading that seed. `PassPlan::resident_bytes` adds these caller
+owners beside the existing proof floor and covers the session preparation peak as
+well. Public batch planning also adds the caller token vector and request vector
+by their actual capacities, including unused slots. The approved witness engine
+reader returns the token allocation size only; it does not expose any token value.
+These caller batch bytes coexist with each proof phase. Checked addition refuses
+overflow. The caller's model remains outside `MemoryBudget.host` and must be reported
+separately. Stack, allocator and process/runtime overhead are not requested-heap
+allocations; whole-process qualification must still measure them.
+
+Allocator controls cover maximum-context row counting, complete session construction,
+spare plan text/tile/table capacities, both channel lists and empty opened-column
+vectors with spare capacity. The session gate refuses one byte below its checked
+peak before constructing weight commitments. This does not complete the physical
+route's public sizing, packet ownership or whole-model proof qualification.
 
 ## Tensor regeneration
 
@@ -182,7 +220,11 @@ The NI CLI proof and producer Live messages use the existing streaming TCE envel
 writer. Its first pass sizes the header, and its second pass writes and hashes the
 same encoding through a clearing buffer of at most 64 KiB. The message remains live;
 there is no complete encoded-envelope allocation beside it. Any allocation an
-encoder itself owns remains separate from this output-buffer bound.
+encoder itself owns remains separate from this output-buffer bound. Signed-byte
+slices now encode through a fixed 4 KiB clearing stack buffer. Sizing and streaming
+model INT8 tensors therefore allocate no whole-slice unsigned copy. Canonical
+two's-complement bytes and length prefixes are unchanged. The stack buffer is
+outside requested-heap accounting and remains part of whole-process measurement.
 
 Directory publication still creates temporary files exclusively with mode 0600,
 finishes and syncs the file, and hard-links it to a fresh final path. Existing files
@@ -820,3 +862,56 @@ non-certifying test parameters, and whole-proof requested allocations are metere
 The one-byte budget regression permits a resident-source fallback while retaining
 the full cell floor. This integration does not qualify a real 1B proof or replace
 the outstanding phase composition needed to relax that floor.
+
+
+## Physical planner construction and caller ownership
+
+The physical composition carries an explicit planning peak for
+borrowed unit/layout/weight/session owners, opening geometry, generated cores and
+multiplicity metadata, table planning, public stage sizing and returned candidate
+descriptors. It reserves candidate descriptors and caller batch storage before
+discretionary table chunks and windows consume the allowance. Independent
+allocation controls compare live planner heap and exact retained candidate
+capacities across eight request/output shapes.
+
+The phase composition charges grown stage state, all retained stage split and
+sumcheck outputs, and a distinct target-construction peak while native/stage
+owners still live. Target retention replaces target-construction scratch only
+after those owners drop. Internal CPU transcript, public encoding and dynamic
+label work is separate from relation kernels and the bounded streaming writer.
+Allocation controls exercise the actual public encodings and driver formats.
+
+The CPU fallback requires known caller batch and session preparation owners.
+Missing owners and overflow refuse admission even with an unlimited host allowance.
+The pre-existing resident pass plan remains live during physical selection and
+receives an explicit capacity charge. The selected table/windows move into the
+returned pass plan; their choices are the ones the backend executes. Grouped
+physical proofs and a reduction with no supported positive cut still refuse;
+the existing resident/grouped route remains available.
+
+Packet publication is bounded by P5: it includes every retained Round1/2/3 object,
+query container and public output beside the bounded envelope writer. After P5
+the backend clears its data, so streaming the retained proof cannot exceed that
+bound. This contract does not include a caller encoding a complete second proof
+into a Vec. The standard Live CLI now bounds seed envelopes at 100 bytes and query
+envelopes by named advice/weight draw counts and ten matrix ids. Envelope and
+individual-vector limits are enforced before input allocation. Filesystem/error
+formatting, arbitrary external transports, telemetry and allocator/process
+ownership remain outside the internal requested-heap bill and must be measured
+separately. No real 1B proof or independent acceptance is claimed here.
+
+
+### Inspecting a plan that does not fit
+
+`Prover::plan` still reports the resident plan when no supported physical choice
+fits; `PassPlan::check` and actual proving refuse it before P1. A reported plan
+is not itself admission. `uses_physical_bound` distinguishes a complete physical
+lifetime maximum from a resident-cell reservation, while `uses_checkpoints`
+identifies the tensor source used by either strategy.
+
+Grouping feasibility is monotone within the resident strategy. Across both
+strategies, a lower allowance can admit an ungrouped physical proof below a
+resident grouped interval. A binary search for a resident grouping threshold
+must exclude physical candidates; otherwise it can enter that lower interval
+and test a different source strategy. Grouping/order/pass-count controls retain
+their exact assertions and exercise the resident route separately.

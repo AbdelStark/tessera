@@ -177,6 +177,8 @@ fn a_grouped_proof_counts_the_group_pass_and_the_merge_pass_once_each() {
 
     // Find the first feasible budget that can use one group bit; the stage working sets are
     // now priced separately, so a one-byte total shortfall no longer forces leaf grouping.
+    // Keep the search monotone within the resident route; physical fallback can
+    // admit an ungrouped proof at a lower budget (RFC-0018).
     let (mut low, mut high) = (0, fits.resident_bytes().unwrap());
     while high - low > 1 {
         let middle = low + (high - low) / 2;
@@ -185,7 +187,8 @@ fn a_grouped_proof_counts_the_group_pass_and_the_merge_pass_once_each() {
             .plan(&batch)
             .unwrap();
         let groups = plan.leaf_groups();
-        let feasible = plan.resident_bytes().is_some_and(|bytes| bytes <= middle)
+        let feasible = !plan.uses_physical_bound()
+            && plan.resident_bytes().is_some_and(|bytes| bytes <= middle)
             && u16::from(groups.token_bits) + u16::from(groups.layer_bits) <= 1;
         if feasible {
             high = middle;

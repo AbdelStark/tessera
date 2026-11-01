@@ -145,6 +145,21 @@ pub struct Selection {
 }
 
 impl Selection {
+    /// Canonical selection metadata construction traffic beside the borrowed
+    /// lowering/ranges and generated-table payloads (RFC-0018/0076).
+    /// Counts returned containers, cloning/growth overlap and model-planning
+    /// scratch. Table core construction and input validation are additional.
+    /// Does not allocate or authenticate inputs. Overflow returns `None`.
+    pub fn construction_metadata_bytes(
+        &self,
+        lowering: &crate::Lowering,
+        layers: &crate::schedule::LayerMap,
+    ) -> Option<u64> {
+        self.heap_upper_bound()?
+            .checked_mul(2)?
+            .checked_add(model::preparation_scratch_bytes(lowering, self, layers)?)
+    }
+
     /// Conservative retained requested heap bytes, including nested capacities
     /// and pinned Rust1.95 B-tree nodes (RFC-0006/0018). Does not allocate or
     /// validate; construction scratch, inline storage and allocator overhead are

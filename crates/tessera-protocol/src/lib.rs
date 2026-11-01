@@ -160,7 +160,9 @@ pub use error::{ProtocolError, QueryFault};
 pub use matrix::WeightMatrix;
 pub use message::{Message, MessageKind};
 pub use params::{ParamMode, ParamSet, Targets};
-pub use prover::{ProverEngine, ProverSession, ProverState, SessionError};
+pub use prover::{
+    ProverEngine, ProverSession, ProverState, SessionError, prover_session_memory_bytes,
+};
 pub use queries::{MatrixCodeword, QueryShape};
 pub use round1::{
     AdviceCommitment, BatchDescriptor, Decoding, LeafGroups, MAX_LEAF_GROUP_BITS, PredictorSpec,

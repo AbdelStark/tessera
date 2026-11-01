@@ -324,6 +324,33 @@ mod tests {
     }
 
     #[test]
+    fn row_mapping_memory_counts_retained_axis_descriptors() {
+        for domain in [
+            vec![],
+            vec![1],
+            vec![3],
+            vec![1, 5, 1],
+            vec![3, 4, 5],
+            vec![1; 257],
+        ] {
+            let layout = layout(&domain, 2);
+            let place = &layout.tensors()[1];
+            let mut mapping = None;
+            let allocations = allocation_counter::measure(|| {
+                mapping = Some(place.row_indices(place.first_row(), &domain).unwrap());
+            });
+            let mut bytes = None;
+            let sizing = allocation_counter::measure(|| bytes = place.row_mapping_memory_bytes());
+            assert_eq!(sizing.count_total, 0);
+            assert_eq!(
+                allocations.bytes_current,
+                i64::try_from(bytes.unwrap()).unwrap()
+            );
+            drop(mapping);
+        }
+    }
+
+    #[test]
     fn source_metadata_reservation_failure_keeps_the_memory_error_code() {
         let error = Error::from(PcsError::LayoutMemory);
         assert_eq!(error, Error::Memory);

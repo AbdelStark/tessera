@@ -60,6 +60,18 @@ pub fn claim_list_for_protocol(
     layout: CommitmentLayout,
     params: ParamSetId,
 ) -> Result<ClaimList, CompileError> {
+    with_memory(protocol_version, model, selection, policy, layout, params)
+        .map(|(claims, _)| claims)
+}
+
+pub(crate) fn with_memory(
+    protocol_version: u16,
+    model: PublicModel<'_>,
+    selection: &Selection,
+    policy: &GadgetPolicy,
+    layout: CommitmentLayout,
+    params: ParamSetId,
+) -> Result<(ClaimList, Option<u64>), CompileError> {
     if protocol_version != PROTOCOL_VERSION && protocol_version != PROTOCOL_VERSION_2 {
         return Err(CompileError::Usage {
             rule: "protocol_version is PROTOCOL_VERSION or PROTOCOL_VERSION_2",
@@ -114,5 +126,13 @@ pub fn claim_list_for_protocol(
             },
         })?;
     }
-    Ok(claims)
+    let metadata = (|| {
+        crate::memory::sum([
+            crate::memory::claim_clone_bytes(&claims)?,
+            maximum.construction_metadata_bytes(model)?,
+            crate::advice::preflight_memory_bytes(&maximum, selection)?,
+            weight_layout.heap_bytes()?,
+        ])
+    })();
+    Ok((claims, metadata))
 }

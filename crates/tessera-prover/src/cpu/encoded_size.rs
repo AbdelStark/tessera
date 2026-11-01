@@ -31,6 +31,21 @@ impl Sink for EncodedSize {
     }
 }
 
+/// Admission sizing must fail on overflow; metrics deliberately saturate.
+pub(super) struct CheckedEncodedSize(Option<u64>);
+impl CheckedEncodedSize {
+    pub(super) fn of<T: Encode + ?Sized>(value: &T) -> Option<u64> {
+        let mut size = Self(Some(0));
+        value.encode_to(&mut size);
+        size.0
+    }
+}
+impl Sink for CheckedEncodedSize {
+    fn put(&mut self, bytes: &[u8]) {
+        self.0 = self.0.and_then(|n| n.checked_add(bytes.len() as u64));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -51,6 +66,20 @@ mod tests {
         });
         assert_eq!(measured.bytes_total, 0);
         assert_eq!(measured.bytes_max, 0);
+    }
+
+    #[test]
+    fn admission_encoding_size_rejects_overflow_without_allocating() {
+        let value = vec![1u64, 2, 3];
+        let observed = allocation_counter::measure(|| {
+            assert_eq!(CheckedEncodedSize::of(&value), Some(8 + 3 * 8));
+            let mut size = CheckedEncodedSize(Some(u64::MAX - 1));
+            size.put(&[0, 0]);
+            assert_eq!(size.0, None);
+            size.put(&[0]);
+            assert_eq!(size.0, None);
+        });
+        assert_eq!(observed.bytes_total, 0);
     }
 
     #[test]

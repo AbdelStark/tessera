@@ -172,6 +172,17 @@ impl fmt::Debug for WeightCommitmentState {
 }
 
 impl WeightCommitmentState {
+    /// Retained requested heap, including the clearing seed allocation and spare
+    /// opened-column capacity (RFC-0018/0040). Does not read the seed, allocate or
+    /// validate. Inline state and allocator overhead are separate; overflow is `None`.
+    pub fn heap_bytes(&self) -> Option<u64> {
+        self.budget.iter().try_fold(32u64, |n, b| {
+            n.checked_add(
+                (b.opened_columns.0.capacity() as u64).checked_mul(size_of::<u32>() as u64)?,
+            )
+        })
+    }
+
     /// The state of a new commitment `public` (RFC-0040): a seed drawn from the operating
     /// system's CSPRNG straight into its `Secret` (06 §7), no column opened and no blinding row
     /// burned.
@@ -330,3 +341,39 @@ impl io::Write for Collect {
 
 #[cfg(test)]
 mod vectors;
+
+#[cfg(test)]
+mod memory_tests {
+    use super::*;
+
+    #[test]
+    fn retained_heap_includes_clearing_seed_and_empty_column_capacity() {
+        for spare in [0, 1, 31, 257] {
+            let mut state = None;
+            let observed = allocation_counter::measure(|| {
+                state = Some(WeightCommitmentState::with_seed(
+                    WeightCommitmentPublic {
+                        layout: crate::WeightLayoutParams {
+                            log2_k: 3,
+                            log2_inv_rate: 2,
+                            mask_coeffs: 0,
+                            blinding_rows: 0,
+                        },
+                        roots: [[0; 32]; 10],
+                        epoch: 0,
+                    },
+                    [0; 32],
+                    core::array::from_fn(|_| TypeBudget {
+                        opened_columns: OpenedColumns::new(Vec::with_capacity(spare)).unwrap(),
+                        next_blinding_row: 0,
+                    }),
+                ));
+            });
+            let state = state.unwrap();
+            let sizing = allocation_counter::measure(|| {
+                assert_eq!(state.heap_bytes(), Some(observed.bytes_current as u64));
+            });
+            assert_eq!(sizing.count_total, 0);
+        }
+    }
+}

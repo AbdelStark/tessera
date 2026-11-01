@@ -1637,3 +1637,85 @@ fn one_hot_index_is_removed_only_for_the_exact_native_token_binding() {
         );
     }
 }
+
+#[test]
+fn constructor_bound_covers_deep_coordinate_and_coefficient_substitution() {
+    use tessera_compiler::schedule::derive_graph_schedule;
+    for depth in [0, 8, 64, 256] {
+        for shape in [
+            vec![2u32, 2],
+            vec![65536, 65536],
+            vec![1 << 24, 1 << 24],
+            vec![2; 48],
+        ] {
+            for multiply in [false, true] {
+                let mut builder = GraphBuilder::new();
+                let input = builder
+                    .input(common::decl(&shape, common::ADVICE, -100, 100))
+                    .unwrap();
+                let one = builder.constant(vec![1]).unwrap();
+                let mut value = input;
+                for i in 0..depth {
+                    let bound = 100 * (i64::from(i) + 1);
+                    value = common::one(
+                        &mut builder,
+                        Op::Transpose {
+                            perm: (0..shape.len() as u8).rev().collect(),
+                        },
+                        &[value],
+                        common::decl(
+                            &shape,
+                            tessera_ir::NodeKind::Virtual,
+                            -i128::from(bound),
+                            i128::from(bound),
+                        ),
+                    );
+                    if multiply {
+                        value = common::one(
+                            &mut builder,
+                            Op::ConstMul { c: one },
+                            &[value],
+                            common::decl(
+                                &shape,
+                                tessera_ir::NodeKind::Virtual,
+                                -i128::from(bound),
+                                i128::from(bound),
+                            ),
+                        );
+                    }
+                    // The second operand needs the caller's point after the first
+                    // recursive branch, keeping that point live through the walk.
+                    value = common::one(
+                        &mut builder,
+                        Op::Add,
+                        &[value, input],
+                        common::decl(
+                            &shape,
+                            tessera_ir::NodeKind::Virtual,
+                            -i128::from(bound + 100),
+                            i128::from(bound + 100),
+                        ),
+                    );
+                }
+                builder
+                    .node(Op::AssertEqual, &[value, value], Vec::new())
+                    .unwrap();
+                let graph = builder.finish();
+                let mut schedule = None;
+                let observed = allocation_counter::measure(|| {
+                    schedule = Some(derive_graph_schedule(&graph, &[], &[], None).unwrap());
+                });
+                let schedule = schedule.unwrap();
+                let mut bound = None;
+                let sizing = allocation_counter::measure(|| {
+                    bound = schedule.construction_peak_bytes(&graph)
+                });
+                assert_eq!(sizing.bytes_total, 0);
+                assert!(
+                    observed.bytes_max <= bound.unwrap(),
+                    "{depth}/{shape:?}/{multiply}: {observed:?} > {bound:?}"
+                );
+            }
+        }
+    }
+}

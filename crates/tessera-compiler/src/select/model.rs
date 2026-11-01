@@ -121,6 +121,47 @@ impl KeyInput<'_> {
     }
 }
 
+pub(super) fn preparation_scratch_bytes(
+    lowering: &Lowering,
+    selected: &Selection,
+    layers: &LayerMap,
+) -> Option<u64> {
+    use crate::memory::{array, btree, grow, sum};
+    let nn = lowering.graph.nodes.len() as u64;
+    let nt = lowering.graph.tensors.len() as u64;
+    let n = u64::from(layers.count);
+    let classes = lowering
+        .graph
+        .shift_classes
+        .iter()
+        .map(|v| v.len() as u64)
+        .max()
+        .unwrap_or(0);
+    let reads = lowering
+        .graph
+        .nodes
+        .iter()
+        .map(|n| selected.reads(n.id).map_or(0, |v| v.len()) as u64)
+        .max()
+        .unwrap_or(0);
+    sum([
+        // RFC-0076's old-family and final-plan maps coexist with materialization.
+        btree::<NodeId, Gadget>(nn)?,
+        btree::<NodeId, RequantPlan>(nn)?,
+        layers.construction_peak_bytes(&lowering.graph)?,
+        array::<KeyInput<'_>>(n)?,
+        2u64.checked_mul(grow::<RequantPlan>(n)?)?,
+        grow::<(NodeId, RequantPlan)>(n)?,
+        grow::<TableKind>(5)?,
+        // All candidates are Range/Requant: no dense core. A candidate class
+        // vector, the caller shifts and one cloned spec can coexist.
+        array::<u8>(3u64.checked_mul(classes.checked_add(1)?)?)?,
+        array::<Option<(NodeId, u32)>>(nt)?,
+        grow::<TableId>(reads.checked_add(5)?)?,
+        grow::<(NodeId, Gadget)>(nn)?,
+    ])
+}
+
 fn signature(gadget: Gadget) -> Option<u8> {
     match gadget {
         Gadget::Requant1 { .. } => Some(0),

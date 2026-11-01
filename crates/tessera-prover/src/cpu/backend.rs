@@ -385,13 +385,24 @@ impl<'a> CpuBackend<'a> {
             lengths.push(n);
             requests.push((r.prompt_len, r.output_len));
         }
-        compiler::check_batch_advice_rows(c, &requests)?;
+        // Only protocol/1 shares the canonical lowering below. Preserve the
+        // version-specific row preflight for other protocols.
+        if c.protocol_version != protocol::PROTOCOL_VERSION {
+            compiler::check_batch_advice_rows(c, &requests)?;
+        }
         let lowering = compiler::lower_batch(PublicModel::of(prepared.model), &lengths)?;
         let n = lowering.graph.tensors[lowering.tokens.0 as usize].shape[0];
         let ranges = compiler::analyze(&lowering.graph, &lowering.tables)?;
         let selected =
             compiler::select_model(c.protocol_version, &lowering, &ranges, &c.gadget_policy)?;
         let runtime = RuntimePlan::derive_batch(&lowering, &selected, c, &requests)?;
+        // RFC-0018: runtime owns its selection; none of these public preparation
+        // temporaries must remain live beside the expanded layouts.
+        drop((keys, lengths, requests, selected, ranges));
+        // runtime() checks the same allocated_runtime_rows geometry as
+        // check_batch_advice_rows, before expanding attention shares. Reuse the
+        // canonical lowering instead of building a second complete pipeline.
+        let advice = ModelAdviceLayout::runtime(&lowering, &runtime, c)?;
         let layers = LayerMap::new(&lowering)?;
         let leaf = LeafLayout::runtime(&lowering, &layers, &runtime, c)?;
         let native = ModelNativePlan::derive_runtime(&lowering, &runtime, c, &leaf)?;
@@ -426,7 +437,6 @@ impl<'a> CpuBackend<'a> {
                 )
                 .ok_or_else(memory)?;
         }
-        let advice = ModelAdviceLayout::runtime(&lowering, &runtime, c)?;
         cells.advice = advice
             .layout()
             .rows()
@@ -449,6 +459,7 @@ impl<'a> CpuBackend<'a> {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let plan = PassPlan::new(native.schedule().stages.len(), cells, weight_memory(c)?)
+            .preparation(prepared.memory.with_batch(batch)?)
             .staged(shapes)?
             .tables(TablePlan::new(&leaf, runtime.selection(), None, None)?);
         let (plan, grouped) = plan_groups(
@@ -463,7 +474,44 @@ impl<'a> CpuBackend<'a> {
         // storage fits beside the unchanged resident oracle. The cache lives
         // while a second cache is regenerated; construction includes its inputs.
         let mut plan = plan;
-        if plan.check(prepared.cfg.memory_budget).is_ok() {
+        let force_physical = {
+            #[cfg(test)]
+            {
+                physical::FORCE_ROUTE.with(std::cell::Cell::get)
+            }
+            #[cfg(not(test))]
+            {
+                false
+            }
+        };
+        if (force_physical || plan.check(prepared.cfg.memory_budget).is_err())
+            && c.protocol_version == protocol::PROTOCOL_VERSION
+            && grouped.is_none()
+        {
+            let input = physical::Inputs {
+                claims: c,
+                statement: &batch.statement,
+                lowering: &lowering,
+                layers: &layers,
+                runtime: &runtime,
+                advice: &advice,
+                leaf: &leaf,
+                native: &native,
+                grouped: None,
+                weights: &prepared.layout,
+                session: Some(prepared.memory),
+                caller_batch: Some(preparation::caller_batch_bytes(batch).ok_or_else(memory)?),
+                planner_caller: plan.heap_bytes().ok_or_else(memory)?,
+            };
+            match physical::select(&input, prepared.cfg.memory_budget.host) {
+                Ok(candidate) => plan = candidate.into_plan(plan)?,
+                // Prover::plan reports the non-fitting resident plan when neither
+                // route fits. commit_batch still checks it before P1 (RFC-0018).
+                Err(error) if error.code() == ErrorCode::ResMemory => {}
+                Err(error) => return Err(error),
+            }
+        }
+        if !plan.uses_checkpoints() && plan.check(prepared.cfg.memory_budget).is_ok() {
             let checkpoint = tessera_witness::CheckpointMemory::new(&lowering)?;
             let bytes = checkpoint
                 .retained_bytes()

@@ -363,8 +363,16 @@ impl Encode for i8 {
     }
 
     fn encode_slice<S: Sink + ?Sized>(items: &[Self], out: &mut S) {
-        let bytes: Vec<u8> = items.iter().map(|x| x.to_le_bytes()[0]).collect();
-        out.put(&bytes);
+        // INV-TCE-1 / OBS-6: preserve two's-complement bytes without a
+        // whole-slice heap copy. Initialize before writing data, keep the
+        // bounded scratch in place, and clear it on return or unwinding.
+        let mut bytes = zeroize::Zeroizing::new([0u8; 4096]);
+        for chunk in items.chunks(bytes.len()) {
+            for (byte, value) in bytes.iter_mut().zip(chunk) {
+                *byte = value.to_le_bytes()[0];
+            }
+            out.put(&bytes[..chunk.len()]);
+        }
     }
 }
 
