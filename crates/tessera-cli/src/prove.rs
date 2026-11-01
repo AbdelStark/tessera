@@ -14,6 +14,7 @@ use clap::{ArgGroup, Args};
 use std::{
     fs,
     io::{self, Write},
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -88,6 +89,9 @@ pub(crate) struct ProveArgs {
     backend: String,
     #[arg(long, value_delimiter = ',')]
     devices: Vec<u32>,
+    /// CPU witness and row-encoding participants, including the caller.
+    #[arg(long, default_value = "1")]
+    threads: NonZeroUsize,
     #[arg(long,value_parser=clap::value_parser!(u64).range(1..))]
     memory_budget: Option<u64>,
     #[arg(long, requires = "live")]
@@ -286,7 +290,9 @@ fn produce(
     };
     let mut batch = ProofBatch { statement, tokens };
     let cfg = ProverConfig {
-        backend: Backend::Cpu { threads: 1 },
+        backend: Backend::Cpu {
+            threads: a.threads.get(),
+        },
         params: *params,
         mode,
         memory_budget: MemoryBudget { host: budget },
@@ -348,6 +354,50 @@ fn produce(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cpu_thread_flag_defaults_to_one_and_rejects_zero_before_io() {
+        use clap::Parser;
+        let base = [
+            "tessera",
+            "prove",
+            "--plan",
+            "p",
+            "--model",
+            "m",
+            "--weights",
+            "w",
+            "--reference-tokens",
+            "t",
+            "--prompt-len",
+            "1",
+            "--request-id",
+            "1",
+            "--request-session",
+            "00",
+            "--manifest-digest",
+            "00",
+            "--out",
+            "o",
+        ];
+        for (flag, expected) in [(None, 1), (Some("4"), 4)] {
+            let mut args = base.to_vec();
+            if let Some(value) = flag {
+                args.extend(["--threads", value]);
+            }
+            let cli = crate::Cli::try_parse_from(args).unwrap();
+            let crate::Command::Prove(a) = cli.command else {
+                panic!("prove command")
+            };
+            assert_eq!(a.threads.get(), expected);
+        }
+        for value in ["0", "not-a-number"] {
+            let mut args = base.to_vec();
+            args.extend(["--threads", value]);
+            let error = crate::Cli::try_parse_from(args).unwrap_err();
+            assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+        }
+    }
+
     #[test]
     fn metadata_hex_is_exact_and_rejects_non_ascii() {
         assert_eq!(hex::<16>(&"aF".repeat(16)).unwrap(), [0xaf; 16]);

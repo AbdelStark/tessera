@@ -312,13 +312,14 @@ pub(super) fn model_weights<'a>(
         channels,
     })
 }
-fn encoder(c: &ClaimList) -> Result<pcs::RowEncoder, ProverError> {
+fn encoder(c: &ClaimList, threads: NonZeroUsize) -> Result<pcs::RowEncoder, ProverError> {
     let a = c.layout.advice;
     Ok(pcs::RowEncoder::new(
         1usize.checked_shl(u32::from(a.log2_k)).ok_or_else(memory)?,
         u32::from(a.log2_inv_rate),
         a.mask_coeffs as usize,
-    )?)
+    )?
+    .threads(threads))
 }
 fn wire(c: pcs::CombinedRow) -> protocol::CombinedRow {
     protocol::CombinedRow {
@@ -816,7 +817,7 @@ impl<'a> CpuBackend<'a> {
                 theta[m.index()] = Some(tr.challenge(&format!("pcs/weights/{m:?}/gamma")));
             }
         }
-        let encoder = encoder(c)?;
+        let encoder = encoder(c, p.threads)?;
         let advice_opening = span!(DEBUG, "opening", commitment = "advice").entered();
         let opening = Instant::now();
         let prepared = d.p1.prepare(targets.advice(), gamma, &av)?;
@@ -1001,7 +1002,7 @@ impl CpuBackend<'_> {
             rows: advice.layout().rows(),
         }
         .commitment_id();
-        let encoder = encoder(c)?;
+        let encoder = encoder(c, self.prepared.threads)?;
         let seed = random::Seed::new(self.prepared.cfg.mask_rng)?;
         let mut masks = seed.masks();
         let a = c.layout.advice;
@@ -1116,7 +1117,7 @@ impl ProverEngine for CpuBackend<'_> {
         let engine = Engine::new(&u.lowering)?.threads(p.threads);
         let source = u.source(&engine, p.model, &d.witness)?;
         let advice = ModelAdviceLayout::runtime(&u.lowering, &u.runtime, c)?;
-        let encoder = encoder(c)?;
+        let encoder = encoder(c, p.threads)?;
         let permit = d
             .permit
             .as_ref()

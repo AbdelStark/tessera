@@ -40,6 +40,8 @@
 //! only for its first levels. Nothing is allocated per transform. Control flow depends on
 //! lengths and indices only, never on values (INV-ARCH-2).
 
+pub(crate) mod parallel;
+
 use core::fmt;
 
 use tessera_field::{Field, Goldilocks, PrimeField};

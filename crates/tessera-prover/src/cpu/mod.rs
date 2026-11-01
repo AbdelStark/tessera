@@ -33,9 +33,9 @@ pub use tessera_protocol::ProverEngine as ProverBackend;
 /// Execution target. This reference implementation accepts CPU only.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Backend {
-    /// The exact CPU witness engine; zero threads is a usage error.
+    /// Exact CPU witness and row-encoding execution; zero threads is a usage error.
     Cpu {
-        /// Worker count.
+        /// Maximum participants, including the caller.
         threads: usize,
     },
     /// Reserved GPU target; rejected explicitly by this implementation.
@@ -212,16 +212,23 @@ impl<'a> Prover<'a> {
             &lowering,
             &layout,
             plan_metadata,
+            threads,
         )?;
-        if memory.peak > cfg.memory_budget.host {
+        if memory
+            .peak
+            .checked_add(memory.thread_bytes)
+            .ok_or(ProverError::Resource(ErrorCode::ResMemory))?
+            > cfg.memory_budget.host
+        {
             return Err(ProverError::Resource(ErrorCode::ResMemory));
         }
-        let actual = pcs::RegeneratedWeightCommitment::commit(
+        let actual = pcs::RegeneratedWeightCommitment::commit_with_threads(
             &layout,
             NonZeroU32::new(plan.claims.layout.advice.row_block)
                 .ok_or_else(|| usage("zero commitment row block"))?,
             weights.public.epoch,
             &source,
+            threads,
         )?;
         if actual.public() != &weights.public
             || weights

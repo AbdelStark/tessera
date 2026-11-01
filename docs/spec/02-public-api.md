@@ -47,7 +47,7 @@ tessera commit-weights  --model MODEL.d --plan plan.tep --out WEIGHTS.twc
 tessera weights refresh --weights WEIGHTS.twc --out WEIGHTS2.twc        # emits linking proof
 tessera prove           --plan plan.tep --model MODEL.d --weights WEIGHTS.twc --sample SAMPLE.tas
                         LOGS --transcripts DIR --batch K (--live ENDPOINT | --out PROOF.tnp)
-                        [--backend {cpu,gpu}] [--devices 0,1,...] [--memory-budget GIB]
+                        [--backend {cpu,gpu}] [--devices 0,1,...] [--memory-budget GIB] [--threads N]
 tessera audit share     --manifest MANIFEST.tlm --policy POLICY.json --commitment HEX --state DIR
                         # the prover's share for the coin toss over a manifest, one commitment per manifest
 tessera audit sample    --manifest MANIFEST.tlm --log LOG.tdl

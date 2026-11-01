@@ -14,6 +14,11 @@ before P1. A smaller measured RSS alone cannot admit either route. Caller-owned
 model storage is outside `MemoryBudget.host` and must also appear in any
 whole-process measurement.
 
+Opt-in row workers add a separate checked configured-stack/control reserve to both
+strategies and session preparation. They do not clone field buffers or tables. See
+the [pinned thread ownership inventory](../cpu-row-ntt.md#additional-memory) for
+its bounds and the remaining OS/runtime process-overhead scope.
+
 | Phase | Storage that must be accounted for |
 |---|---|
 | Input and preparation | Caller-owned decoded INT8 model and input read/decode overlap; public execution metadata; regenerated weight commitment trees and construction scratch |

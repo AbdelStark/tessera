@@ -213,6 +213,18 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
         .unwrap()
         .prove_non_interactive(&batch)
         .unwrap();
+    let mut config = config;
+    config.backend = Backend::Cpu { threads: 4 };
+    let advice_n = 1usize
+        << (u32::from(claims.layout.advice.log2_k) + u32::from(claims.layout.advice.log2_inv_rate));
+    let max_weight_n = 1usize
+        << (u32::from(claims.layout.weights.log2_k)
+            + u32::from(claims.layout.weights.log2_inv_rate));
+    assert!(
+        advice_n > max_weight_n,
+        "the worker counter isolates advice from weight answers"
+    );
+    let parallel_before = pcs::RowEncoder::test_worker_spawns(advice_n);
     let _route = Route::enable();
     let planned = Prover::new(&plan, &model, &mut state, config.clone())
         .unwrap()
@@ -247,6 +259,10 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
         .unwrap();
     assert_eq!(folds.value, metrics::Value::Counter(expected as u64));
     let proof = proof.unwrap();
+    assert!(
+        pcs::RowEncoder::test_worker_spawns(advice_n) > parallel_before,
+        "NI must execute parallel encodings"
+    );
     assert_eq!(
         tessera_codec::encode(&proof),
         tessera_codec::encode(&resident)
@@ -353,6 +369,10 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
     // The actual Live FSM checks the same selected tables/windows and owned replay.
     let mut live_cfg = config.clone();
     live_cfg.mode = Mode::Live;
+    let mut scalar_live_cfg = live_cfg.clone();
+    scalar_live_cfg.backend = Backend::Cpu { threads: 1 };
+    let mut scalar_state = pcs::WeightCommitmentState::new(*weight.public()).unwrap();
+    let mut scalar_live = Prover::new(&plan, &model, &mut scalar_state, scalar_live_cfg).unwrap();
     let mut live = Prover::new(&plan, &model, &mut state, live_cfg).unwrap();
     let mut verifier = tv_core::LiveVerifier::new(vc, expected, vcfg);
     let commit = tessera_codec::decode(
@@ -360,7 +380,21 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
         DecodeLimits::MESSAGE,
     )
     .unwrap();
+    let before_p1 = pcs::RowEncoder::test_worker_spawns(advice_n);
     let (first, share) = live.start(&batch, &commit).unwrap();
+    assert!(
+        pcs::RowEncoder::test_worker_spawns(advice_n) > before_p1,
+        "P1 must execute configured workers"
+    );
+    let (scalar_first, scalar_share) = scalar_live.start(&batch, &commit).unwrap();
+    assert_eq!(
+        tessera_codec::encode(&first),
+        tessera_codec::encode(&scalar_first)
+    );
+    assert_eq!(
+        tessera_codec::encode(&share),
+        tessera_codec::encode(&scalar_share)
+    );
     let first = tv_codec::decode(
         &tessera_codec::encode(&first),
         &tv_codec::DecodeLimits::MESSAGE,
@@ -380,7 +414,17 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
         DecodeLimits::MESSAGE,
     )
     .unwrap();
+    let before_p4 = pcs::RowEncoder::test_worker_spawns(advice_n);
     let second = live.on_seed(&reveal).unwrap();
+    assert!(
+        pcs::RowEncoder::test_worker_spawns(advice_n) > before_p4,
+        "P4 must execute configured workers"
+    );
+    let scalar_second = scalar_live.on_seed(&reveal).unwrap();
+    assert_eq!(
+        tessera_codec::encode(&second),
+        tessera_codec::encode(&scalar_second)
+    );
     let second = tv_codec::decode(
         &tessera_codec::encode(&second),
         &tv_codec::DecodeLimits::MESSAGE,
@@ -392,7 +436,17 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
         DecodeLimits::MESSAGE,
     )
     .unwrap();
+    let before_p5 = pcs::RowEncoder::test_worker_spawns(advice_n);
     let third = live.on_queries(&queries).unwrap();
+    assert!(
+        pcs::RowEncoder::test_worker_spawns(advice_n) > before_p5,
+        "P5 must execute configured workers"
+    );
+    let scalar_third = scalar_live.on_queries(&queries).unwrap();
+    assert_eq!(
+        tessera_codec::encode(&third),
+        tessera_codec::encode(&scalar_third)
+    );
     let third = tv_codec::decode(
         &tessera_codec::encode(&third),
         &tv_codec::DecodeLimits::MESSAGE,
@@ -405,6 +459,7 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
         "{verdict:?}"
     );
     drop(live);
+    drop(scalar_live);
 
     // Locate the public admission boundary; its lower neighbor cannot start P1.
     let (mut low, mut high) = (0, planned.resident_bytes().unwrap());
