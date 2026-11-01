@@ -402,6 +402,8 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<serde_json::Value, Prover
         replay.peak_bytes(),
         source,
         rows,
+        random::heap_bytes(),
+        response_containers,
         p1.peak_bytes(),
     ])?;
     let p2_peak = sum([p2_fixed, table.working_bytes])?;
