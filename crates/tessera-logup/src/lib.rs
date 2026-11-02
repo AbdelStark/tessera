@@ -107,8 +107,8 @@ mod streaming;
 
 pub use error::{Column, LogUpError};
 pub use groups::{
-    LookupClaims, LookupInstance, ProvenGroup, ProvenTables, begin_groups, prove_group,
-    prove_lookup_group, prove_table_batch,
+    LookupClaims, LookupForestShape, LookupGroupMemory, LookupGroupShape, LookupInstance,
+    ProvenGroup, ProvenTables, begin_groups, prove_group, prove_lookup_group, prove_table_batch,
 };
 pub use instance::{LogUpInstance, Tuples, multiplicities};
 pub use prover::{InstanceClaims, ProvenLogUp, TreeId, prove_logup};

@@ -360,3 +360,7 @@ fn a_groups_schedule_names_its_lookup_trees_and_forests_once_and_no_table_tree()
     );
     assert_eq!(run(&[TreeId::Forest(0), TreeId::Lookup(0)]), Ok(()));
 }
+
+mod groups {
+    mod memory;
+}

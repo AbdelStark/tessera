@@ -19,6 +19,9 @@
 //! group's padding. The verifier sums the groups' fractions and the table root of each instance
 //! to RFC-0008's identity (RFC-0054 'The table batch', 'The identity').
 
+mod memory;
+pub use memory::{LookupForestShape, LookupGroupMemory, LookupGroupShape};
+
 use core::fmt;
 
 use tessera_field::Field;

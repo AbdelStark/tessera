@@ -60,6 +60,7 @@ pub struct ResidentTreeMemory {
     fractions: u64,
     peak: u64,
     output: u64,
+    levels: u64,
 }
 
 impl ResidentTreeMemory {
@@ -78,6 +79,12 @@ impl ResidentTreeMemory {
     /// Returned levels and leaf claims, including all nested points and messages.
     pub fn output_bytes(self) -> u64 {
         self.output
+    }
+
+    /// Returned level messages and carried claims, excluding final leaf claims.
+    /// A wrapper can release those leaves while retaining the complete levels.
+    pub fn level_bytes(self) -> u64 {
+        self.levels
     }
 
     /// Price every scheduled tree, including repeated or equal shapes, without
@@ -126,15 +133,14 @@ impl ResidentTreeMemory {
             }
         }
         let count = shapes.len() as u64;
-        let mut output = add(
-            array::<ProvenTreeLevel<F>>(tallest as u64)?,
+        let mut levels = array::<ProvenTreeLevel<F>>(tallest as u64)?;
+        let mut leaves =
             // In-place iterator collection may retain the larger State allocation
             // when extracting leaf claims. Do not infer capacity from claim count.
-            grow::<LevelClaim<F>>(count)?.max(grow::<State<F>>(count)?),
-        )?;
+            grow::<LevelClaim<F>>(count)?.max(grow::<State<F>>(count)?);
         for &shape in shapes {
-            output = add(
-                output,
+            leaves = add(
+                leaves,
                 array::<F>((shape.height() + shape.trees_log()) as u64)?,
             )?;
         }
@@ -169,8 +175,8 @@ impl ResidentTreeMemory {
                 add(array::<Vec<F>>(rounds)?, array::<F>(mul(3, rounds)?)?)?,
                 grow::<F>(evaluations)?,
             )?;
-            output = add(
-                output,
+            levels = add(
+                levels,
                 add(
                     proof,
                     add(
@@ -200,6 +206,7 @@ impl ResidentTreeMemory {
         // Labels::new starts at 32; dynamic group/level/round labels can grow.
         let label_len = "group/".len() + 10 + "/tree/".len() + 10 + "/round/".len() + 20;
         let labels = mul(2, grow::<u8>(label_len as u64)?)?;
+        let output = add(levels, leaves)?;
         let peak = add(
             add(fractions, forests)?,
             add(
@@ -217,6 +224,7 @@ impl ResidentTreeMemory {
             fractions,
             peak,
             output,
+            levels,
         })
     }
 }
