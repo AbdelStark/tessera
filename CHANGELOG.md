@@ -4,6 +4,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ## [Unreleased]
 
+- Bound canonical resident fraction-tree construction and mixed tree/forest proof storage from public shapes, including folded operands and returned claims, with allocation and overflow controls (RFC-0010/0018/0054, [#673](https://github.com/AbdelStark/tessera/issues/673)).
+
 - Bound two-pass merge group-table construction, retained tables, folded state and proof output from checked public geometry, with counting-allocation and overflow controls; keep full grouped physical admission separate (RFC-0054/0018, [#671](https://github.com/AbdelStark/tessera/issues/671)).
 
 ### Changed

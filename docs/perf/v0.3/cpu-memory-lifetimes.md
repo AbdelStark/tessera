@@ -52,6 +52,11 @@ group tables, constructor scratch, proving storage and returned output. Borrowed
 inputs and regeneration sources remain additional owners; physical grouped
 admission still requires the complete surrounding lifetime composition.
 
+The [resident tree-batch component bound](resident-tree-memory.md) prices canonical
+fraction construction, forest levels, current level-kernel work and returned tree
+claims from public shapes. Group lookup orchestration and its surrounding sources,
+splits, blocks and wire messages still need complete composition before admission.
+
 ## Session preparation
 
 `check_plan_with_memory` performs the same canonical checks as `check_plan` and
