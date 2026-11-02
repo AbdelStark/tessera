@@ -33,6 +33,12 @@ Hardware and algebraic reference for optimizing Tessera's six critical kernel fa
 
 ## 3. LogUp & Fractional GKR (`tessera-logup`, `RFC-0008`)
 
+Folded lengths do not prove smaller residency: `Vec::truncate` and `SecretBuf::truncate`
+keep their original capacities. Count retained allocations across all completed
+polynomials, compact when needed, and charge full-size construction/copy overlap.
+Use a multi-polynomial allocation regression that catches either value or weight
+retention, with exact-message controls and clearing on released secret buffers (#669).
+
 ### Roofline Profile
 - **Operation**: initialize leaves $p_i / q_i$ where $q_i = \gamma - \text{key}_i$ (or batched across tags), then propagate the binary tree of projective fractions:
   $$P_{\text{parent}} = P_L \cdot Q_R + P_R \cdot Q_L, \qquad Q_{\text{parent}} = Q_L \cdot Q_R.$$

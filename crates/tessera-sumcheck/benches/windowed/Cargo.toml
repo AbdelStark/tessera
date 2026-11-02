@@ -31,3 +31,8 @@ harness = false
 name = "fraction-rows"
 path = "src/fraction_rows.rs"
 harness = false
+
+[[bench]]
+name = "merge"
+path = "src/merge.rs"
+harness = false

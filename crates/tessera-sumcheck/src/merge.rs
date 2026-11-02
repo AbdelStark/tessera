@@ -548,6 +548,11 @@ type Message<F> = [F; 2];
 /// folds the variables those rounds bound, and the remaining rounds in memory. It sends what
 /// [`prove_merge`] sends, when every claim is true.
 ///
+/// Each regenerated polynomial retains only its folded value/weight allocations. Its original
+/// source, permutation and full-size work buffers still coexist temporarily with the compact
+/// copy; the caller must include that construction overlap beside the retained folded state.
+/// Released derived-value allocations clear through [`SecretBuf`] (OBS-6).
+///
 /// # Errors
 ///
 /// [`SumcheckError::Merge`] for tables kept for another merge or missing a group, or a
@@ -640,6 +645,14 @@ where
         for &r in point.iter().skip(padding) {
             fold_lowest(&mut values, r);
             fold_lowest(&mut weights, r);
+        }
+        if values.len() < values.capacity() {
+            // RFC-0054 / #669: truncate keeps the full allocation. Retain only
+            // folded state; replacing SecretBuf clears its entire old capacity.
+            let mut folded = SecretBuf::with_capacity(values.len());
+            folded.extend(values.iter().copied());
+            values = folded;
+            weights = weights.to_vec();
         }
         state.push((values, weights, padding));
     }

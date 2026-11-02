@@ -14,6 +14,12 @@ before P1. A smaller measured RSS alone cannot admit either route. Caller-owned
 model storage is outside `MemoryBudget.host` and must also appear in any
 whole-process measurement.
 
+Grouped P2b now retains only each polynomial's folded value/weight allocations.
+Its original source, permutation, full-size work and compact copy still overlap
+during construction. The [component measurements](merge-state-memory.md) distinguish
+that retention improvement from the complete grouped lifetime bound still owed by
+the physical route.
+
 Opt-in row workers add a separate checked configured-stack/control reserve to both
 strategies and session preparation. They do not clone field buffers or tables. See
 the [pinned thread ownership inventory](../cpu-row-ntt.md#additional-memory) for
