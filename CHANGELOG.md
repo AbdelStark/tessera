@@ -4,6 +4,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ## [Unreleased]
 
+- Bound two-pass merge group-table construction, retained tables, folded state and proof output from checked public geometry, with counting-allocation and overflow controls; keep full grouped physical admission separate (RFC-0054/0018, [#671](https://github.com/AbdelStark/tessera/issues/671)).
+
 ### Changed
 
 - Reuse a bounded intermediate fraction-tree level from spare physical-route budget while preserving original leaves, window cuts, proof messages and verifier obligations (RFC-0018/0054, [#667](https://github.com/AbdelStark/tessera/issues/667)).

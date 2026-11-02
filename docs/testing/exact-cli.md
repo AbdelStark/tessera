@@ -16,15 +16,20 @@ producer capture. Regenerate with `python3 spec/vectors/exact-cli/generate.py`;
 `cargo xtask gen-vectors --check` checks byte parity. This is a test model,
 not a pretrained language model or a fidelity benchmark.
 
-For repeated local runs, explicitly build once and supply both binaries:
+For repeated local runs on a busy host, build the pair once and serialize the fixtures:
 
 ```sh
 cargo build -p tessera-cli --locked
 (cd verifier && cargo build -p tv-cli --features tv-core/test-params --locked)
 TESSERA_BIN="$PWD/target/debug/tessera" \
 TESSERA_VERIFY_BIN="$PWD/verifier/target/debug/tessera-verify" \
-  cargo test -p tessera-e2e --test exact_cli --locked
+  cargo test -p tessera-e2e --test exact_cli --locked -- --test-threads=1
 ```
+
+For a full local workspace run on the same host, use
+`cargo test --workspace --locked -- --test-threads=1`. The fixtures retain their
+30,000 ms Live deadlines, trusted pins and parameters; the flag controls only test
+concurrency. Preserve any earlier timeout result with its execution conditions.
 
 Without these variables the suite builds both binaries into separate directories
 under `target/exact-cli-binaries`, using each workspace's own lockfile. It never
