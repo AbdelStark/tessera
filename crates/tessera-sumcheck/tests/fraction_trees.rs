@@ -18,6 +18,9 @@
 //! of forests; a forest beside fraction trees keeps its messages' form, `u, w`.
 
 mod common;
+mod fraction_trees {
+    mod memory;
+}
 
 use common::forests::{TestForest, eq_at_vertex, mle, root_claim};
 use common::{Fp, Fp2, Session, SplitMix64, TvFp2, tv_fp, tv_fp2, tv_fp2s, tv_proof};

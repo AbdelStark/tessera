@@ -8,6 +8,8 @@ use core::fmt;
 
 mod bounded;
 pub use bounded::{BoundedTree, PreparedTreeBatch};
+mod memory;
+pub use memory::{ResidentTreeMemory, ResidentTreeShape};
 
 use tessera_codec::{Secret, Zeroize};
 use tessera_poly::PolyField;

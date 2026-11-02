@@ -412,5 +412,6 @@ pub use tessera_poly::MAX_DEGREE;
 pub use transcript::SumcheckTranscript;
 pub use trees::{
     BoundedTree, FractionClaim, FractionTree, LeafNumerators, LevelClaim, PreparedTreeBatch,
-    ProvenTreeLevel, ProvenTrees, Tree, prove_trees, prove_trees_in,
+    ProvenTreeLevel, ProvenTrees, ResidentTreeMemory, ResidentTreeShape, Tree, prove_trees,
+    prove_trees_in,
 };

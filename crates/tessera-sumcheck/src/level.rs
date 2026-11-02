@@ -279,7 +279,7 @@ pub(crate) fn product_claim<F: PolyField>(point: &[F], even: &[F::Base], odd: &[
 }
 
 /// One instance while the level's rounds run.
-struct Split<'a, F: PolyField> {
+pub(crate) struct Split<'a, F: PolyField> {
     tables: &'a LevelTables<'a, F>,
     point: &'a [F],
     /// `n_max − n_i`: the padding rounds, which the batch runs first.
