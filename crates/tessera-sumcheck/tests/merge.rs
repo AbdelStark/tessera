@@ -14,6 +14,10 @@
 
 mod common;
 
+mod merge {
+    mod memory;
+}
+
 use common::{Fp, Fp2, Session, SplitMix64, tv_fp2};
 use tessera_codec::Secret;
 use tessera_field::{Field, PrimeField};

@@ -47,6 +47,11 @@ inputs they need, and reduction stages read the original witness. Once
 native working sets are freed before P4 begins. Neither release removes an
 opening target, changes a challenge, or changes a committed source row.
 
+The [two-pass merge component bound](merge-memory-bound.md) now separates retained
+group tables, constructor scratch, proving storage and returned output. Borrowed
+inputs and regeneration sources remain additional owners; physical grouped
+admission still requires the complete surrounding lifetime composition.
+
 ## Session preparation
 
 `check_plan_with_memory` performs the same canonical checks as `check_plan` and

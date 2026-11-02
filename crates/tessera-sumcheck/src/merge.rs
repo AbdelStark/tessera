@@ -29,6 +29,9 @@
 //! [`Secret`], and what the provers derive from them lives in [`SecretBuf`]s. The weights derive
 //! from public points, challenges and bits.
 
+mod memory;
+pub use memory::MergeMemory;
+
 use core::fmt;
 
 use tessera_codec::{Secret, SecretBuf};
