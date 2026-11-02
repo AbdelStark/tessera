@@ -10,6 +10,10 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Release full-size P2b value and public-weight allocations after folding each merged polynomial, preserving complete merge messages and clearing released secret buffers (RFC-0054, [#669](https://github.com/AbdelStark/tessera/issues/669)).
+
+- Start adversarial merge checks from matching honest polynomial tables, with passing controls at every cut before perturbing exactly one claim (RFC-0054, [#669](https://github.com/AbdelStark/tessera/issues/669)).
+
 - Cover the CPU fraction regenerator at the planner's 65,536-row maximum, including deep carry/output boundaries, bounded tail reads in a four-billion-leaf domain, exact allocation counts and full raw kernel measurements ([#665](https://github.com/AbdelStark/tessera/issues/665)).
 
 - Compact aligned fraction subtrees inside existing clearing row chunks before carrying their roots, preserving ordered nodes, source requests, proof bytes and scratch bounds (RFC-0008/0054, [#663](https://github.com/AbdelStark/tessera/issues/663)).

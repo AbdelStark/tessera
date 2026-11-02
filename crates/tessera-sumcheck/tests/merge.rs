@@ -147,6 +147,25 @@ fn fixture(rng: &mut SplitMix64) -> (Vec<Poly>, Merge<Fp2>) {
     (polys, merge)
 }
 
+fn kept_tables(polys: &[Poly], merge: &Merge<Fp2>, cut: usize) -> MergeTables<Fp2> {
+    let mut kept = MergeTables::new(merge.polynomials(), merge.claims().len(), cut).unwrap();
+    for h in 0..merge.claims().len() {
+        let blocks: Vec<Vec<_>> = polys
+            .iter()
+            .map(|p| {
+                (0..1u64 << p.shape.group_vars.len())
+                    .map(|bits| (bits, p.block(bits)))
+                    .collect()
+            })
+            .collect();
+        kept.add_group(h, &merge.claims()[h], merge.gammas()[h], |i, bits| {
+            blocks[i].iter().find(|(b, _)| *b == bits).map(|(_, t)| t)
+        })
+        .unwrap();
+    }
+    kept
+}
+
 /// `p(r)` of a degree-2 round from `p(0)`, `p(2)` and the claim `p(0) + p(1)`.
 fn interpolate(claim: Fp2, sent: &[Fp2], r: Fp2) -> Fp2 {
     let (p0, p2) = (sent[0], sent[1]);
@@ -283,31 +302,89 @@ fn a_false_claim_fails_the_final_check() {
     let tables: Vec<&Secret<Vec<Fp>>> = polys.iter().map(|p| &p.table).collect();
     // Each claim in turn one more than its value: the verifier starts from a false sum.
     let shapes: Vec<MergePolynomial> = polys.iter().map(|p| p.shape.clone()).collect();
-    let (_, honest) = fixture(&mut SplitMix64::new(0x5410));
-    let groups = honest_claims(&honest);
+    let honest_proof = prove_merge(&mut session.transcript(), &merge, &tables).unwrap();
+    assert!(
+        verify(&session, &merge, &honest_proof),
+        "unmodified claims must match the actual polynomial tables"
+    );
+    for cut in 0..=largest_table_rounds(merge.polynomials()) {
+        let kept = kept_tables(&polys, &merge, cut);
+        let proof = prove_merge_two_pass(&mut session.transcript(), &merge, &kept, |i| {
+            Secret::new(polys[i].values.clone())
+        })
+        .unwrap();
+        assert!(
+            verify(&session, &merge, &proof),
+            "honest control, cut {cut}"
+        );
+    }
+    let groups = honest_claims(&merge);
     for h in 0..groups.len() {
         for k in 0..groups[h].len() {
             let mut claims = groups.clone();
             claims[h][k].value += Fp2::ONE;
-            let lying = Merge::new(shapes.clone(), claims, gammas(&honest), beta(&honest))
-                .expect("a merge");
+            let lying =
+                Merge::new(shapes.clone(), claims, gammas(&merge), beta(&merge)).expect("a merge");
+            assert_ne!(claimed_sum(&lying), claimed_sum(&merge));
             let proof = prove_merge(&mut session.transcript(), &lying, &tables).expect("a proof");
             assert!(!verify(&session, &lying, &proof), "claim {k} of group {h}");
+            for cut in 0..=largest_table_rounds(lying.polynomials()) {
+                let kept = kept_tables(&polys, &lying, cut);
+                let proof = prove_merge_two_pass(&mut session.transcript(), &lying, &kept, |i| {
+                    Secret::new(polys[i].values.clone())
+                })
+                .unwrap();
+                assert!(
+                    !verify(&session, &lying, &proof),
+                    "claim {k} of group {h}, cut {cut}"
+                );
+            }
         }
     }
-    assert!(verify(
-        &session,
-        &merge,
-        &prove_merge(&mut session.transcript(), &merge, &tables).expect("a proof")
-    ));
 }
 
 #[test]
 fn the_two_pass_merge_sends_the_in_memory_merges_messages() {
-    for seed in 0..4 {
+    for seed in 0..5 {
         let mut rng = SplitMix64::new(0x5420 + seed);
         let session = Session::random(&mut rng);
-        let (polys, merge) = fixture(&mut rng);
+        let (mut polys, mut merge) = fixture(&mut rng);
+        if seed == 4 {
+            let boundary = [
+                0,
+                1,
+                Fp::MODULUS - 1,
+                (1 << 32) - 1,
+                1 << 32,
+                Fp::MODULUS - (1 << 32),
+            ];
+            for (k, p) in polys.iter_mut().enumerate() {
+                for (i, v) in p.values.iter_mut().enumerate() {
+                    *v = Fp::from_u64_reduced(boundary[(i + k) % boundary.len()]);
+                }
+                p.table = Secret::new(p.values.clone());
+            }
+            let mut claims = merge.claims().to_vec();
+            for claim in claims.iter_mut().flatten() {
+                let p = &polys[claim.polynomial];
+                let mut point = claim.point.clone();
+                point.extend((0..p.shape.group_vars.len()).map(|j| {
+                    if claim.group_bits >> j & 1 == 0 {
+                        Fp2::ZERO
+                    } else {
+                        Fp2::ONE
+                    }
+                }));
+                claim.value = p.at(&point);
+            }
+            merge = Merge::new(
+                merge.polynomials().to_vec(),
+                claims,
+                merge.gammas().to_vec(),
+                merge.beta(),
+            )
+            .unwrap();
+        }
         let tables: Vec<&Secret<Vec<Fp>>> = polys.iter().map(|p| &p.table).collect();
         let expected = prove_merge(&mut session.transcript(), &merge, &tables).expect("a proof");
         // The largest j* that fits: no polynomial's free variables end before it.
@@ -315,22 +392,7 @@ fn the_two_pass_merge_sends_the_in_memory_merges_messages() {
         assert!(largest >= 2, "the fixture reaches into its own rounds");
         for j_star in 0..=largest {
             // Each group's tables from its own claims and γ_h alone, before β exists.
-            let mut kept = MergeTables::new(merge.polynomials(), merge.claims().len(), j_star)
-                .expect("tables");
-            for h in 0..4 {
-                let blocks: Vec<Vec<(u64, Secret<Vec<Fp>>)>> = polys
-                    .iter()
-                    .map(|p| {
-                        (0..1u64 << p.shape.group_vars.len())
-                            .map(|bits| (bits, p.block(bits)))
-                            .collect()
-                    })
-                    .collect();
-                kept.add_group(h, &merge.claims()[h], merge.gammas()[h], |i, bits| {
-                    blocks[i].iter().find(|(b, _)| *b == bits).map(|(_, t)| t)
-                })
-                .expect("the group's tables");
-            }
+            let kept = kept_tables(&polys, &merge, j_star);
             let mut regenerated = vec![0; polys.len()];
             let proof = prove_merge_two_pass(&mut session.transcript(), &merge, &kept, |i| {
                 regenerated[i] += 1;
@@ -348,8 +410,74 @@ fn the_two_pass_merge_sends_the_in_memory_merges_messages() {
                 "seed {seed}, j* = {j_star}"
             );
             assert_eq!(regenerated, vec![1; polys.len()], "one merge pass");
+            assert!(
+                verify(&session, &merge, &proof),
+                "seed {seed}, cut {j_star}"
+            );
         }
     }
+}
+
+#[test]
+fn the_two_pass_merge_retains_folded_allocations_between_polynomials() {
+    // RFC-0054 'The prover in two passes': more polynomials add folded state,
+    // rather than keeping every regenerated full-size allocation (#669).
+    const VARS: usize = 14;
+    const CUT: usize = 4;
+    let measure = |count: usize| {
+        let mut rng = SplitMix64::new(0x669);
+        let session = Session::random(&mut rng);
+        let polys: Vec<_> = (0..count)
+            .map(|_| Poly::new(&mut rng, VARS, vec![VARS - 1]))
+            .collect();
+        let claims: Vec<Vec<_>> = (0..2)
+            .map(|bits| {
+                polys
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| p.claim(&mut rng, i, bits))
+                    .collect()
+            })
+            .collect();
+        let merge = Merge::new(
+            polys.iter().map(|p| p.shape.clone()).collect(),
+            claims,
+            rng.fp2s(2),
+            rng.fp2(),
+        )
+        .unwrap();
+        let mut kept = MergeTables::new(merge.polynomials(), 2, CUT).unwrap();
+        for h in 0..2 {
+            let blocks: Vec<_> = polys.iter().map(|p| p.block(h as u64)).collect();
+            kept.add_group(h, &merge.claims()[h], merge.gammas()[h], |i, bits| {
+                (bits == h as u64).then_some(&blocks[i])
+            })
+            .unwrap();
+        }
+        let mut proof = None;
+        let measured = allocation_counter::measure(|| {
+            proof = Some(
+                prove_merge_two_pass(&mut session.transcript(), &merge, &kept, |i| {
+                    Secret::new(polys[i].values.clone())
+                })
+                .unwrap(),
+            );
+        });
+        assert!(verify(&session, &merge, &proof.unwrap()));
+        measured.bytes_max
+    };
+    let smaller = measure(4);
+    let larger = measure(12);
+    // Two folded extension tables per polynomial, plus room for public claim,
+    // transcript and class descriptors. The source/full-size scratch is one
+    // polynomial at a time and must not grow with the retained polynomial count.
+    let per_polynomial = (2 * size_of::<Fp2>() * (1 << (VARS - CUT)) + (16 << 10)) as u64;
+    assert!(
+        larger.saturating_sub(smaller) <= 8 * per_polynomial,
+        "extra retained allocation: {} > {}",
+        larger.saturating_sub(smaller),
+        8 * per_polynomial,
+    );
 }
 
 #[test]
