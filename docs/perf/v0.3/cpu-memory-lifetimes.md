@@ -57,6 +57,12 @@ fraction construction, forest levels, current level-kernel work and returned tre
 claims from public shapes. Group lookup orchestration and its surrounding sources,
 splits, blocks and wire messages still need complete composition before admission.
 
+The [complete lookup-group bound](lookup-group-memory.md) adds tree-construction
+containers, schedule/position metadata, padded value-evaluation scratch and all
+returned claim clones around that kernel. Layout/column/share construction, split
+and merge blocks, retained table/merge state and complete driver phase composition
+remain additional; grouped physical admission is still guarded.
+
 ## Session preparation
 
 `check_plan_with_memory` performs the same canonical checks as `check_plan` and
