@@ -37,6 +37,9 @@ use tessera_tables::TableId;
 use super::layout::{axis_vars, instance_layouts};
 use super::{Block, InstanceLayout, LeafError, LeafLayout, SiteLookup, internal};
 
+mod memory;
+pub use memory::GroupLayoutMemory;
+
 /// One value of a group's split: a claim on a merged polynomial (RFC-0054 'The merge').
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct GroupRead {
@@ -130,6 +133,8 @@ impl GroupLayout {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GroupedLayout {
     groups: LeafGroups,
+    /// Sorted public table ids let allocation-free group sizing scan each table once.
+    tables: Vec<TableId>,
     polynomials: Vec<MergePolynomial>,
     /// Each polynomial's coordinates in its groups' blocks, outside its group variables.
     coords: Vec<Vec<u32>>,
@@ -166,12 +171,14 @@ impl GroupedLayout {
         use super::layout::heap_vector as vector;
         let Self {
             groups: _,
+            tables,
             polynomials,
             coords,
             fixed,
             shares,
         } = self;
-        let mut bytes = vector(polynomials)?
+        let mut bytes = vector(tables)?
+            .checked_add(vector(polynomials)?)?
             .checked_add(vector(coords)?)?
             .checked_add(vector(fixed)?)?
             .checked_add(vector(shares)?)?;
@@ -283,9 +290,16 @@ impl GroupedLayout {
         }
 
         let layer_mask = (1u64 << groups.layer_bits) - 1;
+        let mut tables = Vec::with_capacity(stage.instances().len());
+        tables.extend(stage.instances().iter().map(|instance| instance.table));
         let mut polynomials = Vec::with_capacity(stage.split_len());
         let mut coords = Vec::with_capacity(stage.split_len());
-        let mut shares = Vec::new();
+        let share_count = stage.sites().iter().try_fold(0usize, |count, site| {
+            count
+                .checked_add(site.layers.len())
+                .ok_or(LeafError::Memory)
+        })?;
+        let mut shares = Vec::with_capacity(share_count);
         for (s, site) in stage.sites().iter().enumerate() {
             for (l, gadget) in site.layers.iter().enumerate() {
                 let reads = stage.reads(s, l).ok_or(LeafError::Internal {
@@ -348,6 +362,9 @@ impl GroupedLayout {
                         held[r].1 |= reads_it;
                     }
                 }
+                // Public read membership is known before either map is filled (#677).
+                share.reads = Vec::with_capacity(held.iter().filter(|&&(e, _)| e).count());
+                share.reads_zero = Vec::with_capacity(held.iter().filter(|&&(_, z)| z).count());
                 for (r, &(every, zero)) in held.iter().enumerate() {
                     if every {
                         share.reads.push(r);
@@ -361,6 +378,7 @@ impl GroupedLayout {
         }
         Ok(Self {
             groups,
+            tables,
             polynomials,
             coords,
             fixed,

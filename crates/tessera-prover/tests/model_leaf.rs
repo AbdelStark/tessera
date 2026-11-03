@@ -23,6 +23,7 @@ use tv_field::{Fp as V, Fp2 as E};
 
 mod batch_leaf;
 mod cpu_api;
+mod group_layout_memory;
 mod model_groups;
 mod model_openings;
 mod model_stages;

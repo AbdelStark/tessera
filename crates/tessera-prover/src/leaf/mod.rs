@@ -72,7 +72,7 @@ pub use grouped::{
     MergeMode, ProvenGroupedLeaf, StageForest, balanced_j_star, grouped_multiplicities,
     prove_grouped_leaf,
 };
-pub use groups::{GroupLayout, GroupRead, GroupedLayout};
+pub use groups::{GroupLayout, GroupLayoutMemory, GroupRead, GroupedLayout};
 pub use layout::{
     Block, InstanceLayout, LeafLayout, Read, Site, SiteGadget, SiteLookup, gadget_nodes, leaf_index,
 };

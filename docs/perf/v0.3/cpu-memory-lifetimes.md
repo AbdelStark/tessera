@@ -57,6 +57,10 @@ fraction construction, forest levels, current level-kernel work and returned tre
 claims from public shapes. Group lookup orchestration and its surrounding sources,
 splits, blocks and wire messages still need complete composition before admission.
 
+The [group-layout construction bounds](group-layout-memory.md) price public
+grouping/one-group metadata, including transient coordinate pairs, held-read flags,
+table-index nodes and sort/growth work. They do not price group payloads or proving.
+
 The [complete lookup-group bound](lookup-group-memory.md) adds tree-construction
 containers, schedule/position metadata, padded value-evaluation scratch and all
 returned claim clones around that kernel. Layout/column/share construction, split

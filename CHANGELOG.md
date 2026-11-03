@@ -4,6 +4,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ## [Unreleased]
 
+- Bound grouped layout construction and per-group metadata from public shapes, including coordinate trials, held-read flags, table indexes and sort/growth scratch; preallocate public share/read maps (RFC-0054/0018, [#677](https://github.com/AbdelStark/tessera/issues/677)).
+
 - Bound complete grouped lookup-tree construction, value evaluation and returned claim storage from checked public shapes and schedules, with allocation and refusal controls (RFC-0054/0018, [#675](https://github.com/AbdelStark/tessera/issues/675)).
 
 - Bound canonical resident fraction-tree construction and mixed tree/forest proof storage from public shapes, including folded operands and returned claims, with allocation and overflow controls (RFC-0010/0018/0054, [#673](https://github.com/AbdelStark/tessera/issues/673)).
