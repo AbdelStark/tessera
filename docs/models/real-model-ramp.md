@@ -1,6 +1,6 @@
 # Reproducing the real-model ramp
 
-This is the preparation path for the 1–10B integrity work, tracked in
+This is the preparation path for the 1-10B integrity work, tracked in
 [#617](https://github.com/AbdelStark/tessera/issues/617). **No certifying real-model proof
 has been generated or independently verified yet.** Synthetic `test-small` proofs certify
 nothing. Protocol One is non-hiding; this work establishes no zero-knowledge claim.
@@ -165,9 +165,16 @@ preflights every prescribed strength before held-out evaluation and scores only 
 that satisfy the unchanged scale/table bounds. Invalid input and scoring errors remain
 fatal. On this checkpoint all four `servable`/`pot` candidates are infeasible;
 `servable`/`affine` admits 1/2 and 3/5 and refuses 7/10 and 4/5. This construction
-check does not measure KL or establish which admissible strength is best.
-The proper-provenance diagnostic D uses a fixed admissible affine alpha of 1/2; it is
-not selected as best and is not fidelity-qualified. Its full 64-window diagnostic
+check alone does not measure KL. The complete admitted-strength `servable`/`affine`
+selection subsequently scored both admissible candidates over all 64 held-out windows.
+Alpha 3/5 had mean per-position KL 1.7679762114305566 nats, compared with
+2.535801116590834 for alpha 1/2, and was selected. The selected D passed complete
+weight and metadata readback; its SHA-256 is
+`55775265b34b17ba443eadbae51d63458c41f26504d5f233aab4d0d3b074290a`.
+This selection covers one profile and scale mode and does not establish the full
+RFC-0005 fidelity gates.
+The earlier proper-provenance diagnostic D uses a fixed admissible affine alpha of 1/2.
+It has no fidelity qualification. Its full 64-window diagnostic
 completed over 131,072 positions: mean per-position KL was 2.535801116590834 nats,
 with 68,310.43 seconds elapsed and 24,077,451,264 bytes peak RSS. The 20 imported
 Python module hashes were verified against launch revision
@@ -175,10 +182,20 @@ Python module hashes were verified against launch revision
 completion is not the run's source revision. This is a legacy fixed-candidate
 diagnostic, not all-alpha selection or the complete RFC-0005 fidelity evaluation.
 
-The 8B run completed its 512-window calibration and fixed-candidate construction;
-its complete held-out strength selection remains running. Do not reuse these
-reports with newly sharded checkpoint digests. Preparation, candidate preflight
-and the fixed diagnostic do not establish RFC-0005's fidelity gates.
+The original 8B run completed its 512-window calibration and scored 128 of the
+required 192 integer windows: all 64 windows each for alpha 1/2 and 3/5. It then
+failed with `FileNotFoundError` before alpha 7/10 inference; no winner was selected.
+A separate complete 512-window capture recovered byte-identical statistics and
+calibration report under the frozen source, library versions and input files.
+The recovered statistics contain 21,593,544 bytes, with SHA-256
+`606b6d02bfd5b553e9ed05763819d4998fe7223c33bc2fb79bfe48e433a5b721`.
+A fresh full 192-window strength selection started from that recovered calibration.
+As observed at 23:39 UTC on 4 November 2026, it remains in integer-reference
+inference and has returned six of the required 192 scored windows, all for alpha 1/2.
+No complete 64-window score or winner has been produced by this fresh run. The original
+attempt remains failed; its partial scores do not qualify a selection. Do not reuse these reports with
+newly sharded checkpoint digests. Preparation, candidate preflight and alpha
+selection do not establish RFC-0005's fidelity gates.
 
 ## Proving and independent verification
 
@@ -233,9 +250,9 @@ base floor of 2.56 TiB at two positions and 3.80 TiB at 2,048 positions (E0); al
 nine policy/length cases refuse tested budgets through 1 TiB. Current advice-row,
 table-tree and tensor charges therefore require further memory work before this
 64 GiB host can follow that CPU plan. These are conservative planner charges,
-not observed peak RAM; the actual proof attempt above still stopped at the leaf
-guard. This experiment neither adopts RFC-0076 nor discharges a complete
-soundness budget, fidelity or proof obligation.
+not observed peak RAM; the source diagnostic for that experiment stopped at the
+leaf guard before the later attempts described here. This experiment neither adopts
+RFC-0076 nor discharges a complete soundness budget, fidelity or proof obligation.
 
 The ordinary advice adapter now uses one reusable clearing field row and public
 source-index metadata proportional to tensor rank ([measurement and tests](../../crates/tessera-prover/benches/advice-rows/README.md)).
@@ -260,3 +277,21 @@ does not establish an independent expectation. A complete actual-count soundness
 certifying-parameter `Accept`, exact tamper rejection, full fidelity and resource
 qualification remain required. The tiny test fixture and prepared BF16 probes satisfy
 none of those real-model proof obligations.
+
+## Current proof attempts
+
+As observed at 23:39 UTC on 4 November 2026, two separately pinned, ordinary
+release NI-100 1B CPU attempts have completed P1 and remain in P2 fraction
+preparation. The original alpha-1/2 diagnostic and selected alpha-3/5 D are
+different statements; their artifacts and results must remain separate. Both
+retain their launch binaries, parameters and 16 GiB host budgets. Public stack samples
+at 23:34 UTC place both in streamed table-window initialization. Neither has produced
+a proof or reached independent verifier acceptance. Bounded fixture and
+fraction-component benchmarks establish no real-model proof speedup or
+resource qualification.
+
+A generated proof must still pass the independently built verifier with caller-held
+statement and weight-root pins and unchanged resource limits, followed by the
+exact tamper-rejection check. Full model-quality evaluation remains separate:
+held-out perplexity, reference-generated teacher-forcing metrics and their required
+confidence intervals have not been discharged by the alpha-selection scores.
