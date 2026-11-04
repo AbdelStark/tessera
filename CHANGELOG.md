@@ -20,6 +20,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Reconcile the real-model guide with completed 1B strength selection, recovered 8B calibration and separately pinned live proof attempts; retain the missing acceptance and fidelity obligations (RFC-0005, [#683](https://github.com/AbdelStark/tessera/issues/683)).
+
 - Test benchmark warm-up exclusion and unit normalization with a deterministic clock; keep the real wall-time check free of scheduler-dependent upper bounds (RFC-0020, [#680](https://github.com/AbdelStark/tessera/issues/680)).
 
 - Release full-size P2b value and public-weight allocations after folding each merged polynomial, preserving complete merge messages and clearing released secret buffers (RFC-0054, [#669](https://github.com/AbdelStark/tessera/issues/669)).
