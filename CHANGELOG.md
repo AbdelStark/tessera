@@ -18,6 +18,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Test benchmark warm-up exclusion and unit normalization with a deterministic clock; keep the real wall-time check free of scheduler-dependent upper bounds (RFC-0020, [#680](https://github.com/AbdelStark/tessera/issues/680)).
+
 - Release full-size P2b value and public-weight allocations after folding each merged polynomial, preserving complete merge messages and clearing released secret buffers (RFC-0054, [#669](https://github.com/AbdelStark/tessera/issues/669)).
 
 - Start adversarial merge checks from matching honest polynomial tables, with passing controls at every cut before perturbing exactly one claim (RFC-0054, [#669](https://github.com/AbdelStark/tessera/issues/669)).

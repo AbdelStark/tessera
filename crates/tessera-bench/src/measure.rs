@@ -110,7 +110,17 @@ impl Statistics {
 pub fn measure<T>(
     protocol: Protocol,
     units: f64,
+    run: impl FnMut() -> T,
+) -> Result<Statistics, ModelError> {
+    measure_with_clock(protocol, units, run, Instant::now)
+}
+
+// Keep RFC-0020's sampling loop testable without scheduler-dependent sleep bounds (#680).
+fn measure_with_clock<T>(
+    protocol: Protocol,
+    units: f64,
     mut run: impl FnMut() -> T,
+    mut clock: impl FnMut() -> Instant,
 ) -> Result<Statistics, ModelError> {
     if protocol.iterations == 0 {
         return Err(ModelError::Input {
@@ -132,9 +142,9 @@ pub fn measure<T>(
     }
     let samples: Vec<f64> = (0..protocol.iterations)
         .map(|_| {
-            let start = Instant::now();
+            let start = clock();
             black_box(run());
-            start.elapsed().as_secs_f64() * 1e9 / units
+            clock().duration_since(start).as_secs_f64() * 1e9 / units
         })
         .collect();
     Statistics::of(&samples)
@@ -278,5 +288,47 @@ impl MicrobenchmarkReport {
         report.insert("measurements".to_owned(), Value::Array(measurements));
         serde_json::to_string_pretty(&Value::Object(report))
             .map_err(|_| ModelError::Output { name: "report" })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+    use std::time::Duration;
+
+    use super::{Protocol, measure_with_clock};
+
+    #[test]
+    fn sampling_excludes_warmups_and_normalizes_exact_intervals() {
+        for units in [1.0, 0.5] {
+            let epoch = std::time::Instant::now();
+            let elapsed = Cell::new(Duration::ZERO);
+            let mut durations = [20, 20, 20, 2, 8, 3, 9, 4].into_iter();
+            let mut calls = 0;
+            let mut clock_reads = 0;
+            let statistics = measure_with_clock(
+                Protocol {
+                    warmups: 3,
+                    iterations: 5,
+                },
+                units,
+                || {
+                    calls += 1;
+                    let duration = Duration::from_millis(durations.next().expect("one run"));
+                    elapsed.set(elapsed.get() + duration);
+                },
+                || {
+                    clock_reads += 1;
+                    epoch + elapsed.get()
+                },
+            )
+            .expect("a measurement");
+            assert_eq!(calls, 8, "three warm-ups and five measured runs");
+            assert_eq!(clock_reads, 10, "only measured runs read the clock");
+            assert_eq!(durations.next(), None);
+            assert_eq!(statistics.min, 2e6 / units);
+            assert_eq!(statistics.median, 4e6 / units);
+            assert_eq!(statistics.max, 9e6 / units);
+        }
     }
 }
