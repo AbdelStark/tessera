@@ -9,7 +9,8 @@ use tessera_logup::TABLE_BATCH_CONSTRUCTION_BYTES_PER_TREE;
 use tessera_sumcheck::{MergePolynomial, WindowMemory, WindowShape};
 
 pub(super) const CHUNK_ROWS: usize = 256;
-const MAX_CHUNK_ROWS: usize = 65_536;
+const CACHE_CHUNK_ROWS: usize = 65_536;
+const MAX_CHUNK_ROWS: usize = 1_048_576;
 const MAX_CACHE_LOG_ROWS: usize = 20;
 
 pub(super) fn cache_depth(height: usize, log_rows: Option<usize>) -> Option<usize> {
@@ -58,6 +59,32 @@ mod tests {
     }
 
     #[test]
+    fn wider_chunks_preserve_cache_geometry_at_the_public_memory_cliff() {
+        let wide = stress(true).select_cached(u64::MAX).unwrap();
+        assert_eq!(wide.chunk_rows, 1_048_576);
+        assert_eq!(wide.cache_log_rows, Some(MAX_CACHE_LOG_ROWS));
+        assert_eq!(wide.cuts, vec![0; 20]);
+
+        let below = stress(true).select_cached(wide.working_bytes - 1).unwrap();
+        assert!(below.chunk_rows < wide.chunk_rows);
+        assert_eq!(below.cache_log_rows, wide.cache_log_rows);
+        assert_eq!(below.cuts, wide.cuts);
+        assert!(below.working_bytes < wide.working_bytes);
+
+        // A full-width read fits here only if half the existing cache is lost.
+        // Keep the cache and use a narrower read instead (RFC-0018, #679).
+        let uncached = stress(true).select(u64::MAX).unwrap();
+        let windows = uncached.working_bytes - uncached.fixed_bytes(uncached.chunk_rows).unwrap();
+        let cache = 32u64 << cache_depth(20, Some(MAX_CACHE_LOG_ROWS)).unwrap();
+        let allowance = uncached.fixed_bytes(1_048_576).unwrap() + windows + cache / 2;
+        let preserved = stress(true).select_cached(allowance).unwrap();
+        assert_eq!(preserved.cache_log_rows, Some(MAX_CACHE_LOG_ROWS));
+        assert!(preserved.chunk_rows < 1_048_576);
+        assert_eq!(preserved.cuts, wide.cuts);
+        assert!(preserved.working_bytes <= allowance);
+    }
+
+    #[test]
     fn caches_use_only_spare_budget_and_preserve_the_uncached_plan() {
         for generated in [false, true] {
             for allowance in [0, 80 << 20, 84 << 20, 96 << 20, 128 << 20, u64::MAX] {
@@ -66,11 +93,19 @@ mod tests {
                 assert_eq!(reference.is_ok(), cached.is_ok());
                 if let (Ok(reference), Ok(cached)) = (reference, cached) {
                     assert_eq!(cached.cuts, reference.cuts);
-                    assert_eq!(cached.chunk_rows, reference.chunk_rows);
                     assert!(cached.working_bytes <= allowance);
+                    let baseline = stress(generated)
+                        .select_with_chunk_limit(allowance, CACHE_CHUNK_ROWS)
+                        .unwrap()
+                        .with_cache(allowance)
+                        .unwrap();
+                    assert_eq!(cached.cache_log_rows, baseline.cache_log_rows);
+                    assert_eq!(cached.cuts, baseline.cuts);
+                    assert!(cached.chunk_rows >= baseline.chunk_rows);
                     assert_eq!(
-                        cached.working_bytes - reference.working_bytes,
-                        cached.cache_bytes().unwrap()
+                        cached.working_bytes - baseline.working_bytes,
+                        cached.fixed_bytes(cached.chunk_rows).unwrap()
+                            - baseline.fixed_bytes(baseline.chunk_rows).unwrap()
                     );
                     if !generated {
                         assert_eq!(cached.cache_log_rows, None);
@@ -249,7 +284,7 @@ mod tests {
                 Ok(())
             }
         }
-        for height in [12usize, 16] {
+        for height in [12usize, 16, 20] {
             let rows = 1usize << height;
             let source = AllocatingSource {
                 rows,
@@ -870,26 +905,38 @@ impl TablePlan {
     }
 
     pub(super) fn select_cached(self, allowance: u64) -> Result<Self, ProverError> {
-        let mut plan = self.select(allowance)?;
+        // Preserve the established cache before spending spare allowance on wider reads.
+        let mut plan = self
+            .select_with_chunk_limit(allowance, CACHE_CHUNK_ROWS)?
+            .with_cache(allowance)?;
         let window_peak = plan
             .working_bytes
             .checked_sub(plan.fixed_bytes(plan.chunk_rows)?)
             .ok_or_else(memory)?;
+        plan.widen_chunks(allowance, window_peak, MAX_CHUNK_ROWS)?;
+        Ok(plan)
+    }
+
+    fn with_cache(mut self, allowance: u64) -> Result<Self, ProverError> {
+        let window_peak = self
+            .working_bytes
+            .checked_sub(self.fixed_bytes(self.chunk_rows)?)
+            .ok_or_else(memory)?;
         for log_rows in (1..=MAX_CACHE_LOG_ROWS).rev() {
-            plan.cache_log_rows = Some(log_rows);
-            if plan.cache_bytes().ok().is_some_and(|bytes| bytes > 0)
-                && let Some(bytes) = plan
-                    .fixed_bytes(plan.chunk_rows)
+            self.cache_log_rows = Some(log_rows);
+            if self.cache_bytes().ok().is_some_and(|bytes| bytes > 0)
+                && let Some(bytes) = self
+                    .fixed_bytes(self.chunk_rows)
                     .ok()
                     .and_then(|fixed| fixed.checked_add(window_peak))
                     .filter(|&bytes| bytes <= allowance)
             {
-                plan.working_bytes = bytes;
-                return Ok(plan);
+                self.working_bytes = bytes;
+                return Ok(self);
             }
         }
-        plan.cache_log_rows = None;
-        Ok(plan)
+        self.cache_log_rows = None;
+        Ok(self)
     }
 
     fn select_with_chunk_limit(
@@ -938,6 +985,16 @@ impl TablePlan {
             self.working_bytes = self.working_bytes.max(choice.1);
         }
         let window_peak = self.working_bytes.checked_sub(fixed).ok_or_else(memory)?;
+        self.widen_chunks(allowance, window_peak, limit)?;
+        Ok(self)
+    }
+
+    fn widen_chunks(
+        &mut self,
+        allowance: u64,
+        window_peak: u64,
+        limit: usize,
+    ) -> Result<(), ProverError> {
         let largest = self
             .trees
             .iter()
@@ -948,7 +1005,7 @@ impl TablePlan {
             .transpose()?
             .unwrap_or(0);
         let mut chunk = usize::try_from(largest).map_err(|_| memory())?.min(limit);
-        while chunk > CHUNK_ROWS {
+        while chunk > self.chunk_rows {
             if let Some(bytes) = self
                 .fixed_bytes(chunk)
                 .ok()
@@ -961,6 +1018,6 @@ impl TablePlan {
             }
             chunk /= 2;
         }
-        Ok(self)
+        Ok(())
     }
 }

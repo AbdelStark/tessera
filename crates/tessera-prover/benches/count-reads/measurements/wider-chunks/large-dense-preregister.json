@@ -1,0 +1,22 @@
+{
+  "purpose": "Exercise genuinely wider dense copy reads before any unconditional chunk ceiling adoption",
+  "fixture": "tiny-4-servable.d at 64 positions, selected weighted table materialized once into a dense SecretBuf",
+  "oracle": "canonical count reader at 65536; exact roots and ordered nodes at all caps and zero/nonzero denominators",
+  "retained_oracle_backing": true,
+  "primary_metrics": [
+    "root",
+    "level"
+  ],
+  "pairs_per_candidate": 20,
+  "balanced": true,
+  "candidates": [
+    131072,
+    262144,
+    524288,
+    1048576
+  ],
+  "max_primary_control_regression_fraction": 0.03,
+  "production_change_validated": false,
+  "test_only_planner_addition_verified_against_HEAD": true,
+  "planner_with_test_sha256": "f67aeca6f55f4adf306aba46a2c92d39b6a69e0cdc1438e489b27d43df06b42c"
+}

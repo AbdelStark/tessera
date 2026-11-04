@@ -1,0 +1,24 @@
+{
+  "observed_utc": "2026-11-04T09:08:08.712881+00:00",
+  "rejected_workload": {
+    "positions": 512,
+    "error": "Usage: a sequence has 1 to max_context positions",
+    "evidence": "baseline/p512-r262177.log"
+  },
+  "valid_target": {
+    "model": "tiny-4-servable",
+    "positions": 64,
+    "declared_max_context": 64,
+    "fixture_sha256": "e38bfe430f923a8f745a0031b26e097149cad9d73dc3bc02b36e9e56645063ee",
+    "prefix_rows": [
+      262177,
+      1048609
+    ]
+  },
+  "controls_unchanged": [
+    "tiny-2-servable at2 positions",
+    "tiny-2-servable at32 positions"
+  ],
+  "wider_results_observed": false,
+  "original_model_jobs_unchanged": true
+}

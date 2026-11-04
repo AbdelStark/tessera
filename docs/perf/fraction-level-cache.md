@@ -22,8 +22,11 @@ chunks, then spends remaining allowance on caches. It tries public row caps from
 `2^20` down to `2`, with `d = min(h - 4, log2(cap))` when `h > 4`. Thus each node
 still represents at least sixteen original leaves, and each cache is at most
 32 MiB over Goldilocks/Fp2. All table caches must fit together beside the same
-window peak. Otherwise the route keeps the uncached plan. Resident-route
-selection and the 65,536-row chunk cap are unchanged. Re-selection may shrink
+window peak. Otherwise the route keeps the uncached plan. Physical-route
+selection first preserves its 65,536-row baseline and the caches that fit with it,
+then expands reads to at most 1,048,576 rows using remaining allowance
+([#679](https://github.com/AbdelStark/tessera/issues/679)). Wider reads cannot
+reduce the selected cache depth or alter window cuts. Re-selection may shrink
 caches again; no model value or count distribution enters the decision.
 
 Both arrays survive through their batch and clear on normal return, source error

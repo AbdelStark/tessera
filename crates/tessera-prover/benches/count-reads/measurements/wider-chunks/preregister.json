@@ -1,0 +1,42 @@
+{
+  "issue": 679,
+  "base": "4f9a2e2b053f52c4221cfcae58394826a0f6437b",
+  "observed_utc": "2026-11-04T08:47:36.381625+00:00",
+  "source_sha256": {
+    "crates/tessera-prover/src/cpu/table_plan.rs": "a3b995843583ef5aa8b68575f1aca33a05341712c9b9aff271533daeedda9e5f",
+    "crates/tessera-prover/src/leaf/table_source.rs": "628c8a443e831fb66def0e0c1d12e086b8579e71f81cece3fc558a4bf6d2333a",
+    "crates/tessera-witness/src/multiplicity.rs": "d28a4c8f7d915c5c86cf6e2977868db1df8b3dca1d53d00c85c429024286255f",
+    "crates/tessera-sumcheck/src/fraction_rows.rs": "c873c44490961e84bdde698c6e39646e761eb07662564e864d9584d98e52d098",
+    "crates/tessera-logup/src/streaming.rs": "be2b0c3e7a5429686ac805194c2fe8b45a5db5cdd0679094c25dea6199922478",
+    "crates/tessera-prover/benches/count-reads/src/main.rs": "2d1f7ff7e8850c4010a00a0243de2d4bcb7133093fbeb59f7b9bc2d471e4a50f",
+    "crates/tessera-prover/benches/count-reads/Cargo.lock": "70910b18fecd2dc397086fb128371ed14c2af5d0cb8a1e1bdb2aea04ae4ac838",
+    "rust-toolchain.toml": "8b9568691e00ed333fb58cc35cad475daf3b4c36a61defe0dd67eac5a15fc539"
+  },
+  "baseline_chunk": 65536,
+  "candidate_chunks": [
+    131072,
+    262144,
+    524288,
+    1048576
+  ],
+  "positions": [
+    2,
+    32
+  ],
+  "prefix_rows": [
+    262177,
+    1048609
+  ],
+  "paired_repeats": 20,
+  "adoption_min_improvement_fraction": 0.05,
+  "control_max_regression_fraction": 0.03,
+  "target_metric": "complete bounded fraction component, plus weighted-reader diagnostic",
+  "whole_proof_speedup_qualified": false,
+  "co_runners": [
+    "original 1B proof11004",
+    "selected 1B proof81153",
+    "8B calibration recovery1076"
+  ],
+  "new_real_model_proof_launched": false,
+  "production_changed": false
+}
