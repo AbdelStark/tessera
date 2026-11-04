@@ -43,45 +43,20 @@ fn statistics_are_those_the_gate_compares() {
     assert_eq!(Statistics::of(&[1.0, -1.0]), refused(Problem::Negative));
 }
 
-/// `measure` times the run it is given, in wall time per unit of work: a run injected with
-/// four times the sleep reports about four times the cost, and halving the units it is divided
-/// by doubles it. Warm-up runs are not measured.
+/// The public entry point measures real wall time per unit. Scheduler delays can extend
+/// sleeps without an upper bound; exact normalization and warm-up exclusion use the
+/// deterministic clock in the measurement module (#680).
 #[test]
 fn measure_reports_wall_time_per_unit() {
     let protocol = Protocol {
         warmups: 1,
         iterations: 5,
     };
-    let sleep = |ms| move || std::thread::sleep(Duration::from_millis(ms));
-    let short = measure(protocol, 1.0, sleep(2)).expect("a measurement");
-    let long = measure(protocol, 1.0, sleep(8)).expect("a measurement");
-    // A sleep lasts at least its duration; schedulers add a little, never a factor of two.
-    assert!(short.min >= 2e6 && long.min >= 8e6, "{short:?} {long:?}");
-    let ratio = long.median / short.median;
-    assert!(
-        (2.5..=4.5).contains(&ratio),
-        "4× the sleep reports {ratio:.2}× the cost"
-    );
-    let per_half = measure(protocol, 0.5, sleep(2)).expect("a measurement");
-    assert!(
-        per_half.median >= 4e6,
-        "twice the cost per unit: {per_half:?}"
-    );
-    // Warm-up runs are the slow first ones; none of them reaches the statistics.
-    let mut calls = 0;
-    let warm = measure(
-        Protocol {
-            warmups: 3,
-            iterations: 5,
-        },
-        1.0,
-        || {
-            calls += 1;
-            std::thread::sleep(Duration::from_millis(if calls <= 3 { 20 } else { 1 }));
-        },
-    )
+    let actual = measure(protocol, 0.5, || {
+        std::thread::sleep(Duration::from_millis(2));
+    })
     .expect("a measurement");
-    assert!(warm.max < 10e6, "a warm-up run was measured: {warm:?}");
+    assert!(actual.min >= 4e6, "wall time per half-unit: {actual:?}");
     let mut runs = 0;
     measure(
         Protocol {
