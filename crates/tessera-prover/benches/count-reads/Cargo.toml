@@ -12,8 +12,12 @@ autobins = false
 criterion = { version = "=0.5.1", default-features = false }
 tessera-codec = { path = "../../../tessera-codec" }
 tessera-compiler = { path = "../../../tessera-compiler" }
+tessera-field = { path = "../../../tessera-field" }
 tessera-ir = { path = "../../../tessera-ir" }
+tessera-poly = { path = "../../../tessera-poly" }
 tessera-protocol = { path = "../../../tessera-protocol" }
+tessera-sumcheck = { path = "../../../tessera-sumcheck" }
+tessera-tables = { path = "../../../tessera-tables" }
 tessera-witness = { path = "../../../tessera-witness" }
 
 [[bench]]

@@ -2,6 +2,8 @@
 //! Count-read batching on a real integer-model source, independent of proof generation.
 #![forbid(unsafe_code)]
 
+mod fractions;
+
 use criterion::{BenchmarkId, Criterion, Throughput};
 use std::{
     error::Error,
@@ -14,9 +16,12 @@ use std::{
 use tessera_codec::{Ascii, Decode, DecodeLimits, Secret, SecretBuf, envelope, schema};
 use tessera_compiler::{ExecutionPlan, PublicModel, RuntimePlan, SequenceTile, Tile};
 use tessera_ir::{GadgetPolicy, IntegerModel, PROTOCOL_VERSION, ParamSetId};
+use tessera_tables::GeneratedTable;
 use tessera_witness::{
     CheckpointTensors, Checkpoints, Engine, Resident, TileWitness, WitnessSource,
 };
+
+const CHUNKS: [usize; 7] = [256, 4096, 65536, 131072, 262144, 524288, 1048576];
 
 fn read<T: Decode>(path: &Path, id: &schema::Schema) -> Result<T, Box<dyn Error>> {
     let mut file = File::open(path)?;
@@ -30,7 +35,7 @@ fn read<T: Decode>(path: &Path, id: &schema::Schema) -> Result<T, Box<dyn Error>
     Ok(envelope::open(&bytes, id, DecodeLimits::INTEGER_MODEL)?)
 }
 
-fn prepare(root: &Path, prefix: u64) -> Result<(TileWitness, u64), Box<dyn Error>> {
+fn prepare(root: &Path, prefix: u64) -> Result<(TileWitness, u64, GeneratedTable), Box<dyn Error>> {
     let started = Instant::now();
     let path = std::env::var_os("COUNT_BENCH_MODEL")
         .map(PathBuf::from)
@@ -72,11 +77,24 @@ fn prepare(root: &Path, prefix: u64) -> Result<(TileWitness, u64), Box<dyn Error
     let runtime = RuntimePlan::derive(&lowering, &selected, &claims, n, 0)?;
     let engine = Engine::new(&lowering)?;
     let plans = engine.runtime_multiplicity_plans(&model.arch, &runtime)?;
+    let dense = match std::env::var_os("COUNT_BENCH_STORAGE") {
+        None => false,
+        Some(value) if value == "dense" => true,
+        Some(value) if value == "weighted" => false,
+        _ => return Err("count storage is dense or weighted".into()),
+    };
     let chosen = plans
         .into_iter()
-        .filter(|p| !p.is_dense() && p.rows() >= prefix)
+        .filter(|p| p.is_dense() == dense && p.rows() >= prefix)
         .max_by_key(|p| p.max_updates())
-        .ok_or("no weighted table covers the requested prefix")?;
+        .ok_or("no table of the requested storage kind covers the prefix")?;
+    let table = GeneratedTable::from_spec(
+        selected
+            .tables
+            .iter()
+            .find(|s| s.id == chosen.table())
+            .ok_or("table specification")?,
+    )?;
     let tokens = Secret::new(vec![0u32; n as usize]);
     let checkpoints = Checkpoints::new(&engine, &model, &tokens)?;
     let cache = CheckpointTensors::new(&engine, &model, &tokens, &checkpoints)?;
@@ -92,7 +110,7 @@ fn prepare(root: &Path, prefix: u64) -> Result<(TileWitness, u64), Box<dyn Error
         return Err("count backing differs from public plan".into());
     }
     eprintln!(
-        "scope=count-reader-only positions={n} table={} logical_rows={} max_updates={} backing_bytes={} setup_seconds={}",
+        "scope=count-reader-only positions={n} dense={dense} table={} logical_rows={} max_updates={} backing_bytes={} setup_seconds={}",
         chosen.table().0,
         chosen.rows(),
         chosen.max_updates(),
@@ -100,24 +118,28 @@ fn prepare(root: &Path, prefix: u64) -> Result<(TileWitness, u64), Box<dyn Error
         started.elapsed().as_secs_f64()
     );
     // The clearing count tile owns its storage. Model/cache/core teardown is outside timing.
-    Ok((tile, chosen.max_updates()))
+    Ok((tile, chosen.max_updates(), table))
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
+    if std::env::var_os("COUNT_BENCH_FRACTIONS").is_some() {
+        return fractions::run(&root);
+    }
     let prefix: usize = std::env::var("COUNT_BENCH_PREFIX_ROWS")
         .unwrap_or_else(|_| ((1usize << 18) + 33).to_string())
         .parse()?;
     if prefix == 0 {
         return Err("benchmark prefix must be positive".into());
     }
-    let (tile, updates) = prepare(&root, prefix as u64)?;
+    let (tile, updates, table) = prepare(&root, prefix as u64)?;
+    drop(table);
     let column = tile.multiplicities().ok_or("table tile")?;
     let mut reference = SecretBuf::try_with_capacity(prefix)?;
     reference.resize(prefix, 0u64);
     for first in [0u64, column.rows() - prefix as u64] {
         column.read_rows(first, &mut reference)?;
-        for chunk in [256usize, 4096, 65536] {
+        for chunk in CHUNKS {
             let mut output = SecretBuf::try_with_capacity(chunk)?;
             for offset in (0..prefix).step_by(chunk) {
                 let count = chunk.min(prefix - offset);
@@ -131,6 +153,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     drop(reference);
+    let mut paired = SecretBuf::try_with_capacity(CHUNKS[6])?;
+    fractions::paired("counts", "prefix", |chunk| {
+        for offset in (0..prefix).step_by(chunk) {
+            paired.resize(chunk.min(prefix - offset), 0);
+            column.read_rows(offset as u64, &mut paired)?;
+            black_box(&paired[..]);
+        }
+        Ok(())
+    })?;
+    drop(paired);
     let mut criterion = Criterion::default()
         .sample_size(10)
         .warm_up_time(Duration::from_secs(1))
@@ -138,7 +170,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .configure_from_args();
     let mut group = criterion.benchmark_group("weighted-count-prefix");
     group.throughput(Throughput::Elements(prefix as u64));
-    for chunk in [256usize, 4096, 65536] {
+    for chunk in CHUNKS {
         let mut output = SecretBuf::try_with_capacity(chunk)?;
         let visits = (prefix as u64)
             .div_ceil(chunk as u64)

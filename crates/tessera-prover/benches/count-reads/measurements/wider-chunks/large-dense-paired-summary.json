@@ -1,0 +1,98 @@
+[
+  {
+    "case": "level",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 1.0189415751783972,
+    "ratio_ci95": [
+      0.9190798675269273,
+      1.0828022523050644
+    ]
+  },
+  {
+    "case": "level",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9633646523338808,
+    "ratio_ci95": [
+      0.8165624474298887,
+      1.0784911647796278
+    ]
+  },
+  {
+    "case": "level",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9033135254640325,
+    "ratio_ci95": [
+      0.7892930326043622,
+      0.9756585975663863
+    ]
+  },
+  {
+    "case": "level",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9110109296251803,
+    "ratio_ci95": [
+      0.7701727389722185,
+      0.990717689187777
+    ]
+  },
+  {
+    "case": "root",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 1.0328838009918457,
+    "ratio_ci95": [
+      0.9583208864930961,
+      1.103458640655954
+    ]
+  },
+  {
+    "case": "root",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 1.0265109265408157,
+    "ratio_ci95": [
+      0.9013448650191169,
+      1.085551455559339
+    ]
+  },
+  {
+    "case": "root",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 1.1693255926708894,
+    "ratio_ci95": [
+      1.0212348361155112,
+      1.3089110773445392
+    ]
+  },
+  {
+    "case": "root",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.8930566364794115,
+    "ratio_ci95": [
+      0.8301110362238953,
+      0.9874117853925238
+    ]
+  }
+]

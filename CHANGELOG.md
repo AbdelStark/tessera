@@ -14,6 +14,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Changed
 
+- Expand checked generated-table reads to at most 1,048,576 rows from spare public budget, preserving existing window cuts and cache geometry; record full fraction-component gains and standalone-reader regressions ([#679](https://github.com/AbdelStark/tessera/issues/679)).
+
 - Reuse a bounded intermediate fraction-tree level from spare physical-route budget while preserving original leaves, window cuts, proof messages and verifier obligations (RFC-0018/0054, [#667](https://github.com/AbdelStark/tessera/issues/667)).
 
 ### Fixed

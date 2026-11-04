@@ -1,0 +1,31 @@
+{
+  "base": "4f9a2e2b053f52c4221cfcae58394826a0f6437b",
+  "hardware": "Apple M1 Max, 10 CPU cores, 64 GiB RAM",
+  "compiler": "Rust 1.95.0",
+  "co_runners": [
+    "original 1B proof 11004",
+    "selected 1B proof 81153",
+    "8B MPS calibration 1076"
+  ],
+  "source_sha256": {
+    "crates/tessera-prover/benches/count-reads/src/main.rs": "e83453d10e80162db3b3f2d34d95e8ec6b3763aa03ae73a409a8bbf9f755572d",
+    "crates/tessera-prover/benches/count-reads/src/fractions.rs": "6dbb178158808ab93ff4921296abff0a5295d3e193fcc4f6881336ab538567a5",
+    "crates/tessera-prover/benches/count-reads/Cargo.toml": "7758d7a51c62a26b73a148ffd73a10504966eee94d33dad03864c7876d7e6c70",
+    "crates/tessera-prover/benches/count-reads/Cargo.lock": "60d13a8297807e67043bacb9a370f39c034a4b7f275ea559a84ec039680f1ab6"
+  },
+  "large_dense_source_sha256": {
+    "crates/tessera-prover/benches/count-reads/src/main.rs": "e83453d10e80162db3b3f2d34d95e8ec6b3763aa03ae73a409a8bbf9f755572d",
+    "crates/tessera-prover/benches/count-reads/src/fractions.rs": "ae7e7ac9c8ba04a36f86dea0f488dd30b6b2baffeb76866a4892808a9b597c98",
+    "crates/tessera-prover/benches/count-reads/Cargo.toml": "7758d7a51c62a26b73a148ffd73a10504966eee94d33dad03864c7876d7e6c70",
+    "crates/tessera-prover/benches/count-reads/Cargo.lock": "60d13a8297807e67043bacb9a370f39c034a4b7f275ea559a84ec039680f1ab6"
+  },
+  "primary_metric": "complete bounded fraction component",
+  "reader_diagnostic_regressions_retained": true,
+  "selection_bias_notes": [
+    "Original paired order confounded; all expanded-v2 timing excluded.",
+    "Generic compression used extension arithmetic instead of production base arithmetic; excluded.",
+    "First dense control clamps caps to 65536; additional materialized dense control exercises all actual caps.",
+    "Source guard initially refused the new test-only planner edit; no measurements launched until baseline production identity verified."
+  ],
+  "whole_proof_speedup_qualified": false
+}

@@ -18,13 +18,30 @@ Run from the repository checkout so its Rust pin applies:
 cargo bench --manifest-path crates/tessera-prover/benches/count-reads/Cargo.toml --locked -- --save-baseline before
 ```
 
-The three cases read the same interval at 256, 4096 and 65536 rows per call. The current
+The cases read the same interval at 256, 4096, 65536, 131072, 262144, 524288 and
+1048576 rows per call. The current
 CPU reference uses 256 as its feasible fallback. The budgeted policy can select a larger
-chunk only after charging all scratch and keeping its reference cuts. This benchmark
+chunk only after charging all scratch and keeping its reference cuts and existing
+cache depth. This benchmark
 measures the unchanged reader at each configuration; whole-proof checks cover the policy.
 The actual-model option measures a source workload, not recorded-greedy fidelity, proof
 acceptance or whole-prover memory. Keep operator timings for secret models on the prover's
 side of TB-1; public conformance inputs make reviewable benchmark data.
+
+Set `COUNT_BENCH_FRACTIONS=1` to measure production `FractionTreeRows::root` and
+`read_level`, with the production table adapter's base/raw buffer lifetimes and
+compression arithmetic. `COUNT_BENCH_STORAGE=dense` selects a real dense column;
+the default is weighted. For a dense-copy control on a larger table, set
+`COUNT_BENCH_MATERIALIZED_DENSE=1` together with weighted storage. This materializes
+canonical counts into a clearing buffer outside timing and retains the weighted
+column as a correctness oracle. It models the dense copy kernel; it does not
+change the production storage selection.
+
+All fraction variants compare exact roots and ordered nodes against the canonical
+65,536-row reader, including zero-denominator cases. Timings include 20 balanced
+baseline/candidate pairs per wider cap, rotating candidate order independently of
+pair order. The [evaluation report](../../../../docs/perf/wider-table-chunks.md)
+records the scope, raw paired observations and standalone-reader regressions.
 
 ## Work and hardware limits
 

@@ -85,6 +85,11 @@ jobs:
           cargo clippy --workspace --all-targets --locked -- -D warnings
           cargo clippy -p tessera-protocol --features tls --all-targets --locked -- -D warnings
           (cd verifier && cargo clippy --workspace --all-targets --locked -- -D warnings)
+      - name: Count and fraction benchmark checks
+        if: needs.scope.outputs.code == 'true'
+        run: |
+          cargo fmt --manifest-path crates/tessera-prover/benches/count-reads/Cargo.toml --all --check
+          cargo clippy --manifest-path crates/tessera-prover/benches/count-reads/Cargo.toml --all-targets --locked -- -D warnings
       # Invoke xtask directly so reviewed repository configuration cannot rewrite the cargo alias.
       - name: Repository policies
         run: cargo run --locked --quiet -p xtask -- lint

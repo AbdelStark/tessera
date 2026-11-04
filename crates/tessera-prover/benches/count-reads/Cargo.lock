@@ -477,8 +477,12 @@ dependencies = [
  "criterion",
  "tessera-codec",
  "tessera-compiler",
+ "tessera-field",
  "tessera-ir",
+ "tessera-poly",
  "tessera-protocol",
+ "tessera-sumcheck",
+ "tessera-tables",
  "tessera-witness",
 ]
 

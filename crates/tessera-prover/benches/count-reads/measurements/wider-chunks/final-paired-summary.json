@@ -1,0 +1,674 @@
+[
+  {
+    "workload": "counts-tiny-2-servable-p2-r262177",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 1.1109903789349311,
+    "ratio_ci95": [
+      1.1074749704103444,
+      1.3669278989399383
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p2-r262177",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 1.553107836816976,
+    "ratio_ci95": [
+      1.5506472285754893,
+      1.5567280275945943
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p2-r262177",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 1.9905185874259173,
+    "ratio_ci95": [
+      1.4812828423844757,
+      1.9991119005328597
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p2-r262177",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 2.0047557126479765,
+    "ratio_ci95": [
+      1.99941705884862,
+      2.0071624629720173
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p2-r1048609",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9616365264497184,
+    "ratio_ci95": [
+      0.9222126528438346,
+      0.9865379817540113
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p2-r1048609",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 1.2089624094110456,
+    "ratio_ci95": [
+      1.0198018955391006,
+      1.230212512315271
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p2-r1048609",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 1.7155019428159741,
+    "ratio_ci95": [
+      1.2742690924131292,
+      1.8064916266509572
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p2-r1048609",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 2.8598468589828476,
+    "ratio_ci95": [
+      1.9166979914409499,
+      3.2850765849765438
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p32-r262177",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.7266949446343967,
+    "ratio_ci95": [
+      0.7085928026790635,
+      0.772467667514149
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p32-r262177",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.6319398147492821,
+    "ratio_ci95": [
+      0.6241507787856162,
+      0.6373283521015478
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p32-r262177",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.488431256351189,
+    "ratio_ci95": [
+      0.4778288918814313,
+      0.668235000037723
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p32-r262177",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.4856790774021722,
+    "ratio_ci95": [
+      0.48241061148423736,
+      0.4891872553303034
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p32-r1048609",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.5922232705346555,
+    "ratio_ci95": [
+      0.5868405958220366,
+      0.634463379251295
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p32-r1048609",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.49653219338682536,
+    "ratio_ci95": [
+      0.41395196899028897,
+      0.5025022477326068
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p32-r1048609",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.4337792519903464,
+    "ratio_ci95": [
+      0.37219580161867855,
+      0.5387854990039336
+    ]
+  },
+  {
+    "workload": "counts-tiny-2-servable-p32-r1048609",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.45213550802175545,
+    "ratio_ci95": [
+      0.44898327693681495,
+      0.585124409979592
+    ]
+  },
+  {
+    "workload": "counts-tiny-4-servable-p64-r262177",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.6087354656732937,
+    "ratio_ci95": [
+      0.5944873265592159,
+      0.6136164883810711
+    ]
+  },
+  {
+    "workload": "counts-tiny-4-servable-p64-r262177",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.4194373813115355,
+    "ratio_ci95": [
+      0.3736803554345274,
+      0.42637685885848275
+    ]
+  },
+  {
+    "workload": "counts-tiny-4-servable-p64-r262177",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.22219481998728577,
+    "ratio_ci95": [
+      0.07491036997903078,
+      0.23689277518088225
+    ]
+  },
+  {
+    "workload": "counts-tiny-4-servable-p64-r262177",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.2242749224687127,
+    "ratio_ci95": [
+      0.22314676610232267,
+      0.31843659534875535
+    ]
+  },
+  {
+    "workload": "counts-tiny-4-servable-p64-r1048609",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.5103784970365286,
+    "ratio_ci95": [
+      0.35368728561522056,
+      0.9909971195955298
+    ]
+  },
+  {
+    "workload": "counts-tiny-4-servable-p64-r1048609",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.26291642000626647,
+    "ratio_ci95": [
+      0.1568910238370317,
+      0.3702480595758617
+    ]
+  },
+  {
+    "workload": "counts-tiny-4-servable-p64-r1048609",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.19070635899180366,
+    "ratio_ci95": [
+      0.1195687302241084,
+      0.19494540296782986
+    ]
+  },
+  {
+    "workload": "counts-tiny-4-servable-p64-r1048609",
+    "kind": "counts",
+    "case": "prefix",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.14713845578398752,
+    "ratio_ci95": [
+      0.08449394539818511,
+      0.17422822024569148
+    ]
+  },
+  {
+    "workload": "fraction-tiny-2-servable-p2-weighted",
+    "kind": "fractions",
+    "case": "level",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9727291432001929,
+    "ratio_ci95": [
+      0.9447671385263685,
+      1.058101469499099
+    ]
+  },
+  {
+    "workload": "fraction-tiny-2-servable-p2-weighted",
+    "kind": "fractions",
+    "case": "level",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9551029498374783,
+    "ratio_ci95": [
+      0.9182309288116647,
+      1.0046742519362857
+    ]
+  },
+  {
+    "workload": "fraction-tiny-2-servable-p2-weighted",
+    "kind": "fractions",
+    "case": "level",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9716443744104319,
+    "ratio_ci95": [
+      0.8761548681801362,
+      0.9762516115948587
+    ]
+  },
+  {
+    "workload": "fraction-tiny-2-servable-p2-weighted",
+    "kind": "fractions",
+    "case": "level",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9010421996994409,
+    "ratio_ci95": [
+      0.8281283743093445,
+      0.9891228862852752
+    ]
+  },
+  {
+    "workload": "fraction-tiny-2-servable-p2-weighted",
+    "kind": "fractions",
+    "case": "root",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9618036669709789,
+    "ratio_ci95": [
+      0.9048747757968054,
+      1.0133527667906024
+    ]
+  },
+  {
+    "workload": "fraction-tiny-2-servable-p2-weighted",
+    "kind": "fractions",
+    "case": "root",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9579066782443373,
+    "ratio_ci95": [
+      0.9243602497488628,
+      1.1056822173749281
+    ]
+  },
+  {
+    "workload": "fraction-tiny-2-servable-p2-weighted",
+    "kind": "fractions",
+    "case": "root",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9550918521334295,
+    "ratio_ci95": [
+      0.8992437048191138,
+      1.03046864552898
+    ]
+  },
+  {
+    "workload": "fraction-tiny-2-servable-p2-weighted",
+    "kind": "fractions",
+    "case": "root",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.900021231628261,
+    "ratio_ci95": [
+      0.8729418351053659,
+      0.9355665857192245
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-weighted",
+    "kind": "fractions",
+    "case": "level",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9170898139707235,
+    "ratio_ci95": [
+      0.828614294947784,
+      1.0307118139849702
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-weighted",
+    "kind": "fractions",
+    "case": "level",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9017550008712625,
+    "ratio_ci95": [
+      0.8177444694900229,
+      1.0400977599972219
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-weighted",
+    "kind": "fractions",
+    "case": "level",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.8614368333144319,
+    "ratio_ci95": [
+      0.7716973334751835,
+      0.9426550222395671
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-weighted",
+    "kind": "fractions",
+    "case": "level",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.8630584604401046,
+    "ratio_ci95": [
+      0.7822419463010539,
+      0.9563986923606722
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-weighted",
+    "kind": "fractions",
+    "case": "root",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9549525654213522,
+    "ratio_ci95": [
+      0.7551652901628587,
+      1.0474308680142639
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-weighted",
+    "kind": "fractions",
+    "case": "root",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.8410119196831322,
+    "ratio_ci95": [
+      0.7486304475218983,
+      0.9267323535931032
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-weighted",
+    "kind": "fractions",
+    "case": "root",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.8422295837287519,
+    "ratio_ci95": [
+      0.7545072729675035,
+      0.9657084733134831
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-weighted",
+    "kind": "fractions",
+    "case": "root",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.8031053538667132,
+    "ratio_ci95": [
+      0.6748593430869767,
+      0.85550017028947
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-dense",
+    "kind": "fractions",
+    "case": "level",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9955494927159696,
+    "ratio_ci95": [
+      0.7503889099052671,
+      1.0803960813656308
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-dense",
+    "kind": "fractions",
+    "case": "level",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 1.000049598167908,
+    "ratio_ci95": [
+      0.9678935653430635,
+      1.028744409670269
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-dense",
+    "kind": "fractions",
+    "case": "level",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9860457280472819,
+    "ratio_ci95": [
+      0.7743507051167968,
+      1.3538493960380056
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-dense",
+    "kind": "fractions",
+    "case": "level",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9797287798393131,
+    "ratio_ci95": [
+      0.9567042579115964,
+      0.9960422713608477
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-dense",
+    "kind": "fractions",
+    "case": "root",
+    "chunk": 131072,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9856976024258979,
+    "ratio_ci95": [
+      0.9676045580568331,
+      1.0042038299557727
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-dense",
+    "kind": "fractions",
+    "case": "root",
+    "chunk": 262144,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 1.0010877357237296,
+    "ratio_ci95": [
+      0.9350196770784948,
+      1.0197021502179258
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-dense",
+    "kind": "fractions",
+    "case": "root",
+    "chunk": 524288,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 0.9693954045224327,
+    "ratio_ci95": [
+      0.5566713351897199,
+      1.022546454866636
+    ]
+  },
+  {
+    "workload": "fraction-tiny-4-servable-p64-dense",
+    "kind": "fractions",
+    "case": "root",
+    "chunk": 1048576,
+    "pairs": 20,
+    "baseline_first": 10,
+    "candidate_first": 10,
+    "median_ratio": 1.0013901133643364,
+    "ratio_ci95": [
+      0.9760669509343729,
+      1.0183298100592135
+    ]
+  }
+]
