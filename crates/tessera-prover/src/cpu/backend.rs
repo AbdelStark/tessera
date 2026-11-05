@@ -705,7 +705,6 @@ impl<'a> CpuBackend<'a> {
         let engine = Engine::new(&u.lowering)?.threads(p.threads);
         let source = u.source(&engine, p.model, &d.witness)?;
         // RFC-0077: the checked grouped route constructs only current scopes.
-        // The unchanged admission guards keep it unreachable until qualification.
         let actual = if u.scoped_leaf_sources {
             None
         } else {
