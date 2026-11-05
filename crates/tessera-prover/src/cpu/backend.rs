@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+#[cfg(test)]
+mod grouping_tests;
+
 use super::*;
 use crate::leaf::table_source::GeneratedCounts;
 use crate::leaf::{
@@ -59,6 +62,27 @@ impl Unit {
         })
     }
 }
+/// RFC-0054's public candidate order, shared by selection and metadata bounds.
+pub(super) fn group_candidate(
+    token_vars: u32,
+    layer_vars: u32,
+    bits: u32,
+) -> Option<protocol::LeafGroups> {
+    if bits == 0 || bits > u32::from(protocol::MAX_LEAF_GROUP_BITS) {
+        return None;
+    }
+    let mut token_bits = bits.min(token_vars.saturating_sub(8));
+    let mut layer_bits = bits - token_bits;
+    if layer_bits > layer_vars {
+        token_bits += layer_bits - layer_vars;
+        layer_bits = layer_vars;
+    }
+    (token_bits <= token_vars).then_some(protocol::LeafGroups {
+        token_bits: token_bits as u8,
+        layer_bits: layer_bits as u8,
+    })
+}
+
 /// The leaf stage's grouping under `budget` (RFC-0054 'When groups apply'): none when `plan`,
 /// the stage in one batch, fits; otherwise the fewest group bits whose largest group's lookup
 /// trees fit. The planner keeps a token subset of at least 256 tokens and splits layers instead
@@ -77,18 +101,8 @@ fn plan_groups(
     }
     let token_vars = tokens.next_power_of_two().trailing_zeros();
     for g in 1..=u32::from(protocol::MAX_LEAF_GROUP_BITS) {
-        let mut token_bits = g.min(token_vars.saturating_sub(8));
-        let mut layer_bits = g - token_bits;
-        if layer_bits > layers.vars {
-            token_bits += layer_bits - layers.vars;
-            layer_bits = layers.vars;
-        }
-        if token_bits > token_vars {
+        let Some(groups) = group_candidate(token_vars, layers.vars, g) else {
             break;
-        }
-        let groups = protocol::LeafGroups {
-            token_bits: token_bits as u8,
-            layer_bits: layer_bits as u8,
         };
         let grouped = GroupedLayout::new(leaf, layers, groups)?;
         let mut lookups = 0u64;

@@ -93,6 +93,39 @@ fn canonical_group_work_planning_is_bounded_and_refuses_before_field_work() {
                 caller_batch: None,
                 planner_caller: 0,
             };
+            let mut unrestricted = None;
+            let sized = allocation_counter::measure(|| {
+                unrestricted = Some(GroupedLayout::unrestricted_group_memory(&leaf).unwrap());
+            });
+            assert_eq!(sized.count_total, 0);
+            let unrestricted = unrestricted.unwrap();
+            for h in 0..grouping.count() {
+                let restricted = grouping.group_memory(h).unwrap();
+                assert!(restricted.peak_bytes() <= unrestricted.peak_bytes());
+                assert!(restricted.output_bytes() <= unrestricted.output_bytes());
+            }
+            let table =
+                table_plan::TablePlan::new(&leaf, runtime.selection(), Some(&grouping), None)
+                    .unwrap();
+            let mut ceiling = None;
+            let sized = allocation_counter::measure(|| {
+                ceiling = Some(
+                    table_plan::TablePlan::search_metadata_ceiling(
+                        &leaf,
+                        runtime.selection(),
+                        layers.vars,
+                        grouping.groups().bits(),
+                    )
+                    .unwrap(),
+                );
+            });
+            assert_eq!(sized.count_total, 0);
+            assert!(
+                table
+                    .construction_peak_bytes(&leaf, Some(&grouping))
+                    .unwrap()
+                    <= ceiling.unwrap()
+            );
             let mut bill = None;
             let measured = allocation_counter::measure(|| {
                 bill = Some(GroupedWorkMemory::new(&input, 64 << 30).unwrap());

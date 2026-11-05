@@ -134,6 +134,31 @@ impl GroupedLayout {
         })
     }
 
+    /// Every group's metadata is a subset of this unrestricted-stage ceiling.
+    /// Coordinates and blocks can only be removed, including held empty-S reads.
+    /// Uses no allocation, field values or speculative grouping construction.
+    pub(crate) fn unrestricted_group_memory<T: Copy + Eq>(
+        stage: &LeafLayout<T>,
+    ) -> Result<GroupLayoutMemory, LeafError> {
+        let mut reads = 0;
+        let mut points = 0;
+        for (s, site) in stage.sites().iter().enumerate() {
+            for l in 0..site.layers.len() {
+                for read in stage.reads(s, l).ok_or(LeafError::Internal {
+                    rule: "an unrestricted group has every canonical source read",
+                })? {
+                    reads = add(reads, 1)?;
+                    points = add(points, array::<u32>(read.coords.len() as u64)?)?;
+                }
+            }
+        }
+        group_bound(
+            reads,
+            points,
+            stage.instances().iter().map(|i| Ok(i.blocks.len() as u64)),
+        )
+    }
+
     /// Requested peak heap bytes of [`Self::group`], including the returned layout.
     ///
     /// Allocation-free public sizing (RFC-0018/0054). Includes read/coordinate
@@ -168,11 +193,7 @@ impl GroupedLayout {
                 )?;
             }
         }
-        let mut bytes = add(pushed::<GroupRead>(reads)?, points)?;
-        let mut tables = 0;
-        let mut sort = 0;
-        let mut growth = 0;
-        for &table in &self.tables {
+        let blocks = self.tables.iter().map(|&table| {
             let mut blocks = 0;
             for share in self.shares.iter().filter(|share| share.subset == subset) {
                 for &(id, _, restricted) in &share.blocks {
@@ -181,42 +202,58 @@ impl GroupedLayout {
                     }
                 }
             }
-            if blocks > 0 {
-                tables = add(tables, 1)?;
-                // Buffers move from the index to instances without cloning.
-                bytes = add(bytes, pushed::<Block>(blocks)?)?;
-                sort = sort.max(array::<Block>(blocks)?);
-                growth = growth.max(old_capacity::<Block>(blocks)?);
-            }
-        }
-        bytes = add(bytes, array::<InstanceLayout>(tables)?)?;
-        let output = bytes;
-        bytes = add(bytes, old_capacity::<GroupRead>(reads)?)?;
-        // Block-vector growth ends before instance_layouts starts stable sorting.
-        bytes = add(bytes, sort.max(growth))?;
-        if tables == 0 {
-            return Ok(GroupLayoutMemory {
-                output,
-                peak: bytes,
-            });
-        }
-        // Rust 1.95 B-tree B=6: 11 keys/values, 12 edges, parent and two
-        // u16s. Bound both node alignments and transient insertion splits.
-        let align = align_of::<TableId>()
-            .max(align_of::<Vec<Block>>())
-            .max(align_of::<usize>()) as u64;
-        let node = add(
-            add(
-                size_of::<usize>() as u64 + 4,
-                11 * (size_of::<TableId>() + size_of::<Vec<Block>>()) as u64,
-            )?,
-            add(12 * size_of::<usize>() as u64, 7 * (align - 1))?,
-        )?;
-        Ok(GroupLayoutMemory {
-            output,
-            peak: add(bytes, mul(mul(add(tables, 1)?, 2)?, node)?)?,
-        })
+            Ok(blocks)
+        });
+        group_bound(reads, points, blocks)
     }
+}
+
+fn group_bound(
+    reads: u64,
+    points: u64,
+    blocks: impl Iterator<Item = Result<u64, LeafError>>,
+) -> Result<GroupLayoutMemory, LeafError> {
+    let mut bytes = add(pushed::<GroupRead>(reads)?, points)?;
+    let mut tables = 0;
+    let mut sort = 0;
+    let mut growth = 0;
+    for blocks in blocks {
+        let blocks = blocks?;
+        if blocks > 0 {
+            tables = add(tables, 1)?;
+            // Buffers move from the index to instances without cloning.
+            bytes = add(bytes, pushed::<Block>(blocks)?)?;
+            sort = sort.max(array::<Block>(blocks)?);
+            growth = growth.max(old_capacity::<Block>(blocks)?);
+        }
+    }
+    bytes = add(bytes, array::<InstanceLayout>(tables)?)?;
+    let output = bytes;
+    bytes = add(bytes, old_capacity::<GroupRead>(reads)?)?;
+    // Block-vector growth ends before instance_layouts starts stable sorting.
+    bytes = add(bytes, sort.max(growth))?;
+    if tables == 0 {
+        return Ok(GroupLayoutMemory {
+            output,
+            peak: bytes,
+        });
+    }
+    // Rust 1.95 B-tree B=6: 11 keys/values, 12 edges, parent and two
+    // u16s. Bound both node alignments and transient insertion splits.
+    let align = align_of::<TableId>()
+        .max(align_of::<Vec<Block>>())
+        .max(align_of::<usize>()) as u64;
+    let node = add(
+        add(
+            size_of::<usize>() as u64 + 4,
+            11 * (size_of::<TableId>() + size_of::<Vec<Block>>()) as u64,
+        )?,
+        add(12 * size_of::<usize>() as u64, 7 * (align - 1))?,
+    )?;
+    Ok(GroupLayoutMemory {
+        output,
+        peak: add(bytes, mul(mul(add(tables, 1)?, 2)?, node)?)?,
+    })
 }
 
 #[cfg(test)]

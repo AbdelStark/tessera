@@ -615,6 +615,62 @@ fn grow<T>(n: u64) -> Result<u64, ProverError> {
 }
 
 impl TablePlan {
+    /// Metadata ceiling for any resident/grouped table candidate built during
+    /// public search; no table payload, allocation or caller plan is included.
+    pub(super) fn search_metadata_ceiling(
+        leaf: &LeafLayout<ModelColumn>,
+        selection: &Selection,
+        layer_vars: u32,
+        group_bits: u8,
+    ) -> Result<u64, ProverError> {
+        let forests = leaf.sites().len() as u64;
+        let trees = add(mul(2, leaf.instances().len() as u64)?, forests)?;
+        let mut rank = 0;
+        let mut max_vars = leaf
+            .instances()
+            .iter()
+            .map(|i| u64::from(i.height))
+            .chain(selection.tables.iter().map(|t| u64::from(t.log2_rows)))
+            .max()
+            .unwrap_or(0);
+        let mut polynomials = forests;
+        let mut coordinates = 0;
+        for (s, site) in leaf.sites().iter().enumerate() {
+            for (l, gadget) in site.layers.iter().enumerate() {
+                for request in &gadget.lookups {
+                    rank = rank.max(request.domain.len() as u64);
+                }
+                for read in leaf.reads(s, l).ok_or_else(memory)? {
+                    polynomials = add(polynomials, 1)?;
+                    max_vars = max_vars.max(add(read.coords.len() as u64, u64::from(layer_vars))?);
+                    coordinates = add(
+                        coordinates,
+                        array::<usize>((read.coords.len() as u64).min(u64::from(group_bits)))?,
+                    )?;
+                }
+            }
+        }
+        let metadata = add(grow::<Shape>(trees)?, grow::<usize>(max_vars)?)?;
+        let mut peak = add(
+            mul(2, metadata)?,
+            add(grow::<WindowShape>(trees)?, array::<u64>(trees)?)?,
+        )?;
+        peak = add(peak, grow::<u32>(rank)?)?;
+        if group_bits != 0 {
+            peak = add(
+                peak,
+                add(
+                    mul(2, grow::<MergePolynomial>(polynomials)?)?,
+                    add(
+                        mul(forests, grow::<usize>(u64::from(group_bits))?)?,
+                        coordinates,
+                    )?,
+                )?,
+            )?;
+        }
+        Ok(peak)
+    }
+
     pub(super) fn metadata_bytes(&self) -> Result<u64, ProverError> {
         add(
             array::<Shape>(self.trees.capacity() as u64)?,

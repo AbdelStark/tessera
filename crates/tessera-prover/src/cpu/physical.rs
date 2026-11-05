@@ -344,6 +344,7 @@ struct UnitPreparation {
     layers: u64,
     leaf: u64,
     native: u64,
+    grouping: u64,
 }
 impl UnitPreparation {
     fn peak(&self) -> u64 {
@@ -357,6 +358,7 @@ impl UnitPreparation {
             self.layers,
             self.leaf,
             self.native,
+            self.grouping,
         ]
         .into_iter()
         .max()
@@ -367,6 +369,7 @@ impl UnitPreparation {
         input: &Inputs<'_>,
         advice: &ModelAdviceLayout<'_>,
         prepared: u64,
+        host: u64,
     ) -> Result<Self, ProverError> {
         let lower = input.lowering;
         let layers = input.layers;
@@ -434,8 +437,89 @@ impl UnitPreparation {
                 required(input.leaf.heap_bytes())?,
                 required(input.native.construction_peak_bytes(lower))?,
             ])?,
+            grouping: group_search_memory(
+                input,
+                host,
+                sum([
+                    layered,
+                    required(input.leaf.heap_bytes())?,
+                    required(input.native.heap_bytes())?,
+                ])?,
+            )?,
         })
     }
+}
+
+// A public search holds the original plan while cloning a trial, constructing
+// its grouping/group views/table metadata and selecting its resident windows.
+pub(super) fn group_search_memory(
+    input: &Inputs<'_>,
+    host: u64,
+    retained: u64,
+) -> Result<u64, ProverError> {
+    let tokens = input
+        .lowering
+        .graph
+        .tensors
+        .get(input.lowering.tokens.0 as usize)
+        .and_then(|t| t.shape.first())
+        .ok_or_else(memory)?;
+    let token_vars = tokens
+        .checked_next_power_of_two()
+        .ok_or_else(memory)?
+        .trailing_zeros();
+    let mut tensor_cells = 0;
+    for tensor in &input.lowering.graph.tensors {
+        let cells = tensor.shape.iter().try_fold(1u64, |n, &d| {
+            n.checked_mul(u64::from(d.checked_next_power_of_two().ok_or_else(memory)?))
+                .ok_or_else(memory)
+        })?;
+        tensor_cells = sum([tensor_cells, cells])?;
+    }
+    let mut passes = 5u64;
+    // This invariant part of the unchanged logical floor makes for_budget fail
+    // before allocating selected window/pass vectors for every resident trial.
+    if times(tensor_cells, PassPlan::BYTES_PER_CELL)? <= host {
+        for stage in input.native.schedule().stages.iter().skip(1) {
+            passes = sum([passes, 1u64.checked_shl(stage.rounds).ok_or_else(memory)?])?;
+        }
+    }
+    let clones = sum([
+        times(4, input.planner_caller)?,
+        growing::<Pass>(passes)?,
+        growing::<WindowMemory>(input.native.schedule().stages.len() as u64)?,
+    ])?;
+    let unrestricted = GroupedLayout::unrestricted_group_memory(input.leaf)?;
+    let mut peak = sum([
+        retained,
+        clones,
+        table_plan::TablePlan::search_metadata_ceiling(
+            input.leaf,
+            input.runtime.selection(),
+            input.layers.vars,
+            0,
+        )?,
+    ])?;
+    for bits in 1..=u32::from(protocol::MAX_LEAF_GROUP_BITS) {
+        let Some(groups) = backend::group_candidate(token_vars, input.layers.vars, bits) else {
+            break;
+        };
+        let layout = GroupedLayout::construction_memory(input.leaf, groups)?;
+        peak = peak.max(sum([
+            retained,
+            clones,
+            layout.peak_bytes(),
+            layout.output_bytes(),
+            unrestricted.peak_bytes(),
+            table_plan::TablePlan::search_metadata_ceiling(
+                input.leaf,
+                input.runtime.selection(),
+                input.layers.vars,
+                groups.bits(),
+            )?,
+        ])?);
+    }
+    Ok(peak)
 }
 
 fn request_key_memory(n: u64) -> Result<u64, ProverError> {
@@ -746,6 +830,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
             weight.retained_bytes(),
             session.map_or(0, |m| m.caller),
         ])?,
+        host,
     )?;
     let base = sum([
         *planner_caller,
@@ -1289,9 +1374,13 @@ fn preparation_lifetimes_cover_the_complete_public_constructor_sequence() {
                         caller_batch: None,
                         planner_caller: 0,
                     };
-                    let bound =
-                        UnitPreparation::derive(&input, &advice, prepared_owner.capacity() as u64)
-                            .unwrap();
+                    let bound = UnitPreparation::derive(
+                        &input,
+                        &advice,
+                        prepared_owner.capacity() as u64,
+                        64 << 30,
+                    )
+                    .unwrap();
                     // Capture only the allocation-free bound, not borrowed layouts.
                     bound_result = Some(bound.peak());
                     if check_planner {
