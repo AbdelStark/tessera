@@ -4,6 +4,8 @@
 //! Checked physical fallback for canonical ungrouped checkpoint sources.
 //! The resident route remains the first choice and the differential oracle.
 
+mod grouped;
+
 use super::*;
 use crate::leaf::{GroupedLayout, LeafLayout, ModelColumn, ModelWitness, ScopedSourceMemory};
 use crate::native::ModelNativePlan;
@@ -814,13 +816,24 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     let active = sum([base, source, rows, random::heap_bytes(), messages])?;
     // RFC-0077: source-only component, still behind both grouped admission
     // guards until group kernels and every other phase are fully qualified.
-    let (leaf_source_peak, leaf_source_planning) = match grouped {
+    let (leaf_source_peak, leaf_source_planning, grouped_work_peak) = match grouped {
         Some(grouped) => {
             let source = ScopedSourceMemory::new(leaf, lowering, layers, grouped, advice)?;
-            (source.peak()?, source.planning)
+            let work =
+                grouped::GroupedWorkMemory::new(input, host.checked_sub(base).ok_or_else(memory)?)?;
+            (
+                source.peak()?,
+                sum([source.planning, work.planning])?,
+                sum([
+                    work.peak,
+                    work.messages.retained_bytes(),
+                    work.messages.wire_bytes(),
+                ])?,
+            )
         }
         None => (
             ModelWitness::memory(leaf, lowering, layers, advice)?.peak_bytes(),
+            0,
             0,
         ),
     };
@@ -834,6 +847,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     let mut p2_fixed = sum([
         active,
         leaf_source_peak,
+        grouped_work_peak,
         stage_state_peak,
         stage_driver.work_memory(0)?.peak_bytes()?,
         native_memory.construction_peak_bytes(),

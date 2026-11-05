@@ -31,7 +31,8 @@
 use core::fmt;
 
 mod inputs;
-pub(super) use inputs::{ForestShape, GroupInputs, seal_copy};
+pub(crate) use inputs::ForestShape;
+pub(super) use inputs::{GroupInputs, seal_copy};
 
 mod messages;
 pub use messages::{GroupedMessageMemory, GroupedMessageShape};

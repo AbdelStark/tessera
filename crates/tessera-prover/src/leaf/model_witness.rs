@@ -18,7 +18,9 @@ mod scoped;
 pub use memory::ModelWitnessMemory;
 use projection::Projection;
 use scoped::Selection;
-pub(crate) use scoped::{ModelLeafSource, ModelSourceFactory, ScopedSourceMemory};
+pub(crate) use scoped::{
+    ModelLeafSource, ModelSourceFactory, ScopedSourceMemory, model_forest_shapes,
+};
 
 struct Column {
     name: ModelColumn,

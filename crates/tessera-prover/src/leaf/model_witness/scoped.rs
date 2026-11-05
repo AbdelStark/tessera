@@ -222,36 +222,43 @@ impl ModelLeafSource for ModelSourceFactory<'_> {
     }
 }
 
+/// Canonical original forest geometry, with no witness or callback reads.
+pub(crate) fn model_forest_shapes(
+    layout: &LeafLayout<ModelColumn>,
+) -> Result<Vec<ForestShape>, LeafError> {
+    let count = (0..layout.sites().len()).try_fold(0usize, |n, s| {
+        n.checked_add(usize::from(forest_domain(layout, s)?.is_some()))
+            .ok_or(LeafError::Memory)
+    })?;
+    let mut out = descriptors(count)?;
+    for (s, site) in layout.sites().iter().enumerate() {
+        let Some(domain) = forest_domain(layout, s)? else {
+            continue;
+        };
+        let height = domain[2]
+            .checked_next_power_of_two()
+            .ok_or(LeafError::Memory)?
+            .trailing_zeros();
+        let layers = variables(&domain).ok_or(LeafError::Memory)?;
+        let layer_bits = site
+            .layers
+            .len()
+            .checked_next_power_of_two()
+            .ok_or(LeafError::Memory)?
+            .trailing_zeros();
+        out.push(ForestShape {
+            vars: layers.checked_add(layer_bits).ok_or(LeafError::Memory)?,
+            height,
+            queries: height,
+            layers,
+        });
+    }
+    Ok(out)
+}
+
 impl<'a> ModelSourceFactory<'a> {
     pub(in crate::leaf) fn forest_shapes(&self) -> Result<Vec<ForestShape>, LeafError> {
-        let count = (0..self.layout.sites().len()).try_fold(0usize, |n, s| {
-            n.checked_add(usize::from(forest_domain(self.layout, s)?.is_some()))
-                .ok_or(LeafError::Memory)
-        })?;
-        let mut out = descriptors(count)?;
-        for (s, site) in self.layout.sites().iter().enumerate() {
-            let Some(domain) = forest_domain(self.layout, s)? else {
-                continue;
-            };
-            let height = domain[2]
-                .checked_next_power_of_two()
-                .ok_or(LeafError::Memory)?
-                .trailing_zeros();
-            let layers = variables(&domain).ok_or(LeafError::Memory)?;
-            let layer_bits = site
-                .layers
-                .len()
-                .checked_next_power_of_two()
-                .ok_or(LeafError::Memory)?
-                .trailing_zeros();
-            out.push(ForestShape {
-                vars: layers.checked_add(layer_bits).ok_or(LeafError::Memory)?,
-                height,
-                queries: height,
-                layers,
-            });
-        }
-        Ok(out)
+        model_forest_shapes(self.layout)
     }
 
     pub(in crate::leaf) fn group_inputs<'r>(

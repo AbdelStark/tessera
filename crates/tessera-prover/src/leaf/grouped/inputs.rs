@@ -6,11 +6,11 @@ use super::*;
 use crate::leaf::GroupRead;
 
 #[derive(Clone, Copy)]
-pub(in crate::leaf) struct ForestShape {
-    pub(in crate::leaf) vars: u32,
-    pub(in crate::leaf) height: u32,
-    pub(in crate::leaf) queries: u32,
-    pub(in crate::leaf) layers: u32,
+pub(crate) struct ForestShape {
+    pub(crate) vars: u32,
+    pub(crate) height: u32,
+    pub(crate) queries: u32,
+    pub(crate) layers: u32,
 }
 
 enum Splits<'a, S> {
