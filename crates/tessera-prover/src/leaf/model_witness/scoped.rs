@@ -13,6 +13,8 @@ pub(crate) use memory::ScopedSourceMemory;
 
 #[cfg(test)]
 mod proof_tests;
+#[cfg(test)]
+pub(crate) use proof_tests::bounded_model as source_test_model;
 
 #[derive(Clone, Copy)]
 pub(super) enum Selection<'a> {

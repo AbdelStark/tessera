@@ -53,7 +53,7 @@ impl SumcheckTranscript<F> for Recording {
 
 // Same bounded architecture and public scales as the existing model_groups oracle fixture.
 // These fixture changes are not a real-model export or a fidelity result.
-fn bounded_model() -> IntegerModel {
+pub(crate) fn bounded_model() -> IntegerModel {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../spec/vectors/models/tiny-2-servable.d");
     let mut model: IntegerModel = envelope::open(

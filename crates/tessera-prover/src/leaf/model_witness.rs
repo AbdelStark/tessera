@@ -18,6 +18,8 @@ mod scoped;
 pub use memory::ModelWitnessMemory;
 use projection::Projection;
 use scoped::Selection;
+#[cfg(test)]
+pub(crate) use scoped::source_test_model;
 pub(crate) use scoped::{
     ModelLeafSource, ModelSourceFactory, ScopedSourceMemory, model_forest_shapes,
 };

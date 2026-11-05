@@ -56,6 +56,8 @@ mod model_witness;
 pub(crate) mod table_source;
 pub use graph::GraphLeafWitness;
 pub use model::ModelColumn;
+#[cfg(test)]
+pub(crate) use model_witness::source_test_model;
 pub(crate) use model_witness::{
     ModelLeafSource, ModelSourceFactory, ScopedSourceMemory, model_forest_shapes,
 };
