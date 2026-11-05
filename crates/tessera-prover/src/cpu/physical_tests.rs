@@ -25,11 +25,39 @@ fn physical_route_matches_resident_and_independently_verifies() {
         ("tiny-2-affine", &[(1, 1)][..]),
         ("tiny-2-servable", &[(2, 1), (1, 0)][..]),
     ] {
-        physical_case(name, requests);
+        physical_case(name, requests, None);
     }
 }
 
-fn physical_case(name: &str, requests: &[(u32, u32)]) {
+#[test]
+fn grouped_scoped_cpu_qualification_matches_resident_and_independently_verifies() {
+    for requests in [&[(3, 0)][..], &[(1, 1)][..], &[(2, 1), (1, 0)][..]] {
+        physical_case(
+            "tiny-2-servable",
+            requests,
+            Some(protocol::LeafGroups {
+                token_bits: 1,
+                layer_bits: 1,
+            }),
+        );
+    }
+}
+
+struct Groups;
+impl Groups {
+    fn enable(groups: Option<protocol::LeafGroups>) -> Self {
+        physical::FORCE_GROUPS.with(|v| v.set(groups));
+        Self
+    }
+}
+impl Drop for Groups {
+    fn drop(&mut self) {
+        physical::FORCE_GROUPS.with(|v| v.set(None));
+    }
+}
+
+fn physical_case(name: &str, requests: &[(u32, u32)], groups: Option<protocol::LeafGroups>) {
+    let _groups = Groups::enable(groups);
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/vectors");
     let mut model: IntegerModel = envelope::open(
         &std::fs::read(root.join(format!("models/{name}.d"))).unwrap(),
@@ -231,6 +259,14 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
         .plan(&batch)
         .unwrap();
     assert!(planned.uses_physical_bound());
+    assert_eq!(
+        planned.leaf_groups(),
+        groups.unwrap_or(protocol::LeafGroups::NONE)
+    );
+    assert_eq!(
+        planned.passes().iter().filter(|&&p| p == Pass::P2b).count(),
+        usize::from(groups.is_some())
+    );
     assert!(planned.uses_checkpoints());
     assert!(planned.table_plan().unwrap().cache_log_rows.is_some());
     assert!(planned.stage_windows().iter().skip(1).all(|w| w.cut > 0));

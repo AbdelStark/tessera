@@ -83,6 +83,21 @@ pub(super) fn group_candidate(
     })
 }
 
+fn largest_group_lookups(grouped: &GroupedLayout) -> Result<u64, ProverError> {
+    let mut lookups = 0u64;
+    for h in 0..grouped.count() {
+        let group = grouped.group(h)?;
+        let mut held = 0u64;
+        for instance in group.instances() {
+            held = held
+                .checked_add(1u64.checked_shl(instance.height).ok_or_else(memory)?)
+                .ok_or_else(memory)?;
+        }
+        lookups = lookups.max(held);
+    }
+    Ok(lookups)
+}
+
 /// The leaf stage's grouping under `budget` (RFC-0054 'When groups apply'): none when `plan`,
 /// the stage in one batch, fits; otherwise the fewest group bits whose largest group's lookup
 /// trees fit. The planner keeps a token subset of at least 256 tokens and splits layers instead
@@ -105,17 +120,7 @@ fn plan_groups(
             break;
         };
         let grouped = GroupedLayout::new(leaf, layers, groups)?;
-        let mut lookups = 0u64;
-        for h in 0..grouped.count() {
-            let group = grouped.group(h)?;
-            let mut held = 0u64;
-            for instance in group.instances() {
-                held = held
-                    .checked_add(1u64.checked_shl(instance.height).ok_or_else(memory)?)
-                    .ok_or_else(memory)?;
-            }
-            lookups = lookups.max(held);
-        }
+        let lookups = largest_group_lookups(&grouped)?;
         let candidate = plan.clone().grouped(groups, lookups).tables(TablePlan::new(
             leaf,
             selection,
@@ -502,6 +507,24 @@ impl<'a> CpuBackend<'a> {
                 false
             }
         };
+        #[cfg(test)]
+        let mut grouped = grouped;
+        #[cfg(test)]
+        if let Some(groups) = physical::FORCE_GROUPS.with(std::cell::Cell::get) {
+            let layout = GroupedLayout::new(&leaf, &layers, groups)?;
+            plan = plan
+                .grouped(groups, largest_group_lookups(&layout)?)
+                .tables(TablePlan::new(
+                    &leaf,
+                    runtime.selection(),
+                    Some(&layout),
+                    None,
+                )?);
+            grouped = Some(layout);
+            if !force_physical {
+                plan = plan.for_budget(prepared.cfg.memory_budget)?;
+            }
+        }
         if (force_physical || plan.check(prepared.cfg.memory_budget).is_err())
             && c.protocol_version == protocol::PROTOCOL_VERSION
             && grouped.is_none()
@@ -528,6 +551,25 @@ impl<'a> CpuBackend<'a> {
                 Err(error) if error.code() == ErrorCode::ResMemory => {}
                 Err(error) => return Err(error),
             }
+        }
+        #[cfg(test)]
+        if force_physical && physical::FORCE_GROUPS.with(std::cell::Cell::get).is_some() {
+            let input = physical::Inputs {
+                claims: c,
+                statement: &batch.statement,
+                lowering: &lowering,
+                layers: &layers,
+                runtime: &runtime,
+                advice: &advice,
+                leaf: &leaf,
+                native: &native,
+                grouped: grouped.as_ref(),
+                weights: &prepared.layout,
+                session: Some(prepared.memory),
+                caller_batch: Some(preparation::caller_batch_bytes(batch).ok_or_else(memory)?),
+                planner_caller: plan.heap_bytes().ok_or_else(memory)?,
+            };
+            plan = physical::select(&input, prepared.cfg.memory_budget.host)?.into_plan(plan)?;
         }
         if !plan.uses_checkpoints() && plan.check(prepared.cfg.memory_budget).is_ok() {
             let checkpoint = tessera_witness::CheckpointMemory::new(&lowering)?;

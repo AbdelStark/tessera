@@ -19,6 +19,9 @@ use tessera_witness::Engine;
 std::thread_local! {
     // Exercise this exact production chooser even when the resident oracle fits.
     pub(super) static FORCE_ROUTE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    // Release-excluded qualification: compare this exact grouped driver against
+    // the resident oracle while both production admission guards stay closed.
+    pub(super) static FORCE_GROUPS: std::cell::Cell<Option<protocol::LeafGroups>> = const { std::cell::Cell::new(None) };
 }
 
 fn memory() -> ProverError {
@@ -369,7 +372,6 @@ impl UnitPreparation {
         input: &Inputs<'_>,
         advice: &ModelAdviceLayout<'_>,
         prepared: u64,
-        host: u64,
     ) -> Result<Self, ProverError> {
         let lower = input.lowering;
         let layers = input.layers;
@@ -439,7 +441,6 @@ impl UnitPreparation {
             ])?,
             grouping: group_search_memory(
                 input,
-                host,
                 sum([
                     layered,
                     required(input.leaf.heap_bytes())?,
@@ -452,11 +453,7 @@ impl UnitPreparation {
 
 // A public search holds the original plan while cloning a trial, constructing
 // its grouping/group views/table metadata and selecting its resident windows.
-pub(super) fn group_search_memory(
-    input: &Inputs<'_>,
-    host: u64,
-    retained: u64,
-) -> Result<u64, ProverError> {
+pub(super) fn group_search_memory(input: &Inputs<'_>, retained: u64) -> Result<u64, ProverError> {
     let tokens = input
         .lowering
         .graph
@@ -468,22 +465,15 @@ pub(super) fn group_search_memory(
         .checked_next_power_of_two()
         .ok_or_else(memory)?
         .trailing_zeros();
-    let mut tensor_cells = 0;
-    for tensor in &input.lowering.graph.tensors {
-        let cells = tensor.shape.iter().try_fold(1u64, |n, &d| {
-            n.checked_mul(u64::from(d.checked_next_power_of_two().ok_or_else(memory)?))
-                .ok_or_else(memory)
-        })?;
-        tensor_cells = sum([tensor_cells, cells])?;
-    }
-    let mut passes = 5u64;
-    // This invariant part of the unchanged logical floor makes for_budget fail
-    // before allocating selected window/pass vectors for every resident trial.
-    if times(tensor_cells, PassPlan::BYTES_PER_CELL)? <= host {
-        for stage in input.native.schedule().stages.iter().skip(1) {
-            passes = sum([passes, 1u64.checked_shl(stage.rounds).ok_or_else(memory)?])?;
-        }
-    }
+    // WindowMemory::fold_passes = ceil((cut-padding)/window_vars), with
+    // positive window_vars and cut < usize::BITS. Include each stage itself.
+    let passes = sum([
+        5,
+        times(
+            input.native.schedule().stages.len() as u64,
+            u64::from(usize::BITS) + 1,
+        )?,
+    ])?;
     let clones = sum([
         times(4, input.planner_caller)?,
         growing::<Pass>(passes)?,
@@ -575,7 +565,7 @@ fn candidate_metadata(table: &table_plan::TablePlan, stages: u64) -> Result<u64,
         // PassPlan and Unit both retain stage-indexed choices. Checked usize
         // shifts cap a valid stage at fewer than usize::BITS own variables.
         growing::<usize>(stages)?,
-        growing::<Pass>(sum([4, times(stages, u64::from(usize::BITS) + 1)?])?)?,
+        growing::<Pass>(sum([5, times(stages, u64::from(usize::BITS) + 1)?])?)?,
     ])
 }
 
@@ -830,7 +820,6 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
             weight.retained_bytes(),
             session.map_or(0, |m| m.caller),
         ])?,
-        host,
     )?;
     let base = sum([
         *planner_caller,
@@ -895,7 +884,22 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     let graph_leaf = crate::StageProver::new(lowering, native.schedule(), &MetadataOnly)
         .work_memory(0)?
         .output_bytes();
-    let (leaf_original, leaf_wire) = leaf_messages(input, graph_leaf)?;
+    #[cfg(test)]
+    let qualification = FORCE_ROUTE.with(std::cell::Cell::get)
+        && FORCE_GROUPS.with(std::cell::Cell::get) == input.grouped.map(|g| g.groups())
+        && input.grouped.is_some();
+    #[cfg(not(test))]
+    let qualification = false;
+    let (leaf_original, leaf_wire) = if qualification {
+        let work =
+            grouped::GroupedWorkMemory::new(input, host.checked_sub(base).ok_or_else(memory)?)?;
+        (
+            sum([work.messages.retained_bytes(), graph_leaf])?,
+            work.messages.wire_bytes(),
+        )
+    } else {
+        leaf_messages(input, graph_leaf)?
+    };
     let response_containers = response_containers(input, &geometry, params)?;
     let messages = sum([leaf_original, leaf_wire, response_containers])?;
     let active = sum([base, source, rows, random::heap_bytes(), messages])?;
@@ -1374,13 +1378,9 @@ fn preparation_lifetimes_cover_the_complete_public_constructor_sequence() {
                         caller_batch: None,
                         planner_caller: 0,
                     };
-                    let bound = UnitPreparation::derive(
-                        &input,
-                        &advice,
-                        prepared_owner.capacity() as u64,
-                        64 << 30,
-                    )
-                    .unwrap();
+                    let bound =
+                        UnitPreparation::derive(&input, &advice, prepared_owner.capacity() as u64)
+                            .unwrap();
                     // Capture only the allocation-free bound, not borrowed layouts.
                     bound_result = Some(bound.peak());
                     if check_planner {

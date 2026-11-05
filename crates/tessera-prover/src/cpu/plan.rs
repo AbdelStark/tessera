@@ -182,6 +182,9 @@ impl PassPlan {
         self.table_plan = Some(table);
         self.physical_peak = Some(peak);
         let mut passes = vec![Pass::P1, Pass::P2];
+        if self.leaf_groups != LeafGroups::NONE {
+            passes.push(Pass::P2b);
+        }
         for stage in self.stage_windows.iter().skip(1) {
             passes.push(Pass::P3);
             passes.extend(core::iter::repeat_n(Pass::P3b, stage.fold_passes));
@@ -280,7 +283,10 @@ impl PassPlan {
     /// after the group pass.
     pub(crate) fn grouped(mut self, groups: LeafGroups, lookups: u64) -> Self {
         self.cells.lookups = lookups;
-        if let Some(at) = self.passes.iter().position(|&p| p == Pass::P2) {
+        self.passes.retain(|&pass| pass != Pass::P2b);
+        if groups != LeafGroups::NONE
+            && let Some(at) = self.passes.iter().position(|&p| p == Pass::P2)
+        {
             self.passes.insert(at + 1, Pass::P2b);
         }
         self.leaf_groups = groups;
@@ -534,6 +540,20 @@ mod tests {
             PassPlan::new(1, Cells::default(), 0).passes(),
             [Pass::P1, Pass::P2, Pass::P4, Pass::P5]
         );
+    }
+
+    #[test]
+    fn reassigning_group_choices_keeps_exactly_one_p2b_pass() {
+        let groups = LeafGroups {
+            token_bits: 1,
+            layer_bits: 1,
+        };
+        let plan = PassPlan::new(3, Cells::default(), 0)
+            .grouped(groups, 0)
+            .grouped(groups, 0);
+        assert_eq!(plan.passes().iter().filter(|&&p| p == Pass::P2b).count(), 1);
+        let reset = plan.grouped(LeafGroups::NONE, 0);
+        assert!(!reset.passes().contains(&Pass::P2b));
     }
 
     #[test]

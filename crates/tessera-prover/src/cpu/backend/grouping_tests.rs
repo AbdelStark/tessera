@@ -144,7 +144,7 @@ fn actual_resident_group_search_fits_the_public_preparation_ceiling() {
         for host in [0, plan.resident_bytes().unwrap() - 1, 64 << 30] {
             let mut bound = None;
             let sized = allocation_counter::measure(|| {
-                bound = Some(physical::group_search_memory(&input, host, 0).unwrap())
+                bound = Some(physical::group_search_memory(&input, 0).unwrap())
             });
             assert_eq!(sized.count_total, 0);
             let mut result = None;

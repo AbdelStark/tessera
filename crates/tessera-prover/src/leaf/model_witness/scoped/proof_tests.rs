@@ -17,6 +17,7 @@ use tessera_sumcheck::SumcheckTranscript;
 use tessera_tables::GeneratedTable;
 use tessera_witness::{Engine, Resident};
 
+mod failures;
 mod runtime_slots;
 
 type F = GoldilocksExt2;
