@@ -237,10 +237,16 @@ fn physical_case(name: &str, requests: &[(u32, u32)], groups: Option<protocol::L
         mask_rng: MaskRng::Seeded(17),
         release: ReleaseConfig,
     };
+    let full_before = crate::leaf::ModelWitness::full_source_builds();
     let resident = Prover::new(&plan, &model, &mut state, config.clone())
         .unwrap()
         .prove_non_interactive(&batch)
         .unwrap();
+    assert_eq!(
+        crate::leaf::ModelWitness::full_source_builds() - full_before,
+        1,
+        "the resident oracle exercises the complete materializer"
+    );
     let mut config = config;
     config.backend = Backend::Cpu { threads: 4 };
     let advice_n = 1usize
@@ -272,6 +278,7 @@ fn physical_case(name: &str, requests: &[(u32, u32)], groups: Option<protocol::L
     assert!(planned.stage_windows().iter().skip(1).all(|w| w.cut > 0));
     metrics::reset();
     let mut proof = None;
+    let full_before = crate::leaf::ModelWitness::full_source_builds();
     let measured = allocation_counter::measure(|| {
         proof = Some(
             Prover::new(&plan, &model, &mut state, config.clone())
@@ -280,6 +287,11 @@ fn physical_case(name: &str, requests: &[(u32, u32)], groups: Option<protocol::L
                 .unwrap(),
         );
     });
+    assert_eq!(
+        crate::leaf::ModelWitness::full_source_builds() - full_before,
+        usize::from(groups.is_none()),
+        "the scoped CPU route never builds the complete leaf witness"
+    );
     assert!(
         measured.bytes_max <= planned.resident_bytes().unwrap(),
         "{measured:?} > {planned:?}"

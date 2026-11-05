@@ -232,6 +232,7 @@ fn scoped_group_driver_matches_resident_transcript_and_encoded_messages() {
     let witness = engine.run(&model, &Secret::new(vec![1, 2, 3])).unwrap();
     let source = Resident::new(&engine, &selection, &model, &witness).unwrap();
     let full = ModelWitness::new(&stage, &lowering, &layers, &witness, &source, &advice).unwrap();
+    let full_builds = ModelWitness::full_source_builds();
     assert!(
         full.columns.iter().any(|layers| layers.len() > 1
             && layers[0]
@@ -523,4 +524,9 @@ fn scoped_group_driver_matches_resident_transcript_and_encoded_messages() {
         }
     }
     assert_eq!(variants, 17);
+    assert_eq!(
+        ModelWitness::full_source_builds(),
+        full_builds,
+        "scoped group/original/native leases never use the complete materializer"
+    );
 }

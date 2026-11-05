@@ -24,6 +24,11 @@ pub(crate) use scoped::{
     ModelLeafSource, ModelSourceFactory, ScopedSourceMemory, model_forest_shapes,
 };
 
+#[cfg(test)]
+std::thread_local! {
+    static FULL_SOURCE_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 struct Column {
     name: ModelColumn,
     domain: Vec<u32>,
@@ -227,6 +232,11 @@ fn shared(
 }
 
 impl ModelWitness {
+    #[cfg(test)]
+    pub(crate) fn full_source_builds() -> usize {
+        FULL_SOURCE_BUILDS.with(std::cell::Cell::get)
+    }
+
     /// Plan owned lookup-column/forest buffers and their own constructor metadata.
     /// Canonical tile generation, borrowed sources/gadgets, lent view arrays, other
     /// proof phases and allocator overhead remain separate charges (RFC-0018).
@@ -260,6 +270,8 @@ impl ModelWitness {
         source: &(impl WitnessSource + ?Sized),
         advice: &ModelAdviceLayout<'_>,
     ) -> Result<Self, LeafError> {
+        #[cfg(test)]
+        FULL_SOURCE_BUILDS.with(|n| n.set(n.get().saturating_add(1)));
         Self::build(
             layout,
             lowering,
