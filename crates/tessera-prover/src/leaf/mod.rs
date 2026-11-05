@@ -57,6 +57,7 @@ pub(crate) mod table_source;
 pub use graph::GraphLeafWitness;
 pub use model::ModelColumn;
 pub use model_witness::{ModelWitness, ModelWitnessMemory};
+pub(crate) use model_witness::{ModelLeafSource, ModelSourceFactory};
 mod prove;
 pub(crate) use grouped::prove_grouped_leaf_bounded;
 pub(crate) use prove::prepare_leaf_bounded;

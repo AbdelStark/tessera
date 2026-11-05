@@ -156,6 +156,8 @@ pub enum StageError {
     },
     /// A relation refused its tables (`ERR-INTERNAL`).
     Sumcheck(SumcheckError),
+    /// A regenerated canonical leaf/native source failed; preserves its typed public code.
+    Source(crate::LeafError),
     /// A table does not fit in memory (`ERR-RES-MEMORY`).
     Memory,
 }
@@ -173,6 +175,7 @@ impl StageError {
         match self {
             Self::Internal { .. } | Self::Sumcheck(_) => ErrorCode::Internal,
             Self::Memory => ErrorCode::ResMemory,
+            Self::Source(error) => error.code(),
         }
     }
 }
@@ -183,11 +186,21 @@ impl fmt::Display for StageError {
             Self::Internal { rule } => write!(f, "the stages break a rule: {rule}"),
             Self::Sumcheck(error) => write!(f, "a relation refused its tables: {error}"),
             Self::Memory => f.write_str("a stage's table does not fit in memory"),
+            Self::Source(error) => write!(f, "a stage's canonical source: {error}"),
         }
     }
 }
 
 impl std::error::Error for StageError {}
+
+impl From<crate::LeafError> for StageError {
+    fn from(error: crate::LeafError) -> Self {
+        match error {
+            crate::LeafError::Memory => Self::Memory,
+            other => Self::Source(other),
+        }
+    }
+}
 
 impl From<SumcheckError> for StageError {
     fn from(error: SumcheckError) -> Self {

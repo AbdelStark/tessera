@@ -16,6 +16,7 @@ use tessera_ir::{ClaimList, NodeId, Op, TensorId};
 use tessera_poly::{PolyField, eq_table, evaluate_base, less_than};
 use tessera_sumcheck::{Claim, Instance, Table, Term};
 
+use crate::leaf::ModelLeafSource;
 use crate::leaf::{LeafClaims, LeafLayout, ModelColumn, ModelWitness, token, tokens};
 use crate::stages::{NativeContext, NativeProver, StageError, WitnessSource};
 
@@ -30,6 +31,12 @@ pub use score::inputs::ScoreInputMemory;
 fn bad() -> StageError {
     StageError::Internal {
         rule: "native model sources have their canonical identities and domains",
+    }
+}
+fn source_error(error: crate::LeafError) -> StageError {
+    match error {
+        crate::LeafError::Internal { .. } => bad(),
+        other => other.into(),
     }
 }
 fn gadget_error(error: tessera_gadgets::GadgetError) -> StageError {
@@ -607,10 +614,21 @@ impl<'a> ModelNativeProver<'a> {
         Self::build(plan, lowering, witness, graph, leaf, true)
     }
 
+    pub(crate) fn new_scoped(
+        plan: &'a ModelNativePlan,
+        lowering: &Lowering,
+        witness: &dyn ModelLeafSource,
+        graph: &impl WitnessSource,
+        leaf: &dyn LeafClaims,
+        literal_scores: bool,
+    ) -> Result<Self, StageError> {
+        Self::build(plan, lowering, witness, graph, leaf, literal_scores)
+    }
+
     fn build(
         plan: &'a ModelNativePlan,
         lowering: &Lowering,
-        witness: &ModelWitness,
+        witness: &dyn ModelLeafSource,
         graph: &impl WitnessSource,
         leaf: &dyn LeafClaims,
         literal_scores: bool,
@@ -643,14 +661,19 @@ impl<'a> ModelNativeProver<'a> {
     fn source(
         &mut self,
         f: &Family,
-        witness: &ModelWitness,
+        witness: &dyn ModelLeafSource,
         c: ModelColumn,
     ) -> Result<usize, StageError> {
-        let block = witness.values(f.site, 0, c).ok_or_else(bad)?.len();
+        let mut first = Some(witness.column(f.site, 0, c).map_err(source_error)?);
+        let block = first.as_ref().ok_or_else(bad)?.len();
         let len = block.checked_shl(f.lambda).ok_or(StageError::Memory)?;
         let mut v = SecretBuf::try_with_capacity(len).map_err(|_| StageError::Memory)?;
         for l in 0..f.nodes.len() {
-            let s = witness.values(f.site, l, c).ok_or_else(bad)?;
+            let s = if l == 0 {
+                first.take().ok_or_else(bad)?
+            } else {
+                witness.column(f.site, l, c).map_err(source_error)?
+            };
             if s.len() != block {
                 return Err(bad());
             }
@@ -662,14 +685,14 @@ impl<'a> ModelNativeProver<'a> {
     fn fixed(
         &self,
         f: &Family,
-        witness: &ModelWitness,
+        witness: &dyn ModelLeafSource,
         column: ModelColumn,
         point: &[F],
     ) -> Result<Vec<F>, StageError> {
         (0..f.nodes.len())
             .map(|l| {
-                let values = witness.values(f.site, l, column).ok_or_else(bad)?;
-                evaluate_integers(values, point)
+                let values = witness.column(f.site, l, column).map_err(source_error)?;
+                evaluate_integers(&values, point)
             })
             .collect()
     }
@@ -735,7 +758,7 @@ impl<'a> ModelNativeProver<'a> {
         index: usize,
         f: &Family,
         lowering: &Lowering,
-        witness: &ModelWitness,
+        witness: &dyn ModelLeafSource,
         graph: &impl WitnessSource,
         leaf: &dyn LeafClaims,
         axes: &[Option<u8>],
@@ -994,8 +1017,8 @@ impl<'a> ModelNativeProver<'a> {
                 let rows = average.len() >> f.lambda;
                 for l in 0..f.nodes.len() {
                     let exp = witness
-                        .values(f.site, l, ModelColumn::Output(0))
-                        .ok_or_else(bad)?;
+                        .column(f.site, l, ModelColumn::Output(0))
+                        .map_err(source_error)?;
                     if exp.len() != rows * np {
                         return Err(bad());
                     }
@@ -1323,6 +1346,49 @@ impl NativeProver for ModelNativeProver<'_> {
 mod tests {
     use super::*;
     use tessera_field::QuadraticExtension;
+
+    #[test]
+    fn canonical_source_failures_keep_exact_public_codes() {
+        use tessera_codec::error::ErrorCode;
+        use tessera_witness::WitnessError;
+        assert_eq!(source_error(crate::LeafError::Memory), StageError::Memory);
+        assert_eq!(
+            source_error(crate::LeafError::Internal {
+                rule: "missing source"
+            }),
+            bad()
+        );
+        for (error, code) in [
+            (
+                WitnessError::MemoryTable {
+                    table: tessera_ir::TableId(7),
+                },
+                ErrorCode::ResMemory,
+            ),
+            (
+                WitnessError::Usage {
+                    rule: "malformed source geometry",
+                },
+                ErrorCode::Usage,
+            ),
+            (
+                WitnessError::Model {
+                    rule: "source model identity",
+                },
+                ErrorCode::QuantArch,
+            ),
+            (WitnessError::ExactMismatch, ErrorCode::WitnessExactMismatch),
+            (
+                WitnessError::Unequal { node: NodeId(3) },
+                ErrorCode::WitnessAnchor,
+            ),
+        ] {
+            let source = crate::LeafError::Witness(error);
+            let stage = source_error(source);
+            assert_eq!(stage, StageError::Source(source));
+            assert_eq!(stage.code(), code);
+        }
+    }
     #[test]
     fn native_memory_projection_rejects_an_extra_public_column_and_a_short_private_column() {
         let plan = ModelNativePlan {
