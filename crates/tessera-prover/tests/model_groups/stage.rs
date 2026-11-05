@@ -122,6 +122,92 @@ fn prove_in(
     (proven, recording)
 }
 
+#[test]
+fn grouped_message_owners_and_the_production_wire_copy_fit_public_bounds() {
+    use tessera_prover::leaf::{GroupedMessageMemory, GroupedMessageShape};
+
+    let model = layered(bounded_model());
+    let (mut valued, mut valueless, mut forest, mut mixed) = (false, false, false, false);
+    for tokens in [3, 5] {
+        with_stage(&model, tokens, |p, layout, _, actual, tables| {
+            for (g_t, g_l) in [(1, 0), (0, 1), (1, 1), (2, 1)] {
+                let grouped = GroupedLayout::new(layout, &p.layers, groups(g_t, g_l)).unwrap();
+                let shape = GroupedMessageShape {
+                    groups: grouped.count() as u64,
+                    lookups: layout.instances().len() as u64,
+                    forests: layout.sites().len() as u64,
+                    tensors: grouped.polynomials().len() as u64,
+                    // Public fixture geometry fits 32 variables, including tables,
+                    // padded score forests and layer stacking. No point values enter it.
+                    max_vars: 32,
+                    atom_splits: 17,
+                };
+                let bound = GroupedMessageMemory::new(shape).unwrap();
+                let tensors = actual.tensors();
+                let forests = actual.stage_forests();
+                let multiplicities =
+                    grouped_multiplicities(layout, &grouped, tables, &tensors).unwrap();
+                let refs: Vec<&[G]> = multiplicities.iter().map(|m| &m[..]).collect();
+                let atoms = vec![F::ZERO; shape.atom_splits as usize];
+                for mode in [MergeMode::InMemory, MergeMode::TwoPass { j_star: None }] {
+                    // The transcript and borrowed witness/tables predate counting.
+                    let mut tr = transcript(Mode::NonInteractive);
+                    let mut proven = None;
+                    let owned = allocation_counter::measure(|| {
+                        proven = Some(
+                            prove_grouped_leaf(
+                                &mut tr, layout, &grouped, tables, &tensors, &refs, &forests, mode,
+                            )
+                            .unwrap(),
+                        );
+                    });
+                    let proven = proven.unwrap();
+                    assert!(
+                        owned.bytes_current as u64 <= bound.retained_bytes(),
+                        "{owned:?} {bound:?}"
+                    );
+                    let mut wire = None;
+                    let copied =
+                        allocation_counter::measure(|| wire = Some(proven.to_wire(&atoms)));
+                    assert!(
+                        copied.bytes_max <= bound.wire_bytes(),
+                        "{copied:?} {bound:?}"
+                    );
+                    assert!(owned.bytes_current as u64 + copied.bytes_max <= bound.overlap_bytes());
+                    let wire = wire.unwrap();
+                    assert_eq!(wire.groups.len(), grouped.count());
+                    assert_eq!(wire.splits, atoms);
+                    assert_eq!(wire.table_roots, proven.tables().roots());
+                    assert_eq!(wire.levels.len(), proven.tables().levels().len());
+                    for (sent, original) in wire.levels.iter().zip(proven.tables().levels()) {
+                        assert_eq!(sent, original.proof());
+                    }
+                    assert_eq!(wire.merge, *proven.merge().proof());
+                    for ((sent, original), split) in
+                        wire.groups.iter().zip(proven.groups()).zip(proven.splits())
+                    {
+                        valued |= original.claims().iter().any(|c| c.value.is_some());
+                        valueless |= original.claims().iter().any(|c| c.value.is_none());
+                        forest |= !original.forest_claims().is_empty();
+                        mixed |= original
+                            .levels()
+                            .windows(2)
+                            .any(|w| w[0].trees() != w[1].trees());
+                        assert_eq!(sent.roots, original.roots());
+                        assert_eq!(sent.values, original.values());
+                        assert_eq!(&sent.splits, split);
+                        assert_eq!(sent.levels.len(), original.levels().len());
+                        for (sent, original) in sent.levels.iter().zip(original.levels()) {
+                            assert_eq!(sent, original.proof());
+                        }
+                    }
+                }
+            }
+        });
+    }
+    assert!(valued && valueless && forest && mixed);
+}
+
 /// Where a label falls in RFC-0054's order: before the groups, in group `h` at a step, in the
 /// table batch, in the merge.
 fn phase(label: &str) -> (u32, u64, u32) {
