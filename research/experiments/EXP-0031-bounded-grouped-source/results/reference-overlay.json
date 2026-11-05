@@ -1,0 +1,17 @@
+{
+  "base": "646f7addc7bc737f2fbb8970c865df8333877093",
+  "registration": "ede585df1fc290df27c32ba2a7b4a6672a69cc74",
+  "frozen_sha256": "972efa1bdf13f49e271ab58f41edde3a6b54d17605d00e4b9d39bd8e02bea2c0",
+  "edits": {
+    "crates/tessera-prover/src/leaf/mod.rs": {
+      "before_sha256": "27bc5e387c800e0869036e18e06850c1bf0fbaf5e8b4f2a457627055b7d3f809",
+      "after_sha256": "a52c323e9fbfd4ee6111efe610c9a6eb1c8295b67e8bde5cd0ee18bd5879884c",
+      "diff": "--- crates/tessera-prover/src/leaf/mod.rs\n+++ crates/tessera-prover/src/leaf/mod.rs\n@@ -48,7 +48,7 @@\n \n mod claims;\n mod graph;\n-mod grouped;\n+pub mod grouped;\n mod groups;\n mod layout;\n mod model;\n"
+    },
+    "crates/tessera-prover/src/leaf/grouped.rs": {
+      "before_sha256": "e61aaa5aab14073b814ec423adae028badc3f5700a152825d0c7bcbf3342c9ee",
+      "after_sha256": "808e1eec9b85ef94b70dd667bda3e4d3a956b95ee645844c62161117b2625690",
+      "diff": "--- crates/tessera-prover/src/leaf/grouped.rs\n+++ crates/tessera-prover/src/leaf/grouped.rs\n@@ -271,7 +271,8 @@\n     })\n }\n \n-fn group_columns_from<'a, S: Copy + Eq>(\n+/// Reference-only visibility for EXP-0031; algorithm unchanged.\n+pub fn group_columns_from<'a, S: Copy + Eq>(\n     stage: &LeafLayout<S>,\n     grouped: &GroupedLayout,\n     h: usize,\n@@ -298,7 +299,7 @@\n \n /// Group `h`'s share of `forest`: its leaf table with the query index's low `g_T` bits set to\n /// `tokens` and the layer index's low `g_L` bits to `layers`, in the table's order.\n-fn forest_share(\n+pub fn forest_share(\n     forest: &StageForest<'_>,\n     g_t: u32,\n     g_l: u32,\n"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "observed_utc": "2026-11-05T06:12:45.635465+00:00",
+  "verdict": "validated",
+  "scope": "registered finite E0/E1 source/merge feasibility and conditional abstract source contract only",
+  "registered_criteria_complete": true,
+  "hypothesis_and_success_criteria_unchanged": true,
+  "source_cases": 42,
+  "groups": 164,
+  "index_records": 43372,
+  "negative_shapes": 6,
+  "merge_cases": 42,
+  "legal_cuts": 285,
+  "registered_faults_caught": 12,
+  "additional_review_regression_faults_caught": 2,
+  "controls_passed": 2,
+  "contract": "../contract.md",
+  "phase_inventory": "../phase-inventory.md",
+  "production_factory_implemented": false,
+  "production_admission": false,
+  "real_model_acceptance": false,
+  "performance_gain_credited": false,
+  "final_control_observed_utc": "2026-11-05T06:04:53.969535+00:00"
+}

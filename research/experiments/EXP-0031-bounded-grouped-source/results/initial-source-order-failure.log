@@ -1,0 +1,4 @@
+
+thread 'main' (33431861) panicked at fixture.rs:123:53:
+registered synthetic layout: Internal { rule: "the sites come in node order, each once" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

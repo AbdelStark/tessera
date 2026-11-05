@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/private/tmp/tessera-687-grouped-design/research/experiments/EXP-0031-bounded-grouped-source/audit.py", line 289, in <module>
+    main()
+    ~~~~^^
+  File "/private/tmp/tessera-687-grouped-design/research/experiments/EXP-0031-bounded-grouped-source/audit.py", line 278, in main
+    result = audit(json.loads(raw))
+  File "/private/tmp/tessera-687-grouped-design/research/experiments/EXP-0031-bounded-grouped-source/audit.py", line 181, in audit
+    assert group["indices"] == expected_records, "source index transport"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: source index transport

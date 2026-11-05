@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/private/tmp/tessera-687-grouped-design/research/experiments/EXP-0031-bounded-grouped-source/audit.py", line 289, in <module>
+    main()
+    ~~~~^^
+  File "/private/tmp/tessera-687-grouped-design/research/experiments/EXP-0031-bounded-grouped-source/audit.py", line 281, in main
+    result["merge"] = audit_merge(json.loads(merge_raw), json.loads(raw))
+                      ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/tessera-687-grouped-design/research/experiments/EXP-0031-bounded-grouped-source/audit.py", line 242, in audit_merge
+    assert case["message_vars"]==message_vars,"message dimension upper bound"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: message dimension upper bound

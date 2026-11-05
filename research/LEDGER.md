@@ -7,10 +7,12 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 | Kind | Next identifier |
 |---|---|
 | Survey | SUR-0017 |
-| Idea | IDEA-0042 |
-| Experiment | EXP-0031 |
+| Idea | IDEA-0043 |
+| Experiment | EXP-0032 |
 
 ## Queue
+
+Current grouped runtime prerequisite (2026-11-05): [#687](https://github.com/AbdelStark/tessera/issues/687) follows merged component bounds through #685. [IDEA-0042](ideas/IDEA-0042-bounded-grouped-source.md) is `promoted` to Accepted [RFC-0077](../docs/rfcs/RFC-0077-bounded-grouped-checkpoint-sources.md); [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) is `done: validated` in its frozen finite E0/E1 scope. Canonical synthetic source/merge equality and allocation controls pass, including all twelve registered faults and two phase/geometry regression controls. The conditional all-input contract and full phase inventory keep actual factory/cache/replay/native/opening/publication work explicit. Next feasible unit: merge the authorized RFC decision after CI, then implement the canonical bounded factory and complete physical composition in a separate tracked issue. Both physical guards remain intact; no production admission, real-model acceptance, fidelity, RSS, speed or GPU credit. This correctness prerequisite precedes the historical performance queue.
 
 Current real-model integrity prerequisite (2026-10-29): [#617](https://github.com/AbdelStark/tessera/issues/617) identifies incompatible per-layer Requant read roles on the exported 1B candidate. [IDEA-0041](ideas/IDEA-0041-uniform-requant.md) is `promoted`; [EXP-0029](experiments/EXP-0029-uniform-requant/README.md) is `done: validated` in its frozen E0 scope. RFC-0076 is accepted through PR #620 under explicit maintainer authorization, with the additional non-author review waived and no independent approval claimed. [EXP-0030](experiments/EXP-0030-real-runtime-sizing/README.md) is `done: validated`: current CPU zero-lookup floors are 2.56–3.80 TiB on the fixed candidate (E0), so current grouping/windows cannot meet the 64 GiB host plan. Next feasible unit: choose a bounded implementation/design unit covering advice rows, table trees and resident tensors before another real proof attempt; keep the complete soundness-budget and production integration obligations separate. Preserve the leaf guard, unchanged integer D and all soundness bounds. No full proof, production implementation, performance or hiding credit. This authorized correctness prerequisite precedes historical performance work.
 
@@ -87,7 +89,7 @@ Upstream on 2026-10-19 (`gh issue list`): every issue the loop fed upstream is c
 | ID | Topic | Status | Date | Ideas seeded |
 |---|---|---|---|---|
 | [SUR-0016](surveys/SUR-0016-weight-mask-draw-cost.md) | `hash`: complete weight-mask draws and the missing XOF rate (#568) | `current (2026-10-29)` | 2026-10-29 | full-support bounded regeneration; matched secret-store comparison; separately gated support exclusion |
-| [SUR-0015](surveys/SUR-0015-witness-multiplicity-storage.md) | `passes`: bounded complete witness multiplicities for #112 | `current (2026-10-20)` | 2026-10-20 | bounded dense/sorted/windowed counters |
+| [SUR-0015](surveys/SUR-0015-witness-multiplicity-storage.md) | `passes`: bounded complete witness multiplicities for #112 | `stale` | 2026-10-20 | bounded dense/sorted/windowed counters |
 | [SUR-0014](surveys/SUR-0014-gadget-column-contract.md) | `compiler`: exact gadget column/lookup contract for #106/#407 | `current (2026-10-19)` | 2026-10-19 | IDEA-0036 |
 | [SUR-0001](surveys/SUR-0001-proximity.md) | `proximity`: proximity gaps, `τ` and proof size | `current (2026-10-16)` | 2026-10-16 | 7 |
 | [SUR-0002](surveys/SUR-0002-lookups.md) | `lookups`: per-lookup cost and lookup count | `current (2026-10-16)` | 2026-10-16 | 6 |
@@ -167,6 +169,8 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | [IDEA-0041](ideas/IDEA-0041-uniform-requant.md) | Common public Requant family at incompatible layer sites | correctness/coverage; canonical tables/advice | 0 credited gain | `promoted` | [EXP-0029](experiments/EXP-0029-uniform-requant/README.md) done: validated | [RFC-0076](../docs/rfcs/RFC-0076-uniform-requant-families.md) supplies N1–N6 and exact public rules; actual counts/budget, independent implementation and full proof remain mandatory; maintainer acceptance waives the additional non-author review. |
 
+| [IDEA-0042](ideas/IDEA-0042-bounded-grouped-source.md) | Bounded canonical grouped sources and complete lifetime contract | correctness/source memory | 0 credited gain | `promoted` | [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) done: validated, finite E0/E1 | RFC-0077; canonical production factory and complete phase admission remain mandatory. |
+
 ## Experiments
 
 | ID | Title | Idea | Status | Verdict | Evidence |
@@ -206,6 +210,8 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | [EXP-0021](experiments/EXP-0021-public-window-selector/README.md) | Does the public-window selector DP and bounded selected-row/claim transport match independent exact semantics? | IDEA-0034 | done: validated | Frozen finite domains all pass:248850 logical row contexts/933 unique inputs,2048 transport runs,69 controls | E0 only;876535 physical judgments; parent mathematical rerun, independent domain reconstruction and final accounting-diff review; no model/protocol promotion |
 
 | [EXP-0022](experiments/EXP-0022-two-level-opening-coupling/README.md) | Does two-level equation coupling preserve all original obligations under an ideal PCS, including batching exceptions? | IDEA-0035 | `done: validated` | 72 shapes,1,152 originals,4,608 two-level fixtures,18,432 honest reductions,164 controls and20 balanced cases pass | E0 conditional finite result;26,249,084 judgments/211,154,672 metered ops; independent119,408-check recount. No extractor/G-4/FS/joint-ZK/concrete-PCS/current-cost claim |
+
+| [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) | Canonical group regeneration, merge callbacks and public lifetime feasibility | IDEA-0042 / #687 | `done: validated` | finite criteria passed | E0: 42 source/merge cases, 164 groups, 43,372 indices, 285 cuts, 14 compiled faults and restored controls; E1 requested allocations; no complete factory, real-model or timing claim. |
 
 ## Iteration log
 
@@ -325,3 +331,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-10-30 | #627 complete runtime sizing result | EXP-0030 `done: validated` (E0): all nine real B/n combinations and unchanged tiny control, exact original memory decisions, independent arithmetic recount, ten corruptions caught. Fixed real candidate floors 2.56–3.80 TiB even with zero lookup cells; no tested budget through 1 TiB fits. Dominant two-position advice charge is 2.35 TB. Next: complete memory scheduling, with RFC-0076 review and full actual-budget/proof obligations retained; no measured peak or performance credit. |
 
 | 2026-10-30 | #619 / RFC-0076 acceptance | Maintainer explicitly authorized autonomous completion and waived additional non-author review. Adopt the narrow unreleased Protocol One compatibility exception; no independent review or implementation/full-proof success is claimed. Next: independently implement #617 with complete metadata, actual budget and adversarial gates. |
+
+| 2026-11-05 | #687 / autoresearch ideate and registration | IDEA-0042 self-triaged; EXP-0031 planned and frozen before code. Canonical group regeneration, request-slot/held-role/forest coordinates, merge buffers and public lifetime controls; all-input contract argument required before RFC promotion. SUR-0015 marked stale because its complete-witness-path trigger fired. Next: verify committed registration, then build the isolated synthetic prototype. No production admission or measured gain. |
+
+| 2026-11-05 | #687 / EXP-0031 result and RFC-0077 | Frozen finite E0/E1 criteria pass: 42 cases, 164 groups, 43,372 index records, six negative shapes, all 285 merge cuts and all requested allocation controls. Twelve registered compiled faults plus two phase/geometry regressions caught; original/restored controls pass. Restricted-block split evaluation replaces premature original materialization; empty-S whole sources remain charged. Contract proof and full unknown-owner inventory support RFC-0077, not production admission. Next: RFC decision then bounded canonical factory/full composition. |
