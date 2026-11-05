@@ -67,6 +67,11 @@ returned claim clones around that kernel. Layout/column/share construction, spli
 and merge blocks, retained table/merge state and complete driver phase composition
 remain additional; grouped physical admission is still guarded.
 
+The [grouped message-owner bound](grouped-message-memory.md) adds retained group,
+table and merge messages, original claim points, driver merge metadata and the
+production wire-copy overlap. It does not compose the whole grouped phase;
+both physical admission guards remain in place.
+
 ## Session preparation
 
 `check_plan_with_memory` performs the same canonical checks as `check_plan` and

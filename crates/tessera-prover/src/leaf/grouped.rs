@@ -30,6 +30,9 @@
 
 use core::fmt;
 
+mod messages;
+pub use messages::{GroupedMessageMemory, GroupedMessageShape};
+
 use tessera_codec::{Secret, SecretBuf};
 use tessera_field::{Field, Goldilocks, GoldilocksExt2, PrimeField};
 use tessera_gadgets::TableColumns;

@@ -928,28 +928,7 @@ impl<'a> CpuBackend<'a> {
                         .collect(),
                     leaf.splits().to_vec(),
                 ),
-                Leaf::Grouped(proven, atoms) => protocol::TreeProof {
-                    levels: proven
-                        .tables()
-                        .levels()
-                        .iter()
-                        .map(|l| l.proof().clone())
-                        .collect(),
-                    groups: proven
-                        .groups()
-                        .iter()
-                        .zip(proven.splits())
-                        .map(|(group, splits)| protocol::GroupProof {
-                            roots: group.roots().to_vec(),
-                            levels: group.levels().iter().map(|l| l.proof().clone()).collect(),
-                            values: group.values().to_vec(),
-                            splits: splits.clone(),
-                        })
-                        .collect(),
-                    table_roots: proven.tables().roots().to_vec(),
-                    merge: proven.merge().proof().clone(),
-                    splits: atoms.clone(),
-                },
+                Leaf::Grouped(proven, atoms) => proven.to_wire(atoms),
             },
             stages: proofs,
             advice_combined,
