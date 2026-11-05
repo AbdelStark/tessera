@@ -60,6 +60,7 @@ pub use model_witness::{ModelWitness, ModelWitnessMemory};
 pub(crate) use model_witness::{ModelLeafSource, ModelSourceFactory};
 mod prove;
 pub(crate) use grouped::prove_grouped_leaf_bounded;
+pub(crate) use grouped::prove_grouped_leaf_sources;
 pub(crate) use prove::prepare_leaf_bounded;
 
 use core::fmt;

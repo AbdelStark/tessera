@@ -3,7 +3,13 @@
 //! Canonical source scopes; no production memory admission is implied (RFC-0077).
 
 use super::*;
+use crate::leaf::grouped::{ForestShape, GroupColumns, GroupInputs};
 use crate::leaf::{GroupLayout, GroupedLayout};
+use tessera_field::Field;
+use tessera_logup::Tuples;
+
+#[cfg(test)]
+mod proof_tests;
 
 #[derive(Clone, Copy)]
 pub(super) enum Selection<'a> {
@@ -214,6 +220,60 @@ impl ModelLeafSource for ModelSourceFactory<'_> {
 }
 
 impl<'a> ModelSourceFactory<'a> {
+    pub(in crate::leaf) fn forest_shapes(&self) -> Result<Vec<ForestShape>, LeafError> {
+        let count = (0..self.layout.sites().len()).try_fold(0usize, |n, s| {
+            n.checked_add(usize::from(forest_domain(self.layout, s)?.is_some()))
+                .ok_or(LeafError::Memory)
+        })?;
+        let mut out = descriptors(count)?;
+        for (s, site) in self.layout.sites().iter().enumerate() {
+            let Some(domain) = forest_domain(self.layout, s)? else {
+                continue;
+            };
+            let height = domain[2]
+                .checked_next_power_of_two()
+                .ok_or(LeafError::Memory)?
+                .trailing_zeros();
+            let layers = variables(&domain).ok_or(LeafError::Memory)?;
+            let layer_bits = site
+                .layers
+                .len()
+                .checked_next_power_of_two()
+                .ok_or(LeafError::Memory)?
+                .trailing_zeros();
+            out.push(ForestShape {
+                vars: layers.checked_add(layer_bits).ok_or(LeafError::Memory)?,
+                height,
+                queries: height,
+                layers,
+            });
+        }
+        Ok(out)
+    }
+
+    pub(in crate::leaf) fn group_inputs<'r>(
+        &'a self,
+        h: usize,
+        rows: impl Fn(tessera_tables::TableId) -> Result<Tuples<'r, Goldilocks>, LeafError>,
+    ) -> Result<GroupInputs<'a, ModelColumn>, LeafError> {
+        let group = self.group(h)?;
+        let columns = group.columns(h, rows)?;
+        let mut splits = descriptors(group.layout.reads().len())?;
+        for read in group.layout.reads() {
+            let source = group.tensor(read.site, read.layer, read.read)?;
+            let mut values = buffer(source.len(), Goldilocks::ZERO)?;
+            for (out, &value) in values.iter_mut().zip(source) {
+                *out = Goldilocks::from_i64(value);
+            }
+            splits.push(values);
+        }
+        let mut shares = descriptors(group.inner.forests.len())?;
+        for forest in group.inner.forests {
+            shares.push(forest.leaves);
+        }
+        GroupInputs::scoped(h, group.layout, columns, shares, splits)
+    }
+
     pub(crate) fn group(&'a self, h: usize) -> Result<GroupSources<'a>, LeafError> {
         let layout = self.grouped.group(h)?;
         let inner = ModelWitness::build(
@@ -300,6 +360,95 @@ impl<'a> ModelSourceFactory<'a> {
 }
 
 impl GroupSources<'_> {
+    fn columns<'r>(
+        &self,
+        h: usize,
+        rows: impl Fn(tessera_tables::TableId) -> Result<Tuples<'r, Goldilocks>, LeafError>,
+    ) -> Result<GroupColumns, LeafError> {
+        let stage = self.factory.layout;
+        let mut out = descriptors(self.layout.instances().len())?;
+        for instance in self.layout.instances() {
+            let rows = rows(instance.table)?;
+            let key_0 = *rows.keys.first().ok_or(LeafError::Internal {
+                rule: "an instance's table has a row",
+            })?;
+            let value_0 = rows.values.and_then(|v| v.first()).copied();
+            let leaves = 1usize
+                .checked_shl(instance.height)
+                .ok_or(LeafError::Memory)?;
+            let mut keys = buffer(leaves, key_0)?;
+            let mut values = value_0.map(|v| buffer(leaves, v)).transpose()?;
+            for block in &instance.blocks {
+                let request = stage
+                    .sites()
+                    .get(block.site)
+                    .and_then(|s| s.layers.get(block.layer))
+                    .and_then(|g| g.lookups.get(block.lookup))
+                    .ok_or(LeafError::Internal {
+                        rule: "a scoped block has its canonical lookup identity",
+                    })?;
+                if request.lookup.value.is_some() != values.is_some() {
+                    return own();
+                }
+                let at = |term: ModelColumn, x: u64| -> Result<Goldilocks, LeafError> {
+                    let read = stage
+                        .reads(block.site, block.layer)
+                        .and_then(|r| r.iter().find(|r| r.term == term))
+                        .ok_or(LeafError::Internal {
+                            rule: "a scoped lookup term has its canonical read",
+                        })?;
+                    let mut original = 0usize;
+                    for (j, &coordinate) in read.coords.iter().enumerate() {
+                        let bit = x.checked_shr(coordinate).ok_or(LeafError::Memory)? & 1;
+                        original |= (bit as usize)
+                            .checked_shl(u32::try_from(j).map_err(|_| LeafError::Memory)?)
+                            .ok_or(LeafError::Memory)?;
+                    }
+                    let column = self.inner.columns[block.site][block.layer]
+                        .iter()
+                        .find(|c| c.name == term)
+                        .ok_or(LeafError::Internal {
+                            rule: "a scoped lookup has its selected operand",
+                        })?;
+                    let selected =
+                        column
+                            .projection
+                            .selected(original)
+                            .ok_or(LeafError::Internal {
+                                rule: "a scoped lookup and its source fix the same coordinates",
+                            })?;
+                    let value = column.values.get(selected).ok_or(LeafError::Internal {
+                        rule: "a selected lookup index fits its source",
+                    })?;
+                    Ok(Goldilocks::from_i64(*value))
+                };
+                let form = |form: &Affine<Goldilocks, ModelColumn>, x| {
+                    form.terms
+                        .iter()
+                        .try_fold(form.constant, |sum, &(a, term)| {
+                            Ok::<_, LeafError>(sum + a * at(term, x)?)
+                        })
+                };
+                for j in 0..block.entries() {
+                    let x =
+                        self.factory
+                            .grouped
+                            .source(h, block, j)
+                            .ok_or(LeafError::Internal {
+                                rule: "a block's entries are its stage block's",
+                            })?;
+                    let leaf = crate::leaf::leaf_index(instance.height, block.offset + j) as usize;
+                    keys[leaf] = form(&request.lookup.key, x)?;
+                    if let (Some(values), Some(value)) = (&mut values, &request.lookup.value) {
+                        values[leaf] = form(value, x)?;
+                    }
+                }
+            }
+            out.push((instance.table, keys, values));
+        }
+        Ok(out)
+    }
+
     pub(crate) fn tensor(
         &self,
         site: usize,
