@@ -67,7 +67,8 @@ This prices public layout construction only. Borrowed grouping/stage data,
 lookup columns, forest shares, split evaluation, retained group proofs,
 [lookup-group proving](lookup-group-memory.md), merge tables/work, table batches,
 CPU wire/native/opening phases and packets still require full composition.
-Both grouped-physical guards remain in place. This establishes no actual-model
+The [complete scoped grouped composition](scoped-grouped-memory.md) adds the
+remaining owners and admission checks. This component establishes no actual-model
 Accept, full proof memory/time qualification, fidelity, formal hiding or GPU claim;
 [#641](https://github.com/AbdelStark/tessera/issues/641),
 [#629](https://github.com/AbdelStark/tessera/issues/629) and

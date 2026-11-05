@@ -13,8 +13,8 @@
 //! scratch and the other proof phases beside the weight commitment; stage grids, construction
 //! scratch and folded tables are charged separately. Counting-allocator regressions check the
 //! whole proof peak under both resident and forced-window budgets. The resident route keeps
-//! this floor. An ungrouped checkpoint fallback instead uses a complete checked physical
-//! lifetime peak and owns its selected table/window choices. Both refuse before P1 when
+//! this floor. A protocol/1 checkpoint fallback instead uses a complete checked physical
+//! lifetime peak and owns its selected table/window/group choices (RFC-0077). Both refuse before P1 when
 //! their bound does not fit; whole-model resource qualification remains separate.
 
 pub use tessera_codec::metrics::Pass;

@@ -56,9 +56,9 @@ opening targets, PCS work and packet publication. Stack, allocator bookkeeping,
 runtime overhead and caller model storage need separate accounting and process
 measurement. See the [CPU lifetime inventory](cpu-memory-lifetimes.md).
 
-This component admits no physical grouped route. The chooser's ungrouped-only
-condition and the physical planner's grouped refusal remain intact until complete
-phase composition and its validation are available. It establishes no real-model
+This component alone admits no physical grouped route. The
+[scoped grouped composition](scoped-grouped-memory.md) supplies the additional
+source and complete phase ownership required for admission. This component establishes no real-model
 acceptance, model-fidelity qualification or whole-proof time/memory result;
 [#641](https://github.com/AbdelStark/tessera/issues/641),
 [#629](https://github.com/AbdelStark/tessera/issues/629) and

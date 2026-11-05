@@ -41,8 +41,8 @@ fn split_evaluation(vars: usize) -> Result<u64, ProverError> {
 }
 
 impl GroupedWorkMemory {
-    /// Bounds known canonical geometry only. Both admission guards remain until
-    /// every phase and whole-route control has qualified the complete candidate.
+    /// Bounds known canonical geometry only; admission additionally requires
+    /// every owner in the complete physical phase composition.
     pub(super) fn new(input: &Inputs<'_>, allowance: u64) -> Result<Self, ProverError> {
         let grouped = input
             .grouped

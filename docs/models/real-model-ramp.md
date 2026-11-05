@@ -269,7 +269,12 @@ backing storage, resident lookup/forest trees and retained merge data remain
 charged. This removes full table-column and fraction-level allocations; it does
 not lower the resident-cell floor or demonstrate that a real model fits.
 
-After that blocker is resolved, proving must use the real token artifact and independent
+The [scoped grouped checkpoint route](../perf/v0.3/scoped-grouped-memory.md) now
+composes selected sources with complete physical phase bounds. Its bounded fixture
+acceptance does not establish that a real-model candidate fits or runs within budget.
+The resident planner retains its original floor and first-choice behavior.
+
+Real-model proving must use the real token artifact and independent
 request/manifest context described by the [exact CLI flow](../testing/exact-cli.md).
 The ordinary independently built verifier then needs caller-trusted statement and weight
 root pins ([verifier CLI](../verifier/reference-cli.md)); extracting a pin from the proof

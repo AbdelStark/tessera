@@ -148,11 +148,16 @@ fn canonical_group_work_planning_is_bounded_and_refuses_before_field_work() {
                 allocation_counter::measure(|| refused = Some(GroupedWorkMemory::new(&input, 0)));
             assert_eq!(tiny.count_total, 0);
             assert_eq!(refused.unwrap().unwrap_err().code(), ErrorCode::ResMemory);
-            // Neither a component nor an unlimited allowance bypasses either production guard.
-            assert!(matches!(
-                leaf_messages(&input, 0),
-                Err(ProverError::Usage { .. })
-            ));
+            let messages = leaf_messages(&input, 0, 64 << 30).unwrap();
+            assert_eq!(
+                messages,
+                (bill.messages.retained_bytes(), bill.messages.wire_bytes())
+            );
+            // A complete component cannot authorize unknown caller/session owners.
+            assert_eq!(
+                select(&input, 64 << 30).unwrap_err().code(),
+                ErrorCode::ResMemory
+            );
             cases += 1;
         }
     }

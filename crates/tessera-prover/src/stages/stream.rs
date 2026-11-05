@@ -1050,13 +1050,13 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
     }
 
     /// Additional window specifications and message work, before sharing.
-    /// Native terms are bounded by the canonical native instance allocation
-    /// reservation; graph terms follow the same Plan variants as `window`.
+    /// Native terms use their public per-tag envelope; graph terms follow
+    /// the same Plan variants as `window`.
     pub(crate) fn window_metadata_memory(
         &self,
         k: u16,
         native_shape: impl Fn(u32) -> Result<tessera_sumcheck::WindowShape, StageError>,
-        native_terms: u64,
+        native_terms: impl Fn(u32) -> Result<u64, StageError>,
     ) -> Result<tessera_sumcheck::WindowMetadataMemory, StageError> {
         let stage = self
             .schedule
@@ -1074,7 +1074,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
         let mut terms = Vec::new();
         for instance in &stage.instances {
             let (shape, count) = match instance.relation {
-                Relation::Native { tag, .. } => (native_shape(tag)?, native_terms),
+                Relation::Native { tag, .. } => (native_shape(tag)?, native_terms(tag)?),
                 _ => {
                     let plan = self.plan(stage, instance, &mut arena)?;
                     let count = match &plan {

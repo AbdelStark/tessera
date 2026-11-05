@@ -51,7 +51,8 @@ forest shares, splits and their evaluation/regeneration, merge blocks/claims,
 [kept merge tables and two-pass work](merge-memory-bound.md), the generated table
 batch and all retained groups. CPU wire conversion, native stages, original
 opening targets, weight work and packet publication add further overlapping owners.
-The physical grouped guard stays in place until all phases are composed and tested.
+The [complete scoped grouped composition](scoped-grouped-memory.md) includes
+these additional phases and their admission checks.
 This component establishes neither actual-model acceptance nor whole-proof
 time/memory qualification; #641, #629 and #617 remain open.
 

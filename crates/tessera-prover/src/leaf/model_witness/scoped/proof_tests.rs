@@ -22,6 +22,20 @@ mod runtime_slots;
 
 type F = GoldilocksExt2;
 
+struct CountingSource<'a> {
+    inner: &'a dyn WitnessSource,
+    calls: std::cell::Cell<usize>,
+}
+impl WitnessSource for CountingSource<'_> {
+    fn tile(
+        &self,
+        tile: &tessera_compiler::SequenceTile,
+    ) -> Result<tessera_witness::TileWitness, tessera_witness::WitnessError> {
+        self.calls.set(self.calls.get().checked_add(1).unwrap());
+        self.inner.tile(tile)
+    }
+}
+
 struct Recording {
     inner: Transcript,
     events: Vec<(String, Vec<F>)>,
@@ -258,6 +272,11 @@ fn scoped_group_driver_matches_resident_transcript_and_encoded_messages() {
     let tensors = full.tensors();
     let forests = full.stage_forests();
     let mut variants = 0;
+    let mut work = Vec::new();
+    let counted = CountingSource {
+        inner: &source,
+        calls: std::cell::Cell::new(0),
+    };
     for (gt, gl) in [(0, 1), (1, 0), (1, 1)] {
         let grouped = GroupedLayout::new(
             &stage,
@@ -274,7 +293,7 @@ fn scoped_group_driver_matches_resident_transcript_and_encoded_messages() {
             lowering: &lowering,
             layers: &layers,
             witness: &witness,
-            source: &source,
+            source: &counted,
             advice: &advice,
         };
         let mut source_bill = None;
@@ -474,9 +493,16 @@ fn scoped_group_driver_matches_resident_transcript_and_encoded_messages() {
             .chain((0..=cuts).map(|cut| MergeMode::TwoPass { j_star: Some(cut) }))
         {
             let mut actual_tr = Recording::new();
+            let before = counted.calls.get();
             let actual =
                 prove_grouped_leaf_source_fixture(&mut actual_tr, &factory, &tables, &counts, mode)
                     .unwrap();
+            let tile_calls = counted.calls.get() - before;
+            assert!(
+                tile_calls > 0,
+                "the canonical factory performs real gadget tile work"
+            );
+            work.push((gt, gl, format!("{mode:?}"), tile_calls));
             let mut bytes = Vec::new();
             actual.to_wire(&[]).encode_to(&mut bytes);
             assert_eq!(
@@ -524,6 +550,9 @@ fn scoped_group_driver_matches_resident_transcript_and_encoded_messages() {
         }
     }
     assert_eq!(variants, 17);
+    if let Some(path) = std::env::var_os("TESSERA_SCOPED_WORK_RECORD") {
+        std::fs::write(path, serde_json::to_vec_pretty(&work).unwrap()).unwrap();
+    }
     assert_eq!(
         ModelWitness::full_source_builds(),
         full_builds,

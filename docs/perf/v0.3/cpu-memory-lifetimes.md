@@ -8,8 +8,9 @@ real-model qualification still requires an actual execution and independent acce
 The CPU driver first tries the resident plan, including its optional checkpoint
 source. That plan retains 64 bytes per logical padded cell, the separate weight
 reservation and additional stage/table working sets. If no resident plan fits,
-an ungrouped protocol/1 proof can use the separate physical plan. This plan owns
-its selected table chunks and positive window cuts and checks every lifetime
+a protocol/1 proof can use the separate physical plan, including the
+[scoped grouped extension](scoped-grouped-memory.md). This plan owns its selected
+grouping, table chunks and positive window cuts and checks every lifetime
 before P1. A smaller measured RSS alone cannot admit either route. Caller-owned
 model storage is outside `MemoryBudget.host` and must also appear in any
 whole-process measurement.
@@ -17,13 +18,17 @@ whole-process measurement.
 Grouped P2b now retains only each polynomial's folded value/weight allocations.
 Its original source, permutation, full-size work and compact copy still overlap
 during construction. The [component measurements](merge-state-memory.md) distinguish
-that retention improvement from the complete grouped lifetime bound still owed by
-the physical route.
+that retention improvement from the [complete grouped composition](scoped-grouped-memory.md).
 
 Opt-in row workers add a separate checked configured-stack/control reserve to both
 strategies and session preparation. They do not clone field buffers or tables. See
 the [pinned thread ownership inventory](../cpu-row-ntt.md#additional-memory) for
 its bounds and the remaining OS/runtime process-overhead scope.
+
+The table records the resident owners. The physical route borrows INT8 weights,
+retains its charged graph/checkpoint cache, and uses scoped group/native leases
+in place of the complete leaf witness. The [scoped inventory](scoped-grouped-memory.md)
+records those substitutions and their construction overlap.
 
 | Phase | Storage that must be accounted for |
 |---|---|
@@ -41,7 +46,7 @@ its bounds and the remaining OS/runtime process-overhead scope.
 | P5 | Resident witness/source tile, encoder, retained commitment trees, distinct queried columns times all committed rows, public output copies, weight answers and multiproofs |
 | Packet assembly | Retained proof messages, encoder-owned scratch and the bounded envelope writer; manifest metadata remains separate |
 
-`ModelWitness` is freed after native construction: native tables own the leaf
+On the resident route, `ModelWitness` is freed after native construction: native tables own the leaf
 inputs they need, and reduction stages read the original witness. Once
 `ModelOpenings::derive` has transferred every opening obligation, the stage and
 native working sets are freed before P4 begins. Neither release removes an
@@ -55,7 +60,8 @@ admission still requires the complete surrounding lifetime composition.
 The [resident tree-batch component bound](resident-tree-memory.md) prices canonical
 fraction construction, forest levels, current level-kernel work and returned tree
 claims from public shapes. Group lookup orchestration and its surrounding sources,
-splits, blocks and wire messages still need complete composition before admission.
+splits, blocks and wire messages remain additional owners in the complete
+[scoped grouped composition](scoped-grouped-memory.md).
 
 The [group-layout construction bounds](group-layout-memory.md) price public
 grouping/one-group metadata, including transient coordinate pairs, held-read flags,
@@ -65,12 +71,12 @@ The [complete lookup-group bound](lookup-group-memory.md) adds tree-construction
 containers, schedule/position metadata, padded value-evaluation scratch and all
 returned claim clones around that kernel. Layout/column/share construction, split
 and merge blocks, retained table/merge state and complete driver phase composition
-remain additional; grouped physical admission is still guarded.
+remain additional in the [complete scoped grouped composition](scoped-grouped-memory.md).
 
 The [grouped message-owner bound](grouped-message-memory.md) adds retained group,
 table and merge messages, original claim points, driver merge metadata and the
-production wire-copy overlap. It does not compose the whole grouped phase;
-both physical admission guards remain in place.
+production wire-copy overlap. That component alone cannot admit a proof; the
+[scoped grouped composition](scoped-grouped-memory.md) includes all other phases.
 
 ## Session preparation
 

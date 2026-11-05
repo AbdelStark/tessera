@@ -3,6 +3,13 @@
 #[cfg(test)]
 mod grouping_tests;
 
+#[cfg(test)]
+std::thread_local! {
+    // Public candidate-order observation only; no allocation or decision override.
+    static GROUP_SEARCH_TRACE: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+    static GROUP_PLANNER_OWNER_MIN: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+
 use super::*;
 use crate::leaf::table_source::GeneratedCounts;
 use crate::leaf::{
@@ -109,10 +116,14 @@ fn plan_groups(
     layers: &LayerMap,
     tokens: u32,
     budget: MemoryBudget,
+    protocol_version: u16,
     selection: &compiler::Selection,
 ) -> Result<(PassPlan, Option<GroupedLayout>), ProverError> {
     if let Ok(fit) = plan.clone().for_budget(budget) {
         return Ok((fit, None));
+    }
+    if protocol_version != protocol::PROTOCOL_VERSION {
+        return Ok((plan, None));
     }
     let token_vars = tokens.next_power_of_two().trailing_zeros();
     for g in 1..=u32::from(protocol::MAX_LEAF_GROUP_BITS) {
@@ -133,6 +144,75 @@ fn plan_groups(
     }
     Ok((plan, None))
 }
+fn plan_physical_groups(
+    plan: PassPlan,
+    input: physical::Inputs<'_>,
+    host: u64,
+) -> Result<(PassPlan, Option<GroupedLayout>), ProverError> {
+    // RFC-0077 does not authorize protocol/2 groups or new soundness parameters.
+    if input.claims.protocol_version != protocol::PROTOCOL_VERSION || input.grouped.is_some() {
+        return Err(usage(
+            "physical group search requires an ungrouped protocol/1 input",
+        ));
+    }
+    match physical::select(&input, host) {
+        Ok(candidate) => return Ok((candidate.into_plan(plan)?, None)),
+        Err(error) if error.code() == ErrorCode::ResMemory => {}
+        Err(error) => return Err(error),
+    }
+    let token_vars = input.lowering.graph.tensors[input.lowering.tokens.0 as usize].shape[0]
+        .checked_next_power_of_two()
+        .ok_or_else(memory)?
+        .trailing_zeros();
+    for bits in 1..=u32::from(protocol::MAX_LEAF_GROUP_BITS) {
+        let Some(groups) = group_candidate(token_vars, input.layers.vars, bits) else {
+            break;
+        };
+        let metadata = GroupedLayout::construction_memory(input.leaf, groups)?.peak_bytes();
+        if input
+            .planner_caller
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(metadata))
+            .ok_or_else(memory)?
+            > host
+        {
+            continue;
+        }
+        let layout = GroupedLayout::new(input.leaf, input.layers, groups)?;
+        let trial = plan
+            .clone()
+            .grouped(groups, largest_group_lookups(&layout)?);
+        let candidate_input = physical::Inputs {
+            grouped: Some(&layout),
+            // The original oracle and this trial coexist through complete selection.
+            planner_caller: input
+                .planner_caller
+                .checked_add(trial.heap_bytes().ok_or_else(memory)?)
+                .ok_or_else(memory)?,
+            ..input
+        };
+        #[cfg(test)]
+        GROUP_SEARCH_TRACE.with(|trace| {
+            if let Some(previous) = trace.get() {
+                trace.set(Some((previous << 4) | u64::from(groups.bits())));
+            }
+        });
+        #[cfg(test)]
+        GROUP_PLANNER_OWNER_MIN.with(|owner| {
+            if let Some(previous) = owner.get() {
+                owner.set(Some(previous.min(candidate_input.planner_caller)));
+            }
+        });
+        match physical::select(&candidate_input, host) {
+            Ok(candidate) => return Ok((candidate.into_plan(trial)?, Some(layout))),
+            Err(error) if error.code() == ErrorCode::ResMemory => {}
+            Err(error) => return Err(error),
+        }
+    }
+    // Prover::plan may report a nonfitting resident oracle; P1 must check it.
+    Ok((plan, None))
+}
+
 enum Tensors<'model> {
     Resident(Witness),
     Checkpoint(CheckpointTensors<'model>),
@@ -485,12 +565,13 @@ impl<'a> CpuBackend<'a> {
             .preparation(prepared.memory.with_batch(batch)?)
             .staged(shapes)?
             .tables(TablePlan::new(&leaf, runtime.selection(), None, None)?);
-        let (plan, grouped) = plan_groups(
+        let (plan, mut grouped) = plan_groups(
             plan,
             &leaf,
             &layers,
             n,
             prepared.cfg.memory_budget,
+            c.protocol_version,
             runtime.selection(),
         )?;
         // INV-ARCH-6 / RFC-0018: borrow INT8 weights only when all extra replay
@@ -507,8 +588,6 @@ impl<'a> CpuBackend<'a> {
                 false
             }
         };
-        #[cfg(test)]
-        let mut grouped = grouped;
         #[cfg(test)]
         if let Some(groups) = physical::FORCE_GROUPS.with(std::cell::Cell::get) {
             let layout = GroupedLayout::new(&leaf, &layers, groups)?;
@@ -527,33 +606,7 @@ impl<'a> CpuBackend<'a> {
         }
         if (force_physical || plan.check(prepared.cfg.memory_budget).is_err())
             && c.protocol_version == protocol::PROTOCOL_VERSION
-            && grouped.is_none()
         {
-            let input = physical::Inputs {
-                claims: c,
-                statement: &batch.statement,
-                lowering: &lowering,
-                layers: &layers,
-                runtime: &runtime,
-                advice: &advice,
-                leaf: &leaf,
-                native: &native,
-                grouped: None,
-                weights: &prepared.layout,
-                session: Some(prepared.memory),
-                caller_batch: Some(preparation::caller_batch_bytes(batch).ok_or_else(memory)?),
-                planner_caller: plan.heap_bytes().ok_or_else(memory)?,
-            };
-            match physical::select(&input, prepared.cfg.memory_budget.host) {
-                Ok(candidate) => plan = candidate.into_plan(plan)?,
-                // Prover::plan reports the non-fitting resident plan when neither
-                // route fits. commit_batch still checks it before P1 (RFC-0018).
-                Err(error) if error.code() == ErrorCode::ResMemory => {}
-                Err(error) => return Err(error),
-            }
-        }
-        #[cfg(test)]
-        if force_physical && physical::FORCE_GROUPS.with(std::cell::Cell::get).is_some() {
             let input = physical::Inputs {
                 claims: c,
                 statement: &batch.statement,
@@ -569,7 +622,13 @@ impl<'a> CpuBackend<'a> {
                 caller_batch: Some(preparation::caller_batch_bytes(batch).ok_or_else(memory)?),
                 planner_caller: plan.heap_bytes().ok_or_else(memory)?,
             };
-            plan = physical::select(&input, prepared.cfg.memory_budget.host)?.into_plan(plan)?;
+            if grouped.is_some() {
+                plan =
+                    physical::select(&input, prepared.cfg.memory_budget.host)?.into_plan(plan)?;
+            } else {
+                (plan, grouped) =
+                    plan_physical_groups(plan, input, prepared.cfg.memory_budget.host)?;
+            }
         }
         if !plan.uses_checkpoints() && plan.check(prepared.cfg.memory_budget).is_ok() {
             let checkpoint = tessera_witness::CheckpointMemory::new(&lowering)?;

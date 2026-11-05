@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! In-progress composition of physical phase bounds for RFC-0018 / #641.
-//! Checked physical fallback for canonical ungrouped checkpoint sources.
+//! Complete checked physical phase composition for RFC-0018 / RFC-0077.
+//! Checked physical fallback for canonical protocol/1 checkpoint sources.
 //! The resident route remains the first choice and the differential oracle.
 
 mod grouped;
@@ -19,8 +19,8 @@ use tessera_witness::Engine;
 std::thread_local! {
     // Exercise this exact production chooser even when the resident oracle fits.
     pub(super) static FORCE_ROUTE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    // Release-excluded qualification: compare this exact grouped driver against
-    // the resident oracle while both production admission guards stay closed.
+    // Release-excluded fixture override: compare identical public grouping choices
+    // through the resident oracle and the complete physical production driver.
     pub(super) static FORCE_GROUPS: std::cell::Cell<Option<protocol::LeafGroups>> = const { std::cell::Cell::new(None) };
 }
 
@@ -69,10 +69,16 @@ fn sumcheck_messages(vars: u64, degree: u64, evaluations: u64) -> Result<u64, Pr
 
 // An ungrouped LogUp result owns every original claim/level point; Round2 clones
 // only its wire messages. Forest counts below deliberately include every site.
-fn leaf_messages(input: &Inputs<'_>, graph_splits: u64) -> Result<(u64, u64), ProverError> {
+fn leaf_messages(
+    input: &Inputs<'_>,
+    graph_splits: u64,
+    allowance: u64,
+) -> Result<(u64, u64), ProverError> {
     if input.grouped.is_some() {
-        return Err(usage(
-            "physical composition still owes grouped message storage",
+        let work = grouped::GroupedWorkMemory::new(input, allowance)?;
+        return Ok((
+            sum([work.messages.retained_bytes(), graph_splits])?,
+            work.messages.wire_bytes(),
         ));
     }
     let instances = input.leaf.instances().len() as u64;
@@ -689,6 +695,9 @@ impl PhysicalCandidate {
 }
 
 pub(super) fn select(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, ProverError> {
+    if input.claims.protocol_version != protocol::PROTOCOL_VERSION {
+        return Err(usage("physical checkpoint candidates require protocol/1"));
+    }
     // Reserve workers before discretionary table/window choices; PassPlan adds
     // the same reserve back to its reported maximum, exactly once (RFC-0018).
     let host = host
@@ -884,27 +893,16 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     let graph_leaf = crate::StageProver::new(lowering, native.schedule(), &MetadataOnly)
         .work_memory(0)?
         .output_bytes();
-    #[cfg(test)]
-    let qualification = FORCE_ROUTE.with(std::cell::Cell::get)
-        && FORCE_GROUPS.with(std::cell::Cell::get) == input.grouped.map(|g| g.groups())
-        && input.grouped.is_some();
-    #[cfg(not(test))]
-    let qualification = false;
-    let (leaf_original, leaf_wire) = if qualification {
-        let work =
-            grouped::GroupedWorkMemory::new(input, host.checked_sub(base).ok_or_else(memory)?)?;
-        (
-            sum([work.messages.retained_bytes(), graph_leaf])?,
-            work.messages.wire_bytes(),
-        )
-    } else {
-        leaf_messages(input, graph_leaf)?
-    };
+    let (leaf_original, leaf_wire) = leaf_messages(
+        input,
+        graph_leaf,
+        host.checked_sub(base).ok_or_else(memory)?,
+    )?;
     let response_containers = response_containers(input, &geometry, params)?;
     let messages = sum([leaf_original, leaf_wire, response_containers])?;
     let active = sum([base, source, rows, random::heap_bytes(), messages])?;
-    // RFC-0077: source-only component, still behind both grouped admission
-    // guards until group kernels and every other phase are fully qualified.
+    // RFC-0077: selected source owners join every other complete phase owner;
+    // a source-only bound cannot authorize the candidate.
     let (leaf_source_peak, leaf_source_planning, grouped_work_peak) = match grouped {
         Some(grouped) => {
             let source = ScopedSourceMemory::new(leaf, lowering, layers, grouped, advice)?;
@@ -954,10 +952,6 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     }
     let table_preparation = table.construction_peak_bytes(leaf, *grouped)?;
     let table_metadata = table.metadata_bytes()?;
-    // The canonical native reservation counts every Term allocation. Its total
-    // therefore bounds any individual tag's term count, including one fallback.
-    let native_terms =
-        (native_memory.instance_bytes() / size_of::<tessera_sumcheck::Term<F>>() as u64).max(1);
     let mut stage_rows = Vec::new();
     let mut stages = Vec::new();
     let mut max_source = 0;
@@ -973,7 +967,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
         let metadata = stage_driver.window_metadata_memory(
             k as u16,
             |tag| native.window_shape(tag),
-            native_terms,
+            |tag| native.window_terms_bound(tag),
         )?;
         let driver_memory = stage_driver.work_memory(k as u16)?;
         let driver = driver_memory.peak_bytes()?;

@@ -33,6 +33,13 @@ fn bad() -> StageError {
         rule: "native model sources have their canonical identities and domains",
     }
 }
+fn check_term_count(terms: &[Term<F>], declared: u64) -> Result<(), StageError> {
+    if terms.len() as u64 > declared {
+        return Err(bad());
+    }
+    Ok(())
+}
+
 fn source_error(error: crate::LeafError) -> StageError {
     match error {
         crate::LeafError::Internal { .. } => bad(),
@@ -1272,6 +1279,7 @@ impl NativeProver for ModelNativeProver<'_> {
         if tables.len() != shape.tables || tables.iter().any(|t| t.len() != width) {
             return Err(bad());
         }
+        check_term_count(&d.terms, self.plan.window_terms_bound(tag)?)?;
         Ok(Instance::sum_of_products(tables, d.terms.clone()))
     }
     fn claims(&self, tag: u32, point: &[F], values: &[F]) -> Result<Vec<Claim<F>>, StageError> {
@@ -1346,6 +1354,19 @@ impl NativeProver for ModelNativeProver<'_> {
 mod tests {
     use super::*;
     use tessera_field::QuadraticExtension;
+
+    #[test]
+    fn native_instances_refuse_an_underdeclared_term_envelope() {
+        let terms = product_terms(1, 0, true);
+        assert_eq!(terms.len(), 4);
+        assert_eq!(
+            check_term_count(&terms, 3),
+            Err(StageError::Internal {
+                rule: "native model sources have their canonical identities and domains"
+            })
+        );
+        assert_eq!(check_term_count(&terms, 4), Ok(()));
+    }
 
     #[test]
     fn canonical_source_failures_keep_exact_public_codes() {

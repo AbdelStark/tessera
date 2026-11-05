@@ -37,6 +37,7 @@ fn grouped_scoped_cpu_qualification_matches_resident_and_independently_verifies(
         (&[(2, 1), (1, 0)][..], 1, 1),
         (&[(3, 0)][..], 1, 0),
         (&[(3, 0)][..], 0, 1),
+        (&[(3, 0)][..], 2, 1),
         // Uneven slots and a padded request ordinal must survive the whole proof.
         (&[(2, 1), (1, 0), (2, 0)][..], 1, 1),
     ] {
@@ -49,9 +50,32 @@ fn grouped_scoped_cpu_qualification_matches_resident_and_independently_verifies(
             }),
         );
     }
+    for name in ["tiny-2-affine", "tiny-2-minimal"] {
+        physical_case(
+            name,
+            &[(3, 0)],
+            Some(protocol::LeafGroups {
+                token_bits: 1,
+                layer_bits: 1,
+            }),
+        );
+    }
     physical_case(
         "tiny-3-reference",
         &[(2, 1), (1, 0), (2, 0)],
+        Some(protocol::LeafGroups {
+            token_bits: 1,
+            layer_bits: 1,
+        }),
+    );
+}
+
+#[test]
+#[ignore = "isolated fault-campaign control; the required suite covers all fixtures"]
+fn grouped_scoped_cpu_fault_control() {
+    physical_case(
+        "tiny-2-servable",
+        &[(3, 0)],
         Some(protocol::LeafGroups {
             token_bits: 1,
             layer_bits: 1,
@@ -128,7 +152,7 @@ fn physical_case(name: &str, requests: &[(u32, u32)], groups: Option<protocol::L
                 .1;
         }
     }
-    if name == "tiny-2-affine" {
+    if matches!(name, "tiny-2-affine" | "tiny-2-minimal") {
         for (point, shifts) in &mut model.quant.public.shift_class_sets {
             let base = if matches!(
                 point,
