@@ -266,3 +266,22 @@ memory, not RSS, a physical lower bound, an H100 result or a complete G-4 pass.
 The candidate rule remains unadopted and this fixed D is not fidelity-qualified.
 The historical 405B projections above establish no real-model implementation
 capability. Current grouping/windows cannot remove this CPU cell-base blocker.
+
+## Bounded grouped source feasibility (2026-11-05)
+
+[EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md), primary local
+evidence on Apple M1 Max, tests a synthetic source/merge subset under a committed
+registration. It does not update any frontier throughput, proof-size, fidelity,
+verification or whole-process memory entry above.
+
+| Observation | Evidence and scope |
+|---|---|
+| 42 source cases, 164 groups, 43,372 index records, six impossible split refusals | E0 finite coverage, current constructors plus independent Python recount |
+| 42 merge cases and all 285 legal cuts have identical messages/points/evaluations under the same test transcript | E0 finite current-kernel equality; not NI/Live proof acceptance |
+| Maximum source payload lower than baseline retained source payload in 36 of 42 cases | E0 exact public payload counts; not a whole-proof memory ratio |
+| Every measured prototype source/input/table/P2b allocation peak fits its stated composition | E1 requested allocation counts, explicit borrowed/oracle/report exclusions |
+| Twelve registered compiled faults and two additional phase/geometry faults caught, with original/restored controls | E0 finite negative controls; no compile failure counted |
+| Credited change to mu, model speed, RSS, GPU throughput or real-model acceptance | None; canonical factory and full production phase composition remain separate obligations |
+
+The [phase inventory](experiments/EXP-0031-bounded-grouped-source/phase-inventory.md)
+records the missing owners, and RFC-0077 states the proposed contract.

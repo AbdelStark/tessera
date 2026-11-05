@@ -1,0 +1,138 @@
+[
+  {
+    "kind": "control",
+    "name": "before",
+    "exit_code": 0
+  },
+  {
+    "kind": "mutant",
+    "name": "swap-token-layer-bits",
+    "compiled": true,
+    "detected": true,
+    "detector": "compiled Rust assertion",
+    "exit_code": 101,
+    "log": "fault-logs/swap-token-layer-bits.log"
+  },
+  {
+    "kind": "mutant",
+    "name": "omit-request-slot-gap",
+    "compiled": true,
+    "detected": true,
+    "detector": "independent Python assertion",
+    "exit_code": 1,
+    "log": "fault-logs/omit-request-slot-gap.log"
+  },
+  {
+    "kind": "mutant",
+    "name": "omit-row-zero-padding",
+    "compiled": true,
+    "detected": true,
+    "detector": "compiled Rust assertion",
+    "exit_code": 101,
+    "log": "fault-logs/omit-row-zero-padding.log"
+  },
+  {
+    "kind": "mutant",
+    "name": "repeat-no-token-role",
+    "compiled": true,
+    "detected": true,
+    "detector": "independent Python assertion",
+    "exit_code": 1,
+    "log": "fault-logs/repeat-no-token-role.log"
+  },
+  {
+    "kind": "mutant",
+    "name": "misplace-outer-site-identity",
+    "compiled": true,
+    "detected": true,
+    "detector": "independent Python assertion",
+    "exit_code": 1,
+    "log": "fault-logs/misplace-outer-site-identity.log"
+  },
+  {
+    "kind": "mutant",
+    "name": "wrong-forest-query-bit",
+    "compiled": true,
+    "detected": true,
+    "detector": "compiled Rust assertion",
+    "exit_code": 101,
+    "log": "fault-logs/wrong-forest-query-bit.log"
+  },
+  {
+    "kind": "mutant",
+    "name": "wrong-forest-layer-bit",
+    "compiled": true,
+    "detected": true,
+    "detector": "compiled Rust assertion",
+    "exit_code": 101,
+    "log": "fault-logs/wrong-forest-layer-bit.log"
+  },
+  {
+    "kind": "mutant",
+    "name": "wrong-split-coordinate-order",
+    "compiled": true,
+    "detected": true,
+    "detector": "compiled Rust assertion",
+    "exit_code": 101,
+    "log": "fault-logs/wrong-split-coordinate-order.log"
+  },
+  {
+    "kind": "mutant",
+    "name": "omit-earlier-output-overlap",
+    "compiled": true,
+    "detected": true,
+    "detector": "compiled Rust assertion",
+    "exit_code": 101,
+    "log": "fault-logs/omit-earlier-output-overlap.log"
+  },
+  {
+    "kind": "mutant",
+    "name": "omit-original-p2b-source",
+    "compiled": true,
+    "detected": true,
+    "detector": "compiled Rust assertion",
+    "exit_code": 101,
+    "log": "fault-logs/omit-original-p2b-source.log"
+  },
+  {
+    "kind": "mutant",
+    "name": "omit-nested-record-capacity",
+    "compiled": true,
+    "detected": true,
+    "detector": "compiled Rust assertion",
+    "exit_code": 101,
+    "log": "fault-logs/omit-nested-record-capacity.log"
+  },
+  {
+    "kind": "mutant",
+    "name": "wrap-size-addition",
+    "compiled": true,
+    "detected": true,
+    "detector": "compiled Rust assertion",
+    "exit_code": 101,
+    "log": "fault-logs/wrap-size-addition.log"
+  },
+  {
+    "kind": "mutant",
+    "name": "full-original-during-group",
+    "compiled": true,
+    "detected": true,
+    "detector": "compiled Rust assertion",
+    "exit_code": 101,
+    "log": "fault-logs/full-original-during-group.log"
+  },
+  {
+    "kind": "mutant",
+    "name": "underdeclare-message-dimensions",
+    "compiled": true,
+    "detected": true,
+    "detector": "independent Python assertion",
+    "exit_code": 1,
+    "log": "fault-logs/underdeclare-message-dimensions.log"
+  },
+  {
+    "kind": "control",
+    "name": "restored",
+    "exit_code": 0
+  }
+]

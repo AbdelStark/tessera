@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `triaged` |
+| Status | `promoted` |
 | Origin | #687; EXP-0030; SUR-0015; current CPU source ownership |
 | Lever | source memory and `regen`; correctness prerequisite, no credited gain |
 | Spec surfaces | RFC-0018 Memory scheduler and Pass structure; RFC-0054 Groups and merge ownership; tier-B CPU interface/internal source adapter; no tier-A change |
@@ -82,8 +82,8 @@ whole-proof speed, RSS, fidelity, GPU or real-model acceptance credit.
 
 | Property | Effect | Pass |
 |---|---|---|
-| Soundness bits, G-4 | Same rows, messages and runtime checks; no changed parameter or claimed new bound | unknown until exact canonical regeneration and production integration are established |
-| Uniqueness, SP-3 | Same integer `D` and every original obligation | unknown for the replacement adapter; finite experiment cannot prove all inputs |
+| Soundness bits, G-4 | Same accepted relation/checks; E0 contract preserves canonical messages, no changed parameter or claimed new bound | pass for design preservation under the stated factory contract; production conformance remains mandatory |
+| Uniqueness, SP-3 | Same integer `D` and every original obligation; identity/projection bijection removes none | pass for the abstract contract; no proof a future checkpoint adapter implements it |
 | Zero knowledge, G-5 | No new protocol/1 hiding claim; protocol/2 excluded; OBS-6 clearing required | pass for scope exclusion; clearing still an implementation gate |
 | Verifier independence, SP-6 | No verifier code/dependency changes | pass by design; recheck final diff |
 | Hash-based commitments | No cryptographic primitive change | pass by design |
@@ -134,7 +134,10 @@ An H100 run would settle throughput and device lifetimes, neither claimed here.
 
 ## Decision and links
 
-Self-triaged by the implementing agent, not an independent review. Experiment:
-EXP-0031, initially planned. Issue: [#687](https://github.com/AbdelStark/tessera/issues/687).
-No production source, guard, schema, secret access or admission change. Ledger
-updated 2026-11-05.
+Self-triaged and reviewed by the implementing agent, not an independent human.
+[EXP-0031](../experiments/EXP-0031-bounded-grouped-source/README.md) is finite
+E0/E1 validated with all twelve registered faults, an extra phase control and
+restored controls. Accepted [RFC-0077](../../docs/rfcs/RFC-0077-bounded-grouped-checkpoint-sources.md)
+promotes the contract and its explicit production gates; no production source,
+guard, schema, secret access or admission changes. Issue:
+[#687](https://github.com/AbdelStark/tessera/issues/687). Ledger updated 2026-11-05.

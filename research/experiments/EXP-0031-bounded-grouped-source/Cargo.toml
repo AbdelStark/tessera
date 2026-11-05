@@ -1,0 +1,29 @@
+[package]
+name = "bounded-grouped-source"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "bounded-grouped-source"
+path = "main.rs"
+
+[dependencies]
+allocation-counter = "0.8.1"
+blake3 = "1.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tessera-codec = { path = "../../../crates/tessera-codec" }
+tessera-compiler = { path = "../../../crates/tessera-compiler" }
+tessera-field = { path = "../../../crates/tessera-field" }
+tessera-gadgets = { path = "../../../crates/tessera-gadgets" }
+tessera-ir = { path = "../../../crates/tessera-ir" }
+tessera-logup = { path = "../../../crates/tessera-logup" }
+tessera-poly = { path = "../../../crates/tessera-poly" }
+tessera-protocol = { path = "../../../crates/tessera-protocol" }
+tessera-prover = { path = "../../../crates/tessera-prover" }
+tessera-sumcheck = { path = "../../../crates/tessera-sumcheck" }
+tessera-tables = { path = "../../../crates/tessera-tables" }

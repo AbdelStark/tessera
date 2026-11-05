@@ -1,0 +1,4 @@
+
+thread 'main' (33484856) panicked at main.rs:156:21:
+source peak within public bill
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

@@ -1,0 +1,15 @@
+{
+  "source_cases": 42,
+  "groups": 164,
+  "index_records": 43372,
+  "negative_shapes": 6,
+  "source_payload_reduction_cases": 36,
+  "scope": "independent integer/index/value-digest recount; measured allocator inputs and pinned Rust ABI sizes are producer observations; full experiment unjudged",
+  "merge": {
+    "merge_cases": 42,
+    "legal_cuts": 285,
+    "scope": "independent public source/polynomial/claim/cut/callback composition; production MergeMemory and layout component totals and allocator observations are pinned producer inputs"
+  },
+  "merge_source_sha256": "bdc0c013c0677d608d04a31b8d5b73f5e2c3a028090ca775a4f917e7a9abd7de",
+  "source_sha256": "dd1eac7e3821228e75cfb4669f06188660415a880dfd59e2608175cc5be96d2d"
+}

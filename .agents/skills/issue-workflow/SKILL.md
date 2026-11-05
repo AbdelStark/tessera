@@ -17,6 +17,12 @@ One issue, one branch, one pull request, merged before the next issue starts. [C
    On a shared host running long model jobs, serialize the exact-mode Live fixtures (`-- --test-threads=1`), including a repeated full workspace run after a concurrency timeout. Keep the fixture's 30-second deadlines, pins and parameters unchanged and retain the failed run's evidence (#671).
    Discover an integration module's owning target before choosing `--test`: `tests/cpu_api/mod.rs` belongs to `model_leaf`, not a `cpu_api` target. Follow its `mod` declaration or inspect `cargo metadata --no-deps --format-version 1`; require the expected nonzero test count (#669).
 7. **Commit** with `git commit -s`: an imperative subject of at most 72 characters with the issue's area prefix, a body that says why, and `Closes #N`. Done when `cargo xtask check-pr --base origin/main` passes.
+   Check the author/committer identity in an isolated worktree before committing.
+   A machine-inferred hostname address can produce a valid-looking DCO line with
+   the wrong identity. Use the established, authorized repository identity via
+   per-command `git -c user.name=... -c user.email=... commit -s` when needed;
+   do not change global user configuration. Verify the resulting author,
+   committer and sign-off before pushing (#687).
 8. **Open the pull request**: `gh pr create --base main --milestone <milestone> --label <label>…` with the sections of `.github/pull_request_template.md` (Problem, Solution, Validation, Caveats). `gh pr edit` fails on this repository, so a later change to the description goes through `gh api -X PATCH repos/AbdelStark/tessera/pulls/<PR> -F body=@<file>`. Done when the pull request exists and its `closingIssuesReferences` (GraphQL) name exactly the issues it closes.
 9. **Wait for CI**: `gh pr checks <PR> --watch`. On failure, read the failing step's log (`gh run view <run> --log-failed`), fix, push, and wait again.
    - `main` requires branches to be up to date. When it moves first, rebase onto `origin/main`.

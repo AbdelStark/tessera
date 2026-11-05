@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `planned` |
+| Status | `done: validated` |
 | Idea | [IDEA-0042](../../ideas/IDEA-0042-bounded-grouped-source.md), #687 |
 | Evidence level | E0 public geometry/value equivalence; E1 CPU allocation counts, no timing |
 | Hardware | Apple M1 Max, 64 GiB unified memory; existing immutable model jobs remain live |
@@ -112,6 +112,17 @@ results contain public geometry, counts, digests and verdicts, not payload dumps
 Run correctness/allocation controls serially in a dedicated Cargo target. No
 wall-clock speed experiment, warm-up cohort, GPU estimate or repeated model run.
 
+The merge comparison uses a deterministic allocation-free test transcript. Its
+hash/reduction fixture is not the production TCE/Fiat-Shamir implementation and
+establishes no challenge-uniformity or NI/Live acceptance claim. Both current
+merge kernels must emit identical labels/messages/points under that same fixture.
+
+Review added two extra controls beyond the twelve registered faults: an eager
+unrestricted-original materialization during group preparation must fail its
+phase counter even when outputs agree. A component message-dimension declaration below any public tree height must fail the independent audit even if allocation observations fit. A selected block with no group variables
+is legitimately whole and remains charged. The counter tracks calls to this
+prototype's unrestricted builder, not arbitrary work in a future factory.
+
 The output bills and phase inventory are experimental contracts. Later production
 work still owes canonical gadget/tile integration, checkpoint/KV replay and its
 scratch, original opening targets, table/count/cache ownership, every P1-P5 and
@@ -128,34 +139,94 @@ python3 -I research/tools/check_kb.py
 cargo xtask lint
 ```
 
-The implementation will add exact build/run/audit commands here after verifying
-the committed frozen plan. Build targets must be unique to this experiment.
-Record OS, CPU, `rustc --version`, Python version, source/lock hashes and UTC time.
+From this study's commit, use a fresh scratch directory and Python 3.13+ with
+`blake3==1.0.11` for the independent audit and mutation runner:
+
+```sh
+python3 -B -I research/experiments/EXP-0031-bounded-grouped-source/run.py prepare /tmp/exp0031-reproduce
+python3 -B -I research/experiments/EXP-0031-bounded-grouped-source/run.py build /tmp/exp0031-reproduce
+python3 -B -I research/experiments/EXP-0031-bounded-grouped-source/run.py source /tmp/exp0031-reproduce
+python3 -B -I research/experiments/EXP-0031-bounded-grouped-source/run.py merge /tmp/exp0031-reproduce
+python3 -B -I research/experiments/EXP-0031-bounded-grouped-source/audit.py /tmp/exp0031-reproduce/source-partial.json /tmp/exp0031-reproduce/audit.json --merge /tmp/exp0031-reproduce/merge-partial.json
+python3 -B -I research/experiments/EXP-0031-bounded-grouped-source/mutate.py /tmp/exp0031-reproduce
+python3 -B -I research/experiments/EXP-0031-bounded-grouped-source/run.py clippy /tmp/exp0031-reproduce
+```
+
+The runner refuses a changed registration or production/verifier source. It
+archives the pinned production base outside the repository, applies only the
+recorded reference visibility/doc exposure, and copies the standalone harness
+there. It never patches production files in this worktree. The committed lock
+file and dedicated target isolate builds. Receipts retain each command/log;
+repeated stage outputs are archived rather than discarded.
 
 ## Results
 
-Not run. No experiment code exists at registration. Raw receipts will live under
-`results/`; the frozen registration remains unchanged.
+| Check | Observed result | Evidence |
+|---|---|---|
+| Source fixtures | 42 legal cases, 164 groups, 43,372 index records; six impossible split cases explicitly refused | E0 finite coverage, current resident constructors and independent integer/value-digest audit |
+| Source payload | Largest group source payload strictly below retained full source payload in 36 of 42 cases | E0 exact public payload counts; not a whole-proof ratio |
+| Requested allocations | Every measured source/input/table/P2b peak fits its public prototype composition; exact and one-byte-under source allowances checked before payload work | E1 CPU requested-allocation observations, including baseline source construction |
+| Merge | 42 cases, all 285 legal cuts; complete round messages, evaluations, points and test-transcript digests equal the materialized in-memory reference | E0 finite equality over current kernels |
+| P2b regeneration | Each original polynomial regenerated exactly once at each cut; no unrestricted-builder call during group preparation | E0 counters and phase regression control |
+| Faults | All twelve registered compiled faults caught; two extra phase/geometry faults caught; original and restored controls pass | E0 finite negative controls; no compile failure counted |
+
+Measured on Apple M1 Max, 64 GiB, macOS 15.6.1, Rust 1.95.0; exact environment
+is in [environment.json](results/environment.json). No experiment code existed
+in registration commit `ede585df1fc290df27c32ba2a7b4a6672a69cc74`; the frozen
+plan's SHA-256 remains `972efa1bdf13f49e271ab58f41edde3a6b54d17605d00e4b9d39bd8e02bea2c0`.
+
+Raw source and merge records are compressed under `results/`. The independent
+[audit](results/audit.json), [fault receipts](results/mutations.json),
+[source provenance](results/provenance.json) and
+[reference overlay](results/reference-overlay.json) identify the exact controls.
+The final restored controls supply the published records. Earlier partial runs
+remain in the private scratch evidence; the initial public fixture-order failure
+is retained in [its log](results/initial-source-order-failure.log).
 
 ## Analysis
 
-Not judged. Finite synthetic equality cannot establish all-input ModelWitness
-correctness or an accepted physical route. Requested allocation counts exclude
-stack, allocator bookkeeping, runtime and any borrowed input documented outside
-the counter. Existing model jobs prevent a controlled timing study, which is
-outside scope. No H100 or whole-model extrapolation is permitted.
+The frozen finite criteria pass, together with the conditional all-input
+[contract argument](contract.md) and [complete phase inventory](phase-inventory.md).
+The synthetic callbacks are not a production checkpoint/gadget factory. Layer
+maps here are hand-built layout fixtures, not complete compiled model graphs.
+Future factory/cache/replay and native handoffs remain unimplemented and cannot
+be priced as zero by this study.
+
+Four faults are detected by the independent Python audit, including a slot-gap
+fault that affects the shared synthetic value factory and would agree between
+the two Rust arms. Identity/schema controls test source bookkeeping as well as
+value generation; they are not fourteen cryptographic forgery demonstrations.
+The initial site-order constructor error was corrected without changing the
+registered domains. Review then replaced full-polynomial group split evaluation
+with restricted-block evaluation and added the eager-materialization control.
+An empty group-variable set still keeps its whole source, as required.
+
+The Python audit independently reconstructs public indices, values/digests,
+shapes, claim/cut coverage and composition arithmetic. Rust ABI sizes, allocator
+observations and pinned production MergeMemory/GroupLayout component totals are
+producer inputs; this is not a second implementation of all their internals.
+Raw stage records say `not judged` because each stage alone is insufficient; the
+verdict here joins both stages, the independent audit, faults and contract review.
+
+Requested allocation counts exclude stack, allocator bookkeeping, runtime and
+the explicitly borrowed/materialized oracle and reporting allocations. Production
+phase composition must add all real owners. Existing model jobs prevent a
+controlled timing study, which is outside scope. No H100, RSS, real-model,
+forward-equivalent, fidelity or whole-proof speed/memory gain is credited.
 
 ## Verdict
 
-Pending: `planned`. No validated design, production implementation or gain claim.
+`validated` for the registered finite E0/E1 source/merge feasibility and abstract
+contract scope only. No complete factory, production admission, independent
+real-model acceptance or performance qualification is established.
 
 ## Follow-ups
 
-If the finite criteria and all-input abstract contract argument pass, write a
-Draft RFC with that canonical source contract and the full unknown-owner/refusal
-rule; separate future implementation obligations from settled design arguments.
-Unresolved in-scope security gates block promotion. Do not promote this prototype
-as production-ready.
+Accepted [RFC-0077](../../../docs/rfcs/RFC-0077-bounded-grouped-checkpoint-sources.md)
+records the canonical source contract and full unknown-owner/refusal rule. Its
+security argument preserves the existing accepted relation and is conditional
+on a canonical factory; the implementation must establish that contract.
+Do not promote this prototype as production-ready.
 Accept the runtime amendment before a separate production admission change.
 Real-model fidelity, independent proof acceptance and whole-process memory/time
 remain obligations of #617/#629/#641. An H100 run would assess device storage and

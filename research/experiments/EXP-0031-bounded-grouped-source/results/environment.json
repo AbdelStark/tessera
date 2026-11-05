@@ -1,0 +1,11 @@
+{
+  "observed_utc": "2026-11-05T05:45:34.004421+00:00",
+  "cpu": "Apple M1 Max",
+  "memory_bytes": 68719476736,
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t15.6.1\nBuildVersion:\t\t24G90",
+  "rust": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "audit_python": "Python 3.13.18",
+  "audit_blake3": "1.0.11",
+  "measurement": "requested allocation counts only; no timing or RSS benchmark",
+  "immutable_model_jobs": "unchanged and running; not part of experiment"
+}

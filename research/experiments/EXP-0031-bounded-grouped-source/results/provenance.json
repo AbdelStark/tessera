@@ -1,0 +1,24 @@
+{
+  "production_base": "646f7addc7bc737f2fbb8970c865df8333877093",
+  "registration_commit": "ede585df1fc290df27c32ba2a7b4a6672a69cc74",
+  "registration_sha256": "972efa1bdf13f49e271ab58f41edde3a6b54d17605d00e4b9d39bd8e02bea2c0",
+  "sources": {
+    "adapter.rs": "baf84a3fbc9dece9d75a5211afdbd79636946852a1321fe74e3afa41a137b195",
+    "merge_probe.rs": "eeb5eb31dda16dd664d525514aa06020d84aecfa4c72d372c39da74054d9ae55",
+    "memory.rs": "7645661a26238ed6e478d0e9f73dd09a035dde53ee294e1854ad401aec2639bf",
+    "fixture.rs": "b0173cb24102fa8042d32a1559a425fd33706a11923cf36f966cb3073aa3ea12",
+    "main.rs": "526fc4dde743b6fe98ef2bd5dca78b32c906ef0227ca9de0ac6acb4ad9c652f6",
+    "Cargo.toml": "e8f6479698017fd82d5f85d54f8200be85f4bfe7d601dd71d2343b55a5a04c95",
+    "Cargo.lock": "6ad36431090e358982dcf9ff9e178c5e856b8079a215088debed03069858c632",
+    "audit.py": "7dd8ab166a33169a756b07a176bf2578d4bf400655034cab52b7fddfd6d7c6b0",
+    "run.py": "888c3f0683a60835a865c02dfe98e5693f9a7e453a54dc1ab524fc51c1d512b4",
+    "mutate.py": "f1a925c97371b2dd48e3606ae38a7c5d7fc674261803bf3a33ca8910083f7c72"
+  },
+  "registered_faults": 12,
+  "additional_review_regression_controls": 2,
+  "compiled_faults_detected": 14,
+  "controls": 2,
+  "source_restored": true,
+  "prototype_phase_claim": "restricted group splits; no calls to unrestricted original-table builder before P2b; S-empty selected blocks remain whole and charged",
+  "scope": "finite source/merge prototype only; no real model data, production admission or complete factory"
+}
