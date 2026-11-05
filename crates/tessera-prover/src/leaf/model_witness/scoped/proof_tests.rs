@@ -17,6 +17,8 @@ use tessera_sumcheck::SumcheckTranscript;
 use tessera_tables::GeneratedTable;
 use tessera_witness::{Engine, Resident};
 
+mod runtime_slots;
+
 type F = GoldilocksExt2;
 
 struct Recording {
@@ -198,10 +200,7 @@ fn compare_native_stages(
     }
     assert_eq!(actual_tr.events, reference_tr.events);
     assert_eq!(actual_stage.pool(), reference_stage.pool());
-    eprintln!(
-        "scoped native/graph stages compared: {}, literal {literal}",
-        plan.schedule().stages.len() - 1
-    );
+    assert_eq!(plan.schedule().stages.len() - 1, 2);
 }
 
 #[test]
@@ -276,6 +275,125 @@ fn scoped_group_driver_matches_resident_transcript_and_encoded_messages() {
             source: &source,
             advice: &advice,
         };
+        let mut source_bill = None;
+        let planned = allocation_counter::measure(|| {
+            source_bill = Some(
+                ScopedSourceMemory::new(&stage, &lowering, &layers, &grouped, &advice).unwrap(),
+            );
+        });
+        let source_bill = source_bill.unwrap();
+        assert_eq!(planned.bytes_current, 0);
+        assert!(
+            planned.bytes_max <= source_bill.planning,
+            "public source planning {planned:?}, {source_bill:?}"
+        );
+        let callback = engine.source_tile_work_memory().unwrap();
+        for h in 0..grouped.count() {
+            let bill =
+                memory::ScopedGroupMemory::new(&stage, &lowering, &layers, &grouped, h).unwrap();
+            let mut input = None;
+            let measured = allocation_counter::measure(|| {
+                input = Some(
+                    factory
+                        .group_inputs(h, |id| {
+                            tables
+                                .iter()
+                                .find(|t| t.table() == id)
+                                .map(|t| t.tuples())
+                                .ok_or(LeafError::Internal {
+                                    rule: "fixture table exists",
+                                })
+                        })
+                        .unwrap(),
+                );
+            });
+            assert!(
+                measured.bytes_current as u64 <= bill.retained,
+                "group {h}: retained {measured:?}, {bill:?}"
+            );
+            assert!(
+                measured.bytes_max <= bill.construction + callback,
+                "group {h}: construction {measured:?}, {bill:?}, callback {callback}"
+            );
+            let input = input.unwrap();
+            let forest_polynomials: Vec<_> = factory
+                .forest_shapes()
+                .unwrap()
+                .iter()
+                .map(|shape| tessera_sumcheck::MergePolynomial {
+                    vars: shape.vars as usize,
+                    group_vars: (shape.queries..shape.queries + u32::from(gt))
+                        .chain(shape.layers..shape.layers + u32::from(gl))
+                        .map(|v| v as usize)
+                        .collect(),
+                })
+                .collect();
+            let copied = allocation_counter::measure(|| {
+                let mut blocks =
+                    Vec::with_capacity(input.layout.reads().len() + input.shares.len());
+                for read in input.layout.reads() {
+                    blocks.push((
+                        read.polynomial,
+                        read.group_bits,
+                        input
+                            .block(
+                                read.polynomial,
+                                grouped.polynomials().len(),
+                                &grouped.polynomials()[read.polynomial],
+                                read.group_bits,
+                            )
+                            .unwrap(),
+                    ));
+                }
+                for (f, polynomial) in forest_polynomials.iter().enumerate() {
+                    blocks.push((
+                        grouped.polynomials().len() + f,
+                        h as u64,
+                        input
+                            .block(
+                                grouped.polynomials().len() + f,
+                                grouped.polynomials().len(),
+                                polynomial,
+                                h as u64,
+                            )
+                            .unwrap(),
+                    ));
+                }
+            });
+            assert!(
+                copied.bytes_max <= bill.blocks,
+                "group {h}: copies {copied:?}, {bill:?}"
+            );
+        }
+        if gt == 0 && gl == 1 {
+            let original_bill =
+                memory::original_peak(&stage, &lowering, &layers, &grouped).unwrap();
+            let count = grouped.polynomials().len() + factory.forest_shapes().unwrap().len();
+            for i in 0..count {
+                let measured = allocation_counter::measure(|| {
+                    let values = factory.original(i).unwrap();
+                    let _copy = crate::leaf::grouped::seal_copy(&values).unwrap();
+                });
+                assert!(
+                    measured.bytes_max <= original_bill + callback,
+                    "original {i}: {measured:?}, bill {original_bill}, callback {callback}"
+                );
+            }
+            let native_bill = memory::native_peak(&stage, &lowering, &layers, &advice).unwrap();
+            for (s, site) in stage.sites().iter().enumerate() {
+                for l in 0..site.layers.len() {
+                    for read in stage.reads(s, l).unwrap() {
+                        let measured = allocation_counter::measure(|| {
+                            let _lease = factory.column(s, l, read.term).unwrap();
+                        });
+                        assert!(
+                            measured.bytes_max <= native_bill + callback,
+                            "native {s}/{l}: {measured:?}, bill {native_bill}, callback {callback}"
+                        );
+                    }
+                }
+            }
+        }
         let input = factory
             .group_inputs(0, |id| {
                 tables
@@ -403,6 +521,5 @@ fn scoped_group_driver_matches_resident_transcript_and_encoded_messages() {
             variants += 1;
         }
     }
-    assert!(variants >= 12);
-    eprintln!("scoped grouped-stage transcript/encoding variants: {variants}");
+    assert_eq!(variants, 17);
 }

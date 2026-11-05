@@ -217,9 +217,9 @@ mod tests {
         ));
         let p = Projection::full(3).unwrap();
         for (shape, ranges) in [
-            (vec![2, 4], vec![0..2]),
+            (vec![2, 4], core::iter::once(0..2).collect()),
             (vec![2, 4], vec![0..3, 0..4]),
-            (vec![4], vec![0..4]),
+            (vec![4], core::iter::once(0..4).collect()),
             (vec![0, 8], vec![0..0, 0..8]),
         ] {
             assert!(matches!(

@@ -5,7 +5,7 @@
 //! The resident route remains the first choice and the differential oracle.
 
 use super::*;
-use crate::leaf::{GroupedLayout, LeafLayout, ModelColumn, ModelWitness};
+use crate::leaf::{GroupedLayout, LeafLayout, ModelColumn, ModelWitness, ScopedSourceMemory};
 use crate::native::ModelNativePlan;
 use compiler::schedule::LayerMap;
 use compiler::{Lowering, ModelAdviceLayout, RuntimePlan};
@@ -812,7 +812,18 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     let response_containers = response_containers(input, &geometry, params)?;
     let messages = sum([leaf_original, leaf_wire, response_containers])?;
     let active = sum([base, source, rows, random::heap_bytes(), messages])?;
-    let leaf_source = ModelWitness::memory(leaf, lowering, layers, advice)?;
+    // RFC-0077: source-only component, still behind both grouped admission
+    // guards until group kernels and every other phase are fully qualified.
+    let (leaf_source_peak, leaf_source_planning) = match grouped {
+        Some(grouped) => {
+            let source = ScopedSourceMemory::new(leaf, lowering, layers, grouped, advice)?;
+            (source.peak()?, source.planning)
+        }
+        None => (
+            ModelWitness::memory(leaf, lowering, layers, advice)?.peak_bytes(),
+            0,
+        ),
+    };
     let stage_state = crate::stages::StageStateMemory::new(&lowering.graph, native.schedule())?;
     let native_memory = native.memory(lowering, true)?;
     // The stage driver grows claim/part/coordinate storage after construction.
@@ -822,7 +833,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     let stage_driver = crate::StageProver::new(lowering, native.schedule(), &MetadataOnly);
     let mut p2_fixed = sum([
         active,
-        leaf_source.peak_bytes(),
+        leaf_source_peak,
         stage_state_peak,
         stage_driver.work_memory(0)?.peak_bytes()?,
         native_memory.construction_peak_bytes(),
@@ -994,7 +1005,12 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
             times(2, stage_state.construction_peak_bytes())?,
             stage_planning,
         ])?,
-        descriptors: sum([result_metadata, stage_shapes, protocol_work])?,
+        descriptors: sum([
+            result_metadata,
+            stage_shapes,
+            protocol_work,
+            leaf_source_planning,
+        ])?,
     };
     let preparation = unit_preparation.peak().max(planning.peak()?);
     Ok(PhysicalCandidate {

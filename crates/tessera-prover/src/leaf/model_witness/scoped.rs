@@ -8,6 +8,9 @@ use crate::leaf::{GroupLayout, GroupedLayout};
 use tessera_field::Field;
 use tessera_logup::Tuples;
 
+mod memory;
+pub(crate) use memory::ScopedSourceMemory;
+
 #[cfg(test)]
 mod proof_tests;
 
@@ -471,13 +474,6 @@ impl GroupSources<'_> {
                 rule: "a selected source belongs to its group",
             })
     }
-
-    pub(crate) fn forests(&self) -> impl Iterator<Item = Forest<'_, GoldilocksExt2>> {
-        self.inner
-            .forests
-            .iter()
-            .map(|f| Forest::new(&f.leaves, f.height))
-    }
 }
 
 fn forest_domain(
@@ -743,7 +739,6 @@ mod tests {
                         }
                         smaller += usize::from(cells < full_cells);
                         assert_eq!(group.inner.forests.len(), full.forests.len());
-                        assert_eq!(group.forests().count(), full.forests.len());
                         for (original, actual) in full.forests.iter().zip(&group.inner.forests) {
                             let positions: Vec<_> = (original.height
                                 ..original.height + gt as usize)

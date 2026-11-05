@@ -3,9 +3,9 @@
 use super::*;
 use crate::leaf::table_source::GeneratedCounts;
 use crate::leaf::{
-    GroupedClaims, GroupedLayout, LeafClaims, LeafLayout, MergeMode, ModelColumn, ModelWitness,
-    ProvenGroupedLeaf, ProvenLeaf, SPLIT_LABEL, prepare_leaf_bounded, prove_grouped_leaf_bounded,
-    token, tokens,
+    GroupedClaims, GroupedLayout, LeafClaims, LeafLayout, MergeMode, ModelColumn,
+    ModelSourceFactory, ModelWitness, ProvenGroupedLeaf, ProvenLeaf, SPLIT_LABEL,
+    prepare_leaf_bounded, prove_grouped_leaf_bounded, prove_grouped_leaf_sources, token, tokens,
 };
 use crate::native::{ModelNativePlan, ModelNativeProver};
 use compiler::{Lowering, ModelAdviceLayout, RuntimePlan, schedule::LayerMap};
@@ -35,6 +35,8 @@ pub(super) struct Unit {
     table_retained: u64,
     forest_bytes: u64,
     checkpoint_sources: bool,
+    /// Enabled only by a complete checked physical grouped candidate.
+    scoped_leaf_sources: bool,
 }
 /// A proven leaf stage: in one batch, or in token groups with its atom splits.
 enum Leaf {
@@ -529,6 +531,7 @@ impl<'a> CpuBackend<'a> {
             (table.working_bytes, table.retained, table.forests);
         let table_chunk_rows = NonZeroUsize::new(table.chunk_rows).ok_or_else(memory)?;
         let table_cache_log_rows = table.cache_log_rows;
+        let scoped_leaf_sources = plan.uses_physical_bound() && grouped.is_some();
         Ok((
             Unit {
                 lowering,
@@ -545,6 +548,7 @@ impl<'a> CpuBackend<'a> {
                 table_retained,
                 forest_bytes,
                 checkpoint_sources: plan.uses_checkpoints(),
+                scoped_leaf_sources,
             },
             plan,
         ))
@@ -585,14 +589,37 @@ impl<'a> CpuBackend<'a> {
         let leaf_started = Instant::now();
         let engine = Engine::new(&u.lowering)?.threads(p.threads);
         let source = u.source(&engine, p.model, &d.witness)?;
-        let actual = ModelWitness::new(
-            &u.leaf,
-            &u.lowering,
-            &u.layers,
-            &d.witness,
-            &source,
-            &advice,
-        )?;
+        // RFC-0077: the checked grouped route constructs only current scopes.
+        // The unchanged admission guards keep it unreachable until qualification.
+        let actual = if u.scoped_leaf_sources {
+            None
+        } else {
+            Some(ModelWitness::new(
+                &u.leaf,
+                &u.lowering,
+                &u.layers,
+                &d.witness,
+                &source,
+                &advice,
+            )?)
+        };
+        let factory = match (&u.grouped, u.scoped_leaf_sources) {
+            (Some(grouped), true) => Some(ModelSourceFactory {
+                layout: &u.leaf,
+                grouped,
+                lowering: &u.lowering,
+                layers: &u.layers,
+                witness: &d.witness,
+                source: &source,
+                advice: &advice,
+            }),
+            (None, true) => {
+                return Err(internal(
+                    "scoped leaf sources require a checked grouped plan",
+                ));
+            }
+            _ => None,
+        };
         let mut xi: [Vec<F>; 10] = core::array::from_fn(|_| Vec::new());
         for m in pcs::WeightMatrix::ALL {
             let rows = p.layout.matrix(m).rows();
@@ -647,15 +674,23 @@ impl<'a> CpuBackend<'a> {
             source_bytes,
             chunk_rows: u.table_chunk_rows,
         };
-        let tensors = actual.tensors();
-        let forests = actual.forests();
-        metrics::product_leaves(forests.iter().map(|f| f.len() as u64).sum());
+        let tensors = actual.as_ref().map(ModelWitness::tensors);
+        let forests = actual.as_ref().map(ModelWitness::forests);
+        // The public table plan counts original forest leaves even when their
+        // selected shares are regenerated instead of retained together.
+        metrics::product_leaves(u.forest_bytes / size_of::<tessera_field::Goldilocks>() as u64);
         let mut stages = crate::StageProver::new(&u.lowering, u.native.schedule(), &d.witness);
         let schedule = u.native.schedule();
         let leaf = match &u.grouped {
             None => {
+                let tensors = tensors
+                    .as_ref()
+                    .ok_or_else(|| internal("ungrouped leaf sources remain resident"))?;
+                let forests = forests
+                    .as_ref()
+                    .ok_or_else(|| internal("ungrouped forests remain resident"))?;
                 let lookup =
-                    prepare_leaf_bounded(tr, &u.leaf, &tables, &tensors, &forests, table_budget)?;
+                    prepare_leaf_bounded(tr, &u.leaf, &tables, tensors, forests, table_budget)?;
                 let points: Vec<_> = schedule.stages[0]
                     .claims
                     .iter()
@@ -665,17 +700,28 @@ impl<'a> CpuBackend<'a> {
                 Leaf::Stage(lookup.finish(&stages.leaf_split_values()?)?)
             }
             Some(grouped) => {
-                let proven = prove_grouped_leaf_bounded(
-                    tr,
-                    &u.leaf,
-                    grouped,
-                    &tables,
-                    &tensors,
-                    &actual.stage_forests(),
-                    // RFC-0054 'Pass structure': the merge's table rounds, then P2b.
-                    MergeMode::TwoPass { j_star: None },
-                    table_budget,
-                )?;
+                // RFC-0054: group pass, table batch, then original-polynomial P2b.
+                let mode = MergeMode::TwoPass { j_star: None };
+                let proven = if let Some(factory) = &factory {
+                    prove_grouped_leaf_sources(tr, factory, &tables, mode, table_budget)?
+                } else {
+                    let actual = actual
+                        .as_ref()
+                        .ok_or_else(|| internal("resident grouped sources exist"))?;
+                    let tensors = tensors
+                        .as_ref()
+                        .ok_or_else(|| internal("resident grouped tensor views exist"))?;
+                    prove_grouped_leaf_bounded(
+                        tr,
+                        &u.leaf,
+                        grouped,
+                        &tables,
+                        tensors,
+                        &actual.stage_forests(),
+                        mode,
+                        table_budget,
+                    )?
+                };
                 // RFC-0037's claims on each gadget input and on the logits, at their tensors'
                 // merged points (RFC-0054 'The stage's outputs').
                 let claims = GroupedClaims::new(&proven, grouped);
@@ -737,12 +783,28 @@ impl<'a> CpuBackend<'a> {
         // The window engine retains native operands as opaque resident tables;
         // its public projection charges that literal representation (RFC-0055).
         // Computed score states are used only by the ordinary resident engine.
-        let mut native = if windowed {
-            ModelNativeProver::new_literal(&u.native, &u.lowering, &actual, &d.witness, claims)?
+        let mut native = if let Some(factory) = &factory {
+            ModelNativeProver::new_scoped(
+                &u.native,
+                &u.lowering,
+                factory,
+                &d.witness,
+                claims,
+                windowed,
+            )?
         } else {
-            ModelNativeProver::new(&u.native, &u.lowering, &actual, &d.witness, claims)?
+            let actual = actual
+                .as_ref()
+                .ok_or_else(|| internal("resident native source exists"))?;
+            if windowed {
+                ModelNativeProver::new_literal(&u.native, &u.lowering, actual, &d.witness, claims)?
+            } else {
+                ModelNativeProver::new(&u.native, &u.lowering, actual, &d.witness, claims)?
+            }
         };
         // The native prover owns its remaining leaf inputs; reduction stages read the witness.
+        drop(tensors);
+        drop(forests);
         drop(actual);
         let mut proofs = Vec::new();
         let mut regenerate = || {
