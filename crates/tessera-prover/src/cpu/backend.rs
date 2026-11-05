@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+#[cfg(test)]
+mod grouping_tests;
+
+#[cfg(test)]
+std::thread_local! {
+    // Public candidate-order observation only; no allocation or decision override.
+    static GROUP_SEARCH_TRACE: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+    static GROUP_PLANNER_OWNER_MIN: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+
 use super::*;
 use crate::leaf::table_source::GeneratedCounts;
 use crate::leaf::{
-    GroupedClaims, GroupedLayout, LeafClaims, LeafLayout, MergeMode, ModelColumn, ModelWitness,
-    ProvenGroupedLeaf, ProvenLeaf, SPLIT_LABEL, prepare_leaf_bounded, prove_grouped_leaf_bounded,
-    token, tokens,
+    GroupedClaims, GroupedLayout, LeafClaims, LeafLayout, MergeMode, ModelColumn,
+    ModelSourceFactory, ModelWitness, ProvenGroupedLeaf, ProvenLeaf, SPLIT_LABEL,
+    prepare_leaf_bounded, prove_grouped_leaf_bounded, prove_grouped_leaf_sources, token, tokens,
 };
 use crate::native::{ModelNativePlan, ModelNativeProver};
 use compiler::{Lowering, ModelAdviceLayout, RuntimePlan, schedule::LayerMap};
@@ -35,6 +45,8 @@ pub(super) struct Unit {
     table_retained: u64,
     forest_bytes: u64,
     checkpoint_sources: bool,
+    /// Enabled only by a complete checked physical grouped candidate.
+    scoped_leaf_sources: bool,
 }
 /// A proven leaf stage: in one batch, or in token groups with its atom splits.
 enum Leaf {
@@ -57,6 +69,42 @@ impl Unit {
         })
     }
 }
+/// RFC-0054's public candidate order, shared by selection and metadata bounds.
+pub(super) fn group_candidate(
+    token_vars: u32,
+    layer_vars: u32,
+    bits: u32,
+) -> Option<protocol::LeafGroups> {
+    if bits == 0 || bits > u32::from(protocol::MAX_LEAF_GROUP_BITS) {
+        return None;
+    }
+    let mut token_bits = bits.min(token_vars.saturating_sub(8));
+    let mut layer_bits = bits - token_bits;
+    if layer_bits > layer_vars {
+        token_bits += layer_bits - layer_vars;
+        layer_bits = layer_vars;
+    }
+    (token_bits <= token_vars).then_some(protocol::LeafGroups {
+        token_bits: token_bits as u8,
+        layer_bits: layer_bits as u8,
+    })
+}
+
+fn largest_group_lookups(grouped: &GroupedLayout) -> Result<u64, ProverError> {
+    let mut lookups = 0u64;
+    for h in 0..grouped.count() {
+        let group = grouped.group(h)?;
+        let mut held = 0u64;
+        for instance in group.instances() {
+            held = held
+                .checked_add(1u64.checked_shl(instance.height).ok_or_else(memory)?)
+                .ok_or_else(memory)?;
+        }
+        lookups = lookups.max(held);
+    }
+    Ok(lookups)
+}
+
 /// The leaf stage's grouping under `budget` (RFC-0054 'When groups apply'): none when `plan`,
 /// the stage in one batch, fits; otherwise the fewest group bits whose largest group's lookup
 /// trees fit. The planner keeps a token subset of at least 256 tokens and splits layers instead
@@ -68,38 +116,22 @@ fn plan_groups(
     layers: &LayerMap,
     tokens: u32,
     budget: MemoryBudget,
+    protocol_version: u16,
     selection: &compiler::Selection,
 ) -> Result<(PassPlan, Option<GroupedLayout>), ProverError> {
     if let Ok(fit) = plan.clone().for_budget(budget) {
         return Ok((fit, None));
     }
+    if protocol_version != protocol::PROTOCOL_VERSION {
+        return Ok((plan, None));
+    }
     let token_vars = tokens.next_power_of_two().trailing_zeros();
     for g in 1..=u32::from(protocol::MAX_LEAF_GROUP_BITS) {
-        let mut token_bits = g.min(token_vars.saturating_sub(8));
-        let mut layer_bits = g - token_bits;
-        if layer_bits > layers.vars {
-            token_bits += layer_bits - layers.vars;
-            layer_bits = layers.vars;
-        }
-        if token_bits > token_vars {
+        let Some(groups) = group_candidate(token_vars, layers.vars, g) else {
             break;
-        }
-        let groups = protocol::LeafGroups {
-            token_bits: token_bits as u8,
-            layer_bits: layer_bits as u8,
         };
         let grouped = GroupedLayout::new(leaf, layers, groups)?;
-        let mut lookups = 0u64;
-        for h in 0..grouped.count() {
-            let group = grouped.group(h)?;
-            let mut held = 0u64;
-            for instance in group.instances() {
-                held = held
-                    .checked_add(1u64.checked_shl(instance.height).ok_or_else(memory)?)
-                    .ok_or_else(memory)?;
-            }
-            lookups = lookups.max(held);
-        }
+        let lookups = largest_group_lookups(&grouped)?;
         let candidate = plan.clone().grouped(groups, lookups).tables(TablePlan::new(
             leaf,
             selection,
@@ -112,6 +144,75 @@ fn plan_groups(
     }
     Ok((plan, None))
 }
+fn plan_physical_groups(
+    plan: PassPlan,
+    input: physical::Inputs<'_>,
+    host: u64,
+) -> Result<(PassPlan, Option<GroupedLayout>), ProverError> {
+    // RFC-0077 does not authorize protocol/2 groups or new soundness parameters.
+    if input.claims.protocol_version != protocol::PROTOCOL_VERSION || input.grouped.is_some() {
+        return Err(usage(
+            "physical group search requires an ungrouped protocol/1 input",
+        ));
+    }
+    match physical::select(&input, host) {
+        Ok(candidate) => return Ok((candidate.into_plan(plan)?, None)),
+        Err(error) if error.code() == ErrorCode::ResMemory => {}
+        Err(error) => return Err(error),
+    }
+    let token_vars = input.lowering.graph.tensors[input.lowering.tokens.0 as usize].shape[0]
+        .checked_next_power_of_two()
+        .ok_or_else(memory)?
+        .trailing_zeros();
+    for bits in 1..=u32::from(protocol::MAX_LEAF_GROUP_BITS) {
+        let Some(groups) = group_candidate(token_vars, input.layers.vars, bits) else {
+            break;
+        };
+        let metadata = GroupedLayout::construction_memory(input.leaf, groups)?.peak_bytes();
+        if input
+            .planner_caller
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(metadata))
+            .ok_or_else(memory)?
+            > host
+        {
+            continue;
+        }
+        let layout = GroupedLayout::new(input.leaf, input.layers, groups)?;
+        let trial = plan
+            .clone()
+            .grouped(groups, largest_group_lookups(&layout)?);
+        let candidate_input = physical::Inputs {
+            grouped: Some(&layout),
+            // The original oracle and this trial coexist through complete selection.
+            planner_caller: input
+                .planner_caller
+                .checked_add(trial.heap_bytes().ok_or_else(memory)?)
+                .ok_or_else(memory)?,
+            ..input
+        };
+        #[cfg(test)]
+        GROUP_SEARCH_TRACE.with(|trace| {
+            if let Some(previous) = trace.get() {
+                trace.set(Some((previous << 4) | u64::from(groups.bits())));
+            }
+        });
+        #[cfg(test)]
+        GROUP_PLANNER_OWNER_MIN.with(|owner| {
+            if let Some(previous) = owner.get() {
+                owner.set(Some(previous.min(candidate_input.planner_caller)));
+            }
+        });
+        match physical::select(&candidate_input, host) {
+            Ok(candidate) => return Ok((candidate.into_plan(trial)?, Some(layout))),
+            Err(error) if error.code() == ErrorCode::ResMemory => {}
+            Err(error) => return Err(error),
+        }
+    }
+    // Prover::plan may report a nonfitting resident oracle; P1 must check it.
+    Ok((plan, None))
+}
+
 enum Tensors<'model> {
     Resident(Witness),
     Checkpoint(CheckpointTensors<'model>),
@@ -464,12 +565,13 @@ impl<'a> CpuBackend<'a> {
             .preparation(prepared.memory.with_batch(batch)?)
             .staged(shapes)?
             .tables(TablePlan::new(&leaf, runtime.selection(), None, None)?);
-        let (plan, grouped) = plan_groups(
+        let (plan, mut grouped) = plan_groups(
             plan,
             &leaf,
             &layers,
             n,
             prepared.cfg.memory_budget,
+            c.protocol_version,
             runtime.selection(),
         )?;
         // INV-ARCH-6 / RFC-0018: borrow INT8 weights only when all extra replay
@@ -486,9 +588,24 @@ impl<'a> CpuBackend<'a> {
                 false
             }
         };
+        #[cfg(test)]
+        if let Some(groups) = physical::FORCE_GROUPS.with(std::cell::Cell::get) {
+            let layout = GroupedLayout::new(&leaf, &layers, groups)?;
+            plan = plan
+                .grouped(groups, largest_group_lookups(&layout)?)
+                .tables(TablePlan::new(
+                    &leaf,
+                    runtime.selection(),
+                    Some(&layout),
+                    None,
+                )?);
+            grouped = Some(layout);
+            if !force_physical {
+                plan = plan.for_budget(prepared.cfg.memory_budget)?;
+            }
+        }
         if (force_physical || plan.check(prepared.cfg.memory_budget).is_err())
             && c.protocol_version == protocol::PROTOCOL_VERSION
-            && grouped.is_none()
         {
             let input = physical::Inputs {
                 claims: c,
@@ -499,18 +616,18 @@ impl<'a> CpuBackend<'a> {
                 advice: &advice,
                 leaf: &leaf,
                 native: &native,
-                grouped: None,
+                grouped: grouped.as_ref(),
                 weights: &prepared.layout,
                 session: Some(prepared.memory),
                 caller_batch: Some(preparation::caller_batch_bytes(batch).ok_or_else(memory)?),
                 planner_caller: plan.heap_bytes().ok_or_else(memory)?,
             };
-            match physical::select(&input, prepared.cfg.memory_budget.host) {
-                Ok(candidate) => plan = candidate.into_plan(plan)?,
-                // Prover::plan reports the non-fitting resident plan when neither
-                // route fits. commit_batch still checks it before P1 (RFC-0018).
-                Err(error) if error.code() == ErrorCode::ResMemory => {}
-                Err(error) => return Err(error),
+            if grouped.is_some() {
+                plan =
+                    physical::select(&input, prepared.cfg.memory_budget.host)?.into_plan(plan)?;
+            } else {
+                (plan, grouped) =
+                    plan_physical_groups(plan, input, prepared.cfg.memory_budget.host)?;
             }
         }
         if !plan.uses_checkpoints() && plan.check(prepared.cfg.memory_budget).is_ok() {
@@ -529,6 +646,7 @@ impl<'a> CpuBackend<'a> {
             (table.working_bytes, table.retained, table.forests);
         let table_chunk_rows = NonZeroUsize::new(table.chunk_rows).ok_or_else(memory)?;
         let table_cache_log_rows = table.cache_log_rows;
+        let scoped_leaf_sources = plan.uses_physical_bound() && grouped.is_some();
         Ok((
             Unit {
                 lowering,
@@ -545,6 +663,7 @@ impl<'a> CpuBackend<'a> {
                 table_retained,
                 forest_bytes,
                 checkpoint_sources: plan.uses_checkpoints(),
+                scoped_leaf_sources,
             },
             plan,
         ))
@@ -585,14 +704,36 @@ impl<'a> CpuBackend<'a> {
         let leaf_started = Instant::now();
         let engine = Engine::new(&u.lowering)?.threads(p.threads);
         let source = u.source(&engine, p.model, &d.witness)?;
-        let actual = ModelWitness::new(
-            &u.leaf,
-            &u.lowering,
-            &u.layers,
-            &d.witness,
-            &source,
-            &advice,
-        )?;
+        // RFC-0077: the checked grouped route constructs only current scopes.
+        let actual = if u.scoped_leaf_sources {
+            None
+        } else {
+            Some(ModelWitness::new(
+                &u.leaf,
+                &u.lowering,
+                &u.layers,
+                &d.witness,
+                &source,
+                &advice,
+            )?)
+        };
+        let factory = match (&u.grouped, u.scoped_leaf_sources) {
+            (Some(grouped), true) => Some(ModelSourceFactory {
+                layout: &u.leaf,
+                grouped,
+                lowering: &u.lowering,
+                layers: &u.layers,
+                witness: &d.witness,
+                source: &source,
+                advice: &advice,
+            }),
+            (None, true) => {
+                return Err(internal(
+                    "scoped leaf sources require a checked grouped plan",
+                ));
+            }
+            _ => None,
+        };
         let mut xi: [Vec<F>; 10] = core::array::from_fn(|_| Vec::new());
         for m in pcs::WeightMatrix::ALL {
             let rows = p.layout.matrix(m).rows();
@@ -647,15 +788,23 @@ impl<'a> CpuBackend<'a> {
             source_bytes,
             chunk_rows: u.table_chunk_rows,
         };
-        let tensors = actual.tensors();
-        let forests = actual.forests();
-        metrics::product_leaves(forests.iter().map(|f| f.len() as u64).sum());
+        let tensors = actual.as_ref().map(ModelWitness::tensors);
+        let forests = actual.as_ref().map(ModelWitness::forests);
+        // The public table plan counts original forest leaves even when their
+        // selected shares are regenerated instead of retained together.
+        metrics::product_leaves(u.forest_bytes / size_of::<tessera_field::Goldilocks>() as u64);
         let mut stages = crate::StageProver::new(&u.lowering, u.native.schedule(), &d.witness);
         let schedule = u.native.schedule();
         let leaf = match &u.grouped {
             None => {
+                let tensors = tensors
+                    .as_ref()
+                    .ok_or_else(|| internal("ungrouped leaf sources remain resident"))?;
+                let forests = forests
+                    .as_ref()
+                    .ok_or_else(|| internal("ungrouped forests remain resident"))?;
                 let lookup =
-                    prepare_leaf_bounded(tr, &u.leaf, &tables, &tensors, &forests, table_budget)?;
+                    prepare_leaf_bounded(tr, &u.leaf, &tables, tensors, forests, table_budget)?;
                 let points: Vec<_> = schedule.stages[0]
                     .claims
                     .iter()
@@ -665,17 +814,28 @@ impl<'a> CpuBackend<'a> {
                 Leaf::Stage(lookup.finish(&stages.leaf_split_values()?)?)
             }
             Some(grouped) => {
-                let proven = prove_grouped_leaf_bounded(
-                    tr,
-                    &u.leaf,
-                    grouped,
-                    &tables,
-                    &tensors,
-                    &actual.stage_forests(),
-                    // RFC-0054 'Pass structure': the merge's table rounds, then P2b.
-                    MergeMode::TwoPass { j_star: None },
-                    table_budget,
-                )?;
+                // RFC-0054: group pass, table batch, then original-polynomial P2b.
+                let mode = MergeMode::TwoPass { j_star: None };
+                let proven = if let Some(factory) = &factory {
+                    prove_grouped_leaf_sources(tr, factory, &tables, mode, table_budget)?
+                } else {
+                    let actual = actual
+                        .as_ref()
+                        .ok_or_else(|| internal("resident grouped sources exist"))?;
+                    let tensors = tensors
+                        .as_ref()
+                        .ok_or_else(|| internal("resident grouped tensor views exist"))?;
+                    prove_grouped_leaf_bounded(
+                        tr,
+                        &u.leaf,
+                        grouped,
+                        &tables,
+                        tensors,
+                        &actual.stage_forests(),
+                        mode,
+                        table_budget,
+                    )?
+                };
                 // RFC-0037's claims on each gadget input and on the logits, at their tensors'
                 // merged points (RFC-0054 'The stage's outputs').
                 let claims = GroupedClaims::new(&proven, grouped);
@@ -737,12 +897,28 @@ impl<'a> CpuBackend<'a> {
         // The window engine retains native operands as opaque resident tables;
         // its public projection charges that literal representation (RFC-0055).
         // Computed score states are used only by the ordinary resident engine.
-        let mut native = if windowed {
-            ModelNativeProver::new_literal(&u.native, &u.lowering, &actual, &d.witness, claims)?
+        let mut native = if let Some(factory) = &factory {
+            ModelNativeProver::new_scoped(
+                &u.native,
+                &u.lowering,
+                factory,
+                &d.witness,
+                claims,
+                windowed,
+            )?
         } else {
-            ModelNativeProver::new(&u.native, &u.lowering, &actual, &d.witness, claims)?
+            let actual = actual
+                .as_ref()
+                .ok_or_else(|| internal("resident native source exists"))?;
+            if windowed {
+                ModelNativeProver::new_literal(&u.native, &u.lowering, actual, &d.witness, claims)?
+            } else {
+                ModelNativeProver::new(&u.native, &u.lowering, actual, &d.witness, claims)?
+            }
         };
         // The native prover owns its remaining leaf inputs; reduction stages read the witness.
+        drop(tensors);
+        drop(forests);
         drop(actual);
         let mut proofs = Vec::new();
         let mut regenerate = || {

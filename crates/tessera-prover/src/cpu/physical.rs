@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! In-progress composition of physical phase bounds for RFC-0018 / #641.
-//! Checked physical fallback for canonical ungrouped checkpoint sources.
+//! Complete checked physical phase composition for RFC-0018 / RFC-0077.
+//! Checked physical fallback for canonical protocol/1 checkpoint sources.
 //! The resident route remains the first choice and the differential oracle.
 
+mod grouped;
+
 use super::*;
-use crate::leaf::{GroupedLayout, LeafLayout, ModelColumn, ModelWitness};
+use crate::leaf::{GroupedLayout, LeafLayout, ModelColumn, ModelWitness, ScopedSourceMemory};
 use crate::native::ModelNativePlan;
 use compiler::schedule::LayerMap;
 use compiler::{Lowering, ModelAdviceLayout, RuntimePlan};
@@ -17,6 +19,9 @@ use tessera_witness::Engine;
 std::thread_local! {
     // Exercise this exact production chooser even when the resident oracle fits.
     pub(super) static FORCE_ROUTE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    // Release-excluded fixture override: compare identical public grouping choices
+    // through the resident oracle and the complete physical production driver.
+    pub(super) static FORCE_GROUPS: std::cell::Cell<Option<protocol::LeafGroups>> = const { std::cell::Cell::new(None) };
 }
 
 fn memory() -> ProverError {
@@ -64,10 +69,16 @@ fn sumcheck_messages(vars: u64, degree: u64, evaluations: u64) -> Result<u64, Pr
 
 // An ungrouped LogUp result owns every original claim/level point; Round2 clones
 // only its wire messages. Forest counts below deliberately include every site.
-fn leaf_messages(input: &Inputs<'_>, graph_splits: u64) -> Result<(u64, u64), ProverError> {
+fn leaf_messages(
+    input: &Inputs<'_>,
+    graph_splits: u64,
+    allowance: u64,
+) -> Result<(u64, u64), ProverError> {
     if input.grouped.is_some() {
-        return Err(usage(
-            "physical composition still owes grouped message storage",
+        let work = grouped::GroupedWorkMemory::new(input, allowance)?;
+        return Ok((
+            sum([work.messages.retained_bytes(), graph_splits])?,
+            work.messages.wire_bytes(),
         ));
     }
     let instances = input.leaf.instances().len() as u64;
@@ -342,6 +353,7 @@ struct UnitPreparation {
     layers: u64,
     leaf: u64,
     native: u64,
+    grouping: u64,
 }
 impl UnitPreparation {
     fn peak(&self) -> u64 {
@@ -355,6 +367,7 @@ impl UnitPreparation {
             self.layers,
             self.leaf,
             self.native,
+            self.grouping,
         ]
         .into_iter()
         .max()
@@ -432,8 +445,77 @@ impl UnitPreparation {
                 required(input.leaf.heap_bytes())?,
                 required(input.native.construction_peak_bytes(lower))?,
             ])?,
+            grouping: group_search_memory(
+                input,
+                sum([
+                    layered,
+                    required(input.leaf.heap_bytes())?,
+                    required(input.native.heap_bytes())?,
+                ])?,
+            )?,
         })
     }
+}
+
+// A public search holds the original plan while cloning a trial, constructing
+// its grouping/group views/table metadata and selecting its resident windows.
+pub(super) fn group_search_memory(input: &Inputs<'_>, retained: u64) -> Result<u64, ProverError> {
+    let tokens = input
+        .lowering
+        .graph
+        .tensors
+        .get(input.lowering.tokens.0 as usize)
+        .and_then(|t| t.shape.first())
+        .ok_or_else(memory)?;
+    let token_vars = tokens
+        .checked_next_power_of_two()
+        .ok_or_else(memory)?
+        .trailing_zeros();
+    // WindowMemory::fold_passes = ceil((cut-padding)/window_vars), with
+    // positive window_vars and cut < usize::BITS. Include each stage itself.
+    let passes = sum([
+        5,
+        times(
+            input.native.schedule().stages.len() as u64,
+            u64::from(usize::BITS) + 1,
+        )?,
+    ])?;
+    let clones = sum([
+        times(4, input.planner_caller)?,
+        growing::<Pass>(passes)?,
+        growing::<WindowMemory>(input.native.schedule().stages.len() as u64)?,
+    ])?;
+    let unrestricted = GroupedLayout::unrestricted_group_memory(input.leaf)?;
+    let mut peak = sum([
+        retained,
+        clones,
+        table_plan::TablePlan::search_metadata_ceiling(
+            input.leaf,
+            input.runtime.selection(),
+            input.layers.vars,
+            0,
+        )?,
+    ])?;
+    for bits in 1..=u32::from(protocol::MAX_LEAF_GROUP_BITS) {
+        let Some(groups) = backend::group_candidate(token_vars, input.layers.vars, bits) else {
+            break;
+        };
+        let layout = GroupedLayout::construction_memory(input.leaf, groups)?;
+        peak = peak.max(sum([
+            retained,
+            clones,
+            layout.peak_bytes(),
+            layout.output_bytes(),
+            unrestricted.peak_bytes(),
+            table_plan::TablePlan::search_metadata_ceiling(
+                input.leaf,
+                input.runtime.selection(),
+                input.layers.vars,
+                groups.bits(),
+            )?,
+        ])?);
+    }
+    Ok(peak)
 }
 
 fn request_key_memory(n: u64) -> Result<u64, ProverError> {
@@ -489,7 +571,7 @@ fn candidate_metadata(table: &table_plan::TablePlan, stages: u64) -> Result<u64,
         // PassPlan and Unit both retain stage-indexed choices. Checked usize
         // shifts cap a valid stage at fewer than usize::BITS own variables.
         growing::<usize>(stages)?,
-        growing::<Pass>(sum([4, times(stages, u64::from(usize::BITS) + 1)?])?)?,
+        growing::<Pass>(sum([5, times(stages, u64::from(usize::BITS) + 1)?])?)?,
     ])
 }
 
@@ -613,6 +695,9 @@ impl PhysicalCandidate {
 }
 
 pub(super) fn select(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, ProverError> {
+    if input.claims.protocol_version != protocol::PROTOCOL_VERSION {
+        return Err(usage("physical checkpoint candidates require protocol/1"));
+    }
     // Reserve workers before discretionary table/window choices; PassPlan adds
     // the same reserve back to its reported maximum, exactly once (RFC-0018).
     let host = host
@@ -808,11 +893,37 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     let graph_leaf = crate::StageProver::new(lowering, native.schedule(), &MetadataOnly)
         .work_memory(0)?
         .output_bytes();
-    let (leaf_original, leaf_wire) = leaf_messages(input, graph_leaf)?;
+    let (leaf_original, leaf_wire) = leaf_messages(
+        input,
+        graph_leaf,
+        host.checked_sub(base).ok_or_else(memory)?,
+    )?;
     let response_containers = response_containers(input, &geometry, params)?;
     let messages = sum([leaf_original, leaf_wire, response_containers])?;
     let active = sum([base, source, rows, random::heap_bytes(), messages])?;
-    let leaf_source = ModelWitness::memory(leaf, lowering, layers, advice)?;
+    // RFC-0077: selected source owners join every other complete phase owner;
+    // a source-only bound cannot authorize the candidate.
+    let (leaf_source_peak, leaf_source_planning, grouped_work_peak) = match grouped {
+        Some(grouped) => {
+            let source = ScopedSourceMemory::new(leaf, lowering, layers, grouped, advice)?;
+            let work =
+                grouped::GroupedWorkMemory::new(input, host.checked_sub(base).ok_or_else(memory)?)?;
+            (
+                source.peak()?,
+                sum([source.planning, work.planning])?,
+                sum([
+                    work.peak,
+                    work.messages.retained_bytes(),
+                    work.messages.wire_bytes(),
+                ])?,
+            )
+        }
+        None => (
+            ModelWitness::memory(leaf, lowering, layers, advice)?.peak_bytes(),
+            0,
+            0,
+        ),
+    };
     let stage_state = crate::stages::StageStateMemory::new(&lowering.graph, native.schedule())?;
     let native_memory = native.memory(lowering, true)?;
     // The stage driver grows claim/part/coordinate storage after construction.
@@ -822,7 +933,8 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     let stage_driver = crate::StageProver::new(lowering, native.schedule(), &MetadataOnly);
     let mut p2_fixed = sum([
         active,
-        leaf_source.peak_bytes(),
+        leaf_source_peak,
+        grouped_work_peak,
         stage_state_peak,
         stage_driver.work_memory(0)?.peak_bytes()?,
         native_memory.construction_peak_bytes(),
@@ -840,10 +952,6 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     }
     let table_preparation = table.construction_peak_bytes(leaf, *grouped)?;
     let table_metadata = table.metadata_bytes()?;
-    // The canonical native reservation counts every Term allocation. Its total
-    // therefore bounds any individual tag's term count, including one fallback.
-    let native_terms =
-        (native_memory.instance_bytes() / size_of::<tessera_sumcheck::Term<F>>() as u64).max(1);
     let mut stage_rows = Vec::new();
     let mut stages = Vec::new();
     let mut max_source = 0;
@@ -859,7 +967,7 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
         let metadata = stage_driver.window_metadata_memory(
             k as u16,
             |tag| native.window_shape(tag),
-            native_terms,
+            |tag| native.window_terms_bound(tag),
         )?;
         let driver_memory = stage_driver.work_memory(k as u16)?;
         let driver = driver_memory.peak_bytes()?;
@@ -994,7 +1102,12 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
             times(2, stage_state.construction_peak_bytes())?,
             stage_planning,
         ])?,
-        descriptors: sum([result_metadata, stage_shapes, protocol_work])?,
+        descriptors: sum([
+            result_metadata,
+            stage_shapes,
+            protocol_work,
+            leaf_source_planning,
+        ])?,
     };
     let preparation = unit_preparation.peak().max(planning.peak()?);
     Ok(PhysicalCandidate {

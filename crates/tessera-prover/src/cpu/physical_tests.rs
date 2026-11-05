@@ -25,14 +25,90 @@ fn physical_route_matches_resident_and_independently_verifies() {
         ("tiny-2-affine", &[(1, 1)][..]),
         ("tiny-2-servable", &[(2, 1), (1, 0)][..]),
     ] {
-        physical_case(name, requests);
+        physical_case(name, requests, None);
     }
 }
 
-fn physical_case(name: &str, requests: &[(u32, u32)]) {
+#[test]
+fn grouped_scoped_cpu_qualification_matches_resident_and_independently_verifies() {
+    for (requests, token_bits, layer_bits) in [
+        (&[(3, 0)][..], 1, 1),
+        (&[(1, 1)][..], 1, 1),
+        (&[(2, 1), (1, 0)][..], 1, 1),
+        (&[(3, 0)][..], 1, 0),
+        (&[(3, 0)][..], 0, 1),
+        (&[(3, 0)][..], 2, 1),
+        // Uneven slots and a padded request ordinal must survive the whole proof.
+        (&[(2, 1), (1, 0), (2, 0)][..], 1, 1),
+    ] {
+        physical_case(
+            "tiny-2-servable",
+            requests,
+            Some(protocol::LeafGroups {
+                token_bits,
+                layer_bits,
+            }),
+        );
+    }
+    for name in ["tiny-2-affine", "tiny-2-minimal"] {
+        physical_case(
+            name,
+            &[(3, 0)],
+            Some(protocol::LeafGroups {
+                token_bits: 1,
+                layer_bits: 1,
+            }),
+        );
+    }
+    physical_case(
+        "tiny-3-reference",
+        &[(2, 1), (1, 0), (2, 0)],
+        Some(protocol::LeafGroups {
+            token_bits: 1,
+            layer_bits: 1,
+        }),
+    );
+}
+
+#[test]
+#[ignore = "isolated fault-campaign control; the required suite covers all fixtures"]
+fn grouped_scoped_cpu_fault_control() {
+    physical_case(
+        "tiny-2-servable",
+        &[(3, 0)],
+        Some(protocol::LeafGroups {
+            token_bits: 1,
+            layer_bits: 1,
+        }),
+    );
+}
+
+struct Groups;
+impl Groups {
+    fn enable(groups: Option<protocol::LeafGroups>) -> Self {
+        physical::FORCE_GROUPS.with(|v| v.set(groups));
+        Self
+    }
+}
+impl Drop for Groups {
+    fn drop(&mut self) {
+        physical::FORCE_GROUPS.with(|v| v.set(None));
+    }
+}
+
+fn physical_case(name: &str, requests: &[(u32, u32)], groups: Option<protocol::LeafGroups>) {
+    let _groups = Groups::enable(groups);
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/vectors");
     let mut model: IntegerModel = envelope::open(
-        &std::fs::read(root.join(format!("models/{name}.d"))).unwrap(),
+        &std::fs::read(root.join(format!(
+            "{}/{name}.d",
+            if name == "tiny-3-reference" {
+                "exact-cli"
+            } else {
+                "models"
+            }
+        )))
+        .unwrap(),
         &schema::INTEGER_MODEL,
         DecodeLimits::INTEGER_MODEL,
     )
@@ -76,7 +152,7 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
                 .1;
         }
     }
-    if name != "tiny-2-servable" {
+    if matches!(name, "tiny-2-affine" | "tiny-2-minimal") {
         for (point, shifts) in &mut model.quant.public.shift_class_sets {
             let base = if matches!(
                 point,
@@ -110,7 +186,14 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
         let n = shapes[channel.ty as usize].out as usize;
         if let Some(&value) = channel.class.first() {
             channel.class.resize(n, value);
-            channel.class.fill(0);
+            // Distinct real-layer classes make a wrong-layer source observable.
+            channel
+                .class
+                .fill(if groups.is_some() && name == "tiny-2-servable" {
+                    (channel.layer % 2) as u8
+                } else {
+                    0
+                });
         }
         if let Some(&value) = channel.multiplier.first() {
             channel.multiplier.resize(n, value);
@@ -209,10 +292,16 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
         mask_rng: MaskRng::Seeded(17),
         release: ReleaseConfig,
     };
+    let full_before = crate::leaf::ModelWitness::full_source_builds();
     let resident = Prover::new(&plan, &model, &mut state, config.clone())
         .unwrap()
         .prove_non_interactive(&batch)
         .unwrap();
+    assert_eq!(
+        crate::leaf::ModelWitness::full_source_builds() - full_before,
+        1,
+        "the resident oracle exercises the complete materializer"
+    );
     let mut config = config;
     config.backend = Backend::Cpu { threads: 4 };
     let advice_n = 1usize
@@ -231,11 +320,20 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
         .plan(&batch)
         .unwrap();
     assert!(planned.uses_physical_bound());
+    assert_eq!(
+        planned.leaf_groups(),
+        groups.unwrap_or(protocol::LeafGroups::NONE)
+    );
+    assert_eq!(
+        planned.passes().iter().filter(|&&p| p == Pass::P2b).count(),
+        usize::from(groups.is_some())
+    );
     assert!(planned.uses_checkpoints());
     assert!(planned.table_plan().unwrap().cache_log_rows.is_some());
     assert!(planned.stage_windows().iter().skip(1).all(|w| w.cut > 0));
     metrics::reset();
     let mut proof = None;
+    let full_before = crate::leaf::ModelWitness::full_source_builds();
     let measured = allocation_counter::measure(|| {
         proof = Some(
             Prover::new(&plan, &model, &mut state, config.clone())
@@ -244,6 +342,11 @@ fn physical_case(name: &str, requests: &[(u32, u32)]) {
                 .unwrap(),
         );
     });
+    assert_eq!(
+        crate::leaf::ModelWitness::full_source_builds() - full_before,
+        usize::from(groups.is_none()),
+        "the scoped CPU route never builds the complete leaf witness"
+    );
     assert!(
         measured.bytes_max <= planned.resident_bytes().unwrap(),
         "{measured:?} > {planned:?}"

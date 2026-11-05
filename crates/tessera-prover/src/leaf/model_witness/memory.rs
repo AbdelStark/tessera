@@ -14,10 +14,10 @@ pub struct ModelWitnessMemory {
     peak: u64,
 }
 
-fn add(a: u64, b: u64) -> Result<u64, LeafError> {
+pub(super) fn add(a: u64, b: u64) -> Result<u64, LeafError> {
     a.checked_add(b).ok_or(LeafError::Memory)
 }
-fn array<T>(count: u64) -> Result<u64, LeafError> {
+pub(super) fn array<T>(count: u64) -> Result<u64, LeafError> {
     let bytes = count
         .checked_mul(size_of::<T>() as u64)
         .ok_or(LeafError::Memory)?;
@@ -34,7 +34,7 @@ fn padded(mut domain: impl Iterator<Item = u32>) -> Result<u64, LeafError> {
         .ok_or(LeafError::Memory)?;
     1u64.checked_shl(variables).ok_or(LeafError::Memory)
 }
-fn node_id(site: NodeRef, layer: usize, layers: &LayerMap) -> Result<NodeId, LeafError> {
+pub(super) fn node_id(site: NodeRef, layer: usize, layers: &LayerMap) -> Result<NodeId, LeafError> {
     match site {
         NodeRef::Node(id) => Ok(id),
         NodeRef::Position(position) => {

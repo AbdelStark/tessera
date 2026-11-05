@@ -121,6 +121,7 @@ impl GroupedMessageMemory {
             growing::<F>(atom_splits)?,
         ])?;
         let driver = sum([
+            growing::<super::ForestShape>(forests)?,
             growing::<MergePolynomial>(polys)?,
             mul(polys, growing::<usize>(vars)?)?,
             growing::<(usize, usize, usize)>(tensors)?,

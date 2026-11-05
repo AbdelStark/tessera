@@ -13,11 +13,26 @@ use tessera_sumcheck::Forest;
 use tessera_witness::WitnessSource;
 
 mod memory;
+mod projection;
+mod scoped;
 pub use memory::ModelWitnessMemory;
+use projection::Projection;
+use scoped::Selection;
+#[cfg(test)]
+pub(crate) use scoped::source_test_model;
+pub(crate) use scoped::{
+    ModelLeafSource, ModelSourceFactory, ScopedSourceMemory, model_forest_shapes,
+};
+
+#[cfg(test)]
+std::thread_local! {
+    static FULL_SOURCE_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 
 struct Column {
     name: ModelColumn,
     domain: Vec<u32>,
+    projection: Projection,
     values: SecretBuf<i64>,
     written: usize,
 }
@@ -59,36 +74,43 @@ fn variables(shape: &[u32]) -> Option<u32> {
     })
 }
 // RFC-0071: attention tiles omit gap queries; their Softmax keys are Exp's last row or zero.
-fn softmax_gaps(lowering: &Lowering, node: &Node, domain: &[u32]) -> Result<usize, LeafError> {
+fn softmax_gaps(
+    lowering: &Lowering,
+    node: &Node,
+    domain: &[u32],
+    projection: Projection,
+) -> Result<usize, LeafError> {
     if !matches!(node.op, tessera_ir::Op::SoftmaxRow { .. }) {
         return Ok(0);
     }
     let Some(slots) = &lowering.graph.slots else {
         return Ok(0);
     };
-    let real = slots
-        .lengths
-        .iter()
-        .try_fold(0u32, |sum, &n| sum.checked_add(n))
-        .ok_or(LeafError::Memory)?;
-    let heads = *domain.first().ok_or(LeafError::Memory)?;
-    let rows = *domain.get(1).ok_or(LeafError::Memory)?;
-    let gaps = rows.checked_sub(real).ok_or(LeafError::Internal {
-        rule: "Softmax domain covers the batch's real rows",
-    })?;
-    domain.iter().skip(2).try_fold(
-        (heads as usize)
-            .checked_mul(gaps as usize)
-            .ok_or(LeafError::Memory)?,
-        |n, &d| n.checked_mul(d as usize).ok_or(LeafError::Memory),
-    )
+    if domain.len() < 2 {
+        return own();
+    }
+    let mut ranges = descriptors(domain.len())?;
+    ranges.extend(domain.iter().map(|&d| 0..d));
+    let mut real = 0usize;
+    for (r, &length) in slots.lengths.iter().enumerate() {
+        let start = u32::try_from(r)
+            .ok()
+            .and_then(|r| r.checked_mul(slots.slot_len))
+            .ok_or(LeafError::Memory)?;
+        let end = start.checked_add(length).ok_or(LeafError::Memory)?;
+        ranges[1] = start..end;
+        real = real
+            .checked_add(projection.count(domain, &ranges)?)
+            .ok_or(LeafError::Memory)?;
+    }
+    projection
+        .real_len(domain)?
+        .checked_sub(real)
+        .ok_or(LeafError::Internal {
+            rule: "Softmax domain covers the batch's real rows",
+        })
 }
 
-fn elements(shape: &[u32]) -> Option<usize> {
-    shape
-        .iter()
-        .try_fold(1usize, |n, &d| n.checked_mul(d as usize))
-}
 fn buffer<T: Copy>(len: usize, value: T) -> Result<SecretBuf<T>, LeafError> {
     let mut out = SecretBuf::try_with_capacity(len).map_err(|_| LeafError::Memory)?;
     out.resize(len, value);
@@ -123,6 +145,7 @@ fn virtual_column(c: ModelColumn) -> bool {
 
 /// Copy one canonical tile share into a per-axis padded column. All indices and branches
 /// here depend only on public shapes/ranges, never on the copied values.
+#[cfg(test)]
 fn scatter<T: Copy>(
     out: &mut [i64],
     domain: &[u32],
@@ -130,6 +153,18 @@ fn scatter<T: Copy>(
     values: &[T],
     lift: fn(T) -> i64,
 ) -> Result<(), LeafError> {
+    let projection = Projection::full(variables(domain).ok_or(LeafError::Memory)?)?;
+    scatter_selected(out, domain, ranges, values, projection, lift).map(|_| ())
+}
+
+fn scatter_selected<T: Copy>(
+    out: &mut [i64],
+    domain: &[u32],
+    ranges: &[core::ops::Range<u32>],
+    values: &[T],
+    projection: Projection,
+    lift: fn(T) -> i64,
+) -> Result<usize, LeafError> {
     if ranges.len() != domain.len()
         || ranges
             .iter()
@@ -145,6 +180,11 @@ fn scatter<T: Copy>(
     if count != values.len() {
         return own();
     }
+    let selected = projection.count(domain, ranges)?;
+    if out.len() != projection.len() {
+        return own();
+    }
+    let mut written = 0;
     for (flat, &value) in values.iter().enumerate() {
         let (mut rest, mut index, mut shift) = (flat, 0usize, 0u32);
         for (range, &d) in ranges.iter().zip(domain).rev() {
@@ -154,17 +194,29 @@ fn scatter<T: Copy>(
             index |= coordinate.checked_shl(shift).ok_or(LeafError::Memory)?;
             shift += d.next_power_of_two().trailing_zeros();
         }
-        *out.get_mut(index).ok_or(LeafError::Internal {
-            rule: "the tile's padded source index is in its column",
-        })? = lift(value);
+        if let Some(index) = projection.selected(index) {
+            *out.get_mut(index).ok_or(LeafError::Internal {
+                rule: "the tile's padded source index is in its column",
+            })? = lift(value);
+            written += 1;
+        }
     }
-    Ok(())
+    if written != selected {
+        return own();
+    }
+    Ok(written)
 }
 fn full(column: &mut Column, values: &[i64]) -> Result<(), LeafError> {
     let mut ranges = descriptors(column.domain.len())?;
     ranges.extend(column.domain.iter().map(|&d| 0..d));
-    scatter(&mut column.values, &column.domain, &ranges, values, |v| v)?;
-    column.written = values.len();
+    column.written = scatter_selected(
+        &mut column.values,
+        &column.domain,
+        &ranges,
+        values,
+        column.projection,
+        |v| v,
+    )?;
     Ok(())
 }
 fn shared(
@@ -180,6 +232,11 @@ fn shared(
 }
 
 impl ModelWitness {
+    #[cfg(test)]
+    pub(crate) fn full_source_builds() -> usize {
+        FULL_SOURCE_BUILDS.with(std::cell::Cell::get)
+    }
+
     /// Plan owned lookup-column/forest buffers and their own constructor metadata.
     /// Canonical tile generation, borrowed sources/gadgets, lent view arrays, other
     /// proof phases and allocator overhead remain separate charges (RFC-0018).
@@ -213,6 +270,29 @@ impl ModelWitness {
         source: &(impl WitnessSource + ?Sized),
         advice: &ModelAdviceLayout<'_>,
     ) -> Result<Self, LeafError> {
+        #[cfg(test)]
+        FULL_SOURCE_BUILDS.with(|n| n.set(n.get().saturating_add(1)));
+        Self::build(
+            layout,
+            lowering,
+            layers,
+            witness,
+            source,
+            advice,
+            Selection::All,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build(
+        layout: &LeafLayout<ModelColumn>,
+        lowering: &Lowering,
+        layers: &LayerMap,
+        witness: &(impl crate::stages::WitnessSource + ?Sized),
+        source: &(impl WitnessSource + ?Sized),
+        advice: &ModelAdviceLayout<'_>,
+        selection: Selection<'_>,
+    ) -> Result<Self, LeafError> {
         let mut sites = descriptors(layout.sites().len())?;
         let mut maximum = None;
         for (s, site) in layout.sites().iter().enumerate() {
@@ -243,9 +323,17 @@ impl ModelWitness {
                             rule: "a read belongs to a canonical lookup",
                         })?;
                     let domain: Vec<_> = read.axes.iter().map(|&a| request.domain[a]).collect();
-                    let len = 1usize
-                        .checked_shl(variables(&domain).ok_or(LeafError::Memory)?)
-                        .ok_or(LeafError::Memory)?;
+                    let Some(projection) = selection.projection(
+                        layout,
+                        s,
+                        l,
+                        read.term,
+                        variables(&domain).ok_or(LeafError::Memory)?,
+                    )?
+                    else {
+                        continue;
+                    };
+                    let len = projection.len();
                     let fill = if read.term == ModelColumn::ExpKey {
                         let id = request.lookup.table;
                         let spec = lowering.tables.iter().find(|t| t.id == id).ok_or(
@@ -260,9 +348,10 @@ impl ModelWitness {
                     } else {
                         0
                     };
-                    let gaps = softmax_gaps(lowering, node, &domain)?;
+                    let gaps = softmax_gaps(lowering, node, &domain, projection)?;
                     let mut column = Column {
                         name: read.term,
+                        projection,
                         domain,
                         values: buffer(len, fill)?,
                         written: gaps,
@@ -280,21 +369,37 @@ impl ModelWitness {
                     }
                     columns.push(column);
                 }
-                if matches!(node.op, tessera_ir::Op::SoftmaxRow { .. }) {
+                if matches!(node.op, tessera_ir::Op::SoftmaxRow { .. })
+                    && matches!(
+                        selection,
+                        Selection::All
+                            | Selection::Read {
+                                term: ModelColumn::Auxiliary(tessera_compiler::AuxColumn::Maximum),
+                                ..
+                            }
+                    )
+                {
                     // The masked key hides its maximum; the native relation still needs it.
                     let domain = lowering.graph.tensors[node.outputs[1].0 as usize]
                         .shape
                         .clone();
-                    let len = 1usize
-                        .checked_shl(variables(&domain).ok_or(LeafError::Memory)?)
-                        .ok_or(LeafError::Memory)?;
-                    let gaps = softmax_gaps(lowering, node, &domain)?;
-                    columns.push(Column {
-                        name: ModelColumn::Auxiliary(tessera_compiler::AuxColumn::Maximum),
-                        domain,
-                        values: buffer(len, 0)?,
-                        written: gaps,
-                    });
+                    if let Some(projection) = selection.projection(
+                        layout,
+                        s,
+                        l,
+                        ModelColumn::Auxiliary(tessera_compiler::AuxColumn::Maximum),
+                        variables(&domain).ok_or(LeafError::Memory)?,
+                    )? {
+                        let len = projection.len();
+                        let gaps = softmax_gaps(lowering, node, &domain, projection)?;
+                        columns.push(Column {
+                            name: ModelColumn::Auxiliary(tessera_compiler::AuxColumn::Maximum),
+                            projection,
+                            domain,
+                            values: buffer(len, 0)?,
+                            written: gaps,
+                        });
+                    }
                 }
                 real_layers.push(columns);
             }
@@ -304,6 +409,15 @@ impl ModelWitness {
         // blocks. Concatenating tiles would permute heads whenever there is more than one block.
         for tile in advice.tiles() {
             if matches!(tile.tile, Tile::GreedyMaximum { .. }) {
+                if !matches!(selection, Selection::All)
+                    && !sites
+                        .iter()
+                        .flatten()
+                        .flatten()
+                        .any(|c| c.name.is_greedy_key())
+                {
+                    continue;
+                }
                 let values = source.tile(tile).map_err(LeafError::Witness)?;
                 let (id, m) = values.greedy_maximum().ok_or(LeafError::Internal {
                     rule: "runtime maximum advice remains a distinct certificate source",
@@ -315,15 +429,22 @@ impl ModelWitness {
                 {
                     return own();
                 }
-                let mut padded = buffer(n.next_power_of_two() as usize, 0)?;
-                padded[..m.len()].copy_from_slice(m);
-                maximum = Some((id, padded));
+                if matches!(selection, Selection::All) {
+                    let mut padded = buffer(n.next_power_of_two() as usize, 0)?;
+                    padded[..m.len()].copy_from_slice(m);
+                    maximum = Some((id, padded));
+                }
                 let keys = || {
-                    sites.iter().enumerate().flat_map(|(s, layers)| {
-                        layers.iter().enumerate().flat_map(move |(l, columns)| {
-                            columns.iter().enumerate().filter_map(move |(i, c)| {
-                                c.name.is_greedy_key().then_some((s, l, i))
-                            })
+                    layout.sites().iter().enumerate().flat_map(|(s, site)| {
+                        (0..site.layers.len()).flat_map(move |l| {
+                            layout
+                                .reads(s, l)
+                                .into_iter()
+                                .flatten()
+                                .enumerate()
+                                .filter_map(move |(i, r)| {
+                                    r.term.is_greedy_key().then_some((s, l, i))
+                                })
                         })
                     })
                 };
@@ -333,17 +454,29 @@ impl ModelWitness {
                     return own();
                 }
                 for (request, (s, l, i)) in values.lookups().zip(key_columns) {
-                    let column = &mut sites[s][l][i];
+                    let term = layout
+                        .reads(s, l)
+                        .and_then(|r| r.get(i))
+                        .ok_or(LeafError::Internal {
+                            rule: "the greedy source has its canonical read identity",
+                        })?
+                        .term;
+                    let Some(column) = sites[s][l].iter_mut().find(|c| c.name == term) else {
+                        continue;
+                    };
                     if layout.sites()[s].layers[l].lookups[i].lookup.table != request.table()
-                        || column.values.len() != request.keys().len()
+                        || Some(request.keys().len())
+                            != 1usize
+                                .checked_shl(variables(&column.domain).ok_or(LeafError::Memory)?)
                         || request.values().is_some()
                     {
                         return own();
                     }
-                    for (out, &key) in column.values.iter_mut().zip(request.keys()) {
-                        *out = i64::from(key);
+                    for (j, out) in column.values.iter_mut().enumerate() {
+                        let original = column.projection.original(j).ok_or(LeafError::Memory)?;
+                        *out = i64::from(request.keys()[original]);
                     }
-                    column.written = elements(&column.domain).ok_or(LeafError::Memory)?;
+                    column.written = column.projection.real_len(&column.domain)?;
                 }
                 continue;
             }
@@ -356,13 +489,18 @@ impl ModelWitness {
                     return None;
                 }
                 (0..site.layers.len())
-                    .find(|&l| owner(layers, site.node, l) == id)
+                    .find(|&l| owner(layers, site.node, l) == id && !sites[s][l].is_empty())
                     .map(|l| (s, l))
             });
             let Some((s, l)) = target else {
                 continue;
             };
             let node = &lowering.graph.nodes[id.0 as usize];
+            if !matches!(selection, Selection::All)
+                && sites[s][l].iter().all(|c| tensor(c.name, node).is_some())
+            {
+                continue;
+            }
             let values = source.tile(tile).map_err(LeafError::Witness)?;
             let mut requests = descriptors(values.lookups().len())?;
             requests.extend(values.lookups());
@@ -394,16 +532,17 @@ impl ModelWitness {
                                 rule: "the canonical tile contains every requested auxiliary role",
                             },
                         )?;
-                        scatter(
+                        let written = scatter_selected(
                             &mut column.values,
                             &column.domain,
                             &share.ranges,
                             &data.1,
+                            column.projection,
                             |v| v,
                         )?;
                         column.written = column
                             .written
-                            .checked_add(data.1.len())
+                            .checked_add(written)
                             .ok_or(LeafError::Memory)?;
                     }
                     c if virtual_column(c) => {
@@ -415,16 +554,17 @@ impl ModelWitness {
                                 rule: "each virtual column occurs in a canonical key decomposition",
                             })?;
                         let keys = requests[index].keys();
-                        scatter(
+                        let written = scatter_selected(
                             &mut column.values,
                             &column.domain,
                             &share.ranges,
                             keys,
+                            column.projection,
                             i64::from,
                         )?;
                         column.written = column
                             .written
-                            .checked_add(keys.len())
+                            .checked_add(written)
                             .ok_or(LeafError::Memory)?;
                     }
                     _ => return own(),
@@ -435,7 +575,7 @@ impl ModelWitness {
             for (l, columns) in real_layers.iter_mut().enumerate() {
                 if columns
                     .iter()
-                    .any(|c| elements(&c.domain) != Some(c.written))
+                    .any(|c| c.projection.real_len(&c.domain).ok() != Some(c.written))
                 {
                     return own();
                 }
@@ -462,7 +602,13 @@ impl ModelWitness {
             forests: Vec::new(),
             maximum,
         };
-        result.build_forests(layout, lowering)?;
+        match selection {
+            Selection::All | Selection::Forest { .. } => result.build_forests(layout, lowering)?,
+            Selection::Group(grouped, group) => {
+                result.build_group_forests(layout, lowering, grouped, group)?
+            }
+            Selection::Read { .. } => {}
+        }
         Ok(result)
     }
 
@@ -630,7 +776,9 @@ fn recover(
                 .ok_or(LeafError::Internal {
                     rule: "a virtual key's operands occur in the split",
                 })?;
-            if source.domain != columns[index].domain {
+            if source.domain != columns[index].domain
+                || source.projection != columns[index].projection
+            {
                 return own();
             }
             value -= a * Goldilocks::from_i64(source.values[row]);
@@ -656,6 +804,7 @@ mod tests {
         Column {
             name,
             domain: domain.to_vec(),
+            projection: Projection::full(variables(domain).unwrap()).unwrap(),
             values: buffer,
             written: values.len(),
         }

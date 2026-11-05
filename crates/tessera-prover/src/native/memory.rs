@@ -135,7 +135,45 @@ fn computed(plan: &ModelNativePlan, family: &Family, relation: Relation, literal
         && plan.batch.is_none()
 }
 
+fn root_terms_bound(digits: usize, coefficients: usize) -> Result<u64, StageError> {
+    if !(1..=4).contains(&digits) || !(1..=15).contains(&coefficients) {
+        return Err(bad());
+    }
+    add(
+        mul(20, mul(digits as u64, digits as u64)?)?,
+        mul(2, coefficients as u64)?,
+    )
+}
+
 impl ModelNativePlan {
+    /// Public term envelope for one literal native instance (RFC-0018/0056).
+    /// A root coefficient has at most the complete product expansion's terms,
+    /// including every retained zero fallback. Other relations keep all raw
+    /// evaluation terms plus their public/fixed corrections.
+    pub(crate) fn window_terms_bound(&self, tag: u32) -> Result<u64, StageError> {
+        let index = tag.checked_sub(1).ok_or_else(bad)? as usize;
+        let meta = self.native.get(index).ok_or_else(bad)?;
+        let slot = self.slots.get(index).ok_or_else(bad)?;
+        let family = self.families.get(slot.family).ok_or_else(bad)?;
+        if matches!(slot.relation, Relation::Product) {
+            let Kind::Root {
+                digits,
+                coefficients,
+                ..
+            } = family.kind
+            else {
+                return Err(bad());
+            };
+            // The complete product expansion bounds any one coefficient,
+            // including the retained zero fallback, without inspecting values.
+            return root_terms_bound(digits, coefficients);
+        }
+        add(
+            u64::try_from(meta.evaluations).map_err(|_| StageError::Memory)?,
+            2,
+        )
+    }
+
     /// Plan native construction and one initial prepare from matching public
     /// lowering metadata without allocating or reading witness values.
     /// `literal_scores=false` covers `ModelNativeProver::new`, `true` its literal
@@ -201,7 +239,7 @@ impl ModelNativePlan {
                     build.grow::<usize>(d + 4)?; // temporary shared raw-id vector
                     // Across all coefficients: 4*d*d lower products and at most
                     // four upper terms per product, plus one zero fallback each.
-                    let terms = add(mul(20, mul(d, d)?)?, mul(2, c)?)?;
+                    let terms = root_terms_bound(digits, coefficients)?;
                     build.terms(terms, 2 * c)?;
                     instances.terms(terms, 2 * c)?;
                 }
@@ -335,6 +373,40 @@ mod tests {
             assert_eq!(power(64), Err(StageError::Memory));
         });
         assert_eq!(measured.count_total, 0);
+    }
+
+    #[test]
+    fn native_term_envelope_covers_every_root_coefficient_and_zero_fallback() {
+        let mut cases = 0;
+        let mut fallbacks = 0;
+        for digits in 1..=4 {
+            for coefficients in 1..=15 {
+                let mut bound = None;
+                let sized =
+                    measure(|| bound = Some(root_terms_bound(digits, coefficients).unwrap()));
+                assert_eq!(sized.count_total, 0);
+                for coefficient in 0..coefficients {
+                    for upper in [false, true] {
+                        let terms = product_terms(digits, coefficient, upper);
+                        assert!(!terms.is_empty());
+                        assert!(
+                            terms.len() as u64 <= bound.unwrap(),
+                            "native root term envelope"
+                        );
+                        fallbacks += usize::from(terms.len() == 1 && *terms[0].weight() == F::ZERO);
+                        cases += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 960);
+        assert!(fallbacks > 0);
+        for (digits, coefficients) in [(0, 1), (5, 1), (1, 0), (1, 16)] {
+            assert!(matches!(
+                root_terms_bound(digits, coefficients),
+                Err(StageError::Internal { .. })
+            ));
+        }
     }
 
     #[test]

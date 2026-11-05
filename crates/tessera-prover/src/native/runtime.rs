@@ -147,7 +147,7 @@ pub(super) fn build(
     family: &Family,
     kind: Runtime,
     lowering: &Lowering,
-    witness: &ModelWitness,
+    witness: &dyn ModelLeafSource,
     graph: &impl WitnessSource,
     leaf: &dyn LeafClaims,
 ) -> Result<(), StageError> {
@@ -169,12 +169,12 @@ pub(super) fn build(
     } else {
         push(graph_column(lowering, graph, lowering.logits)?);
         if let Runtime::Key(c, _) | Runtime::Selected(c) = kind {
-            let (id, m) = witness.greedy_maximum().ok_or_else(bad)?;
+            let (id, m) = witness.maximum().map_err(source_error)?;
             if id != c.gadget || m.len() != tp {
                 return Err(bad());
             }
             let mut expanded = zeros(tp * vp)?;
-            for (row, &value) in expanded.chunks_exact_mut(vp).zip(m) {
+            for (row, &value) in expanded.chunks_exact_mut(vp).zip(m.iter()) {
                 row.fill(G::from_i64(value));
             }
             push(expanded);
@@ -198,12 +198,12 @@ pub(super) fn build(
         let point = leaf.point(column.variables as usize, &[]).ok_or_else(bad)?;
         let p = point.as_slice();
         let keys = witness
-            .values(
+            .column(
                 family.site,
                 0,
                 ModelColumn::greedy_key(column.request_index),
             )
-            .ok_or_else(bad)?;
+            .map_err(source_error)?;
         let mut values = zeros(keys.len())?;
         for (out, &key) in values.iter_mut().zip(keys.iter()) {
             *out = G::from_i64(key);

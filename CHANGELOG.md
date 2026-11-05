@@ -4,6 +4,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ## [Unreleased]
 
+- Add RFC-0077 scoped canonical group/original sources, clearing native leases, complete grouped physical phase bounds and public candidate search; qualify complete NI/Live proofs across grouping families, slots, padded layers, affine and Minimal fixtures without changing the resident cell floor ([#689](https://github.com/AbdelStark/tessera/issues/689)).
+
 - Validate a finite bounded grouped-source/merge prototype with independent index, value and lifetime controls; adopt RFC-0077’s gated runtime contract while preserving production admission guards and separate model qualification ([#687](https://github.com/AbdelStark/tessera/issues/687)).
 
 - Bound retained grouped leaf messages, merge-input metadata and production wire-copy overlap from checked public geometry, with allocation and refusal controls; keep complete physical admission separate (RFC-0018/0054, [#685](https://github.com/AbdelStark/tessera/issues/685)).

@@ -30,6 +30,10 @@
 
 use core::fmt;
 
+mod inputs;
+pub(crate) use inputs::ForestShape;
+pub(super) use inputs::{GroupInputs, seal_copy};
+
 mod messages;
 pub use messages::{GroupedMessageMemory, GroupedMessageShape};
 
@@ -290,7 +294,7 @@ fn group_columns_from<'a, S: Copy + Eq>(
 }
 
 /// A group's columns: each instance's table, keys and values.
-type GroupColumns = Vec<(
+pub(super) type GroupColumns = Vec<(
     tessera_tables::TableId,
     SecretBuf<Goldilocks>,
     Option<SecretBuf<Goldilocks>>,
@@ -476,6 +480,101 @@ enum GroupTables<'a> {
         budget: tessera_logup::TableBatchBudget,
     },
 }
+
+/// Canonical scoped CPU source route; admission requires the complete physical plan.
+pub(crate) fn prove_grouped_leaf_sources<T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
+    transcript: &mut T,
+    source: &super::ModelSourceFactory<'_>,
+    tables: &[super::table_source::GeneratedCounts],
+    mode: MergeMode,
+    budget: tessera_logup::TableBatchBudget,
+) -> Result<ProvenGroupedLeaf, LeafError> {
+    prove_factory(
+        transcript,
+        source,
+        GroupTables::Generated { tables, budget },
+        mode,
+    )
+}
+
+#[cfg(test)]
+pub(super) fn prove_grouped_leaf_source_fixture<T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
+    transcript: &mut T,
+    source: &super::ModelSourceFactory<'_>,
+    tables: &[TableColumns<Goldilocks>],
+    multiplicities: &[&[Goldilocks]],
+    mode: MergeMode,
+) -> Result<ProvenGroupedLeaf, LeafError> {
+    prove_factory(
+        transcript,
+        source,
+        GroupTables::Resident {
+            tables,
+            multiplicities,
+        },
+        mode,
+    )
+}
+
+fn prove_factory<T: SumcheckTranscript<GoldilocksExt2> + ?Sized>(
+    transcript: &mut T,
+    source: &super::ModelSourceFactory<'_>,
+    tables: GroupTables<'_>,
+    mode: MergeMode,
+) -> Result<ProvenGroupedLeaf, LeafError> {
+    let stage = source.layout;
+    let grouped = source.grouped;
+    if grouped.groups().bits() == 0 {
+        return internal("an ungrouped stage keeps RFC-0010's messages (prepare_leaf)");
+    }
+    if let GroupTables::Resident { multiplicities, .. } = &tables
+        && multiplicities.len() != stage.instances().len()
+    {
+        return internal("one multiplicity column per instance of the stage");
+    }
+    let forests = source.forest_shapes()?;
+    let gt = u32::from(grouped.groups().token_bits);
+    let gl = u32::from(grouped.groups().layer_bits);
+    let mut polynomials = grouped.polynomials().to_vec();
+    for forest in &forests {
+        let fits = forest.height >= 1
+            && forest.height <= forest.queries
+            && forest
+                .queries
+                .checked_add(gt)
+                .is_some_and(|q| q <= forest.layers)
+            && forest
+                .layers
+                .checked_add(gl)
+                .is_some_and(|l| l <= forest.vars);
+        if !fits {
+            return internal(
+                "a forest's query and layer indices hold the groups' bits above its trees' leaves",
+            );
+        }
+        polynomials.push(MergePolynomial {
+            vars: forest.vars as usize,
+            group_vars: (forest.queries..forest.queries + gt)
+                .chain(forest.layers..forest.layers + gl)
+                .map(|v| v as usize)
+                .collect(),
+        });
+    }
+    prove_grouped_inputs(
+        transcript,
+        stage,
+        grouped,
+        tables,
+        polynomials,
+        &forests,
+        mode,
+        |h, tables| source.group_inputs(h, |id| tables.rows(id)),
+        |i| {
+            let values = source.original(i)?;
+            seal_copy(&values)
+        },
+    )
+}
 impl GroupTables<'_> {
     fn rows(&self, id: tessera_tables::TableId) -> Result<Tuples<'_, Goldilocks>, LeafError> {
         match self {
@@ -573,6 +672,56 @@ where
             Lent::Forest(leaves) => leaves.to_vec(),
         }))
     };
+    let forest_shapes: Vec<_> = forests
+        .iter()
+        .map(|f| ForestShape {
+            vars: f.vars().unwrap_or(0),
+            height: f.height,
+            queries: f.queries,
+            layers: f.layers,
+        })
+        .collect();
+    let build_group = |h, tables: &GroupTables<'_>| {
+        let layout = grouped.group(h)?;
+        let columns =
+            group_columns_from(stage, grouped, h, &layout, witness, |id| tables.rows(id))?;
+        let shares = forests
+            .iter()
+            .map(|f| forest_share(f, g_t, g_l, layout.tokens(), layout.layers()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(GroupInputs::resident(
+            h, layout, columns, shares, stage, witness, forests,
+        ))
+    };
+    prove_grouped_inputs(
+        transcript,
+        stage,
+        grouped,
+        tables,
+        polynomials,
+        &forest_shapes,
+        mode,
+        build_group,
+        table,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_grouped_inputs<'a, 't, S, T>(
+    transcript: &mut T,
+    stage: &LeafLayout<S>,
+    grouped: &GroupedLayout,
+    tables: GroupTables<'t>,
+    polynomials: Vec<MergePolynomial>,
+    forest_shapes: &[ForestShape],
+    mode: MergeMode,
+    build_group: impl Fn(usize, &GroupTables<'t>) -> Result<GroupInputs<'a, S>, LeafError>,
+    table: impl Fn(usize) -> Result<Secret<Vec<Goldilocks>>, LeafError>,
+) -> Result<ProvenGroupedLeaf, LeafError>
+where
+    S: Copy + Eq + 'a,
+    T: SumcheckTranscript<GoldilocksExt2> + ?Sized,
+{
     let mut kept = match mode {
         MergeMode::InMemory => None,
         MergeMode::TwoPass { j_star } => {
@@ -595,18 +744,17 @@ where
     let mut gammas = Vec::with_capacity(grouped.count());
     let tensors = grouped.polynomials().len();
     for h in 0..grouped.count() {
-        let layout = grouped.group(h)?;
-        let (tokens, layers) = (layout.tokens(), layout.layers());
-        let columns_h =
-            group_columns_from(stage, grouped, h, &layout, witness, |id| tables.rows(id))?;
-        let shares = forests
+        let input = build_group(h, &tables)?;
+        let layout = &input.layout;
+        let columns_h = &input.columns;
+        if input.shares.len() != forest_shapes.len() {
+            return internal("a group has its canonical forest shares");
+        }
+        let group_forests: Vec<Forest<'_, GoldilocksExt2>> = input
+            .shares
             .iter()
-            .map(|forest| forest_share(forest, g_t, g_l, tokens, layers))
-            .collect::<Result<Vec<_>, _>>()?;
-        let group_forests: Vec<Forest<'_, GoldilocksExt2>> = shares
-            .iter()
-            .zip(forests)
-            .map(|(share, forest)| Forest::new(share, forest.height as usize))
+            .zip(forest_shapes)
+            .map(|(share, shape)| Forest::new(share, shape.height as usize))
             .collect();
         let mut schedule: Vec<TreeId> = (0..columns_h.len()).map(TreeId::Lookup).collect();
         schedule.extend((0..group_forests.len()).map(TreeId::Forest));
@@ -672,8 +820,8 @@ where
 
         // The split: each tensor at `P_h` outside `S` and at the group's bits on `S`.
         let mut values = Vec::with_capacity(layout.reads().len());
-        let mut group_claims = Vec::with_capacity(layout.reads().len() + forests.len());
-        for read in layout.reads() {
+        let mut group_claims = Vec::with_capacity(layout.reads().len() + forest_shapes.len());
+        for (slot, read) in layout.reads().iter().enumerate() {
             let shape = &grouped.polynomials()[read.polynomial];
             let free = read
                 .coords
@@ -701,20 +849,7 @@ where
                     })?,
                 });
             }
-            let entries = stage
-                .reads(read.site, read.layer)
-                .and_then(|reads| reads.get(read.read))
-                .ok_or(LeafError::Internal {
-                    rule: "a group's split reads the stage's tensors",
-                })
-                .and_then(|r| witness[read.site][read.layer].of(r))?;
-            let mut table =
-                SecretBuf::try_with_capacity(entries.len()).map_err(|_| LeafError::Memory)?;
-            table.extend(entries.iter().map(|&v| Goldilocks::from_i64(v)));
-            let value =
-                evaluate_base::<GoldilocksExt2>(&table, &at).map_err(|_| LeafError::Internal {
-                    rule: "a tensor's point has its variables",
-                })?;
+            let value = input.split(slot, read, &free, &at)?;
             values.push(value);
             group_claims.push(MergeClaim {
                 polynomial: read.polynomial,
@@ -738,17 +873,13 @@ where
             let mut blocks: Vec<(usize, u64, Secret<Vec<Goldilocks>>)> =
                 Vec::with_capacity(group_claims.len());
             for claim in &group_claims {
-                let source = lent(claim.polynomial)?;
-                let entry = |x: usize| match source {
-                    Lent::Tensor(values) => values.get(x).map(|&v| Goldilocks::from_i64(v)),
-                    Lent::Forest(leaves) => leaves.get(x).copied(),
-                };
-                let values = block(entry, &polynomials[claim.polynomial], claim.group_bits).ok_or(
-                    LeafError::Internal {
-                        rule: "a polynomial's table holds its blocks",
-                    },
+                let values = input.block(
+                    claim.polynomial,
+                    tensors,
+                    &polynomials[claim.polynomial],
+                    claim.group_bits,
                 )?;
-                blocks.push((claim.polynomial, claim.group_bits, Secret::new(values)));
+                blocks.push((claim.polynomial, claim.group_bits, values));
             }
             kept.add_group(h, &group_claims, gamma, |i, bits| {
                 blocks
