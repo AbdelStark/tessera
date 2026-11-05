@@ -31,16 +31,32 @@ fn physical_route_matches_resident_and_independently_verifies() {
 
 #[test]
 fn grouped_scoped_cpu_qualification_matches_resident_and_independently_verifies() {
-    for requests in [&[(3, 0)][..], &[(1, 1)][..], &[(2, 1), (1, 0)][..]] {
+    for (requests, token_bits, layer_bits) in [
+        (&[(3, 0)][..], 1, 1),
+        (&[(1, 1)][..], 1, 1),
+        (&[(2, 1), (1, 0)][..], 1, 1),
+        (&[(3, 0)][..], 1, 0),
+        (&[(3, 0)][..], 0, 1),
+        // Uneven slots and a padded request ordinal must survive the whole proof.
+        (&[(2, 1), (1, 0), (2, 0)][..], 1, 1),
+    ] {
         physical_case(
             "tiny-2-servable",
             requests,
             Some(protocol::LeafGroups {
-                token_bits: 1,
-                layer_bits: 1,
+                token_bits,
+                layer_bits,
             }),
         );
     }
+    physical_case(
+        "tiny-3-reference",
+        &[(2, 1), (1, 0), (2, 0)],
+        Some(protocol::LeafGroups {
+            token_bits: 1,
+            layer_bits: 1,
+        }),
+    );
 }
 
 struct Groups;
@@ -60,7 +76,15 @@ fn physical_case(name: &str, requests: &[(u32, u32)], groups: Option<protocol::L
     let _groups = Groups::enable(groups);
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/vectors");
     let mut model: IntegerModel = envelope::open(
-        &std::fs::read(root.join(format!("models/{name}.d"))).unwrap(),
+        &std::fs::read(root.join(format!(
+            "{}/{name}.d",
+            if name == "tiny-3-reference" {
+                "exact-cli"
+            } else {
+                "models"
+            }
+        )))
+        .unwrap(),
         &schema::INTEGER_MODEL,
         DecodeLimits::INTEGER_MODEL,
     )
@@ -104,7 +128,7 @@ fn physical_case(name: &str, requests: &[(u32, u32)], groups: Option<protocol::L
                 .1;
         }
     }
-    if name != "tiny-2-servable" {
+    if name == "tiny-2-affine" {
         for (point, shifts) in &mut model.quant.public.shift_class_sets {
             let base = if matches!(
                 point,
@@ -138,7 +162,14 @@ fn physical_case(name: &str, requests: &[(u32, u32)], groups: Option<protocol::L
         let n = shapes[channel.ty as usize].out as usize;
         if let Some(&value) = channel.class.first() {
             channel.class.resize(n, value);
-            channel.class.fill(0);
+            // Distinct real-layer classes make a wrong-layer source observable.
+            channel
+                .class
+                .fill(if groups.is_some() && name == "tiny-2-servable" {
+                    (channel.layer % 2) as u8
+                } else {
+                    0
+                });
         }
         if let Some(&value) = channel.multiplier.first() {
             channel.multiplier.resize(n, value);
