@@ -1,0 +1,5 @@
+Frozen before experiment code.
+UTC: 2026-11-05T04:48:00.977744+00:00
+SHA-256: 972efa1bdf13f49e271ab58f41edde3a6b54d17605d00e4b9d39bd8e02bea2c0
+Base: 646f7addc7bc737f2fbb8970c865df8333877093
+Code, measurement and candidate source changes: none.

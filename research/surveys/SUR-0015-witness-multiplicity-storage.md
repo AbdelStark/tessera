@@ -2,11 +2,19 @@
 
 | | |
 |---|---|
-| Status | `current (2026-10-20)` |
+| Status | `stale` |
 | Agenda topic | `passes`: bounded CPU implementation prerequisite for #112 |
 | Questions | "What is the minimum number of full-forward-equivalent passes for the witness, the stages and the opening, with checkpointing, pass fusion and streaming-friendly commitments? Which stages can share a pass?"; "Streamed leaf levels: alternatives to `c(S)` streamed rounds (hierarchical folds, partially resident trees, GPU memory tiers, NVLink spill, proof units)?" |
 | Period covered | SC20 generalized histograms and current Rust/CUB primary documentation, checked 2026-10-19 UTC; Tessera at `017ab6b` |
 | Produced by | `autoresearch survey passes`, 2026-10-20 |
+
+## Staleness observation (2026-11-05)
+
+The implemented complete witness path fired this survey's stated trigger.
+The original counter analysis and measurements remain historical evidence;
+its synthesis does not price the current complete ModelWitness or grouped
+source regeneration. #687 / IDEA-0042 studies that separate ownership problem.
+This observation is not a new survey or a performance claim.
 
 ## Method
 
