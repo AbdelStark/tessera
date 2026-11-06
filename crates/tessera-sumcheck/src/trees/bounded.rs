@@ -2,7 +2,7 @@
 
 //! RFC-0054 table streaming alongside already-resident lookup trees/forests.
 
-use core::{fmt, mem::size_of};
+use core::{cell::RefCell, fmt, mem::size_of, num::NonZeroUsize};
 
 use tessera_codec::SecretBuf;
 use tessera_poly::PolyField;
@@ -153,6 +153,19 @@ enum Operand<'s, 'r, F: PolyField> {
 
 struct LevelSource<'s, 'r, F: PolyField> {
     operands: Vec<Operand<'s, 'r, F>>,
+    memo: RefCell<Option<Memo<'s, 'r, F>>>,
+}
+
+/// The last regenerated block of a generated level. A level's four operands (`N` and `D` at
+/// both pair bits) read the same block in turn, so one regeneration serves all four (#694).
+/// At most one block is held, in the clearing buffers the per-tree read scratch already charges.
+struct Memo<'s, 'r, F: PolyField> {
+    rows: &'s FractionTreeRows<'r, F>,
+    depth: usize,
+    first: usize,
+    len: usize,
+    n: SecretBuf<F>,
+    d: SecretBuf<F>,
 }
 
 fn buffer<F: PolyField>(len: usize) -> Result<SecretBuf<F>, WindowError> {
@@ -163,7 +176,17 @@ fn buffer<F: PolyField>(len: usize) -> Result<SecretBuf<F>, WindowError> {
 
 impl<F: PolyField> WindowSource<F> for LevelSource<'_, '_, F> {
     fn regenerate(&mut self, _: WindowPass) -> Result<(), WindowError> {
+        self.memo.get_mut().take();
         Ok(())
+    }
+    fn read_granule(&self) -> Option<NonZeroUsize> {
+        self.operands
+            .iter()
+            .filter_map(|operand| match operand {
+                Operand::Generated { rows, .. } => NonZeroUsize::new(rows.chunk_rows()),
+                _ => None,
+            })
+            .min()
     }
     fn resident(&self, table: usize) -> Option<Table<'_, F>> {
         match self.operands.get(table)? {
@@ -187,16 +210,41 @@ impl<F: PolyField> WindowSource<F> for LevelSource<'_, '_, F> {
                 }
                 let count = rows.chunk_rows().min(out.len());
                 let pair_count = count.checked_mul(2).ok_or_else(allocation)?;
-                let mut n = buffer(pair_count)?;
-                let mut d = buffer(pair_count)?;
+                let mut memo = self.memo.borrow_mut();
                 for (block, output) in out.chunks_mut(count).enumerate() {
                     let first = start
                         .checked_add(block * count)
                         .and_then(|first| first.checked_mul(2))
                         .ok_or(WindowError::Source)?;
                     let len = 2 * output.len();
-                    rows.read_level(*depth, first, &mut n[..len], &mut d[..len])?;
-                    let values = if *part < 2 { &n } else { &d };
+                    let held = memo.as_ref().is_some_and(|m| {
+                        core::ptr::eq(m.rows, *rows)
+                            && m.depth == *depth
+                            && m.first == first
+                            && m.len == len
+                    });
+                    if !held {
+                        // Reuse the held buffers when large enough; otherwise clear them first,
+                        // so no more than one block is ever allocated.
+                        let (mut n, mut d) = match memo.take() {
+                            Some(m) if m.n.len() >= pair_count => (m.n, m.d),
+                            other => {
+                                drop(other);
+                                (buffer(pair_count)?, buffer(pair_count)?)
+                            }
+                        };
+                        rows.read_level(*depth, first, &mut n[..len], &mut d[..len])?;
+                        *memo = Some(Memo {
+                            rows,
+                            depth: *depth,
+                            first,
+                            len,
+                            n,
+                            d,
+                        });
+                    }
+                    let m = memo.as_ref().ok_or(WindowError::Source)?;
+                    let values = if *part < 2 { &m.n } else { &m.d };
                     for (at, value) in output.iter_mut().enumerate() {
                         *value = values[2 * at + (*part & 1)];
                     }
@@ -558,6 +606,7 @@ impl<'a, F: PolyField> PreparedTreeBatch<'a, F> {
             let proven = {
                 let mut source = LevelSource {
                     operands: Vec::new(),
+                    memo: RefCell::new(None),
                 };
                 let specs: Vec<_> = active
                     .iter()
@@ -640,6 +689,7 @@ mod tests {
         n: Vec<G>,
         d: Vec<F>,
         largest: Cell<usize>,
+        leaves: Cell<usize>,
     }
     impl FractionTreeSource<F> for Source {
         fn height(&self) -> usize {
@@ -647,6 +697,7 @@ mod tests {
         }
         fn read(&self, first: usize, n: &mut [F], d: &mut [F]) -> Result<(), WindowError> {
             self.largest.set(self.largest.get().max(n.len()));
+            self.leaves.set(self.leaves.get() + n.len());
             let end = first.checked_add(n.len()).ok_or(WindowError::Source)?;
             let input = self.n.get(first..end).ok_or(WindowError::Source)?;
             for (out, &value) in n.iter_mut().zip(input) {
@@ -672,6 +723,7 @@ mod tests {
                 })
                 .collect(),
             largest: Cell::new(0),
+            leaves: Cell::new(0),
         }
     }
     fn transcript() -> Transcript {
@@ -752,6 +804,7 @@ mod tests {
                 depth: 16,
                 part: 0,
             }],
+            memo: RefCell::new(None),
         };
         let mut output = buffer::<F>(1 << 15).unwrap();
         let measured = allocation_counter::measure(|| level.read(0, 0, &mut output).unwrap());
@@ -845,5 +898,34 @@ mod tests {
                 assert!(sources.iter().all(|s| s.largest.get() <= 13));
             }
         }
+    }
+
+    /// #694: a level's four generated operands share one regeneration per pass. Without the
+    /// shared block, the wide (cut 0) proof below regenerated `(1 + 4h)·2^h` leaves.
+    #[test]
+    fn each_generated_level_is_regenerated_once_per_pass() {
+        let height = 10;
+        let sources = [source(height)];
+        let original = Tree::Fraction(
+            FractionTree::new(height, LeafNumerators::Base(&sources[0].n), |j| {
+                sources[0].d[j]
+            })
+            .unwrap(),
+        );
+        let expected =
+            prove_trees_in(&mut transcript(), TreeScope::Tables, vec![original]).unwrap();
+        let prepared =
+            PreparedTreeBatch::new(TreeScope::Tables, inputs(&sources, &[], false), u64::MAX, 0)
+                .unwrap();
+        assert!(prepared.level_cuts().iter().all(|&cut| cut == 0));
+        sources[0].leaves.set(0);
+        let actual = prepared.prove(&mut transcript()).unwrap();
+        for (a, b) in actual.levels().iter().zip(expected.levels()) {
+            assert_eq!(a.proof(), b.proof());
+            assert_eq!(a.next_claims(), b.next_claims());
+        }
+        assert_eq!(actual.leaf_claims(), expected.leaf_claims());
+        // The root was taken at preparation; each of the `h` levels regenerates its child once.
+        assert_eq!(sources[0].leaves.get(), height << height);
     }
 }

@@ -1,0 +1,263 @@
+{
+ "schema": "table-batch-measurement/1",
+ "recorded_utc": "2026-11-06T10:34:49.166438+00:00",
+ "scope": "complete generated table batch (#694): one synthetic public valued table, roots/all levels/clearing; test-small/1 is non-certifying; no model throughput or memory qualification",
+ "environment": {
+  "cpu": "Apple M1 Max",
+  "memory_bytes": 68719476736,
+  "os": "macOS 15.6.1",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "criterion": "0.5.1",
+  "sample_size": 10,
+  "warm_up_seconds": 1,
+  "measurement_target_seconds": 3,
+  "contention": "idle: no model jobs or repository checks during measurement",
+  "order": "before, after, before, after"
+ },
+ "before_commit": "069b4c680397416d4d819ff15b8810ec1a851a6a",
+ "criterion_interval": "[lower, estimate, upper] of the mean, milliseconds, as criterion prints them",
+ "before": [
+  {
+   "fixture": "fixture height=14 chunk=256",
+   "reads": 3648,
+   "digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+   "criterion_ms": [
+    24.657,
+    24.675,
+    24.704
+   ]
+  },
+  {
+   "fixture": "fixture height=16 chunk=256",
+   "reads": 16640,
+   "digest": "d99349bb7f6b62d7d1bf036166711663f5f02f3a3cb7bce45f2b945b631b5d88",
+   "criterion_ms": [
+    108.47,
+    108.55,
+    108.65
+   ]
+  },
+  {
+   "fixture": "fixture height=14 depth=0 chunk=65536",
+   "reads": 57,
+   "digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+   "criterion_ms": [
+    25.657,
+    25.725,
+    25.799
+   ]
+  },
+  {
+   "fixture": "fixture height=14 depth=10 chunk=65536",
+   "reads": 17,
+   "digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+   "criterion_ms": [
+    12.97,
+    14.267,
+    16.179
+   ]
+  },
+  {
+   "fixture": "fixture height=18 depth=0 chunk=65536",
+   "reads": 292,
+   "digest": "681c10c8d683cab9deb994dbe49c4973f1453dd58efc70a0261643848aaeea54",
+   "criterion_ms": [
+    497.56,
+    498.23,
+    498.85
+   ]
+  },
+  {
+   "fixture": "fixture height=18 depth=14 chunk=65536",
+   "reads": 68,
+   "digest": "681c10c8d683cab9deb994dbe49c4973f1453dd58efc70a0261643848aaeea54",
+   "criterion_ms": [
+    211.03,
+    211.66,
+    212.15
+   ]
+  },
+  {
+   "fixture": "fixture height=14 chunk=256",
+   "reads": 3648,
+   "digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+   "criterion_ms": [
+    24.689,
+    24.736,
+    24.779
+   ]
+  },
+  {
+   "fixture": "fixture height=16 chunk=256",
+   "reads": 16640,
+   "digest": "d99349bb7f6b62d7d1bf036166711663f5f02f3a3cb7bce45f2b945b631b5d88",
+   "criterion_ms": [
+    108.4,
+    108.48,
+    108.55
+   ]
+  },
+  {
+   "fixture": "fixture height=14 depth=0 chunk=65536",
+   "reads": 57,
+   "digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+   "criterion_ms": [
+    25.993,
+    26.037,
+    26.079
+   ]
+  },
+  {
+   "fixture": "fixture height=14 depth=10 chunk=65536",
+   "reads": 17,
+   "digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+   "criterion_ms": [
+    13.093,
+    15.147,
+    16.722
+   ]
+  },
+  {
+   "fixture": "fixture height=18 depth=0 chunk=65536",
+   "reads": 292,
+   "digest": "681c10c8d683cab9deb994dbe49c4973f1453dd58efc70a0261643848aaeea54",
+   "criterion_ms": [
+    499.67,
+    500.84,
+    502.06
+   ]
+  },
+  {
+   "fixture": "fixture height=18 depth=14 chunk=65536",
+   "reads": 68,
+   "digest": "681c10c8d683cab9deb994dbe49c4973f1453dd58efc70a0261643848aaeea54",
+   "criterion_ms": [
+    209.49,
+    211.36,
+    212.94
+   ]
+  }
+ ],
+ "after": [
+  {
+   "fixture": "fixture height=14 chunk=256",
+   "reads": 960,
+   "digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+   "criterion_ms": [
+    12.48,
+    12.491,
+    12.5
+   ]
+  },
+  {
+   "fixture": "fixture height=16 chunk=256",
+   "reads": 4352,
+   "digest": "d99349bb7f6b62d7d1bf036166711663f5f02f3a3cb7bce45f2b945b631b5d88",
+   "criterion_ms": [
+    52.182,
+    52.234,
+    52.273
+   ]
+  },
+  {
+   "fixture": "fixture height=14 depth=0 chunk=65536",
+   "reads": 15,
+   "digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+   "criterion_ms": [
+    12.747,
+    12.794,
+    12.855
+   ]
+  },
+  {
+   "fixture": "fixture height=14 depth=10 chunk=65536",
+   "reads": 5,
+   "digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+   "criterion_ms": [
+    9.5609,
+    9.5798,
+    9.5965
+   ]
+  },
+  {
+   "fixture": "fixture height=18 depth=0 chunk=65536",
+   "reads": 76,
+   "digest": "681c10c8d683cab9deb994dbe49c4973f1453dd58efc70a0261643848aaeea54",
+   "criterion_ms": [
+    226.07,
+    226.48,
+    226.93
+   ]
+  },
+  {
+   "fixture": "fixture height=18 depth=14 chunk=65536",
+   "reads": 20,
+   "digest": "681c10c8d683cab9deb994dbe49c4973f1453dd58efc70a0261643848aaeea54",
+   "criterion_ms": [
+    154.07,
+    154.46,
+    154.85
+   ]
+  },
+  {
+   "fixture": "fixture height=14 chunk=256",
+   "reads": 960,
+   "digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+   "criterion_ms": [
+    12.464,
+    12.472,
+    12.48
+   ]
+  },
+  {
+   "fixture": "fixture height=16 chunk=256",
+   "reads": 4352,
+   "digest": "d99349bb7f6b62d7d1bf036166711663f5f02f3a3cb7bce45f2b945b631b5d88",
+   "criterion_ms": [
+    52.117,
+    52.162,
+    52.252
+   ]
+  },
+  {
+   "fixture": "fixture height=14 depth=0 chunk=65536",
+   "reads": 15,
+   "digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+   "criterion_ms": [
+    12.872,
+    13.368,
+    14.51
+   ]
+  },
+  {
+   "fixture": "fixture height=14 depth=10 chunk=65536",
+   "reads": 5,
+   "digest": "0def2f5094a09f08f7dd8aad55ae92c367387bf24569c107f52577a3cbb688ca",
+   "criterion_ms": [
+    9.5815,
+    9.6441,
+    9.7509
+   ]
+  },
+  {
+   "fixture": "fixture height=18 depth=0 chunk=65536",
+   "reads": 76,
+   "digest": "681c10c8d683cab9deb994dbe49c4973f1453dd58efc70a0261643848aaeea54",
+   "criterion_ms": [
+    227.28,
+    229.2,
+    231.2
+   ]
+  },
+  {
+   "fixture": "fixture height=18 depth=14 chunk=65536",
+   "reads": 20,
+   "digest": "681c10c8d683cab9deb994dbe49c4973f1453dd58efc70a0261643848aaeea54",
+   "criterion_ms": [
+    184.46,
+    233.62,
+    287.46
+   ]
+  }
+ ]
+}
