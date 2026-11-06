@@ -26,6 +26,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ### Fixed
 
+- Refuse a `python3` older than 3.10 (no `zip(..., strict=True)`) before `cargo xtask gen-vectors` writes, copies or runs anything, naming the interpreter and how to select a supported one through `PATH` (07 testing, [#661](https://github.com/AbdelStark/tessera/issues/661)).
+
 - Reconcile the real-model guide with completed 1B strength selection, recovered 8B calibration and separately pinned live proof attempts; retain the missing acceptance and fidelity obligations (RFC-0005, [#683](https://github.com/AbdelStark/tessera/issues/683)).
 
 - Test benchmark warm-up exclusion and unit normalization with a deterministic clock; keep the real wall-time check free of scheduler-dependent upper bounds (RFC-0020, [#680](https://github.com/AbdelStark/tessera/issues/680)).

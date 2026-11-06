@@ -16,9 +16,12 @@
 //! `--check` compares instead of writing: the codec vectors with what would be written, and the
 //! oracles' files with what the oracles write when run on a copy of `spec/vectors/`, so a check
 //! leaves the tree untouched. Tests run both comparisons, so vectors that no longer match their
-//! cases or their oracle fail `cargo test`. The oracles need `python3`.
+//! cases or their oracle fail `cargo test`. The oracles need the `python3` that `PATH` selects to be
+//! Python 3.10 or newer (`zip(..., strict=True)`); `require_python` refuses an older one before
+//! anything is written or copied (#661).
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -170,6 +173,46 @@ pub(crate) fn render() -> Vec<(&'static str, String)> {
 /// Writes the vectors, or with `check`, reports the files that differ from what would be
 /// written; returns whether everything matched or was written.
 pub(crate) fn run(repo: &Path, check: bool) -> io::Result<bool> {
+    run_with(repo, check, OsStr::new(PYTHON))
+}
+
+/// The interpreter the oracles run with, found through `PATH`.
+const PYTHON: &str = "python3";
+
+/// Prints the interpreter's version, then fails on one without `zip(..., strict=True)`, the newest
+/// feature the oracles use (Python 3.10).
+const PROBE: &str = "import sys; print(sys.version.split()[0]); zip((), strict=True)";
+
+/// Checks that `python` can run the oracles, with the flags they run with, before any oracle
+/// starts: an older interpreter otherwise fails only after minutes of generation (#661).
+fn require_python(python: &OsStr) -> io::Result<()> {
+    let shown = python.to_string_lossy();
+    let output = Command::new(python)
+        .args(["-I", "-B", "-c", PROBE])
+        .output()
+        .map_err(|e| {
+            io::Error::new(
+                e.kind(),
+                format!("cannot run {shown}, which the vector oracles need: {e}"),
+            )
+        })?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let version = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(io::Error::other(format!(
+        "the vector oracles need Python 3.10 or newer (zip(..., strict=True)), but `{shown}` is \
+         Python {} and failed the check: {}; put a supported python3 first in PATH, for example \
+         `PATH=/path/to/python3.13/bin:$PATH cargo xtask gen-vectors`",
+        version.trim(),
+        stderr.trim().lines().last().unwrap_or("no message"),
+    )))
+}
+
+fn run_with(repo: &Path, check: bool, python: &OsStr) -> io::Result<bool> {
+    // Before the codec vectors, so a refused interpreter leaves the tree untouched.
+    require_python(python)?;
     let mut current = true;
     for (path, contents) in render() {
         let target = repo.join(path);
@@ -190,7 +233,7 @@ pub(crate) fn run(repo: &Path, check: bool) -> io::Result<bool> {
     }
     let sets = oracles(repo)?;
     if check {
-        let stale = stale_oracle_files(repo)?;
+        let stale = stale_oracle_files_with(repo, python)?;
         for message in &stale {
             println!("FAIL  {message}");
         }
@@ -203,7 +246,7 @@ pub(crate) fn run(repo: &Path, check: bool) -> io::Result<bool> {
         current &= stale.is_empty();
     } else {
         for set in &sets {
-            run_oracle(repo, set)?.map_err(io::Error::other)?;
+            run_oracle(repo, set, python)?.map_err(io::Error::other)?;
             println!("wrote spec/vectors/{set}/ with its oracle");
         }
     }
@@ -271,9 +314,9 @@ pub(crate) fn oracles(root: &Path) -> io::Result<Vec<String>> {
 
 /// Runs the oracle of `set` in the tree at `root`, which writes that set's files. A failure to
 /// start `python3` is an error; an oracle that fails comes back as its message.
-fn run_oracle(root: &Path, set: &str) -> io::Result<Result<(), String>> {
+fn run_oracle(root: &Path, set: &str, python: &OsStr) -> io::Result<Result<(), String>> {
     let script = root.join("spec/vectors").join(set).join("generate.py");
-    let output = Command::new("python3")
+    let output = Command::new(python)
         // Isolated from `PYTHON*` variables, the user's site packages and the working directory,
         // and writing no bytecode next to the oracles.
         .args(["-I", "-B"])
@@ -318,23 +361,30 @@ fn tree(dir: &Path) -> io::Result<BTreeMap<PathBuf, Vec<u8>>> {
 /// Runs every oracle on a copy of `spec/vectors/` under `root`, and returns what differs from the
 /// tree as messages: an oracle that fails, and each file the oracles write differently, add or
 /// remove. The tree itself is never written.
+#[cfg(test)]
 pub(crate) fn stale_oracle_files(root: &Path) -> io::Result<Vec<String>> {
+    stale_oracle_files_with(root, OsStr::new(PYTHON))
+}
+
+fn stale_oracle_files_with(root: &Path, python: &OsStr) -> io::Result<Vec<String>> {
+    // Before the copy: a refused interpreter costs nothing.
+    require_python(python)?;
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
     let copy = std::env::temp_dir().join(format!("tessera-gen-vectors-{}-{n}", std::process::id()));
     // A stale directory can only come from a crashed earlier run with the same pid.
     let _ = fs::remove_dir_all(&copy);
-    let outcome = compare_oracle_files(root, &copy);
+    let outcome = compare_oracle_files(root, &copy, python);
     let _ = fs::remove_dir_all(&copy);
     outcome
 }
 
-fn compare_oracle_files(root: &Path, copy: &Path) -> io::Result<Vec<String>> {
+fn compare_oracle_files(root: &Path, copy: &Path, python: &OsStr) -> io::Result<Vec<String>> {
     let vectors = root.join("spec/vectors");
     copy_dir(&vectors, &copy.join("spec/vectors"))?;
     let mut stale = Vec::new();
     for set in oracles(root)? {
-        if let Err(message) = run_oracle(copy, &set)? {
+        if let Err(message) = run_oracle(copy, &set, python)? {
             stale.push(message);
         }
     }
@@ -452,6 +502,81 @@ mod tests {
             Vec::<String>::new()
         );
         assert!(super::run(root, true).unwrap());
+    }
+
+    /// An interpreter in a fixture, `python`, that answers the probe as `version` and records
+    /// every other launch (an oracle) in `launched`.
+    #[cfg(unix)]
+    fn fake_python(fixture: &Fixture, version: &str, strict_zip: bool) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let probe = if strict_zip {
+            format!("echo {version}; exit 0")
+        } else {
+            format!(
+                "echo {version}; echo \"TypeError: zip() takes no keyword arguments\" >&2; exit 1"
+            )
+        };
+        let launched = fixture.path().join("launched");
+        let script = format!(
+            "#!/bin/sh\nif [ \"$3\" = -c ]; then {probe}; fi\necho \"$@\" >> '{}'\n",
+            launched.display()
+        );
+        fixture.write("bin/python", &script);
+        let path = fixture.path().join("bin/python");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
+    /// An interpreter without `zip(strict=True)` is refused with an actionable message before
+    /// any oracle launches, any file is written or the corpus is copied; one with it runs the
+    /// oracle (#661).
+    #[cfg(unix)]
+    #[test]
+    fn unsupported_python_is_refused_before_any_work() {
+        let fixture = Fixture::new("vectors-python");
+        fixture.write("spec/vectors/set/generate.py", "\n");
+        fixture.write("spec/vectors/set/out.json", "old\n");
+        let root = fixture.path();
+        let launched = root.join("launched");
+        let before = super::tree(&root.join("spec/vectors")).unwrap();
+
+        let old = fake_python(&fixture, "3.9.6", false);
+        for check in [false, true] {
+            let error = super::run_with(root, check, old.as_os_str()).unwrap_err();
+            let message = error.to_string();
+            assert!(message.contains("Python 3.10 or newer"), "{message}");
+            assert!(message.contains("is Python 3.9.6"), "{message}");
+            assert!(
+                message.contains("zip() takes no keyword arguments"),
+                "{message}"
+            );
+            assert!(message.contains("first in PATH"), "{message}");
+        }
+        assert!(
+            super::stale_oracle_files_with(root, old.as_os_str()).is_err(),
+            "the check refuses too"
+        );
+        assert!(
+            !launched.exists(),
+            "an oracle ran under an unsupported Python"
+        );
+        assert_eq!(super::tree(&root.join("spec/vectors")).unwrap(), before);
+        assert!(
+            !root.join("spec/vectors/codec").exists(),
+            "codec vectors were written"
+        );
+
+        // The supported control: the same tree, an interpreter that passes, an oracle launched.
+        let new = fake_python(&fixture, "3.13.1", true);
+        super::stale_oracle_files_with(root, new.as_os_str()).unwrap();
+        let runs = fs::read_to_string(&launched).unwrap();
+        assert!(runs.contains("generate.py"), "{runs}");
+    }
+
+    /// The interpreter `PATH` selects here passes the probe, so the real oracles are not skipped.
+    #[test]
+    fn path_python_passes_the_probe() {
+        super::require_python(std::ffi::OsStr::new(super::PYTHON)).expect("python3 on PATH");
     }
 
     /// The claim lists, execution plans and schedules derived from the conformance models.
