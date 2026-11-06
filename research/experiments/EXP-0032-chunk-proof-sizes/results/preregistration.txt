@@ -1,0 +1,6 @@
+cfd19e2922aa94bba538069d73b53508f94d06937e8bae26a7708946f18ff9cf  README.preregistered.txt
+
+The pre-registration was written to README.md on 2026-11-06 before the binary existed or ran.
+No commit predates the run: this snapshot was rebuilt at commit time from README.md by restoring
+the two lines the results changed (Status, Environment) and the sections that read "Not run."
+Nothing above "## Results" changed after the run.

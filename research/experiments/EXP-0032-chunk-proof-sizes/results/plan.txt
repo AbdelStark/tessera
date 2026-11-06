@@ -1,0 +1,15 @@
+fit: a = 28.1653 rows/token, b = 1.865781e-03 rows/token^2
+  n =   4096: rows    179,295  fit      146,668  residual -18.20%
+  n =   8192: rows    372,878  fit      355,940  residual -4.54%
+  n =  12288: rows    644,589  fit      627,819  residual -2.60%
+  n =  16384: rows    953,580  fit      962,302  residual +0.91%
+  n =  20480: rows  1,363,393  fit    1,359,390  residual -0.29%
+  n =  24576: rows  1,819,563  fit    1,819,084  residual -0.03%
+  n =  32768: rows  2,889,129  fit    2,926,287  residual +1.29%
+  n =  49152: rows  5,911,335  fit    5,891,956  residual -0.33%
+  n =  65536: rows  9,856,803  fit    9,859,309  residual +0.03%
+largest relative residual: 18.20%
+S = 16384: 1 proofs, total 3.3 GB, largest 3.048 GiB; chunks 16384
+S = 32768: 3 proofs, total 9.9 GB, largest 3.184 GiB; chunks 16384, 8192, 8192
+S = 65536: 9 proofs, total 31.1 GB, largest 3.830 GiB; chunks 16384, 8192, 8192, 8192, 8192, 4096, 4096, 4096, 4096
+S = 131072: 31 proofs, total 109.6 GB, largest 3.940 GiB; chunks 16384, 8192, 8192, 8192, 8192, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048

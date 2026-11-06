@@ -1,0 +1,27 @@
+n = 4096: 179295 rows in 2.8 s
+n = 8192: 372878 rows in 2.8 s
+n = 12288: 644589 rows in 2.8 s
+n = 16384: 953580 rows in 2.8 s
+n = 20480: 1363393 rows in 2.8 s
+n = 24576: 1819563 rows in 2.8 s
+n = 32768: 2889129 rows in 2.8 s
+n = 49152: 5911335 rows in 2.8 s
+n = 65536: 9856803 rows in 2.9 s
+       31.08 real        30.42 user         0.27 sys
+           554139648  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+               48131  page reclaims
+                   4  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   1  voluntary context switches
+                8833  involuntary context switches
+        536638092000  instructions retired
+        117942412445  cycles elapsed
+           469893912  peak memory footprint
