@@ -46,7 +46,7 @@ cargo xtask check-mask-rank      # R10: every mask row's revealed points indepen
 cargo xtask check-branchless     # the field's operations compile branch-free in x86_64 loops (INV-ARCH-2)
 cargo xtask check-pr --base origin/main   # changelog entry and DCO sign-off of the branch
 cargo xtask check-deps           # cargo-deny and cargo-vet; needs cargo-deny 0.20.2, cargo-vet 0.10.2
-cargo xtask gen-vectors          # rewrite spec/vectors/ after changing codec or field cases or an oracle (generate.py); needs python3
+cargo xtask gen-vectors          # rewrite spec/vectors/ after changing codec or field cases or an oracle (generate.py); needs python3 >= 3.10 first in PATH, refused otherwise
 (cd python && uv sync --extra cpu && uv run pytest)      # Python package; also ruff check, ruff format --check, pyright
 ```
 
