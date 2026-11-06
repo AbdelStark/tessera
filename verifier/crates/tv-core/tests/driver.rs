@@ -387,33 +387,32 @@ fn live_invalid_round1_is_terminal_and_timeout_reveals_nothing() {
     );
 }
 
-#[cfg(unix)]
+// The budget expires on `tv_core::clock`, which the test moves at exact checks: a loaded host can
+// only add real time, far below the hour-long budget, so each expiry point is fixed (#631).
+#[cfg(feature = "test-params")]
 #[test]
 fn live_round1_keeps_the_session_clock_and_checks_before_revealing() {
     use std::time::Duration;
+    use tv_core::clock::advance;
     use tv_core::observe::{CheckEvent, CheckKind, Observer};
-    struct Delay {
-        kind: CheckKind,
-        duration: Duration,
-        seen: bool,
-        last: Option<CheckKind>,
+    const BUDGET: Duration = Duration::from_secs(3600);
+    const HALF: Duration = Duration::from_secs(1800);
+    struct Advance {
+        at: Option<CheckKind>,
+        by: Duration,
+        seen: Vec<CheckKind>,
     }
-    impl Observer for Delay {
+    impl Observer for Advance {
         fn check_completed(&mut self, event: CheckEvent) {
-            self.last = Some(event.kind);
-            if event.kind == self.kind && !self.seen {
-                self.seen = true;
-                std::thread::sleep(self.duration);
+            if self.at == Some(event.kind) && !self.seen.contains(&event.kind) {
+                advance(self.by);
             }
+            self.seen.push(event.kind);
         }
     }
-    for (kind, wait, delay) in [
-        (CheckKind::Claims, 300, 300),
-        (CheckKind::WeightReservation, 0, 550),
-        (CheckKind::Transcript, 0, 550),
-    ] {
+    let round1 = |before: Duration, at: Option<CheckKind>, by: Duration| {
         let (c, s, mut p, mut cfg) = live_fixture();
-        cfg.limits.max_wall_time = Duration::from_millis(500);
+        cfg.limits.max_wall_time = BUDGET;
         let mut live = tv_core::LiveVerifier::new(c, s, cfg);
         let commit = live.start().unwrap();
         p.round1.session_id = commit.session_id;
@@ -421,46 +420,66 @@ fn live_round1_keeps_the_session_clock_and_checks_before_revealing() {
             session_id: commit.session_id,
             share: [17; 32],
         };
-        std::thread::sleep(Duration::from_millis(wait));
-        let mut observer = Delay {
-            kind,
-            duration: Duration::from_millis(delay),
-            seen: false,
-            last: None,
+        advance(before);
+        let mut observer = Advance {
+            at,
+            by,
+            seen: Vec::new(),
         };
-        inconclusive(
-            live.on_round1_observed(&p.round1, &share, &mut observer)
-                .unwrap_err(),
-            ErrorCode::Time,
-        );
-        assert!(observer.seen);
-        if kind == CheckKind::Claims {
-            // Claims validation can itself consume the remaining clock. Either
-            // work-phase expiry must precede transcript/seed handling.
-            assert!(matches!(
-                observer.last,
-                Some(CheckKind::Claims | CheckKind::Statement)
-            ));
-        }
+        let result = live.on_round1_observed(&p.round1, &share, &mut observer);
+        (result, observer.seen, live, p, share)
+    };
+    // Original clock: half the budget spent before Round1 still reveals the share.
+    let (result, seen, ..) = round1(HALF, None, Duration::ZERO);
+    assert!(result.is_ok(), "{result:?}");
+    assert!(seen.contains(&CheckKind::Transcript));
+    // Expired clock. Half the budget before Round1 and half after Claims expires the session only
+    // if Round1 keeps the clock `start` set: the next check, Statement, ends it, before transcript
+    // and seed handling. Expiry after Params ends Claims itself. Expiry at the last checks before
+    // the reveal ends the transcript work. Each gives the same terminal error and reveals nothing.
+    for (before, at, by, last) in [
+        (HALF, CheckKind::Claims, HALF, CheckKind::Statement),
+        (HALF, CheckKind::Params, HALF, CheckKind::Claims),
+        (
+            Duration::ZERO,
+            CheckKind::Statement,
+            BUDGET,
+            CheckKind::Transcript,
+        ),
+        (
+            Duration::ZERO,
+            CheckKind::WeightReservation,
+            BUDGET,
+            CheckKind::Transcript,
+        ),
+        (
+            Duration::ZERO,
+            CheckKind::Transcript,
+            BUDGET,
+            CheckKind::Transcript,
+        ),
+    ] {
+        let (result, seen, mut live, p, share) = round1(before, Some(at), by);
+        inconclusive(result.unwrap_err(), ErrorCode::Time);
+        assert_eq!(seen.last(), Some(&last), "{at:?}: {seen:?}");
         inconclusive(
             live.on_round1(&p.round1, &share).unwrap_err(),
             ErrorCode::ProtocolOrder,
         );
     }
     let (c, s, _, mut cfg) = live_fixture();
-    cfg.limits.max_wall_time = Duration::from_millis(500);
+    cfg.limits.max_wall_time = BUDGET;
     let mut live = tv_core::LiveVerifier::new(c, s, cfg);
-    let mut observer = Delay {
-        kind: CheckKind::Params,
-        duration: Duration::from_millis(550),
-        seen: false,
-        last: None,
+    let mut observer = Advance {
+        at: Some(CheckKind::Params),
+        by: BUDGET,
+        seen: Vec::new(),
     };
     inconclusive(
         live.start_observed(&mut observer).unwrap_err(),
         ErrorCode::Time,
     );
-    assert!(observer.seen);
+    assert_eq!(observer.seen.last(), Some(&CheckKind::Params));
     inconclusive(live.start().unwrap_err(), ErrorCode::ProtocolOrder);
 }
 

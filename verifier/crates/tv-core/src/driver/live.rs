@@ -210,7 +210,7 @@ impl LiveVerifier {
         fill(&mut file, share.0.as_mut_slice())?;
         let commitment = hash(Domain::CoinCommit, share.0.as_slice());
         self.state = State::Committed { id, share };
-        self.started = Some(Instant::now());
+        self.started = Some(crate::clock::now());
         Ok(protocol::SeedCommit {
             session_id: id,
             commitment,
@@ -219,7 +219,7 @@ impl LiveVerifier {
     fn timed_out(&mut self) -> Check<()> {
         if self
             .started
-            .is_some_and(|t| t.elapsed() >= self.cfg.limits.max_wall_time)
+            .is_some_and(|t| crate::clock::elapsed(t) >= self.cfg.limits.max_wall_time)
         {
             self.state = State::Done;
             return Err(fail(ErrorCode::ProtocolTimeout));
@@ -299,7 +299,7 @@ impl LiveVerifier {
         tracker.enter(CheckKind::Transcript);
         let started = self.started.ok_or_else(internal)?;
         let limits = self.cfg.limits;
-        let mut cancel = || started.elapsed() >= limits.max_wall_time;
+        let mut cancel = || crate::clock::elapsed(started) >= limits.max_wall_time;
         let first = protocol::encode_with_cancel(message, &mut cancel).map_err(codec)?;
         let context = SessionContext {
             protocol: ascii("tessera-protocol/1")?,
@@ -404,7 +404,7 @@ impl LiveVerifier {
         };
         let started = self.started.ok_or_else(internal)?;
         let limits = self.cfg.limits;
-        let mut cancel = || started.elapsed() >= limits.max_wall_time;
+        let mut cancel = || crate::clock::elapsed(started) >= limits.max_wall_time;
         let second = protocol::encode_with_cancel(message, &mut cancel).map_err(codec)?;
         let encoded_queries = protocol::encode_with_cancel(&queries, &mut cancel).map_err(codec)?;
         deadline(self.started.ok_or_else(internal)?, self.cfg.limits)?;
