@@ -2,7 +2,10 @@
 
 //! Complete NI driver robustness plus known-false, single-check proof controls.
 
-use std::{sync::OnceLock, time::Duration};
+use std::{
+    sync::OnceLock,
+    time::{Duration, Instant},
+};
 use tv_codec::{DecodeLimits, Envelope, WeightCommitmentPublic, decode};
 use tv_core::{
     ErrorCode, RejectReason, ResourceLimits, Verdict, VerifierConfig,
@@ -118,10 +121,12 @@ pub fn check(data: &[u8]) -> bool {
     let f = fixture(usize::from(header & 64 != 0));
     let mut config = f.config.clone();
     let mut expected = None;
-    let verdict = if mode == 0 {
+    let (verdict, expired) = if mode == 0 {
         config.limits.max_memory_bytes =
             [0, 64 << 10, 1 << 20, 64 << 20][usize::from(header >> 4) % 4];
-        tv_core::verify_non_interactive_bytes(&f.claims, &f.statement, bytes, &config)
+        timed(config.limits.max_wall_time, || {
+            tv_core::verify_non_interactive_bytes(&f.claims, &f.statement, bytes, &config)
+        })
     } else {
         let limits = DecodeLimits {
             max_total_bytes: 2 << 20,
@@ -179,8 +184,14 @@ pub fn check(data: &[u8]) -> bool {
             8 => config.limits.max_wall_time = Duration::ZERO,
             _ => {}
         }
-        tv_core::verify_non_interactive(&f.claims, &f.statement, &proof, &config)
+        timed(config.limits.max_wall_time, || {
+            tv_core::verify_non_interactive(&f.claims, &f.statement, &proof, &config)
+        })
     };
+    // Mode 8's zero deadline keeps its exact control below; elsewhere a real expiry ends the case.
+    if mode != 8 && host_expiry(&verdict, expired) {
+        return false;
+    }
     if let Some(reason) = expected {
         assert!(
             matches!(&verdict, Verdict::Reject(got) if got == &reason),
@@ -218,6 +229,27 @@ pub fn check(data: &[u8]) -> bool {
             false
         }
         Verdict::Reject(_) => false,
+    }
+}
+
+/// Run one verification under the harness's own clock, started before the verifier's: the
+/// second value says whether the whole budget `limit` really elapsed.
+fn timed(limit: Duration, run: impl FnOnce() -> Verdict) -> (Verdict, bool) {
+    let started = Instant::now();
+    let verdict = run();
+    (verdict, started.elapsed() >= limit)
+}
+
+/// `Inconclusive(Time)` is a permitted RFC-0019 outcome when the budget really elapsed, as on a
+/// loaded host under AddressSanitizer: such a case is inconclusive for its oracle, not a finding,
+/// and the caller stops judging it. A `Time` before the budget elapsed is a finding (#185).
+fn host_expiry(verdict: &Verdict, expired: bool) -> bool {
+    match verdict {
+        Verdict::Inconclusive(error) if error.code == ErrorCode::Time => {
+            assert!(expired, "Inconclusive(Time) before the budget elapsed");
+            true
+        }
+        _ => false,
     }
 }
 
@@ -297,7 +329,12 @@ fn tamper_case(input: &[u8]) -> bool {
     let f = fixture(1);
     let mut config = f.config.clone();
     config.limits = ResourceLimits::default();
-    let verdict = tv_core::verify_non_interactive_bytes(&f.claims, &f.statement, &bytes, &config);
+    let (verdict, expired) = timed(config.limits.max_wall_time, || {
+        tv_core::verify_non_interactive_bytes(&f.claims, &f.statement, &bytes, &config)
+    });
+    if host_expiry(&verdict, expired) {
+        return false;
+    }
     let report = Json::parse(&verdict.to_json().unwrap()).unwrap();
     assert_eq!(
         report.get("verdict"),
