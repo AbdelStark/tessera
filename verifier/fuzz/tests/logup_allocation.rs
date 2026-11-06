@@ -206,8 +206,10 @@ fn hostile_logup_messages_allocate_no_more_than_honest_ones() {
                     let mut table = tables.get(i)?.clone();
                     for &r in point {
                         table = table
-                            .chunks_exact(2)
-                            .map(|pair| pair[0] + r * (pair[1] - pair[0]))
+                            .as_chunks::<2>()
+                            .0
+                            .iter()
+                            .map(|&[lo, hi]| lo + r * (hi - lo))
                             .collect();
                     }
                     table.first().copied()

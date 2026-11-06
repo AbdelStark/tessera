@@ -305,12 +305,14 @@ fn tamper_case(input: &[u8]) -> bool {
             let delta = shift.get("delta").unwrap().as_array().unwrap();
             const P: u128 = 0xffff_ffff_0000_0001;
             for (i, word) in bytes[offset..offset + count * 16]
-                .chunks_exact_mut(8)
+                .as_chunks_mut::<8>()
+                .0
+                .iter_mut()
                 .enumerate()
             {
-                let x = u64::from_le_bytes(word.try_into().unwrap());
+                let x = u64::from_le_bytes(*word);
                 let d = delta[i % 2].as_u64().unwrap();
-                word.copy_from_slice(&(((u128::from(x) + u128::from(d)) % P) as u64).to_le_bytes());
+                *word = (((u128::from(x) + u128::from(d)) % P) as u64).to_le_bytes();
             }
         } else {
             let before = hex(edit.get("before").unwrap().as_str().unwrap());

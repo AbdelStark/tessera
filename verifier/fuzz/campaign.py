@@ -201,7 +201,9 @@ def main():
                 waited, result, usage = os.wait4(pid, os.WNOHANG)
                 if not waited:
                     if time.monotonic() - job[2] > job[5] + 180:
-                        job[1].kill()
+                        # Signal by pid: Popen.kill/terminate poll first and can reap
+                        # the child, and os.wait4 must stay its only reaper.
+                        os.kill(pid, signal.SIGKILL)
                         status["state"] = "worker-overdue"
                         stop = True
                     continue
@@ -237,8 +239,8 @@ def main():
         status["error_type"] = type(error).__name__
         raise
     finally:
-        for pid, job in list(active.items()):
-            job[1].terminate()
+        for pid in list(active):
+            os.kill(pid, signal.SIGTERM)
         for pid, job in list(active.items()):
             limit = time.monotonic() + 5
             while True:
@@ -246,7 +248,7 @@ def main():
                 if waited:
                     break
                 if time.monotonic() >= limit:
-                    job[1].kill()
+                    os.kill(pid, signal.SIGKILL)
                     _, result, usage = os.wait4(pid, 0)
                     break
                 time.sleep(0.05)

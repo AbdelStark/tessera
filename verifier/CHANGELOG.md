@@ -10,6 +10,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Fixed
 
+- Pin the fuzz workspace to `nightly-2026-11-06`: the previous nightly's AddressSanitizer runtime deadlocks before `main` on macOS 26, so every campaign worker hung without running an input. The campaign controller now signals workers by pid, because `Popen.terminate`/`kill` could reap a child before `os.wait4`, which then raised `ECHILD` and lost the stop state and CPU accounting ([#185](https://github.com/AbdelStark/tessera/issues/185), RFC-0019 'Robustness').
+
 - The complete NI fuzz target no longer reports a host-load timeout as a finding. Its harness times each verification with its own clock started first, and treats `Inconclusive(Time)` as inconclusive for the oracle only when the whole budget really elapsed. A `Time` before the budget elapsed is a finding, and the zero-deadline control and every other expectation are unchanged. Two #185 campaigns had stopped on this harness assertion for the known-good fixture under AddressSanitizer on a loaded host ([#185](https://github.com/AbdelStark/tessera/issues/185), RFC-0019 'Robustness').
 
 - Read every session deadline through `tv_core::clock`. A `test-params` build can move that clock forward (`clock::advance`), so the Live Round1 timeout test now fails at the exact check it targets, with no sleeps that a loaded host can race. Release builds read `Instant::now()` exactly as before (RFC-0019 'Robustness', SP-8, [#631](https://github.com/AbdelStark/tessera/issues/631)).
