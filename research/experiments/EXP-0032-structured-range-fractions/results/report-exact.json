@@ -1,0 +1,15 @@
+{
+ "environment": {
+  "python": "3.15.2",
+  "utc": "2026-11-06T09:44:27Z"
+ },
+ "field_vectors": 4145,
+ "max_h": 10,
+ "exact": {
+  "cases": 2536,
+  "levels_checked": 8736,
+  "problems": [],
+  "structured_calls_counted": 8736,
+  "count_mismatches": 0
+ }
+}

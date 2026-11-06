@@ -1,0 +1,212 @@
+[
+ {
+  "table": 12,
+  "bits": 30,
+  "lookup_height": 7,
+  "entries": 66,
+  "c": 20,
+  "baseline": 179647282387,
+  "candidate": 4687703927,
+  "ratio": 0.02609393175735132
+ },
+ {
+  "table": 13,
+  "bits": 16,
+  "lookup_height": 13,
+  "entries": 4294,
+  "c": 12,
+  "baseline": 5426765,
+  "candidate": 26605580,
+  "ratio": 4.902659319133959
+ },
+ {
+  "table": 14,
+  "bits": 7,
+  "lookup_height": 7,
+  "entries": 66,
+  "c": 3,
+  "baseline": 9256,
+  "candidate": 107070,
+  "ratio": 11.567631806395852
+ },
+ {
+  "table": 15,
+  "bits": 8,
+  "lookup_height": 16,
+  "entries": 34810,
+  "c": 4,
+  "baseline": 18933,
+  "candidate": 65936668,
+  "ratio": 3482.6318068980086
+ },
+ {
+  "table": 16,
+  "bits": 6,
+  "lookup_height": 15,
+  "entries": 20546,
+  "c": 2,
+  "baseline": 4495,
+  "candidate": 19598816,
+  "ratio": 4360.1370411568405
+ },
+ {
+  "table": 17,
+  "bits": 24,
+  "lookup_height": 9,
+  "entries": 264,
+  "c": 20,
+  "baseline": 1523580277,
+  "candidate": 405747452,
+  "ratio": 0.26631183018392407
+ },
+ {
+  "table": 18,
+  "bits": 25,
+  "lookup_height": 18,
+  "entries": 131336,
+  "c": 20,
+  "baseline": 3251633498,
+  "candidate": 2770404753,
+  "ratio": 0.8520040018975102
+ },
+ {
+  "table": 19,
+  "bits": 26,
+  "lookup_height": 18,
+  "entries": 131336,
+  "c": 20,
+  "baseline": 7244610879,
+  "candidate": 4018884537,
+  "ratio": 0.5547412558277721
+ },
+ {
+  "table": 20,
+  "bits": 27,
+  "lookup_height": 10,
+  "entries": 528,
+  "c": 20,
+  "baseline": 16304307492,
+  "candidate": 893795556,
+  "ratio": 0.0548195963820332
+ },
+ {
+  "table": 21,
+  "bits": 21,
+  "lookup_height": 19,
+  "entries": 278660,
+  "c": 17,
+  "baseline": 184155590,
+  "candidate": 2575322594,
+  "ratio": 13.984493188612955
+ },
+ {
+  "table": 22,
+  "bits": 15,
+  "lookup_height": 14,
+  "entries": 8324,
+  "c": 11,
+  "baseline": 2680424,
+  "candidate": 46576558,
+  "ratio": 17.376563558601177
+ },
+ {
+  "table": 23,
+  "bits": 11,
+  "lookup_height": 14,
+  "entries": 8324,
+  "c": 7,
+  "baseline": 159060,
+  "candidate": 28015158,
+  "ratio": 176.12949830252734
+ },
+ {
+  "table": 24,
+  "bits": 3,
+  "lookup_height": 8,
+  "entries": 132,
+  "c": 0,
+  "baseline": 353,
+  "candidate": 28774,
+  "ratio": 81.51274787535411
+ },
+ {
+  "table": 25,
+  "bits": 1,
+  "lookup_height": 12,
+  "entries": 4092,
+  "c": 0,
+  "baseline": 13,
+  "candidate": 16393,
+  "ratio": 1261.0
+ },
+ {
+  "table": 26,
+  "bits": 20,
+  "lookup_height": 18,
+  "entries": 135168,
+  "c": 16,
+  "baseline": 91028961,
+  "candidate": 1190676868,
+  "ratio": 13.080198377744859
+ },
+ {
+  "table": 28,
+  "bits": 29,
+  "lookup_height": 17,
+  "entries": 81920,
+  "c": 20,
+  "baseline": 81399905518,
+  "candidate": 9919978147,
+  "ratio": 0.12186719485572856
+ },
+ {
+  "table": 32,
+  "bits": 17,
+  "lookup_height": 16,
+  "entries": 41984,
+  "c": 13,
+  "baseline": 10985010,
+  "candidate": 227425386,
+  "ratio": 20.703247971553964
+ },
+ {
+  "table": 33,
+  "bits": 2,
+  "lookup_height": 11,
+  "entries": 2048,
+  "c": 0,
+  "baseline": 96,
+  "candidate": 77927,
+  "ratio": 811.7395833333334
+ },
+ {
+  "table": 35,
+  "bits": 19,
+  "lookup_height": 17,
+  "entries": 73728,
+  "c": 15,
+  "baseline": 44989948,
+  "candidate": 548422950,
+  "ratio": 12.189899619354973
+ },
+ {
+  "table": 40,
+  "bits": 9,
+  "lookup_height": 13,
+  "entries": 8192,
+  "c": 5,
+  "baseline": 38570,
+  "candidate": 10070906,
+  "ratio": 261.1072336012445
+ },
+ {
+  "table": 48,
+  "bits": 13,
+  "lookup_height": 13,
+  "entries": 8192,
+  "c": 9,
+  "baseline": 653470,
+  "candidate": 18434802,
+  "ratio": 28.210632469738474
+ }
+]
