@@ -1,0 +1,11 @@
+[
+  {"n": 4096, "rows": 179295, "allocated_rows": 239616, "variables": 40, "seconds": 2.8},
+  {"n": 8192, "rows": 372878, "allocated_rows": 683008, "variables": 42, "seconds": 2.8},
+  {"n": 12288, "rows": 644589, "allocated_rows": 2328576, "variables": 44, "seconds": 2.8},
+  {"n": 16384, "rows": 953580, "allocated_rows": 2328576, "variables": 44, "seconds": 2.8},
+  {"n": 20480, "rows": 1363393, "allocated_rows": 8780800, "variables": 46, "seconds": 2.8},
+  {"n": 24576, "rows": 1819563, "allocated_rows": 8780800, "variables": 46, "seconds": 2.8},
+  {"n": 32768, "rows": 2889129, "allocated_rows": 8780800, "variables": 46, "seconds": 2.8},
+  {"n": 49152, "rows": 5911335, "allocated_rows": 33943552, "variables": 48, "seconds": 2.8},
+  {"n": 65536, "rows": 9856803, "allocated_rows": 33943552, "variables": 48, "seconds": 2.9}
+]

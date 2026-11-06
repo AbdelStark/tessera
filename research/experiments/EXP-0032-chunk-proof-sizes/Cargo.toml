@@ -1,0 +1,17 @@
+[package]
+name = "chunk-proof-sizes"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "chunk-proof-sizes"
+path = "main.rs"
+
+[dependencies]
+tessera-codec = { path = "../../../crates/tessera-codec" }
+tessera-compiler = { path = "../../../crates/tessera-compiler" }
+tessera-ir = { path = "../../../crates/tessera-ir" }
