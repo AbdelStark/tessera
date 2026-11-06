@@ -2,10 +2,11 @@
 
 //! The verifier's one wall clock for the `max_wall_time` budget (RFC-0019, resource limits).
 //!
-//! Every deadline read goes through [`now`]. A release build reads `Instant::now()` and nothing
-//! else. A `test-params` build adds a per-thread offset that [`advance`] moves forward, so a test
-//! can expire a session budget at an exact check instead of racing a sleep against a loaded host
-//! (#631). The verifier does its work on the calling thread, so the offset reaches every read.
+//! Every deadline read goes through this module's `now`. A release build reads `Instant::now()`
+//! and nothing else. A `test-params` build adds a per-thread offset that `advance` moves forward,
+//! so a test can expire a session budget at an exact check instead of racing a sleep against a
+//! loaded host (#631). The verifier does its work on the calling thread, so the offset reaches
+//! every read.
 
 use std::time::{Duration, Instant};
 
