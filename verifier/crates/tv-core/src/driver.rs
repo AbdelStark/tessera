@@ -373,7 +373,7 @@ fn grouping_extent(claims: &ClaimList, statement: &PublicStatement) -> leaf::gro
     }
 }
 fn deadline(start: Instant, limits: ResourceLimits) -> Check<()> {
-    if start.elapsed() >= limits.max_wall_time {
+    if crate::clock::elapsed(start) >= limits.max_wall_time {
         Err(fail(ErrorCode::Time))
     } else {
         Ok(())
@@ -490,7 +490,7 @@ pub fn verify_non_interactive_bytes_observed(
 ) -> Verdict {
     let mut tracker = Tracker::new(observer);
     tracker.enter(CheckKind::Input);
-    let started = Instant::now();
+    let started = crate::clock::now();
     let result = verify_ni_bytes(claims, statement, bytes, cfg, &mut tracker, started);
     into_verdict(conclude_with_deadline(
         &mut tracker,
@@ -562,7 +562,7 @@ pub fn verify_non_interactive_observed(
 ) -> Verdict {
     let mut tracker = Tracker::new(observer);
     tracker.enter(CheckKind::Input);
-    let started = Instant::now();
+    let started = crate::clock::now();
     let result = verify_ni(claims, statement, proof, cfg, &mut tracker, started);
     into_verdict(conclude_with_deadline(
         &mut tracker,
@@ -708,7 +708,7 @@ fn verify_unit(
         cfg,
         session,
         &mut tracker,
-        Instant::now(),
+        crate::clock::now(),
     )
 }
 /// One proof unit's checks in RFC-0019's order, `tracker` entering each check where its work
@@ -726,7 +726,7 @@ fn verify_unit_tracked(
     tracker.enter(CheckKind::Input);
     let artifact = session.artifact();
     let mode = session.mode();
-    let mut cancel = || started.elapsed() >= cfg.limits.max_wall_time;
+    let mut cancel = || crate::clock::elapsed(started) >= cfg.limits.max_wall_time;
     let first_bytes =
         protocol::encoded_len_with_cancel(proof.round1, &mut cancel).map_err(codec)?;
     let second_bytes =

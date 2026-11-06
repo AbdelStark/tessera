@@ -10,6 +10,8 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Fixed
 
+- Read every session deadline through `tv_core::clock`. A `test-params` build can move that clock forward (`clock::advance`), so the Live Round1 timeout test now fails at the exact check it targets, with no sleeps that a loaded host can race. Release builds read `Instant::now()` exactly as before (RFC-0019 'Robustness', SP-8, [#631](https://github.com/AbdelStark/tessera/issues/631)).
+
 - Independently derive common Requant families for incompatible Protocol One layer sites before assigning final table IDs, and bind widened keys using the selected table widths (RFC-0076, [#617](https://github.com/AbdelStark/tessera/issues/617)). Preserve the full leaf read-agreement guard, compatible catalogs and Protocol Two choices. Real-model proof and memory qualification remain pending.
 
 - Reserve LogUp root/leaf claim vectors and key/value/multiplicity point copies fallibly (RFC-0008, RFC-0019 SP-8, [#182](https://github.com/AbdelStark/tessera/issues/182)). Allocation shortages now return `LookupError::Memory`, propagated as `Inconclusive(ERR-RES-MEMORY)`, preserving prior input checks and transcript absorption order. Isolated allocator caps reproduce former 112-byte, 120-byte and 32-byte aborts and cover each reservation plus exact-fit controls. This adds a pre-1.0 Rust error-enum variant; full allocation accounting and arithmetic deadlines remain unfinished.

@@ -618,7 +618,7 @@ impl NiProof {
 }
 
 fn decode_time(deadline: Option<std::time::Instant>, offset: u64) -> Result<(), DecodeError> {
-    if deadline.is_some_and(|until| std::time::Instant::now() >= until) {
+    if deadline.is_some_and(|until| crate::clock::now() >= until) {
         return Err(DecodeError::new(ErrorCode::Time, offset));
     }
     Ok(())

@@ -602,6 +602,7 @@ pub mod anchor;
 pub mod audit;
 pub mod audit_plan;
 pub mod claims;
+pub mod clock;
 mod fiat_shamir;
 pub mod gadgets;
 mod interpolation;
