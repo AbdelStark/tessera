@@ -8,6 +8,14 @@ the actual source revision, binary SHA-256 values and every initial seed digest.
 No source change is allowed while it runs. Public conformance and producer-integration
 fixtures are distinct from independent mathematical oracles; test-small certifies nothing.
 
+**Amendment, 2026-11-06 (toolchain).** On macOS 26 the pinned `nightly-2026-01-15`'s
+AddressSanitizer runtime deadlocks before `main` in every target: shadow-memory setup calls
+`get_dyld_hdr`, whose dyld iteration allocates and re-enters `AsanInitFromRtl` on its own spin
+lock. Workers print nothing and the controller kills them as overdue, so no input runs and no
+CPU time is credited. The pin moves to `nightly-2026-11-06` (rustc `249c1e4e3`), whose runtime
+starts on this platform; the sanitizer, targets, oracles, budgets and limits are unchanged. The
+campaign restarts from the commit carrying this amendment, and no earlier run is credited.
+
 ## Fixed completion criterion
 
 Each of decode, envelope, protocol, multiproof, inclusion, sumcheck and audit must
