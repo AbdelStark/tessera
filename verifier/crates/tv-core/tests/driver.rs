@@ -390,70 +390,156 @@ fn live_invalid_round1_is_terminal_and_timeout_reveals_nothing() {
 #[cfg(unix)]
 #[test]
 fn live_round1_keeps_the_session_clock_and_checks_before_revealing() {
-    use std::time::Duration;
+    // #631: the test's own clocks decide where the session clock expires. Every expiry is a
+    // sleep until `after + BUDGET`, `after` read when `start` has returned, so the driver's
+    // clock has certainly expired there. Where it expires is asserted only when `before`, read
+    // before `start`, shows the targeted check was reached inside the budget; an attempt that a
+    // loaded host delayed past it is repeated. Whenever the clock expires, the exact error, no
+    // reveal and a terminal session are asserted on every attempt.
+    use std::time::{Duration, Instant};
     use tv_core::observe::{CheckEvent, CheckKind, Observer};
-    struct Delay {
+    const BUDGET: Duration = Duration::from_millis(500);
+    const ATTEMPTS: usize = 20;
+    struct Expire {
         kind: CheckKind,
-        duration: Duration,
+        before: Instant,
+        // `None`: the driver's clock starts before this check, so sleep the budget from here.
+        after: Option<Instant>,
         seen: bool,
+        in_time: bool,
         last: Option<CheckKind>,
     }
-    impl Observer for Delay {
+    impl Observer for Expire {
         fn check_completed(&mut self, event: CheckEvent) {
             self.last = Some(event.kind);
             if event.kind == self.kind && !self.seen {
                 self.seen = true;
-                std::thread::sleep(self.duration);
+                self.in_time = self.before.elapsed() < BUDGET;
+                let until = self
+                    .after
+                    .map_or_else(|| Instant::now() + BUDGET, |a| a + BUDGET);
+                std::thread::sleep(until.saturating_duration_since(Instant::now()));
             }
         }
     }
-    for (kind, wait, delay) in [
-        (CheckKind::Claims, 300, 300),
-        (CheckKind::WeightReservation, 0, 550),
-        (CheckKind::Transcript, 0, 550),
-    ] {
-        let (c, s, mut p, mut cfg) = live_fixture();
-        cfg.limits.max_wall_time = Duration::from_millis(500);
-        let mut live = tv_core::LiveVerifier::new(c, s, cfg);
-        let commit = live.start().unwrap();
-        p.round1.session_id = commit.session_id;
-        let share = ProverSeedShare {
-            session_id: commit.session_id,
-            share: [17; 32],
-        };
-        std::thread::sleep(Duration::from_millis(wait));
-        let mut observer = Delay {
-            kind,
-            duration: Duration::from_millis(delay),
-            seen: false,
-            last: None,
-        };
-        inconclusive(
-            live.on_round1_observed(&p.round1, &share, &mut observer)
-                .unwrap_err(),
-            ErrorCode::Time,
-        );
-        assert!(observer.seen);
-        if kind == CheckKind::Claims {
-            // Claims validation can itself consume the remaining clock. Either
-            // work-phase expiry must precede transcript/seed handling.
-            assert!(matches!(
-                observer.last,
-                Some(CheckKind::Claims | CheckKind::Statement)
-            ));
-        }
-        inconclusive(
-            live.on_round1(&p.round1, &share).unwrap_err(),
-            ErrorCode::ProtocolOrder,
-        );
-    }
-    let (c, s, _, mut cfg) = live_fixture();
-    cfg.limits.max_wall_time = Duration::from_millis(500);
+    // The original clock: a session inside its budget reveals the share, at the default limits.
+    let (c, s, mut p, cfg) = live_fixture();
     let mut live = tv_core::LiveVerifier::new(c, s, cfg);
-    let mut observer = Delay {
-        kind: CheckKind::Params,
-        duration: Duration::from_millis(550),
+    let commit = live.start().unwrap();
+    p.round1.session_id = commit.session_id;
+    let share = ProverSeedShare {
+        session_id: commit.session_id,
+        share: [17; 32],
+    };
+    live.on_round1(&p.round1, &share).unwrap();
+
+    // (expiring check, wait after `start`, the last check to complete when it expired in time).
+    // Claims: half the budget passes before Round1, so a clock reset at Round1 would not expire;
+    // the work phase's next deadline falls in Statement. WeightReservation and Transcript: the
+    // transcript's cancellation and the check before the reveal.
+    for (kind, wait, last) in [
+        (CheckKind::Claims, BUDGET / 2, CheckKind::Statement),
+        (
+            CheckKind::WeightReservation,
+            Duration::ZERO,
+            CheckKind::Transcript,
+        ),
+        (CheckKind::Transcript, Duration::ZERO, CheckKind::Transcript),
+    ] {
+        let mut placed = false;
+        for _ in 0..ATTEMPTS {
+            let (c, s, mut p, mut cfg) = live_fixture();
+            cfg.limits.max_wall_time = BUDGET;
+            let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+            let before = Instant::now();
+            let commit = live.start().unwrap();
+            let after = Instant::now();
+            p.round1.session_id = commit.session_id;
+            let share = ProverSeedShare {
+                session_id: commit.session_id,
+                share: [17; 32],
+            };
+            std::thread::sleep(wait);
+            let mut observer = Expire {
+                kind,
+                before,
+                after: Some(after),
+                seen: false,
+                in_time: false,
+                last: None,
+            };
+            let verdict = live
+                .on_round1_observed(&p.round1, &share, &mut observer)
+                .unwrap_err();
+            // A loaded host can expire the clock first at Round1's entry; never with a reveal.
+            let early = before.elapsed() >= BUDGET && !observer.seen;
+            if early {
+                assert!(
+                    matches!(
+                        verdict,
+                        Verdict::Inconclusive(VerifierError {
+                            code: ErrorCode::Time | ErrorCode::ProtocolTimeout
+                        })
+                    ),
+                    "{verdict:?}"
+                );
+            } else {
+                inconclusive(verdict, ErrorCode::Time);
+            }
+            inconclusive(
+                live.on_round1(&p.round1, &share).unwrap_err(),
+                ErrorCode::ProtocolOrder,
+            );
+            if observer.seen && observer.in_time {
+                assert_eq!(observer.last, Some(last), "{kind:?}");
+                placed = true;
+                break;
+            }
+        }
+        assert!(placed, "{kind:?} never reached inside {BUDGET:?}");
+    }
+
+    // An expired clock before Round1: refused at entry, before any check, with no reveal.
+    let (c, s, mut p, mut cfg) = live_fixture();
+    cfg.limits.max_wall_time = BUDGET;
+    let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+    let commit = live.start().unwrap();
+    let after = Instant::now();
+    p.round1.session_id = commit.session_id;
+    let share = ProverSeedShare {
+        session_id: commit.session_id,
+        share: [17; 32],
+    };
+    std::thread::sleep((after + BUDGET).saturating_duration_since(Instant::now()));
+    let mut observer = Expire {
+        kind: CheckKind::Input,
+        before: after,
+        after: Some(after),
         seen: false,
+        in_time: false,
+        last: None,
+    };
+    inconclusive(
+        live.on_round1_observed(&p.round1, &share, &mut observer)
+            .unwrap_err(),
+        ErrorCode::ProtocolTimeout,
+    );
+    assert_eq!(observer.last, Some(CheckKind::Input));
+    inconclusive(
+        live.on_round1(&p.round1, &share).unwrap_err(),
+        ErrorCode::ProtocolOrder,
+    );
+
+    // Expiry inside `start`: the clock starts there, and a commitment never goes out late.
+    let (c, s, _, mut cfg) = live_fixture();
+    cfg.limits.max_wall_time = BUDGET;
+    let mut live = tv_core::LiveVerifier::new(c, s, cfg);
+    let mut observer = Expire {
+        kind: CheckKind::Params,
+        before: Instant::now(),
+        after: None,
+        seen: false,
+        in_time: false,
         last: None,
     };
     inconclusive(
