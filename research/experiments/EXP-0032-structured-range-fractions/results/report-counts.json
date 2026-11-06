@@ -1,0 +1,19 @@
+{
+ "environment": {
+  "python": "3.15.2",
+  "utc": "2026-11-06T09:44:27Z"
+ },
+ "field_vectors": 4145,
+ "max_h": 10,
+ "count_check": {
+  "rows": 432,
+  "mismatches": [],
+  "mismatch_count": 0
+ },
+ "real": {
+  "tables": 21,
+  "baseline": 289711470995,
+  "candidate": 27453830822,
+  "ratio": 0.09476266413515194
+ }
+}

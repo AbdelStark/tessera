@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `triaged` |
+| Status | `validated` |
 | Origin | [#691](https://github.com/AbdelStark/tessera/issues/691); [SUR-0017](../surveys/SUR-0017-structured-table-fractions.md) candidate C0; EXP-0030 real 1B geometry |
 | Lever | `regen` on the table side of LogUp (leaf scans of generated `Range` trees); no relation, transcript, parameter or opening change |
 | Spec surfaces | None normative. RFC-0008 'Fraction tree' and RFC-0010 'Tree levels' fix the messages, and this changes only how the prover computes them. INV-ARCH-2 (01 §6) is respected as written. RFC-0018 'Memory scheduler' must charge the new scratch. No tier-A change. |
@@ -89,4 +89,12 @@ Unknown until later: wall time in Rust, the production integration (#641), the v
 
 ## Refutations
 
-None yet.
+None.
+
+[EXP-0032](../experiments/EXP-0032-structured-range-fractions/README.md) validated the idea at E0 on 2026-11-06:
+
+- exact messages on 8,736 levels;
+- all seven faults caught;
+- a summed counted ratio of 0.0948 on the 21 real Range instances, and 0.0795 when the cheaper route is chosen per tree.
+
+**Amendment the experiment forces.** The structured route loses on small trees with many lookups, by up to 4,360× on `Range{6}`. The route must be chosen per tree by comparing the two public closed forms, not by a height threshold alone.

@@ -16,11 +16,13 @@ Current table-side performance unit (2026-11-06): [#691](https://github.com/Abde
 
 - **Survey.** [SUR-0017](surveys/SUR-0017-structured-table-fractions.md) prices the current bounded table path at `1 + Σ_{t=c}^{h−1} 4·(1 + c_t)` leaf scans per generated tree (E0, code reading). That is at least 41 scans of 2^30 leaves for `Range{30}`'s 66 lookups. Range is 33.7% of the real 1B table rows.
 - **Idea.** [IDEA-0043](ideas/IDEA-0043-structured-range-fractions.md) is `triaged`: exact structured bottom levels for Range trees, admissible under INV-ARCH-2 as written.
-- **Experiment.** [EXP-0032](experiments/EXP-0032-structured-range-fractions/README.md) is `planned` and frozen before code.
+- **Experiment.** [EXP-0032](experiments/EXP-0032-structured-range-fractions/README.md) is `done: validated` (E0):
+  - messages exact on 8,736 levels, with all seven faults caught;
+  - counted multiplications 0.0948× the conservative baseline on the 21 real Range trees, 0.0795× with a per-tree public route choice. That choice is required, because small trees with many lookups lose by up to 4,360×.
 
-Next feasible unit: verify the committed registration, then build and run the E0 harness. No gain is credited before its verdict. Separate seeds:
+Next feasible unit: the Rust implementation behind the generic path under #641's admission, then an E1 measurement. No wall-time or real-model credit until then. Separate seeds:
 
-- O4: one level read for four operands, all generated tables, implementation only;
+- O4: one level read for four operands, all generated tables, implementation only, filed as [#694](https://github.com/AbdelStark/tessera/issues/694);
 - V1: piecewise-constant valued tables, new registration;
 - C1: sublinear cached level, needs an INV-ARCH-2 amendment.
 
@@ -183,7 +185,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | [IDEA-0041](ideas/IDEA-0041-uniform-requant.md) | Common public Requant family at incompatible layer sites | correctness/coverage; canonical tables/advice | 0 credited gain | `promoted` | [EXP-0029](experiments/EXP-0029-uniform-requant/README.md) done: validated | [RFC-0076](../docs/rfcs/RFC-0076-uniform-requant-families.md) supplies N1–N6 and exact public rules; actual counts/budget, independent implementation and full proof remain mandatory; maintainer acceptance waives the additional non-author review. |
 
 | [IDEA-0042](ideas/IDEA-0042-bounded-grouped-source.md) | Bounded canonical grouped sources and complete lifetime contract | correctness/source memory | 0 credited gain | `promoted` | [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) done: validated, finite E0/E1 | RFC-0077; canonical production factory and complete phase admission remain mandatory. |
-| [IDEA-0043](ideas/IDEA-0043-structured-range-fractions.md) | Exact structured bottom levels for Range table fraction trees | `regen` (table side) | not credited before EXP-0032 | `triaged` | [EXP-0032](experiments/EXP-0032-structured-range-fractions/README.md) planned, E0 | Identical messages by construction; INV-ARCH-2 as written; Range is 33.7% of real 1B table rows. |
+| [IDEA-0043](ideas/IDEA-0043-structured-range-fractions.md) | Exact structured bottom levels for Range table fraction trees | `regen` (table side) | E0 counted 0.0948× (0.0795× with the per-tree route) on real Range trees; no time credited | `validated` | [EXP-0032](experiments/EXP-0032-structured-range-fractions/README.md) done: validated, E0 | Identical messages on 8,736 levels. Per-tree public route choice required. Range is 33.7% of real 1B table rows. |
 
 ## Experiments
 
@@ -226,7 +228,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | [EXP-0022](experiments/EXP-0022-two-level-opening-coupling/README.md) | Does two-level equation coupling preserve all original obligations under an ideal PCS, including batching exceptions? | IDEA-0035 | `done: validated` | 72 shapes,1,152 originals,4,608 two-level fixtures,18,432 honest reductions,164 controls and20 balanced cases pass | E0 conditional finite result;26,249,084 judgments/211,154,672 metered ops; independent119,408-check recount. No extractor/G-4/FS/joint-ZK/concrete-PCS/current-cost claim |
 
 | [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) | Canonical group regeneration, merge callbacks and public lifetime feasibility | IDEA-0042 / #687 | `done: validated` | finite criteria passed | E0: 42 source/merge cases, 164 groups, 43,372 indices, 285 cuts, 14 compiled faults and restored controls; E1 requested allocations; no complete factory, real-model or timing claim. |
-| [EXP-0032](experiments/EXP-0032-structured-range-fractions/README.md) | Structured Range bottom levels against the dense level sumcheck | IDEA-0043 / #691 | `planned` | frozen before code | E0: exact `Fp2` grid h ≤ 10, independent checker, seven faults, counted multiplications on 21 real Range instances. |
+| [EXP-0032](experiments/EXP-0032-structured-range-fractions/README.md) | Structured Range bottom levels against the dense level sumcheck | IDEA-0043 / #691 | `done: validated` | all four criteria passed | E0: 2,536 cases / 8,736 levels exact, 8,736 checker accepts and tamper rejects, F1–F7 caught, closed forms equal on every call, summed ratio 0.0948 on 21 real Range trees. No Rust, time or protocol/2 claim. |
 
 ## Iteration log
 
@@ -351,3 +353,4 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | 2026-11-05 | #687 / EXP-0031 result and RFC-0077 | Frozen finite E0/E1 criteria pass: 42 cases, 164 groups, 43,372 index records, six negative shapes, all 285 merge cuts and all requested allocation controls. Twelve registered compiled faults plus two phase/geometry regressions caught; original/restored controls pass. Restricted-block split evaluation replaces premature original materialization; empty-S whole sources remain charged. Contract proof and full unknown-owner inventory support RFC-0077, not production admission. Next: RFC decision then bounded canonical factory/full composition. |
 | 2026-11-06 | #691 / autoresearch survey, ideate and registration | SUR-0017 records the current scan formula (verified at `trees/bounded.rs` and `table_plan.rs`), the real Range share (33.7% of 5,536,481,870 rows) and primary sources with limits ([BGS07] abstract level only). IDEA-0043 self-triaged; EXP-0032 planned and frozen (SHA-256 `5bf4612f…`) before code. Next: commit the registration, then run the E0 harness. No measured or credited gain. |
+| 2026-11-06 | #691 / EXP-0032 result | Registered E0 criteria pass. 2,536 cases and 8,736 levels are exact against the dense reference, including α in the table, duplicates and padding. The independent checker accepts every honest level and rejects every tamper. F1–F7 are caught. Closed forms equal the instrumented counts on every call. Summed counted ratio 0.0948 on the 21 real Range trees (0.0795 per-tree descriptive). IDEA-0043 `validated` with a per-tree route amendment. #694 filed for the four-operand redundancy. Next: Rust implementation and E1 measurement. |

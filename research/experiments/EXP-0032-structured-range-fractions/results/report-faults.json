@@ -1,0 +1,80 @@
+{
+ "environment": {
+  "python": "3.15.2",
+  "utc": "2026-11-06T09:44:27Z"
+ },
+ "field_vectors": 4145,
+ "max_h": 10,
+ "faults": {
+  "F1": {
+   "cases_caught": 2160,
+   "first": [
+    1,
+    0,
+    0,
+    "uniform",
+    "random"
+   ]
+  },
+  "F2": {
+   "cases_caught": 1552,
+   "first": [
+    1,
+    0,
+    1,
+    "uniform",
+    "random"
+   ]
+  },
+  "F3": {
+   "cases_caught": 1203,
+   "first": [
+    2,
+    0,
+    0,
+    "uniform",
+    "random"
+   ]
+  },
+  "F4": {
+   "cases_caught": 2160,
+   "first": [
+    1,
+    0,
+    0,
+    "uniform",
+    "random"
+   ]
+  },
+  "F5": {
+   "cases_caught": 2136,
+   "first": [
+    2,
+    0,
+    0,
+    "uniform",
+    "random"
+   ]
+  },
+  "F6": {
+   "cases_caught": 108,
+   "first": [
+    1,
+    0,
+    0,
+    "uniform",
+    "in-table"
+   ]
+  },
+  "F7": {
+   "cases_caught": 1839,
+   "first": [
+    1,
+    0,
+    0,
+    "uniform",
+    "random"
+   ]
+  }
+ }
+}
