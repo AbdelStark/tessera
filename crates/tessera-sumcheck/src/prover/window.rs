@@ -9,7 +9,7 @@
 mod memory;
 pub use memory::{WindowMemory, WindowMetadataMemory, WindowShape};
 
-use core::fmt;
+use core::{fmt, num::NonZeroUsize};
 
 use tessera_codec::SecretBuf;
 use tessera_field::PrimeField;
@@ -70,6 +70,13 @@ pub trait WindowSource<F: PolyField> {
     }
     /// Read consecutive entries of the table named by `table`.
     fn read(&self, table: usize, start: usize, out: &mut [F]) -> Result<(), WindowError>;
+    /// The most entries one regeneration of this source serves, when it has such a unit.
+    /// The engine then reads resident tables range by range, every table's range before the
+    /// next, in at most this many entries, so tables that share one regeneration (a fraction
+    /// level's four operands, #694) can be served from it. The values read are unchanged.
+    fn read_granule(&self) -> Option<NonZeroUsize> {
+        None
+    }
 }
 
 /// One operand, named by its stable public source ID.
@@ -320,23 +327,30 @@ impl<F: PolyField> State<F> {
             // Resident instances are loaded only on P3, then bound in place. A windowed
             // instance is materialized only after its last window's challenges are known.
             let len = 1usize << remaining;
-            self.folded = self
+            // Range-major: every table reads the same entries before the next range (#694).
+            let mut folded = self
                 .spec
                 .tables
                 .iter()
-                .map(|table| {
-                    let mut out = buffer::<F>(len)?;
-                    if bound == 0 {
-                        read_source(source, table.id, 0, &mut out)?;
-                    } else {
-                        for (index, value) in out.iter_mut().enumerate() {
-                            *value =
-                                Self::entry(source, table.id, index, bound, &weights, &mut one)?;
-                        }
+                .map(|_| buffer::<F>(len))
+                .collect::<Result<Vec<_>, WindowError>>()?;
+            if bound == 0 {
+                let step = source.read_granule().map_or(len, |g| g.get().min(len));
+                for start in (0..len).step_by(step) {
+                    let end = len.min(start + step);
+                    for (out, table) in folded.iter_mut().zip(&self.spec.tables) {
+                        read_source(source, table.id, start, &mut out[start..end])?;
                     }
-                    Ok(out)
-                })
-                .collect::<Result<_, WindowError>>()?;
+                }
+            } else {
+                for index in 0..len {
+                    for (out, table) in folded.iter_mut().zip(&self.spec.tables) {
+                        out[index] =
+                            Self::entry(source, table.id, index, bound, &weights, &mut one)?;
+                    }
+                }
+            }
+            self.folded = folded;
             self.grid = None;
             if initial {
                 let eq = Weights::from_eq(&self.spec.eq)?;
@@ -366,15 +380,18 @@ impl<F: PolyField> State<F> {
             .collect::<Result<Vec<_>, _>>()?;
         let suffix_eq = Weights::from_eq(&self.spec.eq[end..])?;
         for suffix in 0..1 << (remaining - window) {
-            for (column, table) in columns.iter_mut().zip(&self.spec.tables) {
-                if bound == 0 {
+            if bound == 0 {
+                for (column, table) in columns.iter_mut().zip(&self.spec.tables) {
                     read_source(source, table.id, suffix << window, &mut one[..1 << window])?;
                     for vertex in 0..1 << window {
                         column[radix_index(vertex, radix, window)] = one[vertex];
                     }
-                } else {
-                    for vertex in 0..1 << window {
-                        let at = radix_index(vertex, radix, window);
+                }
+            } else {
+                // Vertex-major, so tables sharing a regeneration read each entry in turn (#694).
+                for vertex in 0..1 << window {
+                    let at = radix_index(vertex, radix, window);
+                    for (column, table) in columns.iter_mut().zip(&self.spec.tables) {
                         column[at] = Self::entry(
                             source,
                             table.id,
@@ -385,6 +402,8 @@ impl<F: PolyField> State<F> {
                         )?;
                     }
                 }
+            }
+            for column in &mut columns {
                 extend(column, radix, window);
             }
             let eq = suffix_eq.at(suffix);
