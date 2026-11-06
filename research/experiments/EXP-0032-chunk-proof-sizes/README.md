@@ -5,7 +5,7 @@
 | Status | `done: refuted` |
 | Idea | [IDEA-0043](../../ideas/IDEA-0043-context-commitments.md) |
 | Evidence level | E1 for the rows (exact compiler layouts on CPU); E0 for the bytes (RFC-0057's byte model) |
-| Hardware | Apple M1 Max-class CPU, macOS; no GPU needed |
+| Hardware | Apple M4 Max CPU, macOS; no GPU needed |
 | Pre-registered on | 2026-11-06 |
 
 ## Hypothesis
@@ -39,7 +39,7 @@ cargo run --release > results/rows.json
 python3 -I plan.py results/rows.json > results/plan.txt
 ```
 
-Environment: Apple M1 Max, macOS 26 (Darwin 25.6.0), `rustc 1.95.0`, Python 3, 2026-11-06; source `main` at `79b0b1f` plus this directory. One run, 31.1 s, 554 MB peak RSS (`/usr/bin/time -l`), alongside an eight-worker fuzz campaign (timing only, rows are exact).
+Environment: Apple M4 Max, macOS 26 (Darwin 25.6.0), `rustc 1.95.0`, Python 3, 2026-11-06; source `main` at `79b0b1f` plus this directory. One run, 31.1 s, 554 MB peak RSS (`/usr/bin/time -l`), alongside an eight-worker fuzz campaign (timing only, rows are exact).
 
 ## Results
 

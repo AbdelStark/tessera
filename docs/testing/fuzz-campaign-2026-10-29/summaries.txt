@@ -1,0 +1,1200 @@
+== decode/0000.log
+#18173931	DONE   cov: 1362 ft: 5634 corp: 523/30Kb lim: 4096 exec/s: 30239 rss: 970Mb
+Done 18173931 runs in 601 second(s)
+stat::number_of_executed_units: 18173931
+stat::average_exec_per_sec:     30239
+stat::new_units_added:          1279
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              970
+== decode/0001.log
+#42176411	DONE   cov: 1362 ft: 5766 corp: 491/28Kb lim: 4096 exec/s: 70177 rss: 674Mb
+Done 42176411 runs in 601 second(s)
+stat::number_of_executed_units: 42176411
+stat::average_exec_per_sec:     70177
+stat::new_units_added:          195
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              674
+== decode/0002.log
+#19511642	DONE   cov: 1362 ft: 5813 corp: 489/27Kb lim: 4096 exec/s: 32465 rss: 744Mb
+Done 19511642 runs in 601 second(s)
+stat::number_of_executed_units: 19511642
+stat::average_exec_per_sec:     32465
+stat::new_units_added:          72
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              744
+== decode/0003.log
+#19378581	DONE   cov: 1362 ft: 5823 corp: 490/28Kb lim: 4096 exec/s: 32243 rss: 791Mb
+Done 19378581 runs in 601 second(s)
+stat::number_of_executed_units: 19378581
+stat::average_exec_per_sec:     32243
+stat::new_units_added:          23
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              791
+== decode/0004.log
+#26910265	DONE   cov: 1362 ft: 5892 corp: 501/31Kb lim: 4096 exec/s: 44775 rss: 775Mb
+Done 26910265 runs in 601 second(s)
+stat::number_of_executed_units: 26910265
+stat::average_exec_per_sec:     44775
+stat::new_units_added:          45
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              775
+== decode/0005.log
+#32374276	DONE   cov: 1362 ft: 6017 corp: 501/32Kb lim: 4096 exec/s: 53867 rss: 816Mb
+Done 32374276 runs in 601 second(s)
+stat::number_of_executed_units: 32374276
+stat::average_exec_per_sec:     53867
+stat::new_units_added:          17
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              816
+== decode/0006.log
+#24807512	DONE   cov: 1362 ft: 6044 corp: 503/38Kb lim: 4096 exec/s: 41277 rss: 786Mb
+Done 24807512 runs in 601 second(s)
+stat::number_of_executed_units: 24807512
+stat::average_exec_per_sec:     41277
+stat::new_units_added:          21
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              786
+== decode/0007.log
+#13575039	DONE   cov: 1362 ft: 6060 corp: 508/34Kb lim: 4096 exec/s: 22587 rss: 858Mb
+Done 13575039 runs in 601 second(s)
+stat::number_of_executed_units: 13575039
+stat::average_exec_per_sec:     22587
+stat::new_units_added:          18
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              858
+== decode/0008.log
+#13936344	DONE   cov: 1362 ft: 6067 corp: 505/34Kb lim: 4096 exec/s: 23188 rss: 906Mb
+Done 13936344 runs in 601 second(s)
+stat::number_of_executed_units: 13936344
+stat::average_exec_per_sec:     23188
+stat::new_units_added:          7
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              906
+== decode/0009.log
+#23073907	DONE   cov: 1362 ft: 6070 corp: 509/35Kb lim: 4096 exec/s: 38392 rss: 909Mb
+Done 23073907 runs in 601 second(s)
+stat::number_of_executed_units: 23073907
+stat::average_exec_per_sec:     38392
+stat::new_units_added:          5
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              909
+== decode/0010.log
+#11415706	DONE   cov: 1362 ft: 6070 corp: 510/36Kb lim: 4096 exec/s: 18994 rss: 933Mb
+Done 11415706 runs in 601 second(s)
+stat::number_of_executed_units: 11415706
+stat::average_exec_per_sec:     18994
+stat::new_units_added:          6
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              933
+== decode/0011.log
+#15955226	DONE   cov: 1362 ft: 6097 corp: 513/34Kb lim: 4096 exec/s: 26547 rss: 948Mb
+Done 15955226 runs in 601 second(s)
+stat::number_of_executed_units: 15955226
+stat::average_exec_per_sec:     26547
+stat::new_units_added:          20
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              948
+== decode/0012.log
+#164794	DONE   cov: 1362 ft: 6097 corp: 513/34Kb lim: 3934 exec/s: 20599 rss: 836Mb
+Done 164794 runs in 8 second(s)
+stat::number_of_executed_units: 164794
+stat::average_exec_per_sec:     20599
+stat::new_units_added:          0
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              836
+== envelope/0000.log
+#26808202	DONE   cov: 1516 ft: 4380 corp: 440/85Kb lim: 4096 exec/s: 44605 rss: 778Mb
+Done 26808202 runs in 601 second(s)
+stat::number_of_executed_units: 26808202
+stat::average_exec_per_sec:     44605
+stat::new_units_added:          1479
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              778
+== envelope/0001.log
+#28512292	DONE   cov: 1516 ft: 4422 corp: 419/73Kb lim: 4096 exec/s: 47441 rss: 670Mb
+Done 28512292 runs in 601 second(s)
+stat::number_of_executed_units: 28512292
+stat::average_exec_per_sec:     47441
+stat::new_units_added:          234
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              670
+== envelope/0002.log
+#31337545	DONE   cov: 1516 ft: 4438 corp: 426/76Kb lim: 4096 exec/s: 52142 rss: 641Mb
+Done 31337545 runs in 601 second(s)
+stat::number_of_executed_units: 31337545
+stat::average_exec_per_sec:     52142
+stat::new_units_added:          233
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              641
+== envelope/0003.log
+#35127066	DONE   cov: 1516 ft: 4456 corp: 430/77Kb lim: 4096 exec/s: 58447 rss: 645Mb
+Done 35127066 runs in 601 second(s)
+stat::number_of_executed_units: 35127066
+stat::average_exec_per_sec:     58447
+stat::new_units_added:          81
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              645
+== envelope/0004.log
+#31762735	DONE   cov: 1516 ft: 4527 corp: 430/72Kb lim: 4096 exec/s: 52849 rss: 667Mb
+Done 31762735 runs in 601 second(s)
+stat::number_of_executed_units: 31762735
+stat::average_exec_per_sec:     52849
+stat::new_units_added:          97
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              667
+== envelope/0005.log
+#33631051	DONE   cov: 1516 ft: 4546 corp: 432/71Kb lim: 4096 exec/s: 55958 rss: 670Mb
+Done 33631051 runs in 601 second(s)
+stat::number_of_executed_units: 33631051
+stat::average_exec_per_sec:     55958
+stat::new_units_added:          49
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              670
+== envelope/0006.log
+#36197117	DONE   cov: 1516 ft: 4551 corp: 434/71Kb lim: 4096 exec/s: 60228 rss: 672Mb
+Done 36197117 runs in 601 second(s)
+stat::number_of_executed_units: 36197117
+stat::average_exec_per_sec:     60228
+stat::new_units_added:          25
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              672
+== envelope/0007.log
+#34501389	DONE   cov: 1516 ft: 4553 corp: 437/72Kb lim: 4096 exec/s: 57406 rss: 670Mb
+Done 34501389 runs in 601 second(s)
+stat::number_of_executed_units: 34501389
+stat::average_exec_per_sec:     57406
+stat::new_units_added:          26
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              670
+== envelope/0008.log
+#31514904	DONE   cov: 1516 ft: 4553 corp: 435/72Kb lim: 4096 exec/s: 52437 rss: 539Mb
+Done 31514904 runs in 601 second(s)
+stat::number_of_executed_units: 31514904
+stat::average_exec_per_sec:     52437
+stat::new_units_added:          11
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              539
+== envelope/0009.log
+#31614074	DONE   cov: 1516 ft: 4553 corp: 436/72Kb lim: 4096 exec/s: 52602 rss: 670Mb
+Done 31614074 runs in 601 second(s)
+stat::number_of_executed_units: 31614074
+stat::average_exec_per_sec:     52602
+stat::new_units_added:          12
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              670
+== envelope/0010.log
+#35508746	DONE   cov: 1516 ft: 4594 corp: 442/78Kb lim: 4096 exec/s: 59082 rss: 547Mb
+Done 35508746 runs in 601 second(s)
+stat::number_of_executed_units: 35508746
+stat::average_exec_per_sec:     59082
+stat::new_units_added:          46
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              547
+== envelope/0011.log
+#30832454	DONE   cov: 1516 ft: 4594 corp: 436/76Kb lim: 4096 exec/s: 51301 rss: 667Mb
+Done 30832454 runs in 601 second(s)
+stat::number_of_executed_units: 30832454
+stat::average_exec_per_sec:     51301
+stat::new_units_added:          13
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              667
+== envelope/0012.log
+#433256	DONE   cov: 1516 ft: 4594 corp: 436/76Kb lim: 4096 exec/s: 54157 rss: 660Mb
+Done 433256 runs in 8 second(s)
+stat::number_of_executed_units: 433256
+stat::average_exec_per_sec:     54157
+stat::new_units_added:          0
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              660
+== protocol/0000.log
+#44598730	DONE   cov: 3056 ft: 7204 corp: 674/288Kb lim: 432589 exec/s: 74207 rss: 548Mb
+Done 44598730 runs in 601 second(s)
+stat::number_of_executed_units: 44598730
+stat::average_exec_per_sec:     74207
+stat::new_units_added:          3912
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              548
+== protocol/0001.log
+#39201384	DONE   cov: 3067 ft: 8137 corp: 683/386Kb lim: 389946 exec/s: 65226 rss: 734Mb
+Done 39201384 runs in 601 second(s)
+stat::number_of_executed_units: 39201384
+stat::average_exec_per_sec:     65226
+stat::new_units_added:          802
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              734
+== protocol/0002.log
+#45918406	DONE   cov: 3068 ft: 8365 corp: 701/373Kb lim: 463052 exec/s: 76403 rss: 582Mb
+Done 45918406 runs in 601 second(s)
+stat::number_of_executed_units: 45918406
+stat::average_exec_per_sec:     76403
+stat::new_units_added:          382
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              582
+== protocol/0003.log
+#43247636	DONE   cov: 3068 ft: 8550 corp: 710/381Kb lim: 437654 exec/s: 71959 rss: 506Mb
+Done 43247636 runs in 601 second(s)
+stat::number_of_executed_units: 43247636
+stat::average_exec_per_sec:     71959
+stat::new_units_added:          237
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              506
+== protocol/0004.log
+#44468458	DONE   cov: 3068 ft: 8615 corp: 717/384Kb lim: 449264 exec/s: 73990 rss: 492Mb
+Done 44468458 runs in 601 second(s)
+stat::number_of_executed_units: 44468458
+stat::average_exec_per_sec:     73990
+stat::new_units_added:          295
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              492
+== protocol/0005.log
+#42687431	DONE   cov: 3069 ft: 8689 corp: 730/388Kb lim: 432236 exec/s: 71027 rss: 515Mb
+Done 42687431 runs in 601 second(s)
+stat::number_of_executed_units: 42687431
+stat::average_exec_per_sec:     71027
+stat::new_units_added:          204
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              515
+== protocol/0006.log
+#42967902	DONE   cov: 3069 ft: 8734 corp: 743/392Kb lim: 435944 exec/s: 71494 rss: 525Mb
+Done 42967902 runs in 601 second(s)
+stat::number_of_executed_units: 42967902
+stat::average_exec_per_sec:     71494
+stat::new_units_added:          109
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              525
+== protocol/0007.log
+#45087878	DONE   cov: 3071 ft: 8792 corp: 745/392Kb lim: 456842 exec/s: 75021 rss: 493Mb
+Done 45087878 runs in 601 second(s)
+stat::number_of_executed_units: 45087878
+stat::average_exec_per_sec:     75021
+stat::new_units_added:          118
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              493
+== protocol/0008.log
+#44753955	DONE   cov: 3071 ft: 8798 corp: 749/393Kb lim: 454124 exec/s: 74465 rss: 495Mb
+Done 44753955 runs in 601 second(s)
+stat::number_of_executed_units: 44753955
+stat::average_exec_per_sec:     74465
+stat::new_units_added:          60
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              495
+== protocol/0009.log
+#43050833	DONE   cov: 3071 ft: 8816 corp: 756/397Kb lim: 437150 exec/s: 71632 rss: 550Mb
+Done 43050833 runs in 601 second(s)
+stat::number_of_executed_units: 43050833
+stat::average_exec_per_sec:     71632
+stat::new_units_added:          57
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              550
+== protocol/0010.log
+#41864929	DONE   cov: 3072 ft: 8829 corp: 756/393Kb lim: 425630 exec/s: 69658 rss: 522Mb
+Done 41864929 runs in 601 second(s)
+stat::number_of_executed_units: 41864929
+stat::average_exec_per_sec:     69658
+stat::new_units_added:          27
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              522
+== protocol/0011.log
+#44407860	DONE   cov: 3072 ft: 8852 corp: 760/401Kb lim: 450398 exec/s: 74260 rss: 494Mb
+Done 44407860 runs in 598 second(s)
+stat::number_of_executed_units: 44407860
+stat::average_exec_per_sec:     74260
+stat::new_units_added:          88
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              494
+== multiproof/0000.log
+#6076402	DONE   cov: 1164 ft: 5609 corp: 818/383Kb lim: 41483 exec/s: 10110 rss: 663Mb
+Done 6076402 runs in 601 second(s)
+stat::number_of_executed_units: 6076402
+stat::average_exec_per_sec:     10110
+stat::new_units_added:          4931
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              663
+== multiproof/0001.log
+#9639158	DONE   cov: 1164 ft: 5633 corp: 762/382Kb lim: 112560 exec/s: 16038 rss: 653Mb
+Done 9639158 runs in 601 second(s)
+stat::number_of_executed_units: 9639158
+stat::average_exec_per_sec:     16038
+stat::new_units_added:          1408
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              653
+== multiproof/0002.log
+#8451155	DONE   cov: 1164 ft: 5633 corp: 801/354Kb lim: 116749 exec/s: 14061 rss: 682Mb
+Done 8451155 runs in 601 second(s)
+stat::number_of_executed_units: 8451155
+stat::average_exec_per_sec:     14061
+stat::new_units_added:          868
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              682
+== multiproof/0003.log
+#8360988	DONE   cov: 1164 ft: 5636 corp: 819/341Kb lim: 118653 exec/s: 13911 rss: 727Mb
+Done 8360988 runs in 601 second(s)
+stat::number_of_executed_units: 8360988
+stat::average_exec_per_sec:     13911
+stat::new_units_added:          489
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              727
+== multiproof/0004.log
+#8798108	DONE   cov: 1164 ft: 5648 corp: 830/333Kb lim: 121744 exec/s: 14639 rss: 742Mb
+Done 8798108 runs in 601 second(s)
+stat::number_of_executed_units: 8798108
+stat::average_exec_per_sec:     14639
+stat::new_units_added:          316
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              742
+== multiproof/0005.log
+#8994409	DONE   cov: 1164 ft: 5648 corp: 839/326Kb lim: 123269 exec/s: 14965 rss: 738Mb
+Done 8994409 runs in 601 second(s)
+stat::number_of_executed_units: 8994409
+stat::average_exec_per_sec:     14965
+stat::new_units_added:          248
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              738
+== multiproof/0006.log
+#8971395	DONE   cov: 1164 ft: 5649 corp: 840/318Kb lim: 121960 exec/s: 14927 rss: 670Mb
+Done 8971395 runs in 601 second(s)
+stat::number_of_executed_units: 8971395
+stat::average_exec_per_sec:     14927
+stat::new_units_added:          336
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              670
+== multiproof/0007.log
+#10446180	DONE   cov: 1164 ft: 5649 corp: 843/315Kb lim: 137459 exec/s: 17381 rss: 736Mb
+Done 10446180 runs in 601 second(s)
+stat::number_of_executed_units: 10446180
+stat::average_exec_per_sec:     17381
+stat::new_units_added:          185
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              736
+== multiproof/0008.log
+#10682893	DONE   cov: 1164 ft: 5649 corp: 846/312Kb lim: 138937 exec/s: 17775 rss: 741Mb
+Done 10682893 runs in 601 second(s)
+stat::number_of_executed_units: 10682893
+stat::average_exec_per_sec:     17775
+stat::new_units_added:          153
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              741
+== multiproof/0009.log
+#10687481	DONE   cov: 1164 ft: 5649 corp: 845/303Kb lim: 138949 exec/s: 17782 rss: 747Mb
+Done 10687481 runs in 601 second(s)
+stat::number_of_executed_units: 10687481
+stat::average_exec_per_sec:     17782
+stat::new_units_added:          153
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              747
+== multiproof/0010.log
+#11266130	DONE   cov: 1164 ft: 5649 corp: 850/299Kb lim: 145103 exec/s: 18745 rss: 747Mb
+Done 11266130 runs in 601 second(s)
+stat::number_of_executed_units: 11266130
+stat::average_exec_per_sec:     18745
+stat::new_units_added:          110
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              747
+== multiproof/0011.log
+#9103253	DONE   cov: 1164 ft: 5650 corp: 853/321Kb lim: 122598 exec/s: 15146 rss: 742Mb
+Done 9103253 runs in 601 second(s)
+stat::number_of_executed_units: 9103253
+stat::average_exec_per_sec:     15146
+stat::new_units_added:          213
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              742
+== multiproof/0012.log
+#79752	DONE   cov: 1164 ft: 5650 corp: 848/320Kb lim: 32867 exec/s: 13292 rss: 635Mb
+Done 79752 runs in 6 second(s)
+stat::number_of_executed_units: 79752
+stat::average_exec_per_sec:     13292
+stat::new_units_added:          2
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              635
+== inclusion/0000.log
+#11187537	DONE   cov: 670 ft: 3552 corp: 560/134Kb lim: 96473 exec/s: 18614 rss: 564Mb
+Done 11187537 runs in 601 second(s)
+stat::number_of_executed_units: 11187537
+stat::average_exec_per_sec:     18614
+stat::new_units_added:          2996
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              564
+== inclusion/0001.log
+#13741631	DONE   cov: 670 ft: 3556 corp: 517/198Kb lim: 147173 exec/s: 22864 rss: 526Mb
+Done 13741631 runs in 601 second(s)
+stat::number_of_executed_units: 13741631
+stat::average_exec_per_sec:     22864
+stat::new_units_added:          856
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              526
+== inclusion/0002.log
+#12478055	DONE   cov: 670 ft: 3553 corp: 522/117Kb lim: 129719 exec/s: 20762 rss: 521Mb
+Done 12478055 runs in 601 second(s)
+stat::number_of_executed_units: 12478055
+stat::average_exec_per_sec:     20762
+stat::new_units_added:          808
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              521
+== inclusion/0003.log
+#23295155	DONE   cov: 670 ft: 3547 corp: 526/111Kb lim: 238832 exec/s: 38760 rss: 526Mb
+Done 23295155 runs in 601 second(s)
+stat::number_of_executed_units: 23295155
+stat::average_exec_per_sec:     38760
+stat::new_units_added:          278
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              526
+== inclusion/0004.log
+#17454299	DONE   cov: 670 ft: 3551 corp: 528/131Kb lim: 185328 exec/s: 29042 rss: 524Mb
+Done 17454299 runs in 601 second(s)
+stat::number_of_executed_units: 17454299
+stat::average_exec_per_sec:     29042
+stat::new_units_added:          578
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              524
+== inclusion/0005.log
+#18473071	DONE   cov: 672 ft: 3540 corp: 536/116Kb lim: 189552 exec/s: 30737 rss: 531Mb
+Done 18473071 runs in 601 second(s)
+stat::number_of_executed_units: 18473071
+stat::average_exec_per_sec:     30737
+stat::new_units_added:          398
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              531
+== inclusion/0006.log
+#18331814	DONE   cov: 669 ft: 3555 corp: 535/94Kb lim: 188382 exec/s: 30502 rss: 522Mb
+Done 18331814 runs in 601 second(s)
+stat::number_of_executed_units: 18331814
+stat::average_exec_per_sec:     30502
+stat::new_units_added:          356
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              522
+== inclusion/0007.log
+#19062477	DONE   cov: 670 ft: 3548 corp: 538/101Kb lim: 195731 exec/s: 31717 rss: 522Mb
+Done 19062477 runs in 601 second(s)
+stat::number_of_executed_units: 19062477
+stat::average_exec_per_sec:     31717
+stat::new_units_added:          282
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              522
+== inclusion/0008.log
+#23135796	DONE   cov: 670 ft: 3556 corp: 536/96Kb lim: 237330 exec/s: 38495 rss: 541Mb
+Done 23135796 runs in 601 second(s)
+stat::number_of_executed_units: 23135796
+stat::average_exec_per_sec:     38495
+stat::new_units_added:          157
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              541
+== inclusion/0009.log
+#18346565	DONE   cov: 670 ft: 3530 corp: 538/95Kb lim: 188670 exec/s: 30526 rss: 540Mb
+Done 18346565 runs in 601 second(s)
+stat::number_of_executed_units: 18346565
+stat::average_exec_per_sec:     30526
+stat::new_units_added:          277
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              540
+== inclusion/0010.log
+#19063165	DONE   cov: 668 ft: 3552 corp: 534/100Kb lim: 195922 exec/s: 31719 rss: 533Mb
+Done 19063165 runs in 601 second(s)
+stat::number_of_executed_units: 19063165
+stat::average_exec_per_sec:     31719
+stat::new_units_added:          189
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              533
+== inclusion/0011.log
+#19091242	DONE   cov: 670 ft: 3520 corp: 538/91Kb lim: 196335 exec/s: 31765 rss: 523Mb
+Done 19091242 runs in 601 second(s)
+stat::number_of_executed_units: 19091242
+stat::average_exec_per_sec:     31765
+stat::new_units_added:          135
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              523
+== inclusion/0012.log
+#73425	DONE   cov: 670 ft: 3567 corp: 537/95Kb lim: 7917 exec/s: 24475 rss: 500Mb
+Done 73425 runs in 3 second(s)
+stat::number_of_executed_units: 73425
+stat::average_exec_per_sec:     24475
+stat::new_units_added:          5
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              500
+== sumcheck/0000.log
+#3529123	DONE   cov: 7882 ft: 20714 corp: 1643/231Kb lim: 16550 exec/s: 5872 rss: 563Mb
+Done 3529123 runs in 601 second(s)
+stat::number_of_executed_units: 3529123
+stat::average_exec_per_sec:     5872
+stat::new_units_added:          7715
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              563
+== sumcheck/0001.log
+#3628149	DONE   cov: 7889 ft: 20768 corp: 1542/359Kb lim: 40883 exec/s: 6036 rss: 571Mb
+Done 3628149 runs in 601 second(s)
+stat::number_of_executed_units: 3628149
+stat::average_exec_per_sec:     6036
+stat::new_units_added:          1311
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              571
+== sumcheck/0002.log
+#3750653	DONE   cov: 7889 ft: 20836 corp: 1553/375Kb lim: 64362 exec/s: 6240 rss: 566Mb
+Done 3750653 runs in 601 second(s)
+stat::number_of_executed_units: 3750653
+stat::average_exec_per_sec:     6240
+stat::new_units_added:          658
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              566
+== sumcheck/0003.log
+#3737510	DONE   cov: 7886 ft: 20752 corp: 1568/365Kb lim: 88883 exec/s: 6218 rss: 583Mb
+Done 3737510 runs in 601 second(s)
+stat::number_of_executed_units: 3737510
+stat::average_exec_per_sec:     6218
+stat::new_units_added:          480
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              583
+== sumcheck/0004.log
+#3879685	DONE   cov: 7887 ft: 20795 corp: 1583/353Kb lim: 90556 exec/s: 6455 rss: 582Mb
+Done 3879685 runs in 601 second(s)
+stat::number_of_executed_units: 3879685
+stat::average_exec_per_sec:     6455
+stat::new_units_added:          418
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              582
+== sumcheck/0005.log
+#3833357	DONE   cov: 7895 ft: 20775 corp: 1597/346Kb lim: 85541 exec/s: 6378 rss: 589Mb
+Done 3833357 runs in 601 second(s)
+stat::number_of_executed_units: 3833357
+stat::average_exec_per_sec:     6378
+stat::new_units_added:          321
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              589
+== sumcheck/0006.log
+#3829382	DONE   cov: 7888 ft: 20774 corp: 1596/333Kb lim: 82620 exec/s: 6371 rss: 585Mb
+Done 3829382 runs in 601 second(s)
+stat::number_of_executed_units: 3829382
+stat::average_exec_per_sec:     6371
+stat::new_units_added:          241
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              585
+== sumcheck/0007.log
+#3922354	DONE   cov: 7888 ft: 20834 corp: 1591/325Kb lim: 81422 exec/s: 6526 rss: 585Mb
+Done 3922354 runs in 601 second(s)
+stat::number_of_executed_units: 3922354
+stat::average_exec_per_sec:     6526
+stat::new_units_added:          222
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              585
+== sumcheck/0008.log
+#3845944	DONE   cov: 7888 ft: 20838 corp: 1598/322Kb lim: 80618 exec/s: 6399 rss: 589Mb
+Done 3845944 runs in 601 second(s)
+stat::number_of_executed_units: 3845944
+stat::average_exec_per_sec:     6399
+stat::new_units_added:          185
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              589
+== sumcheck/0009.log
+#3808984	DONE   cov: 7890 ft: 20789 corp: 1599/319Kb lim: 76686 exec/s: 6337 rss: 592Mb
+Done 3808984 runs in 601 second(s)
+stat::number_of_executed_units: 3808984
+stat::average_exec_per_sec:     6337
+stat::new_units_added:          191
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              592
+== sumcheck/0010.log
+#3875590	DONE   cov: 7891 ft: 20850 corp: 1606/314Kb lim: 77678 exec/s: 6448 rss: 588Mb
+Done 3875590 runs in 601 second(s)
+stat::number_of_executed_units: 3875590
+stat::average_exec_per_sec:     6448
+stat::new_units_added:          165
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              588
+== sumcheck/0011.log
+#3808415	DONE   cov: 7897 ft: 20863 corp: 1598/309Kb lim: 77214 exec/s: 6336 rss: 588Mb
+Done 3808415 runs in 601 second(s)
+stat::number_of_executed_units: 3808415
+stat::average_exec_per_sec:     6336
+stat::new_units_added:          154
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              588
+== sumcheck/0012.log
+#45056	DONE   cov: 7895 ft: 20814 corp: 1578/308Kb lim: 37185 exec/s: 6436 rss: 574Mb
+Done 45056 runs in 7 second(s)
+stat::number_of_executed_units: 45056
+stat::average_exec_per_sec:     6436
+stat::new_units_added:          11
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              574
+== audit/0000.log
+#13213431	DONE   cov: 1635 ft: 3948 corp: 283/76Kb lim: 127402 exec/s: 21985 rss: 625Mb
+Done 13213431 runs in 601 second(s)
+stat::number_of_executed_units: 13213431
+stat::average_exec_per_sec:     21985
+stat::new_units_added:          1391
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              625
+== audit/0001.log
+#19449502	DONE   cov: 1635 ft: 4145 corp: 261/67Kb lim: 193830 exec/s: 32361 rss: 542Mb
+Done 19449502 runs in 601 second(s)
+stat::number_of_executed_units: 19449502
+stat::average_exec_per_sec:     32361
+stat::new_units_added:          147
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              542
+== audit/0002.log
+#14658085	DONE   cov: 1635 ft: 4223 corp: 274/70Kb lim: 146802 exec/s: 24389 rss: 553Mb
+Done 14658085 runs in 601 second(s)
+stat::number_of_executed_units: 14658085
+stat::average_exec_per_sec:     24389
+stat::new_units_added:          64
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              553
+== audit/0003.log
+#12218861	DONE   cov: 1635 ft: 4312 corp: 282/75Kb lim: 122485 exec/s: 20330 rss: 545Mb
+Done 12218861 runs in 601 second(s)
+stat::number_of_executed_units: 12218861
+stat::average_exec_per_sec:     20330
+stat::new_units_added:          58
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              545
+== audit/0004.log
+#14349069	DONE   cov: 1635 ft: 4359 corp: 292/78Kb lim: 144868 exec/s: 23875 rss: 525Mb
+Done 14349069 runs in 601 second(s)
+stat::number_of_executed_units: 14349069
+stat::average_exec_per_sec:     23875
+stat::new_units_added:          36
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              525
+== audit/0005.log
+#19046475	DONE   cov: 1635 ft: 4395 corp: 294/78Kb lim: 191502 exec/s: 31691 rss: 521Mb
+Done 19046475 runs in 601 second(s)
+stat::number_of_executed_units: 19046475
+stat::average_exec_per_sec:     31691
+stat::new_units_added:          44
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              521
+== audit/0006.log
+#16910776	DONE   cov: 1636 ft: 4415 corp: 294/76Kb lim: 169963 exec/s: 28137 rss: 554Mb
+Done 16910776 runs in 601 second(s)
+stat::number_of_executed_units: 16910776
+stat::average_exec_per_sec:     28137
+stat::new_units_added:          73
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              554
+== audit/0007.log
+#16563865	DONE   cov: 1636 ft: 4453 corp: 296/77Kb lim: 166716 exec/s: 27560 rss: 547Mb
+Done 16563865 runs in 601 second(s)
+stat::number_of_executed_units: 16563865
+stat::average_exec_per_sec:     27560
+stat::new_units_added:          47
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              547
+== audit/0008.log
+#16063973	DONE   cov: 1636 ft: 4491 corp: 298/77Kb lim: 161751 exec/s: 26728 rss: 559Mb
+Done 16063973 runs in 601 second(s)
+stat::number_of_executed_units: 16063973
+stat::average_exec_per_sec:     26728
+stat::new_units_added:          16
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              559
+== audit/0009.log
+#16828381	DONE   cov: 1663 ft: 4595 corp: 308/80Kb lim: 169332 exec/s: 28000 rss: 601Mb
+Done 16828381 runs in 601 second(s)
+stat::number_of_executed_units: 16828381
+stat::average_exec_per_sec:     28000
+stat::new_units_added:          22
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              601
+== audit/0010.log
+#13078599	DONE   cov: 1663 ft: 4610 corp: 309/81Kb lim: 132034 exec/s: 21761 rss: 546Mb
+Done 13078599 runs in 601 second(s)
+stat::number_of_executed_units: 13078599
+stat::average_exec_per_sec:     21761
+stat::new_units_added:          8
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              546
+== audit/0011.log
+#14154273	DONE   cov: 1663 ft: 4627 corp: 314/83Kb lim: 142710 exec/s: 23551 rss: 568Mb
+Done 14154273 runs in 601 second(s)
+stat::number_of_executed_units: 14154273
+stat::average_exec_per_sec:     23551
+stat::new_units_added:          14
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              568
+== audit/0012.log
+#168857	DONE   cov: 1663 ft: 4627 corp: 314/82Kb lim: 3426 exec/s: 42214 rss: 460Mb
+Done 168857 runs in 4 second(s)
+stat::number_of_executed_units: 168857
+stat::average_exec_per_sec:     42214
+stat::new_units_added:          0
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              460
+== claims/0000.log
+#370489	DONE   cov: 4954 ft: 14478 corp: 576/1119Kb lim: 4886 exec/s: 616 rss: 508Mb
+Done 370489 runs in 601 second(s)
+stat::number_of_executed_units: 370489
+stat::average_exec_per_sec:     616
+stat::new_units_added:          1257
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              508
+== claims/0001.log
+#287254	DONE   cov: 5077 ft: 15057 corp: 536/1058Kb lim: 5731 exec/s: 477 rss: 517Mb
+Done 287254 runs in 601 second(s)
+stat::number_of_executed_units: 287254
+stat::average_exec_per_sec:     477
+stat::new_units_added:          217
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              517
+== claims/0002.log
+#242334	DONE   cov: 5098 ft: 15311 corp: 546/1080Kb lim: 5448 exec/s: 403 rss: 515Mb
+Done 242334 runs in 601 second(s)
+stat::number_of_executed_units: 242334
+stat::average_exec_per_sec:     403
+stat::new_units_added:          168
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              515
+== claims/0003.log
+#275356	DONE   cov: 5100 ft: 15686 corp: 560/1119Kb lim: 5637 exec/s: 458 rss: 522Mb
+Done 275356 runs in 601 second(s)
+stat::number_of_executed_units: 275356
+stat::average_exec_per_sec:     458
+stat::new_units_added:          128
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              522
+== claims/0004.log
+#250762	DONE   cov: 5126 ft: 15811 corp: 588/1174Kb lim: 5529 exec/s: 417 rss: 514Mb
+Done 250762 runs in 601 second(s)
+stat::number_of_executed_units: 250762
+stat::average_exec_per_sec:     417
+stat::new_units_added:          105
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              514
+== claims/0005.log
+#255671	DONE   cov: 5127 ft: 15906 corp: 598/1223Kb lim: 5637 exec/s: 425 rss: 516Mb
+Done 255671 runs in 601 second(s)
+stat::number_of_executed_units: 255671
+stat::average_exec_per_sec:     425
+stat::new_units_added:          85
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              516
+== claims/0006.log
+#219818	DONE   cov: 5127 ft: 15958 corp: 595/1210Kb lim: 5493 exec/s: 365 rss: 524Mb
+Done 219818 runs in 601 second(s)
+stat::number_of_executed_units: 219818
+stat::average_exec_per_sec:     365
+stat::new_units_added:          66
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              524
+== claims/0007.log
+#219892	DONE   cov: 5138 ft: 16073 corp: 632/1298Kb lim: 5349 exec/s: 365 rss: 522Mb
+Done 219892 runs in 601 second(s)
+stat::number_of_executed_units: 219892
+stat::average_exec_per_sec:     365
+stat::new_units_added:          88
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              522
+== claims/0008.log
+#217523	DONE   cov: 5139 ft: 16160 corp: 643/1340Kb lim: 5301 exec/s: 361 rss: 515Mb
+Done 217523 runs in 601 second(s)
+stat::number_of_executed_units: 217523
+stat::average_exec_per_sec:     361
+stat::new_units_added:          91
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              515
+== claims/0009.log
+#237609	DONE   cov: 5143 ft: 16234 corp: 635/1284Kb lim: 5637 exec/s: 395 rss: 516Mb
+Done 237609 runs in 601 second(s)
+stat::number_of_executed_units: 237609
+stat::average_exec_per_sec:     395
+stat::new_units_added:          67
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              516
+== claims/0010.log
+#228470	DONE   cov: 5162 ft: 16363 corp: 636/1304Kb lim: 5601 exec/s: 380 rss: 514Mb
+Done 228470 runs in 601 second(s)
+stat::number_of_executed_units: 228470
+stat::average_exec_per_sec:     380
+stat::new_units_added:          52
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              514
+== claims/0011.log
+#204576	DONE   cov: 5163 ft: 16466 corp: 645/1339Kb lim: 5337 exec/s: 340 rss: 514Mb
+Done 204576 runs in 601 second(s)
+stat::number_of_executed_units: 204576
+stat::average_exec_per_sec:     340
+stat::new_units_added:          54
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              514
+== claims/0012.log
+#220558	DONE   cov: 5164 ft: 16489 corp: 642/1358Kb lim: 5613 exec/s: 366 rss: 514Mb
+Done 220558 runs in 601 second(s)
+stat::number_of_executed_units: 220558
+stat::average_exec_per_sec:     366
+stat::new_units_added:          48
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              514
+== claims/0013.log
+#200775	DONE   cov: 5165 ft: 16493 corp: 652/1376Kb lim: 5337 exec/s: 334 rss: 516Mb
+Done 200775 runs in 601 second(s)
+stat::number_of_executed_units: 200775
+stat::average_exec_per_sec:     334
+stat::new_units_added:          51
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              516
+== claims/0014.log
+#222823	DONE   cov: 5169 ft: 16542 corp: 667/1403Kb lim: 5505 exec/s: 370 rss: 513Mb
+Done 222823 runs in 601 second(s)
+stat::number_of_executed_units: 222823
+stat::average_exec_per_sec:     370
+stat::new_units_added:          62
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              513
+== claims/0015.log
+#206465	DONE   cov: 5169 ft: 16569 corp: 667/1400Kb lim: 5433 exec/s: 343 rss: 519Mb
+Done 206465 runs in 601 second(s)
+stat::number_of_executed_units: 206465
+stat::average_exec_per_sec:     343
+stat::new_units_added:          42
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              519
+== claims/0016.log
+#217197	DONE   cov: 5177 ft: 16610 corp: 675/1414Kb lim: 5505 exec/s: 361 rss: 518Mb
+Done 217197 runs in 601 second(s)
+stat::number_of_executed_units: 217197
+stat::average_exec_per_sec:     361
+stat::new_units_added:          52
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              518
+== claims/0017.log
+#192446	DONE   cov: 5177 ft: 16618 corp: 667/1424Kb lim: 5337 exec/s: 320 rss: 513Mb
+Done 192446 runs in 601 second(s)
+stat::number_of_executed_units: 192446
+stat::average_exec_per_sec:     320
+stat::new_units_added:          38
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              513
+== claims/0018.log
+#184130	DONE   cov: 5178 ft: 16660 corp: 684/1470Kb lim: 5193 exec/s: 306 rss: 514Mb
+Done 184130 runs in 601 second(s)
+stat::number_of_executed_units: 184130
+stat::average_exec_per_sec:     306
+stat::new_units_added:          48
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              514
+== claims/0019.log
+#183442	DONE   cov: 5181 ft: 16705 corp: 690/1442Kb lim: 5229 exec/s: 305 rss: 534Mb
+Done 183442 runs in 601 second(s)
+stat::number_of_executed_units: 183442
+stat::average_exec_per_sec:     305
+stat::new_units_added:          38
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              534
+== claims/0020.log
+#181284	DONE   cov: 5181 ft: 16697 corp: 705/1498Kb lim: 5145 exec/s: 301 rss: 524Mb
+Done 181284 runs in 601 second(s)
+stat::number_of_executed_units: 181284
+stat::average_exec_per_sec:     301
+stat::new_units_added:          41
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              524
+== claims/0021.log
+#192620	DONE   cov: 5181 ft: 16739 corp: 697/1471Kb lim: 5289 exec/s: 319 rss: 515Mb
+Done 192620 runs in 602 second(s)
+stat::number_of_executed_units: 192620
+stat::average_exec_per_sec:     319
+stat::new_units_added:          47
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              515
+== claims/0022.log
+#186697	DONE   cov: 5181 ft: 16722 corp: 698/1481Kb lim: 5229 exec/s: 309 rss: 517Mb
+Done 186697 runs in 603 second(s)
+stat::number_of_executed_units: 186697
+stat::average_exec_per_sec:     309
+stat::new_units_added:          43
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              517
+== claims/0023.log
+#173047	DONE   cov: 5180 ft: 16764 corp: 702/1524Kb lim: 5061 exec/s: 294 rss: 540Mb
+Done 173047 runs in 587 second(s)
+stat::number_of_executed_units: 173047
+stat::average_exec_per_sec:     294
+stat::new_units_added:          51
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              540
+== verify/0000.log
+#22251	DONE   cov: 15229 ft: 31266 corp: 383/89Mb lim: 927745 exec/s: 37 rss: 842Mb
+Done 22251 runs in 601 second(s)
+stat::number_of_executed_units: 22251
+stat::average_exec_per_sec:     37
+stat::new_units_added:          491
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              842
+== verify/0001.log
+#32877	DONE   cov: 15276 ft: 31903 corp: 433/109Mb lim: 927745 exec/s: 54 rss: 918Mb
+Done 32877 runs in 601 second(s)
+stat::number_of_executed_units: 32877
+stat::average_exec_per_sec:     54
+stat::new_units_added:          468
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              918
+== verify/0002.log
+#36443	DONE   cov: 15293 ft: 32226 corp: 454/109Mb lim: 927745 exec/s: 60 rss: 877Mb
+Done 36443 runs in 601 second(s)
+stat::number_of_executed_units: 36443
+stat::average_exec_per_sec:     60
+stat::new_units_added:          282
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              877
+== verify/0003.log
+#35828	DONE   cov: 15296 ft: 32361 corp: 472/116Mb lim: 927745 exec/s: 59 rss: 865Mb
+Done 35828 runs in 601 second(s)
+stat::number_of_executed_units: 35828
+stat::average_exec_per_sec:     59
+stat::new_units_added:          203
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              865
+== verify/0004.log
+#43327	DONE   cov: 15303 ft: 32452 corp: 483/122Mb lim: 927745 exec/s: 71 rss: 927Mb
+Done 43327 runs in 602 second(s)
+stat::number_of_executed_units: 43327
+stat::average_exec_per_sec:     71
+stat::new_units_added:          159
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              927
+== verify/0005.log
+#38060	DONE   cov: 15304 ft: 32255 corp: 489/126Mb lim: 927764 exec/s: 63 rss: 940Mb
+Done 38060 runs in 601 second(s)
+stat::number_of_executed_units: 38060
+stat::average_exec_per_sec:     63
+stat::new_units_added:          100
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              940
+== verify/0006.log
+#41367	DONE   cov: 15308 ft: 32297 corp: 495/123Mb lim: 927802 exec/s: 68 rss: 891Mb
+Done 41367 runs in 601 second(s)
+stat::number_of_executed_units: 41367
+stat::average_exec_per_sec:     68
+stat::new_units_added:          88
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              891
+== verify/0007.log
+#39844	DONE   cov: 15308 ft: 32731 corp: 497/127Mb lim: 927745 exec/s: 66 rss: 930Mb
+Done 39844 runs in 601 second(s)
+stat::number_of_executed_units: 39844
+stat::average_exec_per_sec:     66
+stat::new_units_added:          89
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              930
+== verify/0008.log
+#41438	DONE   cov: 15310 ft: 32552 corp: 518/126Mb lim: 927764 exec/s: 68 rss: 886Mb
+Done 41438 runs in 601 second(s)
+stat::number_of_executed_units: 41438
+stat::average_exec_per_sec:     68
+stat::new_units_added:          95
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              886
+== verify/0009.log
+#43103	DONE   cov: 15313 ft: 32820 corp: 534/132Mb lim: 927764 exec/s: 71 rss: 952Mb
+Done 43103 runs in 601 second(s)
+stat::number_of_executed_units: 43103
+stat::average_exec_per_sec:     71
+stat::new_units_added:          101
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              952
+== verify/0010.log
+#42637	DONE   cov: 15323 ft: 32864 corp: 530/130Mb lim: 927840 exec/s: 70 rss: 930Mb
+Done 42637 runs in 601 second(s)
+stat::number_of_executed_units: 42637
+stat::average_exec_per_sec:     70
+stat::new_units_added:          69
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              930
+== verify/0011.log
+#33050	DONE   cov: 15322 ft: 32717 corp: 539/135Mb lim: 927783 exec/s: 54 rss: 920Mb
+Done 33050 runs in 601 second(s)
+stat::number_of_executed_units: 33050
+stat::average_exec_per_sec:     54
+stat::new_units_added:          67
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              920
+== verify/0012.log
+#46817	DONE   cov: 15326 ft: 32902 corp: 543/134Mb lim: 927816 exec/s: 77 rss: 926Mb
+Done 46817 runs in 601 second(s)
+stat::number_of_executed_units: 46817
+stat::average_exec_per_sec:     77
+stat::new_units_added:          93
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              926
+== verify/0013.log
+#51872	DONE   cov: 15326 ft: 32923 corp: 559/141Mb lim: 927911 exec/s: 86 rss: 945Mb
+Done 51872 runs in 601 second(s)
+stat::number_of_executed_units: 51872
+stat::average_exec_per_sec:     86
+stat::new_units_added:          77
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              945
+== verify/0014.log
+#40523	DONE   cov: 15326 ft: 33029 corp: 568/143Mb lim: 927835 exec/s: 67 rss: 925Mb
+Done 40523 runs in 601 second(s)
+stat::number_of_executed_units: 40523
+stat::average_exec_per_sec:     67
+stat::new_units_added:          60
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              925
+== verify/0015.log
+#41517	DONE   cov: 15326 ft: 33027 corp: 575/144Mb lim: 927873 exec/s: 69 rss: 957Mb
+Done 41517 runs in 601 second(s)
+stat::number_of_executed_units: 41517
+stat::average_exec_per_sec:     69
+stat::new_units_added:          63
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              957
+== verify/0016.log
+#42072	DONE   cov: 15328 ft: 33019 corp: 581/146Mb lim: 927892 exec/s: 70 rss: 956Mb
+Done 42072 runs in 601 second(s)
+stat::number_of_executed_units: 42072
+stat::average_exec_per_sec:     70
+stat::new_units_added:          59
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              956
+== verify/0017.log
+#46461	DONE   cov: 15340 ft: 33097 corp: 577/146Mb lim: 927892 exec/s: 77 rss: 921Mb
+Done 46461 runs in 601 second(s)
+stat::number_of_executed_units: 46461
+stat::average_exec_per_sec:     77
+stat::new_units_added:          62
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              921
+== verify/0018.log
+#42929	DONE   cov: 15341 ft: 33040 corp: 585/146Mb lim: 927930 exec/s: 71 rss: 933Mb
+Done 42929 runs in 601 second(s)
+stat::number_of_executed_units: 42929
+stat::average_exec_per_sec:     71
+stat::new_units_added:          46
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              933
+== verify/0019.log
+#40635	DONE   cov: 15343 ft: 33079 corp: 586/146Mb lim: 927892 exec/s: 67 rss: 937Mb
+Done 40635 runs in 601 second(s)
+stat::number_of_executed_units: 40635
+stat::average_exec_per_sec:     67
+stat::new_units_added:          52
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              937
+== verify/0020.log
+#43723	DONE   cov: 15344 ft: 33134 corp: 599/145Mb lim: 927892 exec/s: 72 rss: 938Mb
+Done 43723 runs in 601 second(s)
+stat::number_of_executed_units: 43723
+stat::average_exec_per_sec:     72
+stat::new_units_added:          54
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              938
+== verify/0021.log
+#41835	DONE   cov: 15342 ft: 33055 corp: 595/149Mb lim: 927949 exec/s: 69 rss: 966Mb
+Done 41835 runs in 601 second(s)
+stat::number_of_executed_units: 41835
+stat::average_exec_per_sec:     69
+stat::new_units_added:          48
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              966
+== verify/0022.log
+#46268	DONE   cov: 15342 ft: 33116 corp: 589/145Mb lim: 927892 exec/s: 76 rss: 938Mb
+Done 46268 runs in 601 second(s)
+stat::number_of_executed_units: 46268
+stat::average_exec_per_sec:     76
+stat::new_units_added:          52
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              938
+== verify/0023.log
+#45329	DONE   cov: 15344 ft: 33188 corp: 599/150Mb lim: 927892 exec/s: 75 rss: 958Mb
+Done 45329 runs in 601 second(s)
+stat::number_of_executed_units: 45329
+stat::average_exec_per_sec:     75
+stat::new_units_added:          47
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              958
+== verify/0024.log
+#43687	DONE   cov: 15344 ft: 33212 corp: 597/149Mb lim: 927930 exec/s: 72 rss: 955Mb
+Done 43687 runs in 602 second(s)
+stat::number_of_executed_units: 43687
+stat::average_exec_per_sec:     72
+stat::new_units_added:          43
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              955
+== verify/0025.log
+#48889	DONE   cov: 15344 ft: 33187 corp: 594/144Mb lim: 927949 exec/s: 81 rss: 942Mb
+Done 48889 runs in 601 second(s)
+stat::number_of_executed_units: 48889
+stat::average_exec_per_sec:     81
+stat::new_units_added:          46
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              942
+== verify/0026.log
+#46984	DONE   cov: 15342 ft: 33191 corp: 601/154Mb lim: 927892 exec/s: 78 rss: 962Mb
+Done 46984 runs in 601 second(s)
+stat::number_of_executed_units: 46984
+stat::average_exec_per_sec:     78
+stat::new_units_added:          51
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              962
+== verify/0027.log
+#39372	DONE   cov: 15344 ft: 33244 corp: 623/151Mb lim: 927873 exec/s: 65 rss: 952Mb
+Done 39372 runs in 601 second(s)
+stat::number_of_executed_units: 39372
+stat::average_exec_per_sec:     65
+stat::new_units_added:          49
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              952
+== verify/0028.log
+#37864	DONE   cov: 15344 ft: 33250 corp: 609/145Mb lim: 927949 exec/s: 63 rss: 953Mb
+Done 37864 runs in 601 second(s)
+stat::number_of_executed_units: 37864
+stat::average_exec_per_sec:     63
+stat::new_units_added:          28
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              953
+== verify/0029.log
+#42721	DONE   cov: 15344 ft: 33251 corp: 613/151Mb lim: 927949 exec/s: 71 rss: 947Mb
+Done 42721 runs in 601 second(s)
+stat::number_of_executed_units: 42721
+stat::average_exec_per_sec:     71
+stat::new_units_added:          36
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              947
+== verify/0030.log
+#48338	DONE   cov: 15342 ft: 33231 corp: 611/149Mb lim: 927968 exec/s: 80 rss: 944Mb
+Done 48338 runs in 601 second(s)
+stat::number_of_executed_units: 48338
+stat::average_exec_per_sec:     80
+stat::new_units_added:          36
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              944
+== verify/0031.log
+#41259	DONE   cov: 15342 ft: 33278 corp: 610/152Mb lim: 927968 exec/s: 68 rss: 938Mb
+Done 41259 runs in 601 second(s)
+stat::number_of_executed_units: 41259
+stat::average_exec_per_sec:     68
+stat::new_units_added:          35
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              938
+== verify/0032.log
+#42259	DONE   cov: 15342 ft: 33253 corp: 617/150Mb lim: 927911 exec/s: 70 rss: 944Mb
+Done 42259 runs in 601 second(s)
+stat::number_of_executed_units: 42259
+stat::average_exec_per_sec:     70
+stat::new_units_added:          42
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              944
+== verify/0033.log
+#39546	DONE   cov: 15345 ft: 33030 corp: 616/153Mb lim: 927892 exec/s: 65 rss: 962Mb
+Done 39546 runs in 601 second(s)
+stat::number_of_executed_units: 39546
+stat::average_exec_per_sec:     65
+stat::new_units_added:          35
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              962
+== verify/0034.log
+#39110	DONE   cov: 15345 ft: 33255 corp: 612/150Mb lim: 927911 exec/s: 65 rss: 922Mb
+Done 39110 runs in 601 second(s)
+stat::number_of_executed_units: 39110
+stat::average_exec_per_sec:     65
+stat::new_units_added:          30
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              922
+== verify/0035.log
+#39478	DONE   cov: 15347 ft: 33204 corp: 615/149Mb lim: 927930 exec/s: 69 rss: 948Mb
+Done 39478 runs in 569 second(s)
+stat::number_of_executed_units: 39478
+stat::average_exec_per_sec:     69
+stat::new_units_added:          27
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              948

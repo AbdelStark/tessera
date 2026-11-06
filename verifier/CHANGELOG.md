@@ -6,7 +6,7 @@ All notable changes to the verifier release train are recorded here: the crates 
 
 ### Added
 
-- Claim-list validation and complete NI-driver fuzz targets, exact tamper-case oracles, and an actual-CPU-time campaign runner ([#185](https://github.com/AbdelStark/tessera/issues/185), RFC-0019, SP-8). The 24 CPU-hour campaign and release qualification remain pending.
+- Claim-list validation and complete NI-driver fuzz targets, exact tamper-case oracles, and an actual-CPU-time campaign runner ([#185](https://github.com/AbdelStark/tessera/issues/185), RFC-0019, SP-8). The 24 CPU-hour AddressSanitizer campaign ran clean on `20df783` (24.004 CPU-hours, every target at its budget, no failure); its report, controller record, identities and minimized corpus are in `docs/testing/fuzz-campaign-2026-10-29/`. Release qualification still waits on #182 and second-maintainer review.
 
 ### Fixed
 
