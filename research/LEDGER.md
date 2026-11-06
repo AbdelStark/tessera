@@ -6,11 +6,23 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 
 | Kind | Next identifier |
 |---|---|
-| Survey | SUR-0017 |
-| Idea | IDEA-0043 |
-| Experiment | EXP-0032 |
+| Survey | SUR-0018 |
+| Idea | IDEA-0044 |
+| Experiment | EXP-0033 |
 
 ## Queue
+
+Current table-side performance unit (2026-11-06): [#691](https://github.com/AbdelStark/tessera/issues/691).
+
+- **Survey.** [SUR-0017](surveys/SUR-0017-structured-table-fractions.md) prices the current bounded table path at `1 + Σ_{t=c}^{h−1} 4·(1 + c_t)` leaf scans per generated tree (E0, code reading). That is at least 41 scans of 2^30 leaves for `Range{30}`'s 66 lookups. Range is 33.7% of the real 1B table rows.
+- **Idea.** [IDEA-0043](ideas/IDEA-0043-structured-range-fractions.md) is `triaged`: exact structured bottom levels for Range trees, admissible under INV-ARCH-2 as written.
+- **Experiment.** [EXP-0032](experiments/EXP-0032-structured-range-fractions/README.md) is `planned` and frozen before code.
+
+Next feasible unit: verify the committed registration, then build and run the E0 harness. No gain is credited before its verdict. Separate seeds:
+
+- O4: one level read for four operands, all generated tables, implementation only;
+- V1: piecewise-constant valued tables, new registration;
+- C1: sublinear cached level, needs an INV-ARCH-2 amendment.
 
 Current grouped runtime prerequisite (2026-11-05): [#687](https://github.com/AbdelStark/tessera/issues/687) follows merged component bounds through #685. [IDEA-0042](ideas/IDEA-0042-bounded-grouped-source.md) is `promoted` to Accepted [RFC-0077](../docs/rfcs/RFC-0077-bounded-grouped-checkpoint-sources.md); [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) is `done: validated` in its frozen finite E0/E1 scope. Canonical synthetic source/merge equality and allocation controls pass, including all twelve registered faults and two phase/geometry regression controls. The conditional all-input contract and full phase inventory keep actual factory/cache/replay/native/opening/publication work explicit. Next feasible unit: merge the authorized RFC decision after CI, then implement the canonical bounded factory and complete physical composition in a separate tracked issue. Both physical guards remain intact; no production admission, real-model acceptance, fidelity, RSS, speed or GPU credit. This correctness prerequisite precedes the historical performance queue.
 
@@ -89,6 +101,7 @@ Upstream on 2026-10-19 (`gh issue list`): every issue the loop fed upstream is c
 | ID | Topic | Status | Date | Ideas seeded |
 |---|---|---|---|---|
 | [SUR-0016](surveys/SUR-0016-weight-mask-draw-cost.md) | `hash`: complete weight-mask draws and the missing XOF rate (#568) | `current (2026-10-29)` | 2026-10-29 | full-support bounded regeneration; matched secret-store comparison; separately gated support exclusion |
+| [SUR-0017](surveys/SUR-0017-structured-table-fractions.md) | `lookups`: structured evaluation of generated table fraction trees (#691) | `current (2026-11-06)` | 2026-11-06 | C0 structured Range bottom levels; O4 single level read; V1 piecewise-constant valued tables; C1 sublinear cached level (INV-ARCH-2) |
 | [SUR-0015](surveys/SUR-0015-witness-multiplicity-storage.md) | `passes`: bounded complete witness multiplicities for #112 | `stale` | 2026-10-20 | bounded dense/sorted/windowed counters |
 | [SUR-0014](surveys/SUR-0014-gadget-column-contract.md) | `compiler`: exact gadget column/lookup contract for #106/#407 | `current (2026-10-19)` | 2026-10-19 | IDEA-0036 |
 | [SUR-0001](surveys/SUR-0001-proximity.md) | `proximity`: proximity gaps, `τ` and proof size | `current (2026-10-16)` | 2026-10-16 | 7 |
@@ -170,6 +183,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | [IDEA-0041](ideas/IDEA-0041-uniform-requant.md) | Common public Requant family at incompatible layer sites | correctness/coverage; canonical tables/advice | 0 credited gain | `promoted` | [EXP-0029](experiments/EXP-0029-uniform-requant/README.md) done: validated | [RFC-0076](../docs/rfcs/RFC-0076-uniform-requant-families.md) supplies N1–N6 and exact public rules; actual counts/budget, independent implementation and full proof remain mandatory; maintainer acceptance waives the additional non-author review. |
 
 | [IDEA-0042](ideas/IDEA-0042-bounded-grouped-source.md) | Bounded canonical grouped sources and complete lifetime contract | correctness/source memory | 0 credited gain | `promoted` | [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) done: validated, finite E0/E1 | RFC-0077; canonical production factory and complete phase admission remain mandatory. |
+| [IDEA-0043](ideas/IDEA-0043-structured-range-fractions.md) | Exact structured bottom levels for Range table fraction trees | `regen` (table side) | not credited before EXP-0032 | `triaged` | [EXP-0032](experiments/EXP-0032-structured-range-fractions/README.md) planned, E0 | Identical messages by construction; INV-ARCH-2 as written; Range is 33.7% of real 1B table rows. |
 
 ## Experiments
 
@@ -212,6 +226,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | [EXP-0022](experiments/EXP-0022-two-level-opening-coupling/README.md) | Does two-level equation coupling preserve all original obligations under an ideal PCS, including batching exceptions? | IDEA-0035 | `done: validated` | 72 shapes,1,152 originals,4,608 two-level fixtures,18,432 honest reductions,164 controls and20 balanced cases pass | E0 conditional finite result;26,249,084 judgments/211,154,672 metered ops; independent119,408-check recount. No extractor/G-4/FS/joint-ZK/concrete-PCS/current-cost claim |
 
 | [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) | Canonical group regeneration, merge callbacks and public lifetime feasibility | IDEA-0042 / #687 | `done: validated` | finite criteria passed | E0: 42 source/merge cases, 164 groups, 43,372 indices, 285 cuts, 14 compiled faults and restored controls; E1 requested allocations; no complete factory, real-model or timing claim. |
+| [EXP-0032](experiments/EXP-0032-structured-range-fractions/README.md) | Structured Range bottom levels against the dense level sumcheck | IDEA-0043 / #691 | `planned` | frozen before code | E0: exact `Fp2` grid h ≤ 10, independent checker, seven faults, counted multiplications on 21 real Range instances. |
 
 ## Iteration log
 
@@ -335,3 +350,4 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-11-05 | #687 / autoresearch ideate and registration | IDEA-0042 self-triaged; EXP-0031 planned and frozen before code. Canonical group regeneration, request-slot/held-role/forest coordinates, merge buffers and public lifetime controls; all-input contract argument required before RFC promotion. SUR-0015 marked stale because its complete-witness-path trigger fired. Next: verify committed registration, then build the isolated synthetic prototype. No production admission or measured gain. |
 
 | 2026-11-05 | #687 / EXP-0031 result and RFC-0077 | Frozen finite E0/E1 criteria pass: 42 cases, 164 groups, 43,372 index records, six negative shapes, all 285 merge cuts and all requested allocation controls. Twelve registered compiled faults plus two phase/geometry regressions caught; original/restored controls pass. Restricted-block split evaluation replaces premature original materialization; empty-S whole sources remain charged. Contract proof and full unknown-owner inventory support RFC-0077, not production admission. Next: RFC decision then bounded canonical factory/full composition. |
+| 2026-11-06 | #691 / autoresearch survey, ideate and registration | SUR-0017 records the current scan formula (verified at `trees/bounded.rs` and `table_plan.rs`), the real Range share (33.7% of 5,536,481,870 rows) and primary sources with limits ([BGS07] abstract level only). IDEA-0043 self-triaged; EXP-0032 planned and frozen (SHA-256 `5bf4612f…`) before code. Next: commit the registration, then run the E0 harness. No measured or credited gain. |
