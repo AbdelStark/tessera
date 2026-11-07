@@ -1,0 +1,6 @@
+N = 8: 6 / 100000
+N = 16: 12 / 100000
+N = 32: 52 / 100000
+N = 64: 167 / 100000
+fewer than 10 failures at some N: inconclusive by the criterion
+slope s = 1.651, 95% bootstrap interval [1.358, 2.178]
