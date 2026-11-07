@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `planned` |
+| Status | `done: validated` |
 | Idea | [IDEA-0044](../../ideas/IDEA-0044-tensor-generator-epoch-rank.md) |
 | Evidence level | E0 (exact arithmetic over small prime fields; a measured rate, not a proof) |
 | Hardware | Apple M4 Max CPU, macOS; no GPU needed |
@@ -59,20 +59,44 @@ cd research/experiments/EXP-0034-epoch-rank-scaling
 cargo run --release > results/run.txt
 ```
 
-Environment: Apple M4 Max, macOS 26, `rustc`. Not run.
+Environment: Apple M4 Max (16 cores), macOS 26.6.2, `rustc 1.95.0`, 2026-11-07; source `main` at `2267668` plus this directory. One run, 107.5 s wall, 15 MB peak RSS. Raw output: [results/run.txt](results/run.txt).
 
 ## Results
 
-Not run.
+The controls all pass:
+1. The rank routine agrees with brute force on all 10,000 matrices.
+2. G-T at real points fails on all 10,000 trials.
+3. G-U at `p = 127, N = 2` fails on none.
+4. G-U at `p = 7, N = 64` fails on none.
+
+Each cell below gives the failures out of `10^4` trials, then the linear expectation `x`, then the pre-registered limit `max(10, 2x)` (E0, exact counts):
+
+| Generator | `Dn` | `p` | `N = 16` | `N = 32` | `N = 64` |
+|---|---:|---:|---|---|---|
+| G-T | 0 | 7 | 5 / 5.4 / 10.7 | 9 / 10.7 / 21.4 | 13 / 21.4 / 42.9 |
+| G-T | 0 | 11 | 0 / 0.4 / 10.0 | 0 / 0.8 / 10.0 | 3 / 1.5 / 10.0 |
+| G-T | 0 | 19 | 0 / 0.0 / 10.0 | 0 / 0.0 / 10.0 | 0 / 0.0 / 10.0 |
+| G-T | 3 | 7 | 3 / 2.3 / 10.0 | 7 / 4.6 / 10.0 | 17 / 9.1 / 18.2 |
+| G-T | 3 | 11 | 0 / 0.1 / 10.0 | 2 / 0.2 / 10.0 | 1 / 0.5 / 10.0 |
+| G-T | 3 | 19 | 0 / 0.0 / 10.0 | 0 / 0.0 / 10.0 | 0 / 0.0 / 10.0 |
+| G-T1 | 0, 3 | 7, 11, 19 | 0 | 0 | 0 |
 
 ## Analysis
 
-Not run.
+**The criterion is met.** Every cell is within its limit, and G-T1 had no failure in `1.8×10^5` trials, at `ϑ` up to 9 and up to 64 sessions.
+
+**The tightest cell.** G-T at `N = 64`, `Dn = 3`, `p = 7` had 17 failures against `x = 9.1` and a limit of 18.2. At `Dn = 0` the same column is below its expectation (13 against 21.4). One cell at 1.9× its linear expectation is within this run's counting noise, but it is not evidence of sublinear growth either. A sharper look at `p = 7`, `Dn = 3` with `10^5` trials per `N` would settle the slope.
+
+**Threats to validity.**
+- Everything EXP-0033 lists still applies: a measurement, not a proof; E is necessary for a leak, not sufficient; only the vector views are modeled.
+- `10^4` trials per cell resolves only the smallest primes. At `p ≥ 19` both generators had no failures, which bounds the rate only loosely.
+- `N = 64` and `ϑ = 9` are still far from 405B's `N = 681` and `ϑ_T = 18`.
 
 ## Verdict
 
-Not run.
+`validated`. Up to 64 sessions, the tensor generator's rank loss grows no faster than linearly in `N`, within the registered tolerance. This is the form a per-session bound summed over sessions needs. Under R1 there were no failures. IDEA-0044 stays `validated`; its lemma remains queue item 0.
 
 ## Follow-ups
 
-Not run.
+- **The slope at `Dn = 3`.** The tightest cell (`N = 64`, `Dn = 3`, `p = 7`) with `10^5` trials per `N`, to measure the slope rather than bound it.
+- **The lemma** (queue item 0), which is what decides #394.
