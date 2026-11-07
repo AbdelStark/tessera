@@ -8,7 +8,7 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 |---|---|
 | Survey | SUR-0018 |
 | Idea | IDEA-0045 |
-| Experiment | EXP-0036 |
+| Experiment | EXP-0037 |
 
 ## Queue
 
@@ -34,7 +34,7 @@ Upstream on 2026-10-19 (`gh issue list`): every issue the loop fed upstream is c
 
 | # | Action | Mode | Why | Feasible here |
 |---|---|---|---|---|
-| 0 | #394/#145: measure how EXP-0035's faster-than-linear growth in sessions scales with `p` (`j/q` against `j/p` per session; p = 7, 11, 19; N = 16–128; ≥ 30 failures per cell), then write Lemma 7 for the tensor generator under R1 with a span-dependent term, or record that R2 is needed | experiment → ideate | EXP-0035 shows a per-session rate growing with the span at p = 7; a `j/p` term would make R2 necessary at 405B | yes; maintainer review for adoption |
+| 0 | #394/#145: write Lemma 7 for the tensor generator under R1: the exact `1/q` straddle term plus an analytic bound on the span-dependent events, which EXP-0036 finds of high order in `1/p` (0 at p = 19 against 54–87 expected under `1/q`) | ideate → promote | Theorem 2 and IDEA-0043 need an epoch argument; until it exists R2 is the safe choice for #394 | yes; maintainer review for adoption |
 | 0a | #470: settle IDEA-0043's zero-knowledge gate (a context commitment opened across sessions, with #145's simulator) and write the chain check's adversarial cases (a chunk whose predecessor was never accepted, a substituted root, a reordered chain: the Jolt/OpenVM class of SUR-0017), then re-register EXP-0032's chunk model with its per-proof constant | ideate → promote | Statements above 24K tokens and the 128K target need it; no other mechanism found | yes for the analysis and tests; #145 for the simulator |
 | 0 | Review draft [RFC-0075](../docs/rfcs/RFC-0075-weight-mask-cost.md), #568's full-support regeneration/accounting decision from EXP-0028, preserving #394/#145 prerequisites | review | EXP-0028 validates the finite accounting domain. The draft selects bounded regeneration, complete W and separate core/total gates; no blinder-exclusion credit, GPU rate or baseline ZK approval | maintainer decision; E2 needs #38 |
 | 1 | RFC-0070 drafts the RFC #489 asks for, from [IDEA-0040](ideas/IDEA-0040-batched-mask-opening.md) and [EXP-0027](experiments/EXP-0027-batched-mask-opening/README.md): `M`'s layout, `S` over `Fp2` on it, the order and labels, one group, `G(r)` under `…/evals`, the calculator's sizes, Lemma 4a and R11 | promoted | It settles both gaps the independent reading raised and counts its two soundness terms. Owed: implementation (#148, #149, #159) and #162's negative controls. Follow-ups: OQ-0070-1 (a smaller pad, L3 with a rank lemma) and OQ-0070-2 (the column and fold masks' groups) | yes |
@@ -221,6 +221,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | [EXP-0033](experiments/EXP-0033-tensor-generator-epoch-rank/README.md) | Rank loss of the tensor proximity generator on an epoch's blinding rows | IDEA-0044 / #394 | `done: validated` | validated | E0: 264 cells × 10^6 exact trials, controls pass; no `1/p` rate in any layout |
 | [EXP-0034](experiments/EXP-0034-epoch-rank-scaling/README.md) | Growth of the tensor generator's epoch rank loss with the number of sessions | IDEA-0044 / #394 | `done: validated` | validated | E0: 36 cells × 10^4 up to N = 64, ϑ = 9; G-T within 2× linear-in-N growth (tightest 17 vs 18.2), G-T1 none |
 | [EXP-0035](experiments/EXP-0035-epoch-rank-slope/README.md) | Slope in sessions of the tensor generator's epoch rank loss | IDEA-0044 / #394 | `done: inconclusive` | inconclusive (N = 8 count 6 < 10); refutation signal holds | E0: slope in N 1.65, 95% interval [1.36, 2.18]: faster than linear at p = 7 |
+| [EXP-0036](experiments/EXP-0036-epoch-rank-p-scaling/README.md) | How the epoch rank loss's span term scales with the field | IDEA-0044 / #394 | `done: inconclusive` | inconclusive (zero failures at p = 19; registered fit stopped on them) | E0: 7 → 11 drops 13–22×; 0 at p = 19 against 54–87 expected under 1/q: span term falls faster than 1/q (post hoc) |
 
 ## Iteration log
 
@@ -348,3 +349,4 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-11-07 | #394 / IDEA-0044 and EXP-0033 | Pre-registered and ran the tensor proximity generator's epoch rank test on RFC-0012/0065's blinding layout: G-T rank loss falls as `p^{-2}` or faster (exponents 2.03–4.53), the `p^{-2}` row an exact `1/q` straddle event; G-T1 (R1) 2 failures in 8.8×10^7, G-U none. Validated (E0, measured, not proved). Next: write the lemma for the simulator argument |
 | 2026-11-07 | #394 / EXP-0034 | Scaling check of EXP-0033 to N = 16–64 sessions (ϑ up to 9): G-T rank loss stays within 2× of linear growth from N = 8 in every cell (tightest 17 failures against a limit of 18.2), G-T1 none in 1.8×10^5 trials. Validated (E0). The lemma remains queue item 0 |
 | 2026-11-07 | #394 / EXP-0035 | Slope in sessions of the epoch rank loss (G-T, Dn = 3, p = 7, N = 8–64, 10^5 each): 1.65, interval [1.36, 2.18]; inconclusive as registered (6 failures at N = 8), but growth is faster than linear, so a summed fixed per-session bound is not supported. Queue item 0 now measures the p-scaling of the span term first; until then R2 is the safe choice for #394 |
+| 2026-11-07 | #394 / EXP-0036 | p-scaling of the epoch rank loss's span term (G-T, Dn = 3, N = 16–64, p = 7, 11, 19): inconclusive as registered (zero failures at p = 19, registered fit stopped on them); post hoc, the rate drops 13–22× from 7 to 11 and vanishes at 19 against 54–87 expected under 1/q, so EXP-0035's span term is a small-field effect of high order in 1/p. Queue item 0 is the lemma again; R2 stays the safe choice until it exists |
