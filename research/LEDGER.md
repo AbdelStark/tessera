@@ -8,7 +8,7 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 |---|---|
 | Survey | SUR-0018 |
 | Idea | IDEA-0045 |
-| Experiment | EXP-0034 |
+| Experiment | EXP-0035 |
 
 ## Queue
 
@@ -219,6 +219,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) | Canonical group regeneration, merge callbacks and public lifetime feasibility | IDEA-0042 / #687 | `done: validated` | finite criteria passed | E0: 42 source/merge cases, 164 groups, 43,372 indices, 285 cuts, 14 compiled faults and restored controls; E1 requested allocations; no complete factory, real-model or timing claim. |
 | [EXP-0032](experiments/EXP-0032-chunk-proof-sizes/README.md) | Exact advice rows of 405B requests and a chunk plan under the 4 GiB gate | IDEA-0043 / #470 | `done: refuted` | refuted as registered (two-term fit 18.2% off at 4K); plan criterion met | E1: nine exact `ModelAdviceLayout` row counts 4K–64K, RFC-0057's three reproduced; E0 bytes |
 | [EXP-0033](experiments/EXP-0033-tensor-generator-epoch-rank/README.md) | Rank loss of the tensor proximity generator on an epoch's blinding rows | IDEA-0044 / #394 | `done: validated` | validated | E0: 264 cells × 10^6 exact trials, controls pass; no `1/p` rate in any layout |
+| [EXP-0034](experiments/EXP-0034-epoch-rank-scaling/README.md) | Growth of the tensor generator's epoch rank loss with the number of sessions | IDEA-0044 / #394 | `done: validated` | validated | E0: 36 cells × 10^4 up to N = 64, ϑ = 9; G-T within 2× linear-in-N growth (tightest 17 vs 18.2), G-T1 none |
 
 ## Iteration log
 
@@ -344,3 +345,4 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-11-05 | #687 / EXP-0031 result and RFC-0077 | Frozen finite E0/E1 criteria pass: 42 cases, 164 groups, 43,372 index records, six negative shapes, all 285 merge cuts and all requested allocation controls. Twelve registered compiled faults plus two phase/geometry regressions caught; original/restored controls pass. Restricted-block split evaluation replaces premature original materialization; empty-S whole sources remain charged. Contract proof and full unknown-owner inventory support RFC-0077, not production admission. Next: RFC decision then bounded canonical factory/full composition. |
 | 2026-11-06 | #470 / autoresearch survey, ideate and EXP-0032 | SUR-0017 finds no system that binds a KV cache across separately verified proofs (zkComposer only within one Hyrax session) and two 2026 cross-proof binding breaks (Jolt, OpenVM). IDEA-0043 triaged: binary-aligned chunks, per-chunk context commitments under RFC-0012 rules, roots chained in the statement. EXP-0032: exact rows at nine sizes, controls exact; refuted as registered (needs a per-proof constant, about 36,800 rows), kill criterion not met: 128K in 31 proofs of at most 3.94 GiB, 109.6 GB in all (E0 bytes) |
 | 2026-11-07 | #394 / IDEA-0044 and EXP-0033 | Pre-registered and ran the tensor proximity generator's epoch rank test on RFC-0012/0065's blinding layout: G-T rank loss falls as `p^{-2}` or faster (exponents 2.03–4.53), the `p^{-2}` row an exact `1/q` straddle event; G-T1 (R1) 2 failures in 8.8×10^7, G-U none. Validated (E0, measured, not proved). Next: write the lemma for the simulator argument |
+| 2026-11-07 | #394 / EXP-0034 | Scaling check of EXP-0033 to N = 16–64 sessions (ϑ up to 9): G-T rank loss stays within 2× of linear growth from N = 8 in every cell (tightest 17 failures against a limit of 18.2), G-T1 none in 1.8×10^5 trials. Validated (E0). The lemma remains queue item 0 |
