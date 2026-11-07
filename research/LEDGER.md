@@ -8,7 +8,7 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 |---|---|
 | Survey | SUR-0018 |
 | Idea | IDEA-0045 |
-| Experiment | EXP-0036 |
+| Experiment | EXP-0037 |
 
 ## Queue
 
@@ -221,6 +221,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | [EXP-0033](experiments/EXP-0033-tensor-generator-epoch-rank/README.md) | Rank loss of the tensor proximity generator on an epoch's blinding rows | IDEA-0044 / #394 | `done: validated` | validated | E0: 264 cells × 10^6 exact trials, controls pass; no `1/p` rate in any layout |
 | [EXP-0034](experiments/EXP-0034-epoch-rank-scaling/README.md) | Growth of the tensor generator's epoch rank loss with the number of sessions | IDEA-0044 / #394 | `done: validated` | validated | E0: 36 cells × 10^4 up to N = 64, ϑ = 9; G-T within 2× linear-in-N growth (tightest 17 vs 18.2), G-T1 none |
 | [EXP-0035](experiments/EXP-0035-epoch-rank-slope/README.md) | Slope in sessions of the tensor generator's epoch rank loss | IDEA-0044 / #394 | `done: inconclusive` | inconclusive (N = 8 count 6 < 10); refutation signal holds | E0: slope in N 1.65, 95% interval [1.36, 2.18]: faster than linear at p = 7 |
+| [EXP-0036](experiments/EXP-0036-epoch-rank-p-scaling/README.md) | How the epoch rank loss's span term scales with the field | IDEA-0044 / #394 | `planned` | | E0: G-T, Dn = 3, N = 16–64, p = 7, 11, 19; decides `1/q` against `1/p` |
 
 ## Iteration log
 
