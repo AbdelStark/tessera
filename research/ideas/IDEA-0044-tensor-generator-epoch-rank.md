@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | `triaged` |
+| Status | `validated` |
 | Origin | [#394](https://github.com/AbdelStark/tessera/issues/394); [simulator argument](../../docs/zk/simulator.md) §6.3 and requirement R2; [#145](https://github.com/AbdelStark/tessera/issues/145) |
 | Lever | zero knowledge across a weight epoch (G-5); `regen` (the proximity row's PRG draws, [RFC-0075](../../docs/rfcs/RFC-0075-weight-mask-cost.md)); no Δμ credited |
 | Spec surfaces | None if it holds: RFC-0011 step 3, RFC-0012 and RFC-0049 keep `eq(ξ*_T, row)` over data and blinding rows, and the simulator's Lemma 7 gains a proof for that generator. R2 then becomes one sufficient condition, not a requirement |
@@ -60,6 +60,16 @@ A structured failure at rate about `1/p`: a layout where the tensor generator's 
 ## Cheapest experiment
 
 [EXP-0033](../experiments/EXP-0033-tensor-generator-epoch-rank/README.md): exact rank counts over `Fp2 = Fp[X]/(X^2 + 1)` for eleven primes from 7 to 127, on RFC-0012's and RFC-0065's blinding-row layout. Each run compares the tensor generator with and without R1 against uniform coefficients (R2) in the same harness, and fits the failure exponent. E0 (exact arithmetic), effort `s`. A measured exponent is not a proof, and toy sizes are not 405B's. If the data supports the idea, the next unit is the lemma itself.
+
+## Result
+
+[EXP-0033](../experiments/EXP-0033-tensor-generator-epoch-rank/README.md) is `done: validated` (E0). Over 264 cells of `10^6` exact trials:
+- **G-T.** The tensor generator's rank loss falls as `p^{-2}` or faster in every layout, with fitted exponents 2.03 to 4.53.
+- **Where `p^{-2}` comes from.** The one `p^{-2}` row is the exact `1/q` event of a row coordinate equal to 1 where the blinding block straddles a power of two. At 405B that is about `2^{-114}` per matrix and epoch.
+- **G-T1.** Under R1 there were 2 failures in `8.8×10^7` trials, both at `p = 7`.
+- **G-U.** Uniform coefficients had none.
+
+So §6.3's `2Nϑ/p` does not describe the event. The zero-knowledge gate stays `unknown` until the lemma is written and reviewed.
 
 ## Refutations
 
