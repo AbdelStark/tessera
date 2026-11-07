@@ -75,6 +75,32 @@ So §6.3's `2Nϑ/p` does not describe the event. The zero-knowledge gate stays `
 
 **Further amended by [EXP-0036](../experiments/EXP-0036-epoch-rank-p-scaling/README.md)** (`done: inconclusive` as registered, E0). The span term falls far faster than `1/q`. From `p = 7` to `11` the rate drops 13 to 22 times. At `p = 19` there are no failures in any cell, against 54 to 87 expected under `1/q`. So the faster-than-linear growth is a small-field effect of high order in `1/p`, a post-hoc reading. A per-session bound remains plausible, but only an analytic lemma settles it. R2 stays the safe choice until then.
 
+## Partial argument: one event for the whole epoch
+
+This is proved here, as an E0 derivation, but not reviewed.
+
+**Setting.** It is the vector view of [EXP-0033](../experiments/EXP-0033-tensor-generator-epoch-rank/README.md)'s model.
+- **The rows `Q*`.** These are the blinding rows that are neither an evaluation pair `β_i` nor a proximity pair `F_i`: the mask rows `R_W`, the unreserved rows and the link rows. There are `|Q*| = B − 4N = 2N + 8` of them.
+- **The vectors `e(x)`.** Write `e(x) = (eq(x, Dn + r))_{r ∈ Q*} ∈ Fp2^{Q*}`, and let `x̄` be the conjugate of `x`, coordinatewise. `eq` has `Fp` coefficients, so `conj(e(x)) = e(x̄)`.
+
+**Claim.** Let `bad_j` be the event that session `j`'s two revealed `Fp` vectors are dependent on the earlier sessions' vectors, including the evaluation rows. `bad_j` is EXP-0033's event E first occurring at session `j`. Then, with or without R1,
+
+`bad_j ⊆ D_N := { the 2N vectors e(ξ_1), e(ξ̄_1), …, e(ξ_N), e(ξ̄_N) are Fp2-linearly dependent }`.
+
+So `P[E] ≤ P[D_N]`, with no union over sessions and no dependence on which sessions complete.
+
+**Proof.**
+1. **Restrict to `Q*`.** A dependency that involves session `j` gives `u ≠ 0` in `Fp^2`, and a vector `v` in the earlier sessions' span, with `v = φ_u ∘ c_j`, where `c_j` is session `j`'s proximity coefficients and `φ_u(z) = u_1·Re z + u_2·Im z`. Restrict both sides to `Q*`. The evaluation rows vanish there. No `F` column is in `Q*`, so neither R1's `(1, X)` nor any other session's own pair appears.
+2. **Write both sides as real parts.** Every non-zero `Fp`-functional on `Fp2` is `Re(θ·)` for a unique `θ ≠ 0`. The left side is `Re(θ·e(ξ_j))` with `θ ≠ 0`. The right side is `Re(Σ_{i<j} θ_i·e(ξ_i))`.
+3. **Remove the real part.** `Re z = (z + z̄)/2` for odd `p`. So the equality becomes `θ·e(ξ_j) + θ̄·e(ξ̄_j) − Σ_{i<j} (θ_i·e(ξ_i) + θ̄_i·e(ξ̄_i)) = 0`. That is an `Fp2`-linear relation with non-zero coefficients on `e(ξ_j)` and `e(ξ̄_j)`. ∎
+
+**A numerical check.** It is an uncommitted harness built on EXP-0033's code, recorded here only as a check of the algebra. Over six configurations it ran `1.2×10^6` trials: G-T and G-T1, `N` from 1 to 16, `p ∈ {7, 11}`. Every one of the 6,498 trials in E was also in `D_N`. `D_N` occurred 7,504 times in all, so for G-T the bound is close to the measured event.
+
+**What remains.** Bound `P[D_N]`: the chance that `2N` conjugate-paired `eq` vectors at uniform points are dependent on `2N + 8` fixed Boolean rows. This statement no longer mentions sessions, generators or adaptivity.
+- **What it contains.** `D_N` contains EXP-0033's exact `1/q` straddle event, so the lemma must carry that term.
+- **Why a direct proof falls short.** A sequential proof needs each pair `(ξ_i, ξ̄_i)` to impose two independent conditions on the multilinear functions supported on `Q*` that vanish at the earlier points. That space has dimension at least 10. A single 2×2 determinant gives only Schwartz–Zippel's `2ϑ/p` over `Fp`, because `ξ̄` is not independent of `ξ`.
+- **What would finish it.** A codimension-2 argument for the conjugate pair over that space. [EXP-0036](../experiments/EXP-0036-epoch-rank-p-scaling/README.md)'s rapid decay with `p` suggests that one exists.
+
 ## Refutations
 
 None yet.
