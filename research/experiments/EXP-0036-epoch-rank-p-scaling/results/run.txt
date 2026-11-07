@@ -1,0 +1,14 @@
+control 1 (rank = brute force, 10,000 matrices at p = 3): pass
+control 2 (G-T at real points, p = 31, N = 2): 10000/10000 in E: pass
+control 3 (G-U, p = 127, N = 2): 0/10000 in E: pass
+
+generator N Dn p trials failures
+T 16 3 7 2000000 401
+T 16 3 11 2000000 30
+T 16 3 19 2000000 0
+T 32 3 7 1000000 576
+T 32 3 11 1000000 32
+T 32 3 19 1000000 0
+T 64 3 7 400000 638
+T 64 3 11 400000 29
+T 64 3 19 400000 0

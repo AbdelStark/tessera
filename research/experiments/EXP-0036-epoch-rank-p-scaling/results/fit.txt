@@ -1,0 +1,9 @@
+smallest cell count: 0 (below 20: inconclusive by the criterion)
+Traceback (most recent call last):
+  File "/Users/abdel/dev/tessera/research/experiments/EXP-0036-epoch-rank-p-scaling/fit.py", line 46, in <module>
+    main(sys.argv[1])
+    ~~~~^^^^^^^^^^^^^
+  File "/Users/abdel/dev/tessera/research/experiments/EXP-0036-epoch-rank-p-scaling/fit.py", line 35, in main
+    a = exponent([(math.log(p), math.log(f / t)) for p, t, f in row])
+                                ~~~~~~~~^^^^^^^
+ValueError: expected a positive input, got 0.0

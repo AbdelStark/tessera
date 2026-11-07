@@ -73,6 +73,8 @@ So §6.3's `2Nϑ/p` does not describe the event. The zero-knowledge gate stays `
 
 **Amended by [EXP-0035](../experiments/EXP-0035-epoch-rank-slope/README.md)** (`done: inconclusive`, E0). At `p = 7` the epoch rate grows faster than linearly in the number of sessions: slope 1.65, 95% interval `[1.36, 2.18]`. A fixed per-session rate summed over the epoch is therefore not supported. The lemma needs a term that grows with the span of earlier sessions, and whether that term scales as `1/q` or `1/p` decides between 'near target at 405B' and 'R2 needed'. Until that is measured, R2 is the safe choice.
 
+**Further amended by [EXP-0036](../experiments/EXP-0036-epoch-rank-p-scaling/README.md)** (`done: inconclusive` as registered, E0). The span term falls far faster than `1/q`. From `p = 7` to `11` the rate drops 13 to 22 times. At `p = 19` there are no failures in any cell, against 54 to 87 expected under `1/q`. So the faster-than-linear growth is a small-field effect of high order in `1/p`, a post-hoc reading. A per-session bound remains plausible, but only an analytic lemma settles it. R2 stays the safe choice until then.
+
 ## Refutations
 
 None yet.
