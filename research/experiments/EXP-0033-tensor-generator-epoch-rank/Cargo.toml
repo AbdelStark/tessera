@@ -1,0 +1,15 @@
+[package]
+name = "tensor-generator-epoch-rank"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "tensor-generator-epoch-rank"
+path = "main.rs"
+
+[profile.release]
+debug = false

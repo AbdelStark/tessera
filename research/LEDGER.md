@@ -7,8 +7,8 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 | Kind | Next identifier |
 |---|---|
 | Survey | SUR-0018 |
-| Idea | IDEA-0044 |
-| Experiment | EXP-0033 |
+| Idea | IDEA-0045 |
+| Experiment | EXP-0034 |
 
 ## Queue
 
@@ -34,6 +34,7 @@ Upstream on 2026-10-19 (`gh issue list`): every issue the loop fed upstream is c
 
 | # | Action | Mode | Why | Feasible here |
 |---|---|---|---|---|
+| 0 | #394/#145: write Lemma 7 for the specified tensor generator under R1, using the epoch's spare blinding rows, a per-session sequential bound and the `1/q` straddle term ([EXP-0033](experiments/EXP-0033-tensor-generator-epoch-rank/README.md)); propose it as §6.3's replacement in the simulator argument | ideate → promote | Theorem 2 and IDEA-0043's context commitments need an epoch argument; EXP-0033 finds no `1/p` failure, so R2 is sufficient, not necessary | yes; maintainer review for adoption |
 | 0a | #470: settle IDEA-0043's zero-knowledge gate (a context commitment opened across sessions, with #145's simulator) and write the chain check's adversarial cases (a chunk whose predecessor was never accepted, a substituted root, a reordered chain: the Jolt/OpenVM class of SUR-0017), then re-register EXP-0032's chunk model with its per-proof constant | ideate → promote | Statements above 24K tokens and the 128K target need it; no other mechanism found | yes for the analysis and tests; #145 for the simulator |
 | 0 | Review draft [RFC-0075](../docs/rfcs/RFC-0075-weight-mask-cost.md), #568's full-support regeneration/accounting decision from EXP-0028, preserving #394/#145 prerequisites | review | EXP-0028 validates the finite accounting domain. The draft selects bounded regeneration, complete W and separate core/total gates; no blinder-exclusion credit, GPU rate or baseline ZK approval | maintainer decision; E2 needs #38 |
 | 1 | RFC-0070 drafts the RFC #489 asks for, from [IDEA-0040](ideas/IDEA-0040-batched-mask-opening.md) and [EXP-0027](experiments/EXP-0027-batched-mask-opening/README.md): `M`'s layout, `S` over `Fp2` on it, the order and labels, one group, `G(r)` under `…/evals`, the calculator's sizes, Lemma 4a and R11 | promoted | It settles both gaps the independent reading raised and counts its two soundness terms. Owed: implementation (#148, #149, #159) and #162's negative controls. Follow-ups: OQ-0070-1 (a smaller pad, L3 with a rank lemma) and OQ-0070-2 (the column and fold masks' groups) | yes |
@@ -173,6 +174,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | [IDEA-0042](ideas/IDEA-0042-bounded-grouped-source.md) | Bounded canonical grouped sources and complete lifetime contract | correctness/source memory | 0 credited gain | `promoted` | [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) done: validated, finite E0/E1 | RFC-0077; canonical production factory and complete phase admission remain mandatory. |
 | [IDEA-0043](ideas/IDEA-0043-context-commitments.md) | Context commitments: binary-aligned chunks of a long request linked by committed keys and values | size per proof; statements above 24K tokens | feasibility prerequisite for 128K (#470); no Δμ | `triaged` | [EXP-0032](experiments/EXP-0032-chunk-proof-sizes/README.md) | Kill criterion not met: 128K in 31 proofs of at most 3.94 GiB (E0 bytes on E1 rows). Promotion blocked by the zero-knowledge gate (`unknown` until #145 covers a commitment opened across sessions) and needs the chain-check adversarial tests first |
+| [IDEA-0044](ideas/IDEA-0044-tensor-generator-epoch-rank.md) | Keep the tensor proximity generator for masked weights by proving its epoch rank directly | zero knowledge across an epoch (G-5, R2 of the simulator argument) | correctness prerequisite for Theorem 2 (#145, #394); no Δμ | `validated` | [EXP-0033](experiments/EXP-0033-tensor-generator-epoch-rank/README.md) | E0: rank loss `p^{-2}` or faster in every layout (exponents 2.03–4.53), the `p^{-2}` term an exact `1/q` straddle event; R1 nearly removes it, uniform has none. ZK gate stays `unknown` until the lemma is written and reviewed |
 
 ## Experiments
 
@@ -216,6 +218,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) | Canonical group regeneration, merge callbacks and public lifetime feasibility | IDEA-0042 / #687 | `done: validated` | finite criteria passed | E0: 42 source/merge cases, 164 groups, 43,372 indices, 285 cuts, 14 compiled faults and restored controls; E1 requested allocations; no complete factory, real-model or timing claim. |
 | [EXP-0032](experiments/EXP-0032-chunk-proof-sizes/README.md) | Exact advice rows of 405B requests and a chunk plan under the 4 GiB gate | IDEA-0043 / #470 | `done: refuted` | refuted as registered (two-term fit 18.2% off at 4K); plan criterion met | E1: nine exact `ModelAdviceLayout` row counts 4K–64K, RFC-0057's three reproduced; E0 bytes |
+| [EXP-0033](experiments/EXP-0033-tensor-generator-epoch-rank/README.md) | Rank loss of the tensor proximity generator on an epoch's blinding rows | IDEA-0044 / #394 | `done: validated` | validated | E0: 264 cells × 10^6 exact trials, controls pass; no `1/p` rate in any layout |
 
 ## Iteration log
 
@@ -340,3 +343,4 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | 2026-11-05 | #687 / EXP-0031 result and RFC-0077 | Frozen finite E0/E1 criteria pass: 42 cases, 164 groups, 43,372 index records, six negative shapes, all 285 merge cuts and all requested allocation controls. Twelve registered compiled faults plus two phase/geometry regressions caught; original/restored controls pass. Restricted-block split evaluation replaces premature original materialization; empty-S whole sources remain charged. Contract proof and full unknown-owner inventory support RFC-0077, not production admission. Next: RFC decision then bounded canonical factory/full composition. |
 | 2026-11-06 | #470 / autoresearch survey, ideate and EXP-0032 | SUR-0017 finds no system that binds a KV cache across separately verified proofs (zkComposer only within one Hyrax session) and two 2026 cross-proof binding breaks (Jolt, OpenVM). IDEA-0043 triaged: binary-aligned chunks, per-chunk context commitments under RFC-0012 rules, roots chained in the statement. EXP-0032: exact rows at nine sizes, controls exact; refuted as registered (needs a per-proof constant, about 36,800 rows), kill criterion not met: 128K in 31 proofs of at most 3.94 GiB, 109.6 GB in all (E0 bytes) |
+| 2026-11-07 | #394 / IDEA-0044 and EXP-0033 | Pre-registered and ran the tensor proximity generator's epoch rank test on RFC-0012/0065's blinding layout: G-T rank loss falls as `p^{-2}` or faster (exponents 2.03–4.53), the `p^{-2}` row an exact `1/q` straddle event; G-T1 (R1) 2 failures in 8.8×10^7, G-U none. Validated (E0, measured, not proved). Next: write the lemma for the simulator argument |
