@@ -1,0 +1,3 @@
+fc77ba967c317f5db317c944faef2866b8325679622e1fe86f22973916e656ef  README.preregistered.txt
+
+Frozen 2026-11-07T00:17:31 UTC from README.md, before any code for this experiment existed, and committed before the code.

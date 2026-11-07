@@ -7,8 +7,8 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 | Kind | Next identifier |
 |---|---|
 | Survey | SUR-0018 |
-| Idea | IDEA-0044 |
-| Experiment | EXP-0033 |
+| Idea | IDEA-0045 |
+| Experiment | EXP-0034 |
 
 ## Queue
 
@@ -173,6 +173,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | [IDEA-0042](ideas/IDEA-0042-bounded-grouped-source.md) | Bounded canonical grouped sources and complete lifetime contract | correctness/source memory | 0 credited gain | `promoted` | [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) done: validated, finite E0/E1 | RFC-0077; canonical production factory and complete phase admission remain mandatory. |
 | [IDEA-0043](ideas/IDEA-0043-context-commitments.md) | Context commitments: binary-aligned chunks of a long request linked by committed keys and values | size per proof; statements above 24K tokens | feasibility prerequisite for 128K (#470); no Δμ | `triaged` | [EXP-0032](experiments/EXP-0032-chunk-proof-sizes/README.md) | Kill criterion not met: 128K in 31 proofs of at most 3.94 GiB (E0 bytes on E1 rows). Promotion blocked by the zero-knowledge gate (`unknown` until #145 covers a commitment opened across sessions) and needs the chain-check adversarial tests first |
+| [IDEA-0044](ideas/IDEA-0044-tensor-generator-epoch-rank.md) | Keep the tensor proximity generator for masked weights by proving its epoch rank directly | zero knowledge across an epoch (G-5, R2 of the simulator argument) | correctness prerequisite for Theorem 2 (#145, #394); no Δμ | `triaged` | [EXP-0033](experiments/EXP-0033-tensor-generator-epoch-rank/README.md) | ZK gate `unknown`: §6.3's bound is `2Nϑ/p`; the experiment measures the rank-loss exponent over small primes |
 
 ## Experiments
 
@@ -216,6 +217,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 
 | [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) | Canonical group regeneration, merge callbacks and public lifetime feasibility | IDEA-0042 / #687 | `done: validated` | finite criteria passed | E0: 42 source/merge cases, 164 groups, 43,372 indices, 285 cuts, 14 compiled faults and restored controls; E1 requested allocations; no complete factory, real-model or timing claim. |
 | [EXP-0032](experiments/EXP-0032-chunk-proof-sizes/README.md) | Exact advice rows of 405B requests and a chunk plan under the 4 GiB gate | IDEA-0043 / #470 | `done: refuted` | refuted as registered (two-term fit 18.2% off at 4K); plan criterion met | E1: nine exact `ModelAdviceLayout` row counts 4K–64K, RFC-0057's three reproduced; E0 bytes |
+| [EXP-0033](experiments/EXP-0033-tensor-generator-epoch-rank/README.md) | Rank loss of the tensor proximity generator on an epoch's blinding rows | IDEA-0044 / #394 | `planned` | | E0: exact rank counts over eleven primes, three generators |
 
 ## Iteration log
 
