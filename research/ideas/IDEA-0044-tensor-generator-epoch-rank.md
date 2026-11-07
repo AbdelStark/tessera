@@ -71,6 +71,8 @@ A structured failure at rate about `1/p`: a layout where the tensor generator's 
 
 So §6.3's `2Nϑ/p` does not describe the event. The zero-knowledge gate stays `unknown` until the lemma is written and reviewed.
 
+**Amended by [EXP-0035](../experiments/EXP-0035-epoch-rank-slope/README.md)** (`done: inconclusive`, E0). At `p = 7` the epoch rate grows faster than linearly in the number of sessions: slope 1.65, 95% interval `[1.36, 2.18]`. A fixed per-session rate summed over the epoch is therefore not supported. The lemma needs a term that grows with the span of earlier sessions, and whether that term scales as `1/q` or `1/p` decides between 'near target at 405B' and 'R2 needed'. Until that is measured, R2 is the safe choice.
+
 ## Refutations
 
 None yet.
