@@ -8,7 +8,7 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 |---|---|
 | Survey | SUR-0018 |
 | Idea | IDEA-0045 |
-| Experiment | EXP-0034 |
+| Experiment | EXP-0035 |
 
 ## Queue
 
@@ -219,6 +219,7 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | [EXP-0031](experiments/EXP-0031-bounded-grouped-source/README.md) | Canonical group regeneration, merge callbacks and public lifetime feasibility | IDEA-0042 / #687 | `done: validated` | finite criteria passed | E0: 42 source/merge cases, 164 groups, 43,372 indices, 285 cuts, 14 compiled faults and restored controls; E1 requested allocations; no complete factory, real-model or timing claim. |
 | [EXP-0032](experiments/EXP-0032-chunk-proof-sizes/README.md) | Exact advice rows of 405B requests and a chunk plan under the 4 GiB gate | IDEA-0043 / #470 | `done: refuted` | refuted as registered (two-term fit 18.2% off at 4K); plan criterion met | E1: nine exact `ModelAdviceLayout` row counts 4K–64K, RFC-0057's three reproduced; E0 bytes |
 | [EXP-0033](experiments/EXP-0033-tensor-generator-epoch-rank/README.md) | Rank loss of the tensor proximity generator on an epoch's blinding rows | IDEA-0044 / #394 | `done: validated` | validated | E0: 264 cells × 10^6 exact trials, controls pass; no `1/p` rate in any layout |
+| [EXP-0034](experiments/EXP-0034-epoch-rank-scaling/README.md) | Growth of the tensor generator's epoch rank loss with the number of sessions | IDEA-0044 / #394 | `planned` | | E0: N = 16–64 against EXP-0033's linear extrapolation |
 
 ## Iteration log
 
