@@ -117,7 +117,9 @@ jobs:
   full-suite:
     name: full suite (${{ matrix.workspace }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    # The prover suite builds in about 12 minutes and its tests run past 28 more on the hosted
+    # runner (2026-11-06); at 40 minutes it was cancelled every night (#96).
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:

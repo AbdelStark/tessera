@@ -4,6 +4,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ## [Unreleased]
 
+- Give the nightly's complete prover suite 120 minutes: it builds in about 12 and its tests run past 28 more, so the 40-minute limit cancelled it every night since at least 2026-10-30. A timed-out job now opens the nightly failure issue too: it concludes `cancelled`, which `failure()` did not match, so those nights reported nothing ([#96](https://github.com/AbdelStark/tessera/issues/96), 07 §2).
+
 - Add RFC-0077 scoped canonical group/original sources, clearing native leases, complete grouped physical phase bounds and public candidate search; qualify complete NI/Live proofs across grouping families, slots, padded layers, affine and Minimal fixtures without changing the resident cell floor ([#689](https://github.com/AbdelStark/tessera/issues/689)).
 
 - Validate a finite bounded grouped-source/merge prototype with independent index, value and lifetime controls; adopt RFC-0077’s gated runtime contract while preserving production admission guards and separate model qualification ([#687](https://github.com/AbdelStark/tessera/issues/687)).
