@@ -101,6 +101,14 @@ So `P[E] ≤ P[D_N]`, with no union over sessions and no dependence on which ses
 - **Why a direct proof falls short.** A sequential proof needs each pair `(ξ_i, ξ̄_i)` to impose two independent conditions on the multilinear functions supported on `Q*` that vanish at the earlier points. That space has dimension at least 10. A single 2×2 determinant gives only Schwartz–Zippel's `2ϑ/p` over `Fp`, because `ξ̄` is not independent of `ξ`.
 - **What would finish it.** A codimension-2 argument for the conjugate pair over that space. [EXP-0036](../experiments/EXP-0036-epoch-rank-p-scaling/README.md)'s rapid decay with `p` suggests that one exists.
 
+**A proof route for `P[D_N]`** (a sketch, not a proof).
+1. **Take one session at a time.** Let `W` be the multilinear functions supported on `Q*` that vanish at the earlier points. `D_N` at session `i` needs the two evaluation functionals of `W` at `ξ` and at `ξ̄` to have rank at most 1. That is, every 2×2 minor of `[f_k(ξ); f_k(ξ̄)]` vanishes.
+2. **Condition on all coordinates but one.** Fix every coordinate except `y = ξ_t`. Each `f` is then affine in `y`. Each minor becomes `α + β·y + γ·ȳ + δ·yȳ`, which is a conic in `y`'s two `Fp` coordinates.
+3. **The generic case.** If two minors share no component, Bezout bounds the bad `y` by 4 points, a probability of `4/p^2`.
+4. **The degenerate cases.** Every minor is identically zero in `y`, or all minors are multiples of one conic. Both are conditions on the other coordinates. The step that remains is to show that they force a further coordinate condition of probability `O(1/p)`, by induction on `t`, using `dim W ≥ 10`.
+
+The route would give `P[D_N] = O(N·ϑ^2/p^2)`, near `2^{-110}` at 405B, plus EXP-0033's exact `1/q` straddle term. The constant and the induction are the open work.
+
 ## Refutations
 
 None yet.
