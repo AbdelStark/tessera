@@ -201,7 +201,24 @@ At `N = 681` and `ϑ_T = 18` that is `73,548/p^2`, about `2^{-111.8}`. It holds 
   - **`ChannelParams` needs `c'_k ≠ 0`.** The functionals killing `w_1, …, w_e` and their conjugates are `Φ_k = −Φ_β/c'_k`, with `Φ_β ∈ Fp2` free, which leaves 2 real coordinates. That needs every `c'_k = θ_T·Z(x_k) ≠ 0`. `Z(x_k) ≠ 0` is enforced, and `θ_T = 0` has probability `1/q` per proof.
   - **The cost.** It adds `N/q`, about `2^{-118.4}`. Per matrix, the vector-rank bound is `(N + L)·ε(ϑ, p) + N/q`.
 
-So what is proved, pending human review, is the **vector-rank part** of Lemma 7 for the tensor generator. It holds at about `2^{-111.8}` per matrix under the cap above, which also settles item 2. Item 4 remains, together with the cap decision. The rest of this section states what the full result would settle.
+**Item 4, the scalar clause: a reduction** (E0, not reviewed). It assumes the cap, so that `U ≥ 2L + 3`. That holds: the cap gives `U = 6` and `8` for the weights, and `18` and `32` for `ChannelParams`.
+1. **Scalars are rank-one functionals.** A secret scalar is `⟨r, B·φ⟩`. Here `B` holds the blinding rows' messages, `r` is a complex row direction inside one session's block, and `φ` is an `eq` vector at a column point. Examples are `W'(p_i)` on `R_W(i)`, `q_i` on `β(i)`, and `ChannelParams`' stage values on `β_T` and `R_k`.
+   - **What the revealed rows give.** They reveal every column functional of every row combination in `V_C`, the complex span of the revealed coefficient vectors. Their information is `V_C ⊗ (Fp2^k)*`.
+   - **The leak condition.** A real combination of scalars leaks if `T = Σ_s (α_s·r_s ⊗ φ_s + conj) ∈ V_C ⊗ (Fp2^k)*`, apart from public relations.
+2. **Quotient.** Apply `π∘Ψ ⊗ id`, where `π` is the quotient by `span{G(ξ_j), conj}`, the links included.
+   - **Each row direction lands in its session's plane.** `Ψ` maps session `i`'s block onto a real plane `P_i = span{ψ_i, ψ̄_i}`. Every row direction in the block maps to a complex multiple `κ_s·ψ_i`.
+     - For the weights, `ψ_i = u_0 + X·u_1` for `R_W(i)`, and `−c'·ψ_i` for `β(i)`.
+     - For `ChannelParams`, `R_k ↦ −ψ_i/c'_k`.
+   - **A multiple of zero is a public relation.** It is the evaluation check.
+   - **What `T` becomes.** `T` maps to `Σ_i (πψ_i ⊗ Φ_i + πψ̄_i ⊗ Φ̄_i) = 0`, with `Φ_i = Σ_{s ∈ i} α_s·κ_s·φ_s`, a combination of session `i`'s column functionals.
+3. **Two cases.**
+   - **(A′) Column independence.** Suppose the non-zero `Φ_i` and their conjugates are jointly independent across sessions. Then each `πψ_i` with `Φ_i ≠ 0` is 0, so `P_i` lies in the span of the `G(ξ_j)`. That is case (B). A non-zero combination with every `Φ_i = 0` is a dependence among one session's column functionals, apart from public relations. R10 rules that out per proof (#488, `cargo xtask check-mask-rank`).
+   - **(B) A plane inside the span.** `P_i ⊆ span{G(ξ_j), conj}` means that after quotienting by `P_i`, the `2(N + L)` vectors lose rank 2. A stage can lose 2 at once if `G(ξ_j)` falls in the earlier span plus `P_i`, a quotient with at least 3 coordinates. Schwartz–Zippel on one non-zero coordinate gives `ϑ/p^2`. Otherwise two separate stages each lose 1, each with probability at most `ε` by Lemma B.
+     - **Per plane.** `P[B_i] ≤ (N + L)·ϑ/p^2 + C(N + L, 2)·ε^2`.
+     - **All planes.** A union over the `N` planes gives `P[B] ≤ N(N + L)·ϑ/p^2`, about `2^{-105.0}` per matrix and `2^{-101.7}` over ten matrices. That is under `2^{-100}`, with 1.7 bits of margin.
+4. **What remains: (A′) across sessions.** Different sessions' column points are independent challenges, so the cross-session event is a `D_N`-type event over the column cube. But each session reveals several structured points: the evaluation point, the claim points, and `ChannelParams`' pair-bit points around `x_i`. So it needs Lemma B for a structured point set, which R10 certifies symbolically per proof, not for one uniform point. That lemma is the last open step. The `2^{-101.7}` above is (B) alone.
+
+So what is proved, pending human review, is the **vector-rank part** of Lemma 7 for the tensor generator. It holds at about `2^{-111.8}` per matrix under the cap above, which also settles item 2. Item 4 is reduced to the cross-session column independence (A′) above, with (B) bounded at `2^{-101.7}` over ten matrices. The cap decision remains. The rest of this section states what the full result would settle.
 
 **What it would settle, once items 1 to 4 are closed and review confirms it.**
 - **Lemma 7 for the tensor generator.** The simulator argument's Lemma 7 holds for the tensor generator, with or without R1, at `2^{-111.8}` per matrix and epoch. That clears the `2^{-100}` target, so #394's choice between R2 and RFC-0021's free-row stream is no longer forced by zero knowledge.
