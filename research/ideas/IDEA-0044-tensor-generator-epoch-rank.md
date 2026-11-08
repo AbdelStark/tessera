@@ -85,7 +85,7 @@ This is proved here, as an E0 derivation, but not reviewed.
 
 **Claim.** Let `bad_j` be the event that session `j`'s two revealed `Fp` vectors are dependent on the earlier sessions' vectors, including the evaluation rows. `bad_j` is EXP-0033's event E first occurring at session `j`. Then, with or without R1,
 
-`bad_j ⊆ D_N := { the 2N vectors e(ξ_1), e(ξ̄_1), …, e(ξ_N), e(ξ̄_N) are Fp2-linearly dependent }`.
+`bad_j ⊆ D_N := { the 2N vectors e(ξ_1), e(ξ̄_1), …, e(ξ_N), e(ξ̄_N) are Fp2-linearly dependent }`, read as a list counted with multiplicity, so a real `ξ_j` or a repeated point counts as dependent.
 
 So `P[E] ≤ P[D_N]`, with no union over sessions and no dependence on which sessions complete.
 
@@ -125,7 +125,7 @@ At `N = 681` and `ϑ_T = 18` that is `73,548/p^2`, about `2^{-111.8}`. It holds 
 **Lemma B (one session).** Let `g: Fp2^ϑ → Fp2^3` be multilinear with coefficients in `Fp^3`, and let its three coordinate polynomials be `Fp`-linearly independent. For uniform `ξ`, `P[g(ξ) ∈ R_3] ≤ ε(ϑ, p)`.
 
 *Proof.*
-1. **Choose a coordinate.** For a coordinate `t`, write `g = g_0 + ξ_t·h`, with `g_0` and `h` multilinear in the other coordinates `ξ'`. Let `n = g × h = g_0 × h`, a function of `ξ'`. Some `t` has `n ≢ 0`. Suppose instead that `g × ∂_t g ≡ 0` for every `t`. Change one coordinate at a time from `ξ` to an independent `ζ`. Each step keeps `g` parallel over `Fp2(ξ, ζ)`, every intermediate vector is non-zero, and parallelism between non-zero vectors is transitive. So `g(ξ) ∥ g(ζ)`, the ratios `g_j/g_k` are constants, and the coordinates span one dimension. That contradicts independence. Fix such a `t`, and condition on `ξ'`. The remaining randomness is `s = ξ_t`, uniform in `Fp2`.
+1. **Choose a coordinate.** For a coordinate `t`, write `g = g_0 + ξ_t·h`, with `g_0` and `h` multilinear in the other coordinates `ξ'`. Let `n = g × h = g_0 × h`, a function of `ξ'`. Some `t` has `n ≢ 0`. Suppose instead that `g × ∂_t g ≡ 0` for every `t`. Change one coordinate at a time from `ξ` to an independent `ζ`. Each step keeps `g` parallel over `Fp2(ξ, ζ)`, every intermediate vector is non-zero, because independence makes each coordinate `g_k ≢ 0`, and parallelism between non-zero vectors is transitive. So `g(ξ) ∥ g(ζ)`, and each ratio `g_j/g_k` is a constant. It lies in `Fp` because the coefficients are real, so the coordinates are `Fp`-dependent. That contradicts independence. Fix such a `t`, and condition on `ξ'`. The remaining randomness is `s = ξ_t`, uniform in `Fp2`.
 2. **`n(ξ') = 0`.** Some `n_j` is a non-zero polynomial of total degree at most `2(ϑ − 1)`. Schwartz–Zippel over `Fp2` gives probability at most `2(ϑ − 1)/p^2`. Count every `s` as bad.
 3. **`n(ξ') ≠ 0`.** Then `g_0` and `h` are independent, and `s ↦ [g_0 + s·h]` is injective onto the projective line `ℓ = {u : n·u = 0}`. Since `g_0 + s·h ≠ 0`, `s` is bad exactly when `[g_0 + s·h]` is a real point of `ℓ`.
    - **If `n(ξ') ∉ R_3`.** Then `ℓ̄ = {u : n̄·u = 0} ≠ ℓ`. Two real points of `ℓ` would make `ℓ` conjugation-stable, so `ℓ` has at most one real point. At most one `s` is bad: probability `1/p^2`.
@@ -135,6 +135,13 @@ At `N = 681` and `ϑ_T = 18` that is `73,548/p^2`, about `2^{-111.8}`. It holds 
    - **If every `Δ_jk` is zero.** The substitution `ξ = x + √w·y`, `ζ = x − √w·y` is invertible because `p` is odd. It turns the identities into `n_j(ξ)·n_k(ζ) = n_k(ξ)·n_j(ζ)` in independent variables. So `n = f·c` for one polynomial `f ≢ 0` and a constant vector `c`, which is real because `n`'s coefficients are. Now `g_0·n = h·n = 0`, which gives `c·g_0 ≡ c·h ≡ 0`, hence `c·g ≡ 0`. That is an `Fp`-dependence among `g`'s coordinates, a contradiction.
 5. **Sum.** `2(ϑ − 1)/p^2 + 1/p^2 + 4(ϑ − 1)/p · (p + 1)/p^2 = ε(ϑ, p)`. ∎
 
+**Hypotheses, as the specification meets them.**
+1. **Every challenge uses up a slot.** `N` counts every `ξ*_T` drawn in the epoch, aborted sessions included. RFC-0012's `reserve` burns a proof's rows before `Round1`, and so before `ξ*_T` is derived. Its `abort` releases nothing, and the simulator argument (§6) counts an aborted session as one proof (R6). So a verifier that aborts and retries draws no extra points. Row reuse by a rolled-back or copied state is outside the theorem, as the operator's duty (draft RFC-0073).
+2. **The bound is per matrix.** Summed over the ten weight matrices it is about `2^{-108.5}`, still under `2^{-100}`.
+   - **`ChannelParams` is not yet covered.** Its blinding rows `B_CP` follow RFC-0065's layout: `2e + 4` rows per proof, a mask row per claim, and `β` carrying the blinding claims. Its `Q*` and its restriction step have to be recounted before the whole epoch is claimed.
+3. **The evaluation points are uniform.** Each `ξ*_T` is a random-oracle output, uniform in `Fp2^{ϑ_T}` by rejection sampling (RFC-0004).
+4. **The rows are distinct Boolean points.** The `Q*` rows `Dn + r` are distinct points of `{0,1}^ϑ`.
+
 **Proof of the theorem.**
 1. **First dependence.** `D_N` is the union over `j` of "session `j`'s pair is the first to fall in the span `U` of the earlier pairs". By the independence of `ξ_j`, it suffices to bound that event given `ξ_1, …, ξ_{j−1}` with the earlier vectors independent.
 2. **Quotient by the earlier span.** `U` is conjugation-stable, so `U = U_0 ⊗ Fp2` with `U_0` real of dimension `2(j − 1)`. Let `π: Fp^{Q*} → Fp^m` be a real surjection with kernel `U_0`. Then `m = 2N + 8 − 2(j − 1) ≥ 10`.
@@ -142,6 +149,8 @@ At `N = 681` and `ϑ_T = 18` that is `73,548/p^2`, about `2^{-111.8}`. It holds 
 4. **The coordinates are independent.** `G(ξ) = π(e(ξ)) = Σ_{r ∈ Q*} eq(ξ, r)·π(1_r)` is multilinear with real coefficients. Its coordinates are `Fp`-independent: the `eq(·, r)` are linearly independent, as the Lagrange basis of the Boolean cube, and `π` is onto.
 5. **Project to three coordinates.** Compose with any real surjection `P: Fp^m → Fp^3`. This keeps the coordinates independent, and maps `R_m` into `R_3`.
 6. **Sum over sessions.** Lemma B bounds each session by `ε(ϑ, p)`. Summing over the `N` sessions gives the theorem. ∎
+
+**Review.** An independent reading, a fresh agent given only this text, found every step sound and no counterexample. It also ran an exhaustive search over all `3^12` maps `g` at `p = 3`, `ϑ = 2`, plus hill-climbing at `p = 7` and `11`; the worst case was about `2.7–3.9/p^2`. It asked for the wording fixes above and for hypotheses 1 and 2 to be stated. Agent review is not the second human reading that adoption needs.
 
 **What it settles, if review confirms it.**
 - **Lemma 7 for the tensor generator.** The simulator argument's Lemma 7 holds for the tensor generator, with or without R1, at `2^{-111.8}` per matrix and epoch. That clears the `2^{-100}` target, so #394's choice between R2 and RFC-0021's free-row stream is no longer forced by zero knowledge.
