@@ -187,7 +187,21 @@ At `N = 681` and `ϑ_T = 18` that is `73,548/p^2`, about `2^{-111.8}`. It holds 
 3. **`θ_T = 0` for `ChannelParams`.** All `e` evaluation rows then equal `β_T`. This dependency carries no data, so it is no leak, but a pure rank event `E` is not contained in `D_N^Ψ`. Define `E` by a non-zero data part, or add `N/q`. The text's `(r − M·b)` formula is the weights' map. For `ChannelParams` the functionals are `Φ_k = −Φ_β/c'_k`, which needs every `c'_k ≠ 0`.
 4. **The scalar clause is not covered.** It covers `q_i`, `W'(p_i)`, and `ChannelParams`' stage values on `β_T` and `R_k`. These are fixed rank-one functionals. They leak if their directions fall in the real span of the `G(ξ_j)` and their conjugates, which is a different event from `D_N^Ψ`. Lemma 7's scalar step relies on R2's uniform block. The theorem's proof may extend by starting `U_0` from those directions, but a naive union costs a factor of about `N`.
 
-So what is proved, pending human review, is the **vector-rank part** of Lemma 7 for the tensor generator. It holds at about `2^{-111.8}` per matrix in epochs after the first, once item 1 is added; that costs no dimension at `U ≥ 1`. Items 2 to 4 remain. The rest of this section states what the full result would settle.
+**Items 1 and 3, closed here** (E0, not reviewed).
+- **Item 1: links as extra sessions.** RFC-0064 'The difference row' and 'The proximity rows' set out what a link reveals on one commitment's blinding rows.
+  - **The difference row's blinding part** is `(1, X)` on its pair alone: rows `B_T − 4, B_T − 3` at the end of the epoch, and `0, 1` at the start.
+  - **The proximity row** is `eq(ξ_link, ·)` with its designated pair: rows `B_T − 2, B_T − 1`, or `2, 3`.
+  - **So `Ψ` drops all four link rows.** That kills the difference row, and turns each link proximity row into `G(ξ_link)`, with `ξ_link` an independent uniform challenge. A link is then one more session that contributes no target coordinate.
+  - **The target.** With `L` links touching the epoch, `L = 1` in epoch 0 (its end link) and `L = 2` later, the target has `2N + U` coordinates, `U` being the unreserved rows. The theorem's last stage needs `m ≥ 3`, that is `U ≥ 2L + 1`. The bound becomes `(N + L)·ε(ϑ, p)`.
+  - **That fails at full budget.** The weights have `U = 2` in later epochs at `N_1 = 681`, against 5 needed. Epoch 0 has `U = 0` at `N_0 = 682`, for both layouts.
+  - **The cap that fixes it.** `N_0 ≤ 681` and `N_1 ≤ 680` give `U = 6` and `8` for the weights, and `18` and `32` for `ChannelParams`. Equivalently, `reserve`'s precondition becomes `next_blinding_row + r_T ≤ B_T − 4 − (2L + 1)`. That costs at most two of 682 proofs per epoch. It is a specification change to RFC-0012 and RFC-0065, the maintainer's to decide. Draft RFC-0073's count already gives `N_0 ≤ 674` in epoch 0.
+  - **Without the cap,** the dropped-`F` reduction is vacuous at full budget: `D_N^Ψ` is then certain, not rare. Keeping other sessions' `F` columns would restore dimensions, but R1's complex `(1, X)` entries break Lemma B's real coefficients. That route is open.
+- **Item 3: `ChannelParams` with `θ_T = 0`.**
+  - **The weights need nothing.** `M_i = [[a, b], [b·w, a]]` for `c'_i = a + bX` is real for every `c'_i`, zero included.
+  - **`ChannelParams` needs `c'_k ≠ 0`.** The functionals killing `w_1, …, w_e` and their conjugates are `Φ_k = −Φ_β/c'_k`, with `Φ_β ∈ Fp2` free, which leaves 2 real coordinates. That needs every `c'_k = θ_T·Z(x_k) ≠ 0`. `Z(x_k) ≠ 0` is enforced, and `θ_T = 0` has probability `1/q` per proof.
+  - **The cost.** It adds `N/q`, about `2^{-118.4}`. Per matrix, the vector-rank bound is `(N + L)·ε(ϑ, p) + N/q`.
+
+So what is proved, pending human review, is the **vector-rank part** of Lemma 7 for the tensor generator. It holds at about `2^{-111.8}` per matrix under the cap above, which also settles item 2. Item 4 remains, together with the cap decision. The rest of this section states what the full result would settle.
 
 **What it would settle, once items 1 to 4 are closed and review confirms it.**
 - **Lemma 7 for the tensor generator.** The simulator argument's Lemma 7 holds for the tensor generator, with or without R1, at `2^{-111.8}` per matrix and epoch. That clears the `2^{-100}` target, so #394's choice between R2 and RFC-0021's free-row stream is no longer forced by zero knowledge.
