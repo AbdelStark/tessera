@@ -177,7 +177,19 @@ At `N = 681` and `ϑ_T = 18` that is `73,548/p^2`, about `2^{-111.8}`. It holds 
 
 **Review.** An independent reading, a fresh agent given only this text, found every step sound and no counterexample. It also ran an exhaustive search over all `3^12` maps `g` at `p = 3`, `ϑ = 2`, plus hill-climbing at `p = 7` and `11`; the worst case was about `2.7–3.9/p^2`. It asked for the wording fixes above and for hypotheses 1 and 2 to be stated. Agent review is not the second human reading that adoption needs.
 
-**What it settles, if review confirms it.**
+**Second review: what is still open.** A second independent agent read the correction against the specification. It found the quotient algebra sound, and the challenge-independence step sound with interleaved sessions too. It found four gaps in how the theorem is applied:
+1. **Linking proofs are revealed vectors.** RFC-0064 gives each commitment a tensor proximity row `eq(ξ_link, ·)` over the epoch's blinding rows, with its designated pair in the link rows. A difference row adds another pair. The 8 link rows are therefore not spare. Each link proximity row must join the vector list and `Ψ`, at a cost of 2 target dimensions. The effective spare count is then the unreserved rows `U` alone.
+2. **Epoch 0 can have no spare row.**
+   - **The worst case.** `U = 0` at `N_0 = 682` proofs, for both weights (`B = 4096`) and `ChannelParams` (`B = 12,280`). The last session then has `m = 2`, so the event is a point of `P^1` being real, about `1/p`.
+   - **Later epochs pass.** They have `U = 2` and `14`.
+   - **Whether 682 is reachable.** Under accepted RFC-0012, repeated column queries can let rows bind first at 682. Under draft RFC-0073's count, `N_0 ≤ 674` and `U = 48`.
+   - **The fixes.** Cap `N_0` at 681, adopt RFC-0073's count, or require `U ≥ 1` after the links. Each is a specification decision.
+3. **`θ_T = 0` for `ChannelParams`.** All `e` evaluation rows then equal `β_T`. This dependency carries no data, so it is no leak, but a pure rank event `E` is not contained in `D_N^Ψ`. Define `E` by a non-zero data part, or add `N/q`. The text's `(r − M·b)` formula is the weights' map. For `ChannelParams` the functionals are `Φ_k = −Φ_β/c'_k`, which needs every `c'_k ≠ 0`.
+4. **The scalar clause is not covered.** It covers `q_i`, `W'(p_i)`, and `ChannelParams`' stage values on `β_T` and `R_k`. These are fixed rank-one functionals. They leak if their directions fall in the real span of the `G(ξ_j)` and their conjugates, which is a different event from `D_N^Ψ`. Lemma 7's scalar step relies on R2's uniform block. The theorem's proof may extend by starting `U_0` from those directions, but a naive union costs a factor of about `N`.
+
+So what is proved, pending human review, is the **vector-rank part** of Lemma 7 for the tensor generator. It holds at about `2^{-111.8}` per matrix in epochs after the first, once item 1 is added; that costs no dimension at `U ≥ 1`. Items 2 to 4 remain. The rest of this section states what the full result would settle.
+
+**What it would settle, once items 1 to 4 are closed and review confirms it.**
 - **Lemma 7 for the tensor generator.** The simulator argument's Lemma 7 holds for the tensor generator, with or without R1, at `2^{-111.8}` per matrix and epoch. That clears the `2^{-100}` target, so #394's choice between R2 and RFC-0021's free-row stream is no longer forced by zero knowledge.
 - **The other reason for R2.** SUR-0001's soundness reason for uniform coefficients, the Johnson-regime bounds, is untouched.
 - **The data.** EXP-0035's faster-than-linear growth at `p = 7` sits where `N·ε ≥ 1`, so the bound is vacuous there, and it does not contradict the data.
