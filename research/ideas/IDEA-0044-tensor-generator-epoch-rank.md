@@ -101,6 +101,31 @@ So `P[E] ≤ P[D_N]`, with no union over sessions and no dependence on which ses
 - **Why a direct proof falls short.** A sequential proof needs each pair `(ξ_i, ξ̄_i)` to impose two independent conditions on the multilinear functions supported on `Q*` that vanish at the earlier points. That space has dimension at least 10. A single 2×2 determinant gives only Schwartz–Zippel's `2ϑ/p` over `Fp`, because `ξ̄` is not independent of `ξ`.
 - **What would finish it.** A codimension-2 argument for the conjugate pair over that space. [EXP-0036](../experiments/EXP-0036-epoch-rank-p-scaling/README.md)'s rapid decay with `p` suggests that one exists.
 
+## Correction: the evaluation rows touch `Q*`
+
+Step 1 of the partial argument says that the evaluation rows vanish on `Q*`. That holds in EXP-0033's model, whose evaluation row is `(1, X)` on `β` alone. It is false for the protocol. The weight evaluation row is `u_T = θ_T·(F + c·R_W) + β_T` (simulator argument §5; RFC-0065 step 3). It puts the coefficient `θ_T·c` on the mask rows `R_W`, which are in `Q*`. `ChannelParams`' rows put `θ_T·Z(x_i)` on each claim's `R_i`. The reviewer had marked this as unchecked. The inclusion `bad_j ⊆ D_N` is therefore unproved as stated, and EXP-0033 to EXP-0036 measured the simplified model.
+
+**The corrected reduction.**
+1. **A global quotient replaces the restriction.**
+   - **The evaluation vectors.** Write `c'_i = θ_i·c_i`, or `θ_i·Z(x_i)` per claim for `ChannelParams`. Session `i`'s evaluation row has blinding vector `w_i = (1, X)` on `β(i)` plus `c'_i·(1, X)` on `R(i)`.
+   - **The map `Ψ`.** On each session's block `(β(i), R(i))`, take the quotient by `span{w_i, w̄_i}`, and drop every `F` pair. The span is conjugation-stable, so the quotient map is real.
+     - For a weight matrix, `(r_0, r_1) − M_i·(b_0, b_1)` does it, with `M_i ∈ Fp^{2×2}` the unique matrix sending `(1, X)` to `c'_i·(1, X)`. It is real because it equals its conjugate.
+     - For `ChannelParams`, the block has `2 + 2e` rows and `e` evaluation vectors, and the quotient still leaves 2 coordinates.
+   - **The target.** The spare rows (unreserved and link) map to themselves, so `Ψ` maps onto `Fp^{2N + s}`, with `s ≥ 8` spare rows at full budget (RFC-0012 `B_T − 8`, RFC-0065 `B_CP − 8`).
+2. **The inclusion.**
+   - **Apply `Ψ`.** It kills every `w_i` and `w̄_i`, and the dropped `F` columns remove R1's designated entries. So a dependency among all the revealed vectors becomes `Σ_i (θ_i·G(ξ_i) + θ̄_i·conj(G(ξ_i))) = 0`, with `G = Ψ ∘ e`.
+   - **It is non-trivial.** If every `θ_i = 0`, the evaluation rows alone are dependent. But they sit on disjoint `β` blocks, with `(1, X)` and `(1, −X)` independent, so that is impossible.
+   - So `E ⊆ D_N^Ψ := { G(ξ_1), conj(G(ξ_1)), …, G(ξ_N), conj(G(ξ_N)) are Fp2-dependent }`.
+3. **Why `Ψ` may depend on challenges drawn later.** `θ_i` is a random-oracle output drawn after `ξ_i`. But each `ξ_i`, and each `θ_i`, is uniform given everything drawn before it. `Z(x_i) ≠ 0` is enforced, since the prover aborts otherwise and the reservation stays burned (RFC-0065). So the challenges are jointly independent and uniform, adaptive choices in between included.
+   - **Condition on the `θ`s first.** `Ψ` is then fixed, and the `ξ_i` stay independent and uniform.
+   - **A slot whose `θ_i` is never drawn.** That slot gets a lazily sampled `θ_i` all the same, which is never revealed.
+4. **The theorem below applies with `G` in place of `e`, unchanged.** Its proof used only three facts. `G` is multilinear with real coefficients, as `Σ_r eq(ξ, r)·Ψ(1_r)`. `G`'s coordinates are `Fp`-independent, since `Ψ` is onto and the `eq(·, r)` are independent. And the target has dimension `2N + s ≥ 2N + 3`. `Q*` now means this quotient, and the bound covers `ChannelParams` as well.
+
+**A numerical check of the corrected inclusion.** This is an uncommitted harness. It used the protocol's row shapes: `β` pair, `R` pair carrying `c'·(1, X)`, `F` pair, 8 spare rows, `ϑ = 6`, `Dn = 3`, and `w = −1` at `p ≡ 3 (mod 4)`.
+- **The inclusion held.** In 140,000 trials over `p ∈ {3, 7, 11}`, `N ∈ {1, …, 4}`, with and without R1, every trial in E was in `D_N^Ψ`.
+- **For example.** At `p = 7`, `N = 2` and no R1, E occurred 847 times and `D_N^Ψ` 879 times.
+- **What a looser map misses.** A first attempt with per-stage maps, each dropping the session's own block, missed 27 trials at `p = 3`. That is why the argument conditions on every `θ` first.
+
 ## Proof of the bound on `P[D_N]`
 
 This is an E0 derivation. It is proved here but not reviewed. It replaces the proof-route sketch of [#709](https://github.com/AbdelStark/tessera/pull/709), and needs neither Bezout nor fibre dimensions.
@@ -137,8 +162,8 @@ At `N = 681` and `ϑ_T = 18` that is `73,548/p^2`, about `2^{-111.8}`. It holds 
 
 **Hypotheses, as the specification meets them.**
 1. **Every challenge uses up a slot.** `N` counts every `ξ*_T` drawn in the epoch, aborted sessions included. RFC-0012's `reserve` burns a proof's rows before `Round1`, and so before `ξ*_T` is derived. Its `abort` releases nothing, and the simulator argument (§6) counts an aborted session as one proof (R6). So a verifier that aborts and retries draws no extra points. Row reuse by a rolled-back or copied state is outside the theorem, as the operator's duty (draft RFC-0073).
-2. **The bound is per matrix.** Summed over the ten weight matrices it is about `2^{-108.5}`, still under `2^{-100}`.
-   - **`ChannelParams` is not yet covered.** Its blinding rows `B_CP` follow RFC-0065's layout: `2e + 4` rows per proof, a mask row per claim, and `β` carrying the blinding claims. Its `Q*` and its restriction step have to be recounted before the whole epoch is claimed.
+2. **The bound is per matrix.** Summed over the ten weight matrices it is about `2^{-108.5}`, still under `2^{-100}`. `ChannelParams` is covered by the corrected reduction above.
+5. **The evaluation challenge is fresh.** Each `θ_i` is uniform given everything before it, and `Z(x_i) ≠ 0` (RFC-0065 'The mask is never dropped'). Then `Ψ` can be fixed before the `ξ`s are drawn (correction, step 3).
 3. **The evaluation points are uniform.** Each `ξ*_T` is a random-oracle output, uniform in `Fp2^{ϑ_T}` by rejection sampling (RFC-0004).
 4. **The rows are distinct Boolean points.** The `Q*` rows `Dn + r` are distinct points of `{0,1}^ϑ`.
 
