@@ -43,7 +43,7 @@ On the `regen` side, RFC-0075 already accounts for full-support regeneration, wi
 |---|---|---|
 | Soundness bits (G-4, RFC-0014) | None: the generator is unchanged | pass |
 | Uniqueness upstream of the logits (SP-3, RFC-0009 Lemma 0) | None | pass |
-| Zero knowledge (G-5, RFC-0013) | The idea is a ZK argument. Until it is proved, the tensor generator has only §6.3's bound | unknown |
+| Zero knowledge (G-5, RFC-0013) | The idea is a ZK argument. A proof of `P[D_N] ≤ 6Nϑ/p^2`, about `2^{-111.8}` at 405B, is written below; until a reviewer confirms it, the tensor generator has only §6.3's bound | unknown |
 | Verifier independence (SP-6) | None | pass |
 | Post-quantum (hash-based commitments) | None | pass |
 
@@ -96,18 +96,61 @@ So `P[E] ≤ P[D_N]`, with no union over sessions and no dependence on which ses
 
 **A numerical check.** It is an uncommitted harness built on EXP-0033's code, recorded here only as a check of the algebra. Over six configurations it ran `1.2×10^6` trials: G-T and G-T1, `N` from 1 to 16, `p ∈ {7, 11}`. Every one of the 6,498 trials in E was also in `D_N`. `D_N` occurred 7,504 times in all, so for G-T the bound is close to the measured event.
 
-**What remains.** Bound `P[D_N]`: the chance that `2N` conjugate-paired `eq` vectors at uniform points are dependent on `2N + 8` fixed Boolean rows. This statement no longer mentions sessions, generators or adaptivity.
+**What remains.** Bound `P[D_N]`: the chance that `2N` conjugate-paired `eq` vectors at uniform points are dependent on `2N + 8` fixed Boolean rows. This statement no longer mentions sessions, generators or adaptivity. The next section proves `P[D_N] ≤ 6Nϑ/p^2` (unreviewed); the items below record why a direct determinant argument fell short.
 - **What it contains.** `D_N` contains EXP-0033's exact `1/q` straddle event, so the lemma must carry that term.
 - **Why a direct proof falls short.** A sequential proof needs each pair `(ξ_i, ξ̄_i)` to impose two independent conditions on the multilinear functions supported on `Q*` that vanish at the earlier points. That space has dimension at least 10. A single 2×2 determinant gives only Schwartz–Zippel's `2ϑ/p` over `Fp`, because `ξ̄` is not independent of `ξ`.
 - **What would finish it.** A codimension-2 argument for the conjugate pair over that space. [EXP-0036](../experiments/EXP-0036-epoch-rank-p-scaling/README.md)'s rapid decay with `p` suggests that one exists.
 
-**A proof route for `P[D_N]`** (a sketch, not a proof).
-1. **Take one session at a time.** Let `W` be the multilinear functions supported on `Q*` that vanish at the earlier points. `D_N` at session `i` needs the two evaluation functionals of `W` at `ξ` and at `ξ̄` to have rank at most 1. That is, every 2×2 minor of `[f_k(ξ); f_k(ξ̄)]` vanishes.
-2. **Condition on all coordinates but one.** Fix every coordinate except `y = ξ_t`. Each `f` is then affine in `y`. Each minor becomes `α + β·y + γ·ȳ + δ·yȳ`, which is a conic in `y`'s two `Fp` coordinates.
-3. **The generic case.** If two minors share no component, Bezout bounds the bad `y` by 4 points, a probability of `4/p^2`.
-4. **The degenerate cases.** Every minor is identically zero in `y`, or all minors are multiples of one conic. Both are conditions on the other coordinates. The step that remains is to show that they force a further coordinate condition of probability `O(1/p)`, by induction on `t`, using `dim W ≥ 10`.
+## Proof of the bound on `P[D_N]`
 
-The route would give `P[D_N] = O(N·ϑ^2/p^2)`, near `2^{-110}` at 405B, plus EXP-0033's exact `1/q` straddle term. The constant and the induction are the open work.
+This is an E0 derivation. It is proved here but not reviewed. It replaces the proof-route sketch of [#709](https://github.com/AbdelStark/tessera/pull/709), and needs neither Bezout nor fibre dimensions.
+
+**Theorem.** Let `Fp2 = Fp(√w)` with `w` a non-residue and `p` odd; Goldilocks has `w = 7` ([RFC-0002](../../docs/rfcs/RFC-0002-field-arithmetic.md)). Let `ϑ` be the number of row variables, and let `ξ_1, …, ξ_N` be independent and uniform in `Fp2^ϑ`. Then
+
+`P[D_N] ≤ N·ε(ϑ, p)`, with `ε(ϑ, p) = (2ϑ − 1)/p^2 + 4(ϑ − 1)(p + 1)/p^3 ≤ 6ϑ/p^2` for `p ≥ ϑ`.
+
+At `N = 681` and `ϑ_T = 18` that is `73,548/p^2`, about `2^{-111.8}`. It holds with or without R1, by the reduction above, and it contains EXP-0033's exact `1/q` straddle event.
+
+**Notation.**
+- **Conjugation.** `z̄` is conjugation (`√w ↦ −√w`), applied coordinatewise to vectors.
+- **The real cone.** `R_m = Fp2*·Fp^m ∪ {0}` is the set of vectors that are real up to a scalar.
+- **Dot product.** `u·v` is the bilinear dot product, never the Hermitian one.
+
+**Lemma A (a pair is dependent only on the real cone).** `u` and `ū` are `Fp2`-dependent if and only if `u ∈ R_m`.
+
+*Proof.* The "if" direction is clear. For "only if", let `u ≠ 0` and `ū = c·u`.
+- If `c ≠ −1`, then `u + ū = (1 + c)·u` is real, so `u = (u + ū)/(1 + c)`.
+- If `c = −1`, then `u = √w·(u/√w)`, and `u/√w` is real. ∎
+
+**Lemma B (one session).** Let `g: Fp2^ϑ → Fp2^3` be multilinear with coefficients in `Fp^3`, and let its three coordinate polynomials be `Fp`-linearly independent. For uniform `ξ`, `P[g(ξ) ∈ R_3] ≤ ε(ϑ, p)`.
+
+*Proof.*
+1. **Choose a coordinate.** For a coordinate `t`, write `g = g_0 + ξ_t·h`, with `g_0` and `h` multilinear in the other coordinates `ξ'`. Let `n = g × h = g_0 × h`, a function of `ξ'`. Some `t` has `n ≢ 0`. Suppose instead that `g × ∂_t g ≡ 0` for every `t`. Change one coordinate at a time from `ξ` to an independent `ζ`. Each step keeps `g` parallel over `Fp2(ξ, ζ)`, every intermediate vector is non-zero, and parallelism between non-zero vectors is transitive. So `g(ξ) ∥ g(ζ)`, the ratios `g_j/g_k` are constants, and the coordinates span one dimension. That contradicts independence. Fix such a `t`, and condition on `ξ'`. The remaining randomness is `s = ξ_t`, uniform in `Fp2`.
+2. **`n(ξ') = 0`.** Some `n_j` is a non-zero polynomial of total degree at most `2(ϑ − 1)`. Schwartz–Zippel over `Fp2` gives probability at most `2(ϑ − 1)/p^2`. Count every `s` as bad.
+3. **`n(ξ') ≠ 0`.** Then `g_0` and `h` are independent, and `s ↦ [g_0 + s·h]` is injective onto the projective line `ℓ = {u : n·u = 0}`. Since `g_0 + s·h ≠ 0`, `s` is bad exactly when `[g_0 + s·h]` is a real point of `ℓ`.
+   - **If `n(ξ') ∉ R_3`.** Then `ℓ̄ = {u : n̄·u = 0} ≠ ℓ`. Two real points of `ℓ` would make `ℓ` conjugation-stable, so `ℓ` has at most one real point. At most one `s` is bad: probability `1/p^2`.
+   - **If `n(ξ') ∈ R_3`.** `ℓ` has `p + 1` real points, so the conditional probability is at most `(p + 1)/p^2`.
+4. **The event `n(ξ') ∈ R_3` is rare.** Write `ξ' = x + √w·y` with `x, y ∈ Fp^{ϑ−1}`, and let `Δ_jk(x, y) = n_j(x + √w·y)·n_k(x − √w·y) − n_k(x + √w·y)·n_j(x − √w·y)`. Its total degree is at most `4(ϑ − 1)`. Because `n` has `Fp` coefficients, `n̄(ξ') = n(ξ̄')`, so `n(ξ') ∈ R_3` forces every `Δ_jk = 0`.
+   - **If some `Δ_jk` is non-zero.** Schwartz–Zippel over the grid `Fp^{2(ϑ−1)}` bounds the probability by `4(ϑ − 1)/p`.
+   - **If every `Δ_jk` is zero.** The substitution `ξ = x + √w·y`, `ζ = x − √w·y` is invertible because `p` is odd. It turns the identities into `n_j(ξ)·n_k(ζ) = n_k(ξ)·n_j(ζ)` in independent variables. So `n = f·c` for one polynomial `f ≢ 0` and a constant vector `c`, which is real because `n`'s coefficients are. Now `g_0·n = h·n = 0`, which gives `c·g_0 ≡ c·h ≡ 0`, hence `c·g ≡ 0`. That is an `Fp`-dependence among `g`'s coordinates, a contradiction.
+5. **Sum.** `2(ϑ − 1)/p^2 + 1/p^2 + 4(ϑ − 1)/p · (p + 1)/p^2 = ε(ϑ, p)`. ∎
+
+**Proof of the theorem.**
+1. **First dependence.** `D_N` is the union over `j` of "session `j`'s pair is the first to fall in the span `U` of the earlier pairs". By the independence of `ξ_j`, it suffices to bound that event given `ξ_1, …, ξ_{j−1}` with the earlier vectors independent.
+2. **Quotient by the earlier span.** `U` is conjugation-stable, so `U = U_0 ⊗ Fp2` with `U_0` real of dimension `2(j − 1)`. Let `π: Fp^{Q*} → Fp^m` be a real surjection with kernel `U_0`. Then `m = 2N + 8 − 2(j − 1) ≥ 10`.
+3. **Apply Lemma A.** The event says that `π(e(ξ_j))` and its conjugate are dependent, that is, `π(e(ξ_j)) ∈ R_m`.
+4. **The coordinates are independent.** `G(ξ) = π(e(ξ)) = Σ_{r ∈ Q*} eq(ξ, r)·π(1_r)` is multilinear with real coefficients. Its coordinates are `Fp`-independent: the `eq(·, r)` are linearly independent, as the Lagrange basis of the Boolean cube, and `π` is onto.
+5. **Project to three coordinates.** Compose with any real surjection `P: Fp^m → Fp^3`. This keeps the coordinates independent, and maps `R_m` into `R_3`.
+6. **Sum over sessions.** Lemma B bounds each session by `ε(ϑ, p)`. Summing over the `N` sessions gives the theorem. ∎
+
+**What it settles, if review confirms it.**
+- **Lemma 7 for the tensor generator.** The simulator argument's Lemma 7 holds for the tensor generator, with or without R1, at `2^{-111.8}` per matrix and epoch. That clears the `2^{-100}` target, so #394's choice between R2 and RFC-0021's free-row stream is no longer forced by zero knowledge.
+- **The other reason for R2.** SUR-0001's soundness reason for uniform coefficients, the Johnson-regime bounds, is untouched.
+- **The data.** EXP-0035's faster-than-linear growth at `p = 7` sits where `N·ε ≥ 1`, so the bound is vacuous there, and it does not contradict the data.
+
+**A numerical check of Lemma B.** This is an uncommitted harness, recorded only as a check, like the one above.
+- **The setting.** Exhaustive enumeration of every `ξ ∈ Fp2^ϑ`, with `w = −1`, over 1,020 random `g` that have sparse Boolean supports and independent coordinates.
+- **The result.** The worst rate was `0.0554`, `0.0233` and `0.0080` at `ϑ = 2` and `p = 7, 11, 19`, against bounds of `0.155`, `0.061` and `0.020`. That is about `2.8/p^2` throughout, so the `p^{-2}` order is tight. At `ϑ = 3` the worst rate was `0.082` at `p = 7`, against a bound of `0.289`. No `g` exceeded the bound.
 
 ## Refutations
 
