@@ -48,7 +48,7 @@ impl TableSource<B> for Dense {
             let j = (first + i) as u64;
             keys[i] = B::from_u64_reduced(j);
             values[i] = B::ZERO;
-            counts[i] = B::from_u64_reduced(if j % 1024 == 0 { j % 7 } else { 0 });
+            counts[i] = B::from_u64_reduced(if j.is_multiple_of(1024) { j % 7 } else { 0 });
         }
         Ok(())
     }

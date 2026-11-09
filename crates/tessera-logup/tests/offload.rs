@@ -67,7 +67,7 @@ impl LevelOffload for Host {
         // Take every other instance, so host and offloaded instances share a batch.
         let mut n = self.0.lock().unwrap();
         *n += 1;
-        Ok((*n % 2 == 0).then(|| {
+        Ok(n.is_multiple_of(2).then(|| {
             Box::new(HostLevel {
                 shape,
                 tables: Mutex::new(tables.iter().map(|t| t.to_vec()).collect()),

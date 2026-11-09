@@ -14,7 +14,7 @@ use tessera_sumcheck::{Instance, Prefix, Protocol, Table, Term, prove_batch, set
 
 #[test]
 fn thread_count_never_changes_a_batch_proof() {
-    let mut rng = SplitMix64::new(0x7e55_e7a);
+    let mut rng = SplitMix64::new(0x07e5_5e7a);
     let session = Session::random(&mut rng);
     let a = rng.fp2s(1 << 15);
     let b = rng.fp2s(1 << 15);

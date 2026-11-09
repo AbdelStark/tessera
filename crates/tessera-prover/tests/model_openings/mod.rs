@@ -289,6 +289,7 @@ impl<'a> Committed<'a> {
             limits: Default::default(),
             accept_bound: tv_core::protocol::FixedBits(0),
             weights,
+            public_tokens: None,
         })
     }
     pub fn start(

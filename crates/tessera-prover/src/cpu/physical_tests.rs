@@ -393,6 +393,7 @@ fn physical_case(name: &str, requests: &[(u32, u32)], groups: Option<protocol::L
             tv_codec::WeightCommitmentPublic::decode,
         )
         .unwrap(),
+        public_tokens: None,
         limits: Default::default(),
         accept_bound: tv_core::protocol::FixedBits(0),
     };
