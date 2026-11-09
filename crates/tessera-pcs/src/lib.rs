@@ -364,7 +364,9 @@ pub use streaming::opening::{
     AdviceOpeningMemory, AdvicePoint, CheckedOpening, ColumnPass, ColumnPermit, OpeningGroups,
     OpeningPass,
 };
-pub use streaming::{AdviceCommitment, SegmentDigests, StreamingCommitter, merge_segments};
+pub use streaming::{
+    AdviceCommitment, BlockSink, SegmentDigests, StreamingCommitter, merge_segments,
+};
 pub use weights::{
     ChannelParamsRef, ChannelValues, MatrixKind, MatrixLayout, MatrixRows, ModelWeights,
     OpenedColumns, RegeneratedWeightCommitment, TypeBudget, WeightCombinedRows, WeightCommitment,

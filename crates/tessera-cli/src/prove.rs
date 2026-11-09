@@ -159,8 +159,8 @@ fn distinct(path: &Path, inputs: &[&Path]) -> Result<(), TesseraError> {
 pub(crate) fn prove(a: &ProveArgs, json: bool) -> Result<(), TesseraError> {
     // Beside the secret weight state: the operator's own, never the exchange directory (05 §6).
     crate::manifest::beside(&a.weights);
-    if a.backend != "cpu" || !a.devices.is_empty() {
-        return Err(usage("the reference prover supports CPU only"));
+    if a.backend == "cpu" && !a.devices.is_empty() {
+        return Err(usage("--devices takes the GPU backend"));
     }
     if let Some(path) = &a.sample {
         // Everything the sample route reads is checked, and the batch pre-checked, here.
@@ -290,8 +290,18 @@ fn produce(
     };
     let mut batch = ProofBatch { statement, tokens };
     let cfg = ProverConfig {
-        backend: Backend::Cpu {
-            threads: a.threads.get(),
+        backend: if a.backend == "gpu" {
+            Backend::Gpu {
+                devices: if a.devices.is_empty() {
+                    vec![0]
+                } else {
+                    a.devices.clone()
+                },
+            }
+        } else {
+            Backend::Cpu {
+                threads: a.threads.get(),
+            }
         },
         params: *params,
         mode,

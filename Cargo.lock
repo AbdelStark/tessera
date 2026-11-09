@@ -2118,6 +2118,7 @@ dependencies = [
  "tessera-compiler",
  "tessera-field",
  "tessera-gadgets",
+ "tessera-gpu",
  "tessera-hash",
  "tessera-ir",
  "tessera-logup",

@@ -1181,14 +1181,45 @@ impl CpuBackend<'_> {
         parts
             .try_reserve_exact(a.segments as usize)
             .map_err(|_| memory())?;
+        // #732: the GPU encodes and hashes rate-1/2 advice blocks; the bytes are the CPU's.
+        let gpu = self
+            .prepared
+            .gpu
+            .as_ref()
+            .filter(|_| params.log2_inv_rate == 1);
+        event!(
+            DEBUG,
+            "prover.p1_backend",
+            gpu = gpu.is_some();
+            "P1 advice encoding on the GPU: {gpu}"
+        );
         for segment in 0..a.segments {
-            let mut pass = pcs::StreamingCommitter::new(
-                params,
-                advice.layout(),
-                segment,
-                &encoder,
-                &mut masks,
-            )?;
+            let mut sink = gpu
+                .map(|g| {
+                    g.advice_sink(
+                        params.log2_k,
+                        params.mask_coeffs,
+                        params.row_block.get(),
+                        &params.commitment_id,
+                    )
+                })
+                .transpose()?;
+            let mut pass = match sink.as_deref_mut() {
+                Some(sink) => pcs::StreamingCommitter::with_sink(
+                    params,
+                    advice.layout(),
+                    segment,
+                    sink,
+                    &mut masks,
+                )?,
+                None => pcs::StreamingCommitter::new(
+                    params,
+                    advice.layout(),
+                    segment,
+                    &encoder,
+                    &mut masks,
+                )?,
+            };
             crate::advice::visit_rows(&unit.lowering, &advice, &source, segment, |r, v| {
                 pass.push_row(r, v).map_err(Into::into)
             })?;

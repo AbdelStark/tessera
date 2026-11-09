@@ -38,7 +38,8 @@ pub enum Backend {
         /// Maximum participants, including the caller.
         threads: usize,
     },
-    /// Reserved GPU target; rejected explicitly by this implementation.
+    /// One GPU for the stages it implements, the host's cores for the rest; a build without the
+    /// `gpu` feature refuses it.
     Gpu {
         /// Device ordinals.
         devices: Vec<u32>,
@@ -112,6 +113,8 @@ struct Prepared<'a> {
     _state: &'a mut pcs::WeightCommitmentState,
     cfg: ProverConfig,
     threads: NonZeroUsize,
+    /// The GPU of `Backend::Gpu`, for the stages it serves.
+    gpu: Option<crate::gpu::Gpu>,
     layout: pcs::WeightLayout,
     weights: pcs::RegeneratedWeightCommitment,
     memory: preparation::SessionMemory,
@@ -169,12 +172,19 @@ impl<'a> Prover<'a> {
         weights: &'a mut pcs::WeightCommitmentState,
         cfg: ProverConfig,
     ) -> Result<Self, ProverError> {
-        let threads = match cfg.backend {
-            Backend::Cpu { threads } => {
-                NonZeroUsize::new(threads).ok_or_else(|| usage("CPU threads must be nonzero"))?
-            }
-            Backend::Gpu { .. } => return Err(usage("the CPU driver cannot use a GPU backend")),
+        let (threads, gpu) = match &cfg.backend {
+            Backend::Cpu { threads } => (
+                NonZeroUsize::new(*threads).ok_or_else(|| usage("CPU threads must be nonzero"))?,
+                None,
+            ),
+            // The GPU serves the stages it implements; the host's cores run the rest (#731).
+            Backend::Gpu { devices } => (
+                std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN),
+                Some(crate::gpu::Gpu::open(devices)?),
+            ),
         };
+        // P2's table-tree regeneration splits over the same threads; its bytes do not depend on it.
+        tessera_sumcheck::set_parallelism(threads);
         if ParamSet::defined(&plan.claims.params) != Some(&cfg.params)
             || plan.claims.layout != cfg.params.layout
             || !cfg.params.mode.allows(cfg.mode)
@@ -249,6 +259,7 @@ impl<'a> Prover<'a> {
                 _state: weights,
                 cfg,
                 threads,
+                gpu,
                 layout,
                 weights: actual,
                 memory,

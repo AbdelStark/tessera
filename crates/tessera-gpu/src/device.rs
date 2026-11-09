@@ -132,6 +132,47 @@ impl Device {
         Ok(DeviceBuffer(self.stream.clone_htod(host)?))
     }
 
+    /// Copies `host` into the first `host.len()` elements of `buffer`.
+    pub fn upload_into<T: DeviceRepr>(
+        &self,
+        host: &[T],
+        buffer: &mut DeviceBuffer<T>,
+    ) -> Result<(), GpuError> {
+        if host.len() > buffer.len() {
+            return Err(GpuError::LengthMismatch {
+                left: host.len(),
+                right: buffer.len(),
+            });
+        }
+        let mut view = buffer.0.slice_mut(0..host.len());
+        self.stream.memcpy_htod(host, &mut view)?;
+        Ok(())
+    }
+
+    /// Copies field elements into the first `host.len()` words of `buffer`, as the canonical
+    /// `u64` each holds, without a host copy.
+    pub fn upload_field_into(
+        &self,
+        host: &[tessera_field::Goldilocks],
+        buffer: &mut DeviceBuffer<u64>,
+    ) -> Result<(), GpuError> {
+        #[allow(unsafe_code)]
+        // SAFETY: `Goldilocks` is `#[repr(transparent)]` over its canonical `u64`, so the slice's
+        // memory is `host.len()` initialized, aligned `u64`s, borrowed for the copy's duration.
+        let words = unsafe { std::slice::from_raw_parts(host.as_ptr().cast::<u64>(), host.len()) };
+        self.upload_into(words, buffer)
+    }
+
+    /// Overwrites every element of `buffer` with zero: device memory that held secret-class
+    /// values is cleared before it is released or reused for public data (05 §3 OBS-6).
+    pub fn clear<T: DeviceRepr + ValidAsZeroBits>(
+        &self,
+        buffer: &mut DeviceBuffer<T>,
+    ) -> Result<(), GpuError> {
+        self.stream.memset_zeros(&mut buffer.0)?;
+        Ok(())
+    }
+
     /// A new device buffer of `len` zeroed elements.
     pub fn zeroed<T: DeviceRepr + ValidAsZeroBits>(
         &self,
