@@ -138,7 +138,10 @@ class _Recorder:
 
     def observe(self, name: str, values: torch.Tensor) -> None:
         channels = values.shape[-1]
-        found = _cpu_float64(values.detach()).abs().reshape(-1, channels).amax(dim=0)
+        # `abs` and `amax` are exact in every float dtype, so reducing on the device and then
+        # widening the per-channel maxima gives the same float64 values as widening first,
+        # without moving every activation to the host.
+        found = _cpu_float64(values.detach().abs().reshape(-1, channels).amax(dim=0))
         held = self.maxima.get(name)
         self.maxima[name] = found if held is None else torch.maximum(held, found)
 
