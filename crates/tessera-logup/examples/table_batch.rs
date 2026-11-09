@@ -33,6 +33,10 @@ impl TableSource<B> for Dense {
     fn has_values(&self) -> bool {
         false
     }
+    fn fraction_cache_depth(&self) -> Option<usize> {
+        // As the prover's table plan picks with an ample allowance: h − 4 (#729).
+        (std::env::var_os("NO_CACHE").is_none()).then(|| self.rows.ilog2() as usize - 4)
+    }
     fn read(
         &self,
         first: usize,

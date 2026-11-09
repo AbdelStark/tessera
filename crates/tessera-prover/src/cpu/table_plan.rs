@@ -11,7 +11,9 @@ use tessera_sumcheck::{MergePolynomial, WindowMemory, WindowShape};
 pub(super) const CHUNK_ROWS: usize = 256;
 const CACHE_CHUNK_ROWS: usize = 65_536;
 const MAX_CHUNK_ROWS: usize = 1_048_576;
-const MAX_CACHE_LOG_ROWS: usize = 20;
+// A cache at depth h − 4 costs 2 bytes per leaf and cuts regeneration about fivefold at h = 28;
+// only the allowance limits it (#729).
+const MAX_CACHE_LOG_ROWS: usize = 30;
 
 pub(super) fn cache_depth(height: usize, log_rows: Option<usize>) -> Option<usize> {
     // Retain at most the selected public cap and keep at least four original leaf bits.

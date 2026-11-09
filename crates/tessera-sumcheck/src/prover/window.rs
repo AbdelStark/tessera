@@ -191,6 +191,91 @@ fn boolean_eq<F: PolyField>(z: &[Option<F>], index: usize) -> F {
         .fold(F::ONE, |v, (j, &z)| v * eq_at(z, integer((index >> j) & 1)))
 }
 
+/// The two polynomials of tree levels, evaluated with fewer products than the generic terms:
+/// a fraction level's `N0·D1 + N1·D0 + λ·D0·D1` over columns `[N0, N1, D0, D1]`, and a product
+/// level's `V0·V1`. Lines at `x = 2, 3` are sums of the pair's slope, and every product is the
+/// same field element the generic evaluation forms (RFC-0010 'Tree levels').
+#[derive(Clone, Copy)]
+enum Shape<F> {
+    Fraction { lambda: F },
+    Product,
+}
+
+impl<F: PolyField> Shape<F> {
+    /// The shape of `terms` over `columns` tables, when it is one and the slots are `0, 2, 3`.
+    fn of(terms: &[Term<F>], columns: usize, xs: &[F]) -> Option<Self> {
+        let standard = xs.len() == 3
+            && xs[0] == F::ZERO
+            && xs[1] == integer::<F>(2)
+            && xs[2] == integer::<F>(3);
+        if !standard {
+            return None;
+        }
+        match (columns, terms) {
+            (4, [a, b, c])
+                if *a.weight() == F::ONE
+                    && a.factors() == [0, 3]
+                    && *b.weight() == F::ONE
+                    && b.factors() == [1, 2]
+                    && c.factors() == [2, 3] =>
+            {
+                Some(Self::Fraction {
+                    lambda: *c.weight(),
+                })
+            }
+            (2, [a]) if *a.weight() == F::ONE && a.factors() == [0, 1] => Some(Self::Product),
+            _ => None,
+        }
+    }
+
+    /// `Σ_pairs suffix(pair)·P(line(x))` at `x = 0, 2, 3` over `pairs`.
+    fn sums(
+        self,
+        folded: &[SecretBuf<F>],
+        suffix_eq: &Weights<F>,
+        pairs: core::ops::Range<usize>,
+        degree: usize,
+    ) -> Result<SecretBuf<F>, WindowError> {
+        let mut part = buffer::<F>(degree)?;
+        let mut sums = [F::ZERO; 3];
+        // Each column at x = 0, 2, 3: a, a + 2(b − a), a + 3(b − a).
+        let at = |t: &SecretBuf<F>, pair: usize| {
+            let (a, b) = (t[2 * pair], t[2 * pair + 1]);
+            let d = b - a;
+            let two = b + d;
+            [a, two, two + d]
+        };
+        match self {
+            Self::Fraction { lambda } => {
+                for pair in pairs {
+                    let w = suffix_eq.at(pair);
+                    let (n0, n1, d0, d1) = (
+                        at(&folded[0], pair),
+                        at(&folded[1], pair),
+                        at(&folded[2], pair),
+                        at(&folded[3], pair),
+                    );
+                    for z in 0..3 {
+                        let p = n0[z] * d1[z] + n1[z] * d0[z] + lambda * (d0[z] * d1[z]);
+                        sums[z] += w * p;
+                    }
+                }
+            }
+            Self::Product => {
+                for pair in pairs {
+                    let w = suffix_eq.at(pair);
+                    let (v0, v1) = (at(&folded[0], pair), at(&folded[1], pair));
+                    for z in 0..3 {
+                        sums[z] += w * (v0[z] * v1[z]);
+                    }
+                }
+            }
+        }
+        part.copy_from_slice(&sums[..degree]);
+        Ok(part)
+    }
+}
+
 /// Public split EQ weights: no allocation of the full `2^bound` prefix.
 struct Weights<F> {
     low: Vec<F>,
@@ -500,9 +585,13 @@ impl<F: PolyField> State<F> {
                 .map(|slot| integer::<F>(if slot == 0 { 0 } else { slot + 1 }))
                 .collect();
             let columns = self.folded.len();
+            let shape = Shape::of(&self.spec.terms, columns, &xs);
             // Σ_pairs suffix·P(line(x)) per slot; the public factor prefix·eq(z, x) is applied
             // once after the sum, which distributivity makes the same field element.
             let parts = par_map(len, |pairs| {
+                if let Some(shape) = shape {
+                    return shape.sums(&self.folded, &suffix_eq, pairs, degree);
+                }
                 let mut part = buffer::<F>(degree)?;
                 let mut base = buffer::<F>(columns)?;
                 let mut slope = buffer::<F>(columns)?;
