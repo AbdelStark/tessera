@@ -80,12 +80,24 @@ pub fn visit_rows(
     let width = 1usize
         .checked_shl(layout.layout().params().log2_k)
         .ok_or(Error::Memory)?;
+    // Public per-pass timings for the stage profile (#744): tile regeneration, row building
+    // (with the sink's time inside it), and the sink alone.
+    let (mut regenerate, mut build, mut sunk) = (0f64, 0f64, 0f64);
+    let mut timed = |row: u64, values: &[Goldilocks]| -> Result<(), Error> {
+        let at = std::time::Instant::now();
+        let r = sink(row, values);
+        sunk += at.elapsed().as_secs_f64();
+        r
+    };
     for (index, tile) in layout.tiles().iter().enumerate() {
         let placement = layout.layout().tiles().get(index).ok_or(Error::Internal)?;
         if placement.segment != segment {
             continue;
         }
+        let at = std::time::Instant::now();
         let witness = source.tile(tile).map_err(Error::Witness)?;
+        regenerate += at.elapsed().as_secs_f64();
+        let at = std::time::Instant::now();
         for &name in layout.sources(index).ok_or(Error::Internal)? {
             let place = layout.location(index, name).ok_or(Error::Internal)?;
             if let AdviceSource::Multiplicity(_) = name {
@@ -93,14 +105,25 @@ pub fn visit_rows(
                     place,
                     witness.multiplicities().ok_or(Error::Internal)?,
                     width,
-                    &mut sink,
+                    &mut timed,
                 )?;
                 continue;
             }
             let (values, domain) = column(lowering, tile, &witness, name)?;
-            column_rows(place, values, &domain, width, &mut sink)?;
+            column_rows(place, values, &domain, width, &mut timed)?;
         }
+        build += at.elapsed().as_secs_f64();
     }
+    let millis = |s: f64| (s * 1e3) as u64;
+    tessera_codec::event!(
+        DEBUG,
+        "prover.rows_visited",
+        segment = segment,
+        regenerate_ms = millis(regenerate),
+        rows_ms = millis(build - sunk),
+        sink_ms = millis(sunk);
+        "segment {segment}: tiles {regenerate_ms} ms, rows {rows_ms} ms, sink {sink_ms} ms"
+    );
     Ok(())
 }
 fn column_rows(
