@@ -18,8 +18,12 @@
 mod commit;
 #[cfg(feature = "gpu")]
 mod device;
+#[cfg(feature = "gpu")]
+mod trees;
 
 #[cfg(feature = "gpu")]
 pub use commit::{ColumnChainsGpu, ENCODE_MAX_LOG_K, Encoder};
 #[cfg(feature = "gpu")]
 pub use device::{Device, DeviceBuffer, GpuError};
+#[cfg(feature = "gpu")]
+pub use trees::ForestWorkspace;
