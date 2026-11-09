@@ -12,6 +12,11 @@
 //! (2^30 leaves), RFC-0010 'Tree levels', leaves generated on the device; the check runs the
 //! CPU prover `tessera_sumcheck::prove_forests` on the same leaves and transcript once.
 //!
+//! `l`: the LogUp fraction trees of 2^30 lookups into a 2^24-row table, RFC-0008 'Fraction
+//! tree': the lookup tree (numerators 1) and the table tree (numerators `−m_j`), leaves
+//! generated inside the kernels, each tree's levels proven as a batch of its own; the check runs
+//! `tessera_sumcheck::prove_trees` on each tree once.
+//!
 //! `cc`: rate-1/2 coset Reed–Solomon encoding with a vanishing mask (`P = 200`, `ni-100`'s
 //! `τ_A`) and BLAKE3 chained column hashing (`B = 32`) of rows of width `k = 2^22`, 4,096 rows
 //! (2^34 committed elements) per run, inputs generated on the device by a counter-based
@@ -25,11 +30,13 @@ use std::time::Instant;
 
 use tessera_bench::{Protocol, Statistics, measure};
 use tessera_codec::Ascii;
-use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField};
-use tessera_gpu::{Device, DeviceBuffer, GpuError};
+use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField, QuadraticExtension};
+use tessera_gpu::{Device, DeviceBuffer, FractionLeaves, GpuError};
 use tessera_hash::{ColumnChains, Mode, ParamSetId, SessionContext, Transcript};
 use tessera_pcs::RowEncoder;
-use tessera_sumcheck::{Forest, prove_forests};
+use tessera_sumcheck::{
+    Forest, FractionTree, LeafNumerators, LevelClaim, Tree, prove_forests, prove_trees,
+};
 
 const LOG_K: u32 = 22;
 const MASK_COEFFS: usize = 200;
@@ -43,7 +50,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match args.first().map(String::as_str) {
         Some("cc") => cc(&device, rows),
         Some("pi") => pi(&device, option(&args, "--trees-log", 16)?),
-        _ => Err("usage: gpu_unit_costs cc [--rows N] | pi [--trees-log S]".into()),
+        Some("l") => lookups(
+            &device,
+            option(&args, "--lookups-log", 30)?,
+            option(&args, "--rows-log", 24)?,
+        ),
+        _ => Err("usage: gpu_unit_costs cc [--rows N] | pi [--trees-log S] | l [--lookups-log A] [--rows-log T]".into()),
     }
 }
 
@@ -197,6 +209,85 @@ fn pi(device: &Device, trees_log: usize) -> Result<(), Box<dyn std::error::Error
     })?;
     report("pi/forest", count, &statistics);
     println!("c_pi (median): {:.2} ps per leaf", 1e3 * statistics.median);
+    Ok(())
+}
+
+/// `2^lookups_log` lookups into `2^rows_log` rows: RFC-0020 fixes 2^30 and 2^24.
+fn lookups(
+    device: &Device,
+    lookups_log: usize,
+    rows_log: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fp2 = |a: u64, b: u64| -> Result<GoldilocksExt2, Box<dyn std::error::Error>> {
+        let c = |x| Goldilocks::from_canonical_u64(x).ok_or("non-canonical");
+        Ok(GoldilocksExt2::new(c(a)?, c(b)?))
+    };
+    let (alpha, beta) = (
+        fp2(0x1234_5678_9ABC_DEF0, 0x0FED_CBA9_8765_4321)?,
+        fp2(0x1111_2222_3333_4444, 0x5555_6666_7777_8888)?,
+    );
+    let lookup = FractionLeaves {
+        key_seed: 1 << 56,
+        value_seed: 1 << 57,
+        multiplicity_seed: None,
+        alpha,
+        beta,
+    };
+    let table = FractionLeaves {
+        key_seed: 1 << 58,
+        value_seed: 1 << 59,
+        multiplicity_seed: Some(1 << 60),
+        alpha,
+        beta,
+    };
+    let mut lookup_space = device.fraction_workspace(lookups_log, true)?;
+    let mut table_space = device.fraction_workspace(rows_log, false)?;
+
+    for (name, leaves, height, space) in [
+        ("lookup", &lookup, lookups_log, &mut lookup_space),
+        ("table", &table, rows_log, &mut table_space),
+    ] {
+        let started = Instant::now();
+        let count = 1u64 << height;
+        let numerators: Vec<Goldilocks> = (0..count).filter_map(|j| leaves.numerator(j)).collect();
+        let numerators = match leaves.multiplicity_seed {
+            None => LeafNumerators::Unit,
+            Some(_) => LeafNumerators::Base(&numerators),
+        };
+        let tree = FractionTree::new(height, numerators, |j| leaves.denominator(j as u64))?;
+        let mut cpu = transcript();
+        let (cpu_proofs, cpu_claims) =
+            prove_trees(&mut cpu, vec![Tree::Fraction(tree)])?.into_parts();
+        let mut gpu = transcript();
+        let (gpu_proofs, gpu_claim) = device.prove_fraction_tree_in(space, &mut gpu, leaves)?;
+        let same = matches!(cpu_claims.first(), Some(LevelClaim::Fraction(c))
+            if c.point == gpu_claim.point && c.numerator == gpu_claim.numerator && c.denominator == gpu_claim.denominator);
+        if gpu_proofs != cpu_proofs || !same {
+            return Err(format!("GPU {name} tree proof differs from the CPU prover's").into());
+        }
+        println!(
+            "check: {name} tree of 2^{height} leaves, every level's messages and the leaf claim equal the CPU prover's ({:.1} s)",
+            started.elapsed().as_secs_f64()
+        );
+    }
+
+    let lookups = (1usize << lookups_log) as f64;
+    let lookup_tree = timed(lookups, || {
+        device.prove_fraction_tree_in(&mut lookup_space, &mut transcript(), &lookup)?;
+        device.synchronize()
+    })?;
+    let table_tree = timed(lookups, || {
+        device.prove_fraction_tree_in(&mut table_space, &mut transcript(), &table)?;
+        device.synchronize()
+    })?;
+    report("l/lookup-tree", 1 << lookups_log, &lookup_tree);
+    report("l/table-tree", 1 << lookups_log, &table_tree);
+    println!(
+        "c_l (medians, per lookup): {:.2} ps; lookup tree {:.2} ps, table tree {:.2} ps",
+        1e3 * (lookup_tree.median + table_tree.median),
+        1e3 * lookup_tree.median,
+        1e3 * table_tree.median
+    );
     Ok(())
 }
 

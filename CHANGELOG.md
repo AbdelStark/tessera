@@ -4,6 +4,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ## [Unreleased]
 
+- Add the GPU fraction-tree microkernel behind `c_ℓ`: a LogUp tree's levels and level sumchecks on the device with leaves generated inside the kernels, byte-identical to `prove_trees` on the same transcript, and its RFC-0020 benchmark (`gpu_unit_costs l`). On one H100 it measures 297.0 ps per lookup for 2^30 lookups into 2^24 rows, against the assumed 40 ps ([#63](https://github.com/AbdelStark/tessera/issues/63), [report](docs/perf/v0.1/l-h100.md)).
+
 - Add the GPU product-tree microkernel behind `c_π`: a forest's levels and its level sumchecks on the device, byte-identical to `prove_forests` on the same transcript, in a reusable workspace, and its RFC-0020 benchmark (`gpu_unit_costs pi`). On one H100 it measures 84.6 ps per leaf over 2^16 trees of 2^14 leaves, against the assumed 12 ps ([#64](https://github.com/AbdelStark/tessera/issues/64), [report](docs/perf/v0.1/pi-h100.md)).
 
 - Retry the CI tool downloads (cargo-deny, cargo-nextest, mdBook) up to five times on any error: one HTTP 504 from the release host failed the nightly of 2026-11-08 ([#710](https://github.com/AbdelStark/tessera/issues/710)).
