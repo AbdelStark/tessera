@@ -82,11 +82,14 @@ pub fn visit_rows(
         .ok_or(Error::Memory)?;
     // Public per-pass timings for the stage profile (#744): tile regeneration, row building
     // (with the sink's time inside it), and the sink alone.
-    let (mut regenerate, mut build, mut sunk) = (0f64, 0f64, 0f64);
+    let (mut regenerate, mut build) = (0f64, 0f64);
+    // Clearing row buffers shared by every placement of the pass, grown on demand.
+    let mut pool: Vec<SecretBuf<Goldilocks>> = Vec::new();
+    let sunk = core::cell::Cell::new(0f64);
     let mut timed = |row: u64, values: &[Goldilocks]| -> Result<(), Error> {
         let at = std::time::Instant::now();
         let r = sink(row, values);
-        sunk += at.elapsed().as_secs_f64();
+        sunk.set(sunk.get() + at.elapsed().as_secs_f64());
         r
     };
     for (index, tile) in layout.tiles().iter().enumerate() {
@@ -96,7 +99,9 @@ pub fn visit_rows(
         }
         let at = std::time::Instant::now();
         let witness = source.tile(tile).map_err(Error::Witness)?;
-        regenerate += at.elapsed().as_secs_f64();
+        let tile_regenerate = at.elapsed().as_secs_f64();
+        regenerate += tile_regenerate;
+        let sunk_before = sunk.get();
         let at = std::time::Instant::now();
         for &name in layout.sources(index).ok_or(Error::Internal)? {
             let place = layout.location(index, name).ok_or(Error::Internal)?;
@@ -110,9 +115,20 @@ pub fn visit_rows(
                 continue;
             }
             let (values, domain) = column(lowering, tile, &witness, name)?;
-            column_rows(place, values, &domain, width, &mut timed)?;
+            column_rows(place, values, &domain, width, &mut pool, &mut timed)?;
         }
-        build += at.elapsed().as_secs_f64();
+        let tile_build = at.elapsed().as_secs_f64();
+        build += tile_build;
+        if tile_regenerate + tile_build > 1.0 {
+            let millis = |s: f64| (s * 1e3) as u64;
+            let (index, regenerate_ms, rows_ms, sink_ms) = (
+                index as u64,
+                millis(tile_regenerate),
+                millis(tile_build - (sunk.get() - sunk_before)),
+                millis(sunk.get() - sunk_before),
+            );
+            tessera_codec::event!(DEBUG, "prover.slow_tile", index = index, regenerate_ms = regenerate_ms, rows_ms = rows_ms, sink_ms = sink_ms; "tile {index}: regenerate {regenerate_ms} ms, rows {rows_ms} ms, sink {sink_ms} ms");
+        }
     }
     let millis = |s: f64| (s * 1e3) as u64;
     tessera_codec::event!(
@@ -120,8 +136,8 @@ pub fn visit_rows(
         "prover.rows_visited",
         segment = segment,
         regenerate_ms = millis(regenerate),
-        rows_ms = millis(build - sunk),
-        sink_ms = millis(sunk);
+        rows_ms = millis(build - sunk.get()),
+        sink_ms = millis(sunk.get());
         "segment {segment}: tiles {regenerate_ms} ms, rows {rows_ms} ms, sink {sink_ms} ms"
     );
     Ok(())
@@ -131,6 +147,7 @@ fn column_rows(
     values: &[i64],
     domain: &[u32],
     width: usize,
+    pool: &mut Vec<SecretBuf<Goldilocks>>,
     sink: &mut impl FnMut(u64, &[Goldilocks]) -> Result<(), Error>,
 ) -> Result<(), Error> {
     let expected = domain
@@ -145,10 +162,14 @@ fn column_rows(
     // reach the sink in that order whatever the worker count.
     // shortcut: the memory plan charges one row; up to 32 rows (1 GiB at 2^22) are resident
     // with several CPU threads. Charge them in the plan when budgets get tight (#728).
-    let workers = tessera_sumcheck::parallelism().clamp(1, 32);
-    let mut rows: Vec<SecretBuf<Goldilocks>> = (0..workers)
-        .map(|_| zeros(width, Goldilocks::ZERO))
-        .collect::<Result<_, _>>()?;
+    let order: Vec<u64> = place.nonzero().iter().cloned().flatten().collect();
+    let workers = tessera_sumcheck::parallelism()
+        .clamp(1, 32)
+        .min(order.len().max(1));
+    while pool.len() < workers {
+        pool.push(zeros(width, Goldilocks::ZERO)?);
+    }
+    let rows = &mut pool[..workers];
     let fill = |row: u64, fields: &mut [Goldilocks]| -> Result<(), Error> {
         fields.fill(Goldilocks::ZERO);
         for (column, source) in place
@@ -163,7 +184,6 @@ fn column_rows(
         }
         Ok(())
     };
-    let order: Vec<u64> = place.nonzero().iter().cloned().flatten().collect();
     for batch in order.chunks(workers) {
         if workers == 1 {
             fill(batch[0], &mut rows[0])?;
@@ -181,7 +201,7 @@ fn column_rows(
                     .try_for_each(|job| job.join().unwrap_or(Err(Error::Internal)))
             })?;
         }
-        for (&row, fields) in batch.iter().zip(&rows) {
+        for (&row, fields) in batch.iter().zip(rows.iter()) {
             sink(row, fields)?;
         }
     }

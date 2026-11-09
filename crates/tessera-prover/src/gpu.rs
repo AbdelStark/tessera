@@ -146,6 +146,9 @@ mod enabled {
             };
             Ok(Box::new(AdviceSink {
                 device: &self.device,
+                blocks: 0,
+                busy: 0.0,
+                last: std::time::Instant::now(),
                 k,
                 mask_coeffs,
                 block,
@@ -281,6 +284,10 @@ mod enabled {
 
     struct AdviceSink<'d> {
         device: &'d Device,
+        /// Blocks absorbed, the time inside the sink, and when the last block left it.
+        blocks: u64,
+        busy: f64,
+        last: std::time::Instant,
         encoder: Arc<Encoder>,
         chains: Option<ColumnChainsGpu>,
         k: usize,
@@ -340,7 +347,18 @@ mod enabled {
                     reason: "a block of whole rows and their masks",
                 });
             }
-            self.run(rows, masks, count).map_err(device)
+            let started = std::time::Instant::now();
+            let waited = started.duration_since(self.last).as_secs_f64();
+            self.run(rows, masks, count).map_err(device)?;
+            self.busy += started.elapsed().as_secs_f64();
+            self.blocks += 1;
+            self.last = std::time::Instant::now();
+            if self.blocks == 1 || self.blocks.is_multiple_of(16) {
+                let (blocks, busy_ms, gap_ms) =
+                    (self.blocks, (self.busy * 1e3) as u64, (waited * 1e3) as u64);
+                tessera_codec::event!(DEBUG, "prover.gpu_advice_blocks", blocks = blocks, busy_ms = busy_ms, gap_ms = gap_ms; "{blocks} advice blocks: {busy_ms} ms on the device path, last gap {gap_ms} ms");
+            }
+            Ok(())
         }
 
         fn finish(&mut self) -> Result<Vec<Digest>, PcsError> {
