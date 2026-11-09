@@ -18,6 +18,8 @@ use cudarc::nvrtc::Ptx;
 /// The fatbin of `kernels/vector_add.cu`, for `sm_90` and `sm_100` (empty when the build skipped
 /// kernel compilation).
 const VECTOR_ADD_FATBIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/vector_add.fatbin"));
+/// The fatbin of `kernels/commit.cu`: encoding and column hashing (#55).
+const COMMIT_FATBIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/commit.fatbin"));
 
 /// An error from the GPU backend. It carries public data only (05 §3).
 #[derive(Debug)]
@@ -33,6 +35,17 @@ pub enum GpuError {
         /// Length of the right operand.
         right: usize,
     },
+    /// A buffer does not hold the number of elements the operation needs.
+    BufferLength {
+        /// Which operand.
+        operand: &'static str,
+        /// The length the operation needs.
+        expected: usize,
+        /// The buffer's length.
+        found: usize,
+    },
+    /// A shape parameter is outside what the kernels support.
+    Unsupported(&'static str),
 }
 
 impl fmt::Display for GpuError {
@@ -45,6 +58,12 @@ impl fmt::Display for GpuError {
             Self::LengthMismatch { left, right } => {
                 write!(f, "operand lengths differ: {left} and {right}")
             }
+            Self::BufferLength {
+                operand,
+                expected,
+                found,
+            } => write!(f, "{operand} holds {found} elements, not {expected}"),
+            Self::Unsupported(what) => write!(f, "unsupported shape: {what}"),
         }
     }
 }
@@ -58,7 +77,7 @@ impl From<DriverError> for GpuError {
 }
 
 /// A buffer of `T` in device memory, owned by one [`Device`].
-pub struct DeviceBuffer<T>(CudaSlice<T>);
+pub struct DeviceBuffer<T>(pub(crate) CudaSlice<T>);
 
 impl<T> DeviceBuffer<T> {
     /// The number of elements.
@@ -74,22 +93,28 @@ impl<T> DeviceBuffer<T> {
 
 /// One CUDA device with this crate's kernels loaded, and the stream all its work is ordered on.
 pub struct Device {
-    stream: Arc<CudaStream>,
+    pub(crate) stream: Arc<CudaStream>,
     vector_add: CudaFunction,
+    pub(crate) commit: crate::commit::Kernels,
 }
 
 impl Device {
     /// Opens device `ordinal` and loads the kernels.
     pub fn new(ordinal: usize) -> Result<Self, GpuError> {
-        if cfg!(tessera_gpu_kernels_skipped) || VECTOR_ADD_FATBIN.is_empty() {
+        if cfg!(tessera_gpu_kernels_skipped)
+            || VECTOR_ADD_FATBIN.is_empty()
+            || COMMIT_FATBIN.is_empty()
+        {
             return Err(GpuError::KernelsNotBuilt);
         }
         let context = CudaContext::new(ordinal)?;
         let module = context.load_module(Ptx::from_binary(VECTOR_ADD_FATBIN.to_vec()))?;
         let vector_add = module.load_function("vector_add")?;
+        let commit = context.load_module(Ptx::from_binary(COMMIT_FATBIN.to_vec()))?;
         Ok(Self {
             stream: context.default_stream(),
             vector_add,
+            commit: crate::commit::Kernels::load(&commit)?,
         })
     }
 
@@ -104,6 +129,11 @@ impl Device {
         len: usize,
     ) -> Result<DeviceBuffer<T>, GpuError> {
         Ok(DeviceBuffer(self.stream.alloc_zeros(len)?))
+    }
+
+    /// Waits until all work queued on the device completes.
+    pub fn synchronize(&self) -> Result<(), GpuError> {
+        Ok(self.stream.synchronize()?)
     }
 
     /// Copies a device buffer back to the host, after the work queued before it completes.

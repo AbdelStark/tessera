@@ -134,6 +134,15 @@ static PROVER_CONTEXT_KEYS: LazyLock<[ContextKey; PROVER_DOMAINS]> =
 static CONTEXT_KEYS: LazyLock<[ContextKey; DOMAINS]> =
     LazyLock::new(|| Domain::ALL.map(|domain| hash_derive_key_context(domain.context())));
 
+impl Domain {
+    /// The 32-byte BLAKE3 context key of [`Self::context`], derived once: the key a BLAKE3
+    /// implementation outside this crate (the CUDA kernels of `tessera-gpu`) hashes this
+    /// domain's inputs with, in `DERIVE_KEY_MATERIAL` mode.
+    pub fn context_key(self) -> &'static [u8; 32] {
+        &CONTEXT_KEYS[self as usize]
+    }
+}
+
 /// `H(domain, ·)` over an input given in parts.
 #[derive(Clone, Debug)]
 pub struct Hasher(blake3::Hasher);
