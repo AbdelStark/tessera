@@ -617,11 +617,30 @@ impl<F: PolyField> State<F> {
                 return Err(WindowError::Source);
             };
             let sums = device.sums(low, high, suffix_eq.low_bits)?;
-            for (slot, value) in out.iter_mut().enumerate() {
-                let sum = *(&sums[slot] as &dyn Any)
+            let mut s = [F::ZERO; 3];
+            for (out, sum) in s.iter_mut().zip(&sums) {
+                *out = *(sum as &dyn Any)
                     .downcast_ref::<F>()
                     .ok_or(WindowError::Source)?;
-                let x = integer::<F>(if slot == 0 { 0 } else { slot + 1 });
+            }
+            // The offloaded polynomial has degree 2 in x, so its sums at a batch's further
+            // nodes are the Lagrange interpolation through x = 0, 2, 3: the same field elements
+            // the host computes at those nodes directly.
+            let inverse = |n: usize| integer::<F>(n).inverse().ok_or(WindowError::Source);
+            let (sixth, half, third) = (inverse(6)?, inverse(2)?, inverse(3)?);
+            for (slot, value) in out.iter_mut().enumerate() {
+                let node = if slot == 0 { 0 } else { slot + 1 };
+                let x = integer::<F>(node);
+                let sum = match node {
+                    0 => s[0],
+                    2 => s[1],
+                    3 => s[2],
+                    _ => {
+                        let (two, three) = (integer::<F>(2), integer::<F>(3));
+                        s[0] * (x - two) * (x - three) * sixth - s[1] * x * (x - three) * half
+                            + s[2] * x * (x - two) * third
+                    }
+                };
                 *value = sum * (prefix * eq_at(self.spec.eq[self.bound], x));
             }
             return Ok(out);
