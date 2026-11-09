@@ -3,7 +3,8 @@
 # The MVP pipeline for one real Llama model on a rented GPU host (#722, #730, #737):
 # download, quantize on CUDA, greedy tokens, compile, commit, prove, verify, with each step's
 # wall time and peak RSS in $RUN/steps.tsv. Steps whose output exists are skipped, so the
-# script resumes. Run from the repository root:
+# script resumes. ALPHA fixes the migration strength (tessera-quant --alpha); PROVER_FEATURES=gpu
+# with `--backend gpu` among the prove flags proves on the GPU. Run from the repository root:
 #
 #   scripts/mvp-model.sh 1b|8b PROMPT_LEN NEW_TOKENS [extra `tessera prove` flags]
 set -euo pipefail
@@ -52,7 +53,7 @@ cat > "$run/calibration.json" <<EOF
 EOF
 step quantize "$run/model.d" $py -m tessera_quant compile --json --checkpoint "$ckpt" \
   --calibration "$run/calibration.json" --profile servable --scales affine \
-  --out "$run/model.d" --device cuda
+  --out "$run/model.d" --device cuda ${ALPHA:+--alpha $ALPHA}
 step tokens "$run/tokens.ttk" $py tools/greedy_tokens.py "$run/model.d" "$ckpt" \
   "$run/tokens.ttk" --prompt-len "$prompt" --new "$new"
 
