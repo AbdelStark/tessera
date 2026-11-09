@@ -1,5 +1,8 @@
-# Fast-build pull-request pipeline. Deeper, platform-specific and scheduled checks remain
-# available through workflow_dispatch. Third-party actions are pinned by SHA (TB-4).
+# Fast-build pull-request pipeline (MVP build phase, #EPIC): a pull request runs formatting,
+# lints, unit tests, the protocol and tiny-model integration tests and the CPU API proofs. The
+# serial allocation regressions, the recorder and serving conformance, the duplicate model_leaf
+# proofs and the R10 mask-rank gate run on every push to main and nightly, not on pull requests.
+# Deeper, platform-specific and scheduled checks remain available through workflow_dispatch. Third-party actions are pinned by SHA (TB-4).
 name: ci
 
 on:
@@ -106,7 +109,7 @@ jobs:
       # About 260 s of CPU over the conformance and 405B claim lists, every request and both
       # readings of #554, which the gate spreads over the runner's cores.
       - name: Every mask row's revealed points are independent (R10, #488)
-        if: needs.scope.outputs.code == 'true'
+        if: needs.scope.outputs.code == 'true' && github.event_name != 'pull_request'
         run: cargo run --locked --quiet -p xtask -- check-mask-rank
       - name: Field operations compile branch-free on x86_64 (INV-ARCH-2)
         if: needs.scope.outputs.code == 'true'
@@ -216,7 +219,7 @@ jobs:
           cargo nextest run -p tessera-compiler --test advice_layout --locked \
             -E 'test(every_model_source_location_point_zero_row_and_segment_matches_the_oracle)'
       - name: Public table and owned layout allocation regressions (#641)
-        if: matrix.workspace == 'prover'
+        if: matrix.workspace == 'prover' && github.event_name != 'pull_request'
         run: |
           cargo test -p tessera-tables --lib --tests --locked -- --test-threads=1
           cargo test -p tessera-gadgets --test storage --locked -- --test-threads=1
@@ -260,7 +263,7 @@ jobs:
         if: matrix.workspace == 'prover'
         run: cargo nextest run --locked -p tessera-cli --test prove_sample
       - name: Serving integration guide, reference recorder and sampler conformance
-        if: matrix.workspace == 'prover'
+        if: matrix.workspace == 'prover' && github.event_name != 'pull_request'
         run: |
           cargo test -p tessera-scoring --test sampler --test exact --locked
           cargo test -p tessera-witness --test engine the_engine_computes_the_conformance_vectors --locked
@@ -269,7 +272,7 @@ jobs:
           cargo run -p tessera-cli --example recorder_integration --locked -- \
             "$TESSERA_BIN" "$RUNNER_TEMP/recorder-integration"
       - name: Accept real CPU proofs in NI and fresh Live sessions
-        if: matrix.workspace == 'prover'
+        if: matrix.workspace == 'prover' && github.event_name != 'pull_request'
         run: >-
           cargo nextest run --locked -p tessera-prover --test model_leaf
           --features test-rng,tv-core/test-params -E 'test(complete_runtime_cpu_proofs) | test(public_cpu_api)'
@@ -277,7 +280,7 @@ jobs:
         if: matrix.workspace == 'verifier'
         run: cargo nextest run --workspace --lib --tests --locked
       - name: Independent CLI accepts the real CPU proof and rejects tampering
-        if: matrix.workspace == 'prover'
+        if: matrix.workspace == 'prover' && github.event_name != 'pull_request'
         run: |
           cargo test -p tessera-prover --test model_leaf --features test-rng,tv-core/test-params --locked public_cli_binary -- --ignored
       - name: Test-parameter unit and claim validation coverage
