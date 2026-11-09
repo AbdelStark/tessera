@@ -36,7 +36,7 @@ jobs:
         run: |
           base=https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2
           archive=cargo-deny-0.20.2-x86_64-unknown-linux-musl
-          curl --proto '=https' --tlsv1.2 -sSfL -o "$RUNNER_TEMP/$archive.tar.gz" "$base/$archive.tar.gz"
+          curl --proto '=https' --tlsv1.2 -sSfL --retry 5 --retry-all-errors --retry-delay 10 -o "$RUNNER_TEMP/$archive.tar.gz" "$base/$archive.tar.gz"
           echo "9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f  $RUNNER_TEMP/$archive.tar.gz" \
             | sha256sum --check --strict
           tar -xzf "$RUNNER_TEMP/$archive.tar.gz" -C "$RUNNER_TEMP"
