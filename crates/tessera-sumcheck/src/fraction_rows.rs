@@ -3,18 +3,37 @@
 //! Bounded regeneration of canonical fraction-tree nodes (RFC-0008/0054).
 
 use core::{fmt, mem::size_of, num::NonZeroUsize};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tessera_codec::SecretBuf;
 use tessera_poly::PolyField;
 
 use crate::WindowError;
 
+/// Threads that regenerate fraction levels (RFC-0018 'CPU backend'): 1 until the prover sets it.
+static PARALLELISM: AtomicUsize = AtomicUsize::new(1);
+
+/// Sets how many threads [`FractionTreeRows::read_level`] splits a regeneration over. Each node
+/// is a pure function of its own leaves, so the output is the same at any count; only the
+/// scratch grows, one regeneration chunk per thread.
+pub fn set_parallelism(threads: NonZeroUsize) {
+    PARALLELISM.store(threads.get(), Ordering::Relaxed);
+}
+
+/// The regeneration thread count set by [`set_parallelism`].
+pub fn parallelism() -> usize {
+    PARALLELISM.load(Ordering::Relaxed).max(1)
+}
+
+/// Below this many leaves per thread, one thread regenerates the whole read.
+const PARALLEL_MIN_LEAVES: usize = 1 << 16;
+
 /// Immutable canonical fraction leaves, including the table tree's row-0 padding.
 ///
 /// Every pass must reproduce the same leaves. Secret-derived entries are written directly
 /// into the caller's clearing storage; a source retains no borrowed destination. Source
 /// backing storage and any public generator core are charged separately from regeneration.
-pub trait FractionTreeSource<F: PolyField> {
+pub trait FractionTreeSource<F: PolyField>: Sync {
     /// Height of the tree: exactly `2^height` leaves, lowest pair bit first.
     fn height(&self) -> usize;
 
@@ -391,6 +410,17 @@ impl<'a, F: PolyField> FractionTreeRows<'a, F> {
         numerators: &mut [F],
         denominators: &mut [F],
     ) -> Result<(), WindowError> {
+        self.read_level_threads(parallelism(), depth, first, numerators, denominators)
+    }
+
+    fn read_level_threads(
+        &self,
+        threads: usize,
+        depth: usize,
+        first: usize,
+        numerators: &mut [F],
+        denominators: &mut [F],
+    ) -> Result<(), WindowError> {
         let fits = depth <= self.height
             && numerators.len() == denominators.len()
             && first
@@ -407,9 +437,13 @@ impl<'a, F: PolyField> FractionTreeRows<'a, F> {
         if let Some(cache) = &self.cache
             && depth <= cache.depth
         {
-            return self
-                .cached_rows(cache)?
-                .read_level(depth, first, numerators, denominators);
+            return self.cached_rows(cache)?.read_level_threads(
+                threads,
+                depth,
+                first,
+                numerators,
+                denominators,
+            );
         }
         if depth == self.height {
             for (index, (n, d)) in numerators
@@ -422,6 +456,38 @@ impl<'a, F: PolyField> FractionTreeRows<'a, F> {
             return Ok(());
         }
         let below = self.height - depth;
+        let count = numerators.len();
+        // Contiguous node ranges per thread, each a power of two so reads stay aligned.
+        let threads = threads
+            .min(count)
+            .min((count << below) / PARALLEL_MIN_LEAVES);
+        if threads > 1 {
+            let per = count.div_ceil(threads).next_power_of_two();
+            return std::thread::scope(|scope| {
+                let workers: Vec<_> = numerators
+                    .chunks_mut(per)
+                    .zip(denominators.chunks_mut(per))
+                    .enumerate()
+                    .map(|(t, (n, d))| {
+                        scope.spawn(move || self.subtrees_into(below, first + t * per, n, d))
+                    })
+                    .collect();
+                workers
+                    .into_iter()
+                    .try_for_each(|worker| worker.join().unwrap_or(Err(WindowError::Source)))
+            });
+        }
+        self.subtrees_into(below, first, numerators, denominators)
+    }
+
+    /// The nodes `first..first + numerators.len()` that are `below` levels above the leaves.
+    fn subtrees_into(
+        &self,
+        below: usize,
+        first: usize,
+        numerators: &mut [F],
+        denominators: &mut [F],
+    ) -> Result<(), WindowError> {
         let count = numerators.len();
         // Public subtree boundaries do not shorten reads: carry across chunks and emit
         // each original subtree separately, with no retained level or skipped leaf.
@@ -436,7 +502,7 @@ impl<'a, F: PolyField> FractionTreeRows<'a, F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::cell::Cell;
+    use crate::sync_cell::Cell;
     use tessera_field::{Field, Goldilocks as G, GoldilocksExt2 as F, PrimeField};
 
     struct Source {
@@ -557,6 +623,27 @@ mod tests {
     }
 
     #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn threaded_regeneration_equals_one_thread() {
+        // 2^18 leaves: deep reads clear PARALLEL_MIN_LEAVES per thread, shallow ones do not.
+        let s = source(18);
+        let rows = FractionTreeRows::new(&s, NonZeroUsize::new(4096).unwrap(), u64::MAX).unwrap();
+        for (depth, first, count) in [(1, 0, 2), (2, 1, 3), (5, 3, 29), (9, 0, 512), (12, 7, 4000)]
+        {
+            let read = |threads| {
+                let mut n = SecretBuf::filled(F::ZERO, count);
+                let mut d = SecretBuf::filled(F::ZERO, count);
+                rows.read_level_threads(threads, depth, first, &mut n, &mut d)
+                    .unwrap();
+                (n.to_vec(), d.to_vec())
+            };
+            let one = read(1);
+            for threads in [2, 3, 8, 64] {
+                assert_eq!(read(threads), one, "depth {depth}, {threads} threads");
+            }
+        }
+    }
+
     #[test]
     fn final_rows_of_a_four_billion_leaf_domain_allocate_no_table() {
         let s = source(32);

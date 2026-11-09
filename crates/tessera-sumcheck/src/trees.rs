@@ -879,8 +879,9 @@ mod tests {
 
     #[test]
     fn regenerated_fraction_rows_match_every_original_level() {
+        use crate::sync_cell::Cell;
         use crate::{FractionTreeRows, FractionTreeSource, WindowError};
-        use core::{cell::Cell, num::NonZeroUsize};
+        use core::num::NonZeroUsize;
 
         struct Source<'a> {
             n: &'a [Fp],

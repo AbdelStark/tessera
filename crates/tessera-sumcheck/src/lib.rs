@@ -383,7 +383,7 @@ pub use claim::Claim;
 pub use elementwise::{Elementwise, ElementwiseShape, ElementwiseTables, Input, zero_check_point};
 pub use error::SumcheckError;
 pub use forest::{Forest, ProvenForests, ProvenLevel, check_forests, prove_forests};
-pub use fraction_rows::{FractionTreeRows, FractionTreeSource};
+pub use fraction_rows::{FractionTreeRows, FractionTreeSource, parallelism, set_parallelism};
 pub use linear::{Linear, LinearClaim, LinearInput, LinearTerm, Placement};
 pub use matmul::{
     MatMulAct, MatMulActClaims, MatMulActShape, MatMulActTables, MatMulWeight, MatMulWeightClaims,
@@ -415,3 +415,55 @@ pub use trees::{
     ProvenTreeLevel, ProvenTrees, ResidentTreeMemory, ResidentTreeShape, Tree, prove_trees,
     prove_trees_in,
 };
+
+// Test sources are shared across regeneration threads (`FractionTreeSource: Sync`), so their
+// counters use these drop-in `Cell`/`RefCell` stand-ins over a mutex.
+#[cfg(test)]
+pub(crate) mod sync_cell {
+    use std::sync::{Mutex, MutexGuard};
+    #[derive(Debug, Default)]
+    pub(crate) struct Cell<T>(Mutex<T>);
+    impl<T: Copy> Cell<T> {
+        pub(crate) fn new(v: T) -> Self {
+            // Some platforms allocate a mutex on first lock: do it here, outside any measured
+            // allocation window of the test.
+            let m = Mutex::new(v);
+            drop(m.lock());
+            Self(m)
+        }
+        pub(crate) fn get(&self) -> T {
+            *self
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        }
+        pub(crate) fn set(&self, v: T) {
+            *self
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = v;
+        }
+    }
+    #[derive(Debug, Default)]
+    pub(crate) struct RefCell<T>(Mutex<T>);
+    impl<T> RefCell<T> {
+        pub(crate) fn new(v: T) -> Self {
+            // Some platforms allocate a mutex on first lock: do it here, outside any measured
+            // allocation window of the test.
+            let m = Mutex::new(v);
+            drop(m.lock());
+            Self(m)
+        }
+        pub(crate) fn borrow_mut(&self) -> MutexGuard<'_, T> {
+            self.0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        }
+        pub(crate) fn borrow(&self) -> MutexGuard<'_, T> {
+            self.borrow_mut()
+        }
+        pub(crate) fn replace(&self, v: T) -> T {
+            std::mem::replace(&mut *self.borrow_mut(), v)
+        }
+    }
+}

@@ -16,7 +16,46 @@ use tessera_field::PrimeField;
 use tessera_poly::PolyField;
 
 use super::{Labels, Prefix, ProvenBatch, Table, Values, padding_scale};
-use crate::{Protocol, SumcheckProof, SumcheckTranscript, Term};
+use crate::{Protocol, SumcheckProof, SumcheckTranscript, Term, parallelism};
+
+/// Below this many entries per thread, one thread runs a resident round.
+const PARALLEL_MIN_ENTRIES: usize = 1 << 14;
+
+/// `0..len` in at most `parallelism()` contiguous ranges of at least `PARALLEL_MIN_ENTRIES`.
+fn ranges(len: usize) -> Vec<core::ops::Range<usize>> {
+    let threads = parallelism().min(len / PARALLEL_MIN_ENTRIES).max(1);
+    let per = len.div_ceil(threads).max(1);
+    (0..len)
+        .step_by(per)
+        .map(|start| start..len.min(start + per))
+        .collect()
+}
+
+/// Runs `f` on each range of `ranges(len)`, on scoped threads when there are several, and
+/// returns the results in range order. Results are combined by exact field addition by the
+/// callers, so the thread count never changes a value (RFC-0018 'CPU backend').
+fn par_map<T: Send>(
+    len: usize,
+    f: impl Fn(core::ops::Range<usize>) -> Result<T, WindowError> + Sync,
+) -> Result<Vec<T>, WindowError> {
+    let ranges = ranges(len);
+    if ranges.len() <= 1 {
+        return ranges.into_iter().map(&f).collect();
+    }
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = ranges
+            .into_iter()
+            .map(|range| {
+                let f = &f;
+                scope.spawn(move || f(range))
+            })
+            .collect();
+        workers
+            .into_iter()
+            .map(|w| w.join().unwrap_or(Err(WindowError::Allocation)))
+            .collect()
+    })
+}
 
 /// RFC-0056's maximum number of own variables in one grid.
 pub const MAX_WINDOW_VARS: usize = 8;
@@ -354,9 +393,12 @@ impl<F: PolyField> State<F> {
             self.grid = None;
             if initial {
                 let eq = Weights::from_eq(&self.spec.eq)?;
-                self.sum[0] = (0..len).fold(F::ZERO, |s, index| {
-                    s + eq.at(index) * self.polynomial(&self.folded, index)
-                });
+                let parts = par_map(len, |range| {
+                    Ok(range.fold(F::ZERO, |s, index| {
+                        s + eq.at(index) * self.polynomial(&self.folded, index)
+                    }))
+                })?;
+                self.sum[0] = parts.into_iter().fold(F::ZERO, |s, p| s + p);
             }
             return Ok(());
         }
@@ -452,24 +494,47 @@ impl<F: PolyField> State<F> {
             }
         } else {
             let len = 1 << (self.spec.vars - self.bound - 1);
-            let mut line = buffer::<F>(self.folded.len())?;
             let suffix_eq = Weights::from_eq(&self.spec.eq[self.bound + 1..])?;
-            for pair in 0..len {
-                let suffix = suffix_eq.at(pair);
-                for (slot, value) in out.iter_mut().enumerate() {
-                    let node = if slot == 0 { 0 } else { slot + 1 };
-                    let x = integer::<F>(node);
-                    for (column, table) in line.iter_mut().zip(&self.folded) {
-                        *column = table[2 * pair] + x * (table[2 * pair + 1] - table[2 * pair]);
+            // Slot `s` evaluates at x = 0, 2, 3, …: the round's first, third, … values.
+            let xs: Vec<F> = (0..degree)
+                .map(|slot| integer::<F>(if slot == 0 { 0 } else { slot + 1 }))
+                .collect();
+            let columns = self.folded.len();
+            // Σ_pairs suffix·P(line(x)) per slot; the public factor prefix·eq(z, x) is applied
+            // once after the sum, which distributivity makes the same field element.
+            let parts = par_map(len, |pairs| {
+                let mut part = buffer::<F>(degree)?;
+                let mut base = buffer::<F>(columns)?;
+                let mut slope = buffer::<F>(columns)?;
+                let mut line = buffer::<F>(columns)?;
+                for pair in pairs {
+                    let suffix = suffix_eq.at(pair);
+                    for (k, table) in self.folded.iter().enumerate() {
+                        base[k] = table[2 * pair];
+                        slope[k] = table[2 * pair + 1] - base[k];
                     }
-                    let polynomial = self.spec.terms.iter().fold(F::ZERO, |s, term| {
-                        s + term
-                            .factors()
-                            .iter()
-                            .fold(*term.weight(), |v, &k| v * line[k])
-                    });
-                    *value += prefix * eq_at(self.spec.eq[self.bound], x) * suffix * polynomial;
+                    for (value, &x) in part.iter_mut().zip(&xs) {
+                        for k in 0..columns {
+                            line[k] = base[k] + x * slope[k];
+                        }
+                        let polynomial = self.spec.terms.iter().fold(F::ZERO, |s, term| {
+                            s + term
+                                .factors()
+                                .iter()
+                                .fold(*term.weight(), |v, &k| v * line[k])
+                        });
+                        *value += suffix * polynomial;
+                    }
                 }
+                Ok(part)
+            })?;
+            for part in parts {
+                for (value, p) in out.iter_mut().zip(part.iter()) {
+                    *value += *p;
+                }
+            }
+            for (value, &x) in out.iter_mut().zip(&xs) {
+                *value *= prefix * eq_at(self.spec.eq[self.bound], x);
             }
         }
         Ok(out)
@@ -488,10 +553,30 @@ impl<F: PolyField> State<F> {
         } else {
             for table in &mut self.folded {
                 let len = table.len() / 2;
-                for index in 0..len {
-                    table[index] = table[2 * index] + r * (table[2 * index + 1] - table[2 * index]);
+                if ranges(len).len() <= 1 {
+                    for index in 0..len {
+                        table[index] =
+                            table[2 * index] + r * (table[2 * index + 1] - table[2 * index]);
+                    }
+                    table.truncate(len);
+                    continue;
                 }
-                table.truncate(len);
+                // Out of place across threads: in place, one thread's writes would overlap
+                // another's reads.
+                let source: &SecretBuf<F> = table;
+                let halves = par_map(len, |range| {
+                    let mut out = buffer::<F>(range.len())?;
+                    for (o, index) in out.iter_mut().zip(range) {
+                        *o = source[2 * index] + r * (source[2 * index + 1] - source[2 * index]);
+                    }
+                    Ok(out)
+                })?;
+                let mut bound =
+                    SecretBuf::try_with_capacity(len).map_err(|_| WindowError::Allocation)?;
+                for half in &halves {
+                    bound.extend(half.iter().copied());
+                }
+                *table = bound;
             }
         }
         self.bound += 1;

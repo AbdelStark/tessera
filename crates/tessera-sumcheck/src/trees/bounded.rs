@@ -678,8 +678,9 @@ impl<'a, F: PolyField> PreparedTreeBatch<'a, F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sync_cell::Cell;
     use crate::{Forest, FractionTree, FractionTreeSource, LeafNumerators, prove_trees_in};
-    use core::{cell::Cell, num::NonZeroUsize};
+    use core::num::NonZeroUsize;
     use tessera_codec::Ascii;
     use tessera_field::{Goldilocks as G, GoldilocksExt2 as F, PrimeField, QuadraticExtension};
     use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};

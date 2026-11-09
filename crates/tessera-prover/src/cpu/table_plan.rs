@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     fn enlarged_read_scratch_is_charged_and_bounds_actual_allocations() {
-        use std::cell::Cell;
+        use std::sync::atomic::{AtomicUsize, Ordering};
         use tessera_codec::{Ascii, SecretBuf};
         use tessera_field::{
             Field, Goldilocks as B, GoldilocksExt2 as F, PrimeField, QuadraticExtension,
@@ -244,7 +244,7 @@ mod tests {
         use tessera_sumcheck::WindowError;
         struct AllocatingSource {
             rows: usize,
-            maximum_read: Cell<usize>,
+            maximum_read: AtomicUsize,
         }
         impl TableSource<B> for AllocatingSource {
             fn rows(&self) -> usize {
@@ -271,8 +271,7 @@ mod tests {
                 {
                     return Err(WindowError::Source);
                 }
-                self.maximum_read
-                    .set(self.maximum_read.get().max(keys.len()));
+                self.maximum_read.fetch_max(keys.len(), Ordering::Relaxed);
                 let mut scratch = SecretBuf::try_with_capacity(keys.len())
                     .map_err(|_| WindowError::Allocation)?;
                 scratch.resize(keys.len(), 0u64);
@@ -288,7 +287,7 @@ mod tests {
             let rows = 1usize << height;
             let source = AllocatingSource {
                 rows,
-                maximum_read: Cell::new(0),
+                maximum_read: AtomicUsize::new(0),
             };
             let owned = 16 * rows as u64 + NATIVE_DESCRIPTOR_BYTES_PER_TREE;
             let plan = TablePlan {
@@ -334,7 +333,7 @@ mod tests {
                     .unwrap(),
                 );
             });
-            assert_eq!(source.maximum_read.get(), plan.chunk_rows);
+            assert_eq!(source.maximum_read.load(Ordering::Relaxed), plan.chunk_rows);
             assert!(
                 measured.bytes_max <= plan.working_bytes,
                 "actual allocated peak {} exceeds charged {}",

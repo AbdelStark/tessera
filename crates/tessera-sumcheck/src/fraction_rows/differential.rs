@@ -3,7 +3,7 @@
 //! RFC-0008: compare every ordered node; root equality alone permits permutations.
 
 use super::*;
-use core::cell::RefCell;
+use crate::sync_cell::RefCell;
 use tessera_field::{Field, Goldilocks as B, GoldilocksExt2 as F, PrimeField, QuadraticExtension};
 
 // The production scalar fallback is the unchanged pre-#663 traversal.
