@@ -117,10 +117,16 @@ fn column_rows(
     if values.len() != expected {
         return Err(Error::Internal);
     }
-    // RFC-0011/0047: only one clearing row is resident, including for permuted axes.
-    // The public nonzero schedule is unchanged across P1, P4 and P5 (INV-PCS-1/2).
-    let mut fields = zeros(width, Goldilocks::ZERO)?;
-    for row in place.nonzero().iter().cloned().flatten() {
+    // RFC-0011/0047: one clearing row per worker is resident, including for permuted axes.
+    // The public nonzero schedule is unchanged across P1, P4 and P5 (INV-PCS-1/2), and rows
+    // reach the sink in that order whatever the worker count.
+    // shortcut: the memory plan charges one row; up to 32 rows (1 GiB at 2^22) are resident
+    // with several CPU threads. Charge them in the plan when budgets get tight (#728).
+    let workers = tessera_sumcheck::parallelism().clamp(1, 32);
+    let mut rows: Vec<SecretBuf<Goldilocks>> = (0..workers)
+        .map(|_| zeros(width, Goldilocks::ZERO))
+        .collect::<Result<_, _>>()?;
+    let fill = |row: u64, fields: &mut [Goldilocks]| -> Result<(), Error> {
         fields.fill(Goldilocks::ZERO);
         for (column, source) in place
             .row_indices(row, domain)
@@ -132,7 +138,29 @@ fn column_rows(
                     Goldilocks::from_i64(*values.get(index).ok_or(Error::Internal)?);
             }
         }
-        sink(row, &fields)?;
+        Ok(())
+    };
+    let order: Vec<u64> = place.nonzero().iter().cloned().flatten().collect();
+    for batch in order.chunks(workers) {
+        if workers == 1 {
+            fill(batch[0], &mut rows[0])?;
+        } else {
+            std::thread::scope(|scope| {
+                let jobs: Vec<_> = batch
+                    .iter()
+                    .zip(rows.iter_mut())
+                    .map(|(&row, fields)| {
+                        let fill = &fill;
+                        scope.spawn(move || fill(row, fields))
+                    })
+                    .collect();
+                jobs.into_iter()
+                    .try_for_each(|job| job.join().unwrap_or(Err(Error::Internal)))
+            })?;
+        }
+        for (&row, fields) in batch.iter().zip(&rows) {
+            sink(row, fields)?;
+        }
     }
     Ok(())
 }
