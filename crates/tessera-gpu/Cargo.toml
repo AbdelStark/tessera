@@ -11,7 +11,7 @@ publish.workspace = true
 [features]
 # The CUDA backend: compiles kernels/*.cu with nvcc (CUDA 12.8 or later) into sm_90 and sm_100
 # fatbins and enables the host bindings. Without it the crate is an empty stub (DEP-5).
-gpu = ["dep:cudarc"]
+gpu = ["dep:cudarc", "dep:tessera-hash"]
 
 [dependencies]
 # Driver API bindings against the CUDA 12.8 interface, loaded at run time, so the host code
@@ -23,11 +23,14 @@ cudarc = { version = "0.19", optional = true, default-features = false, features
     "cuda-12080",
     "dynamic-loading",
 ] }
+# The BLAKE3 context keys of the column domains, which the kernels hash with (RFC-0004).
+tessera-hash = { path = "../tessera-hash", optional = true }
 
 [dev-dependencies]
 # The witness engine's checkpoint store, whose clearing a recording allocator checks: unsafe code,
 # which RFC-0001 permits in this crate (tests/checkpoint_clearing.rs).
 tessera-codec = { path = "../tessera-codec" }
+tessera-hash = { path = "../tessera-hash" }
 tessera-compiler = { path = "../tessera-compiler" }
 tessera-field = { path = "../tessera-field" }
 tessera-ir = { path = "../tessera-ir" }

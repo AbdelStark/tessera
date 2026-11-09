@@ -6,6 +6,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 - Retry the CI tool downloads (cargo-deny, cargo-nextest, mdBook) up to five times on any error: one HTTP 504 from the release host failed the nightly of 2026-11-08 ([#710](https://github.com/AbdelStark/tessera/issues/710)).
 
+- Add the GPU encode-and-hash microkernel behind `c_c`: rate-1/2 coset encoding with the vanishing mask and BLAKE3 column chains in CUDA, bit-identical to the CPU encoder and chains, and its RFC-0020 benchmark (`tessera-bench --features gpu --example gpu_unit_costs`). On one H100 it measures 134.8 ps per committed element (encoding 123.4 ps, hashing 11.4 ps) against the assumed 30 ps; the arithmetic floor of RFC-0011's encoding on H100 is about 79 ps ([#55](https://github.com/AbdelStark/tessera/issues/55), [report](docs/perf/v0.1/cc-h100.md)).
+
 - Give the nightly's complete prover suite 120 minutes: it builds in about 12 and its tests run past 28 more, so the 40-minute limit cancelled it every night since at least 2026-10-30. A timed-out job now opens the nightly failure issue too: it concludes `cancelled`, which `failure()` did not match, so those nights reported nothing ([#96](https://github.com/AbdelStark/tessera/issues/96), 07 §2).
 
 - Add RFC-0077 scoped canonical group/original sources, clearing native leases, complete grouped physical phase bounds and public candidate search; qualify complete NI/Live proofs across grouping families, slots, padded layers, affine and Minimal fixtures without changing the resident cell floor ([#689](https://github.com/AbdelStark/tessera/issues/689)).

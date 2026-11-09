@@ -8,8 +8,14 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+# The GPU unit-cost microbenchmarks (examples/gpu_unit_costs.rs, RFC-0020 'Measurement
+# protocol'): needs the CUDA toolkit and a CUDA device (DEP-5).
+gpu = ["dep:tessera-gpu", "tessera-gpu/gpu"]
+
 [dependencies]
 serde_json = "1"
+tessera-gpu = { path = "../tessera-gpu", optional = true }
 
 [dev-dependencies]
 tessera-codec = { path = "../tessera-codec" }
@@ -24,6 +30,10 @@ tessera-protocol = { path = "../tessera-protocol" }
 tessera-sumcheck = { path = "../tessera-sumcheck" }
 tv-codec = { path = "../../verifier/crates/tv-codec" }
 tv-core = { path = "../../verifier/crates/tv-core" }
+
+[[example]]
+name = "gpu_unit_costs"
+required-features = ["gpu"]
 
 [[bench]]
 name = "primitives"
