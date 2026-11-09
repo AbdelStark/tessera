@@ -361,8 +361,8 @@ pub use ntt::NttPlan;
 pub use opening::{ClaimGroup, CombinedRow, RowClaim};
 pub use streaming::opening::{
     AdviceClaim, AdviceColumnMemory, AdviceCommitmentMemory, AdviceOpening, AdviceOpeningError,
-    AdviceOpeningMemory, AdvicePoint, CheckedOpening, ColumnPass, ColumnPermit, OpeningGroups,
-    OpeningPass,
+    AdviceOpeningMemory, AdvicePoint, CheckedOpening, ColumnPass, ColumnPermit, ColumnSink,
+    OpeningGroups, OpeningPass,
 };
 pub use streaming::{
     AdviceCommitment, BlockSink, SegmentDigests, StreamingCommitter, merge_segments,

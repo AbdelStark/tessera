@@ -1321,7 +1321,38 @@ impl ProverEngine for CpuBackend<'_> {
             .iter()
             .map(|&i| u64::from(i))
             .collect::<Vec<_>>();
-        let mut pass = d.p1.begin_columns(permit, &encoder, &mut masks, &indices)?;
+        let a = c.layout.advice;
+        let columns = pcs::AdviceOpening::column_indices(&indices)?;
+        let mut sink = p
+            .gpu
+            .as_ref()
+            .filter(|_| a.log2_inv_rate == 1)
+            .map(|g| {
+                g.column_sink(
+                    u32::from(a.log2_k),
+                    a.mask_coeffs as usize,
+                    a.row_block as usize,
+                    &columns,
+                )
+            })
+            .transpose()?;
+        event!(
+            DEBUG,
+            "prover.p5_backend",
+            gpu = sink.is_some();
+            "P5 column answers on the GPU: {gpu}"
+        );
+        let mut pass = match sink.as_deref_mut() {
+            Some(sink) => d.p1.begin_columns_with_sink(
+                permit,
+                &encoder,
+                sink,
+                a.row_block as usize,
+                &mut masks,
+                &indices,
+            )?,
+            None => d.p1.begin_columns(permit, &encoder, &mut masks, &indices)?,
+        };
         for segment in 0..c.layout.advice.segments {
             crate::advice::visit_rows(&u.lowering, &advice, &source, segment, |r, v| {
                 pass.push_row(r, v).map_err(Into::into)

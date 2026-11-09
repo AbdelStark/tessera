@@ -2,11 +2,11 @@
 
 //! GPU-backed stages (RFC-0018, #731). A [`Gpu`] is opened from `Backend::Gpu`; each stage it
 //! serves computes exactly what the CPU computes, so a GPU proof equals the CPU proof byte for
-//! byte. Today: P1's advice encoding and column hashing (#732), and the rounds of P2's tree
-//! levels (#734) through `tessera_sumcheck`'s level offload.
+//! byte. Today: P1's advice encoding and column hashing (#732), the rounds of P2's tree levels
+//! (#734) through `tessera_sumcheck`'s level offload, and P5's re-encoding for column answers.
 
 use tessera_hash::Digest;
-use tessera_pcs::BlockSink;
+use tessera_pcs::{BlockSink, ColumnSink};
 
 use crate::ProverError;
 
@@ -32,6 +32,18 @@ impl Gpu {
         _: usize,
         _: &Digest,
     ) -> Result<Box<dyn BlockSink + '_>, ProverError> {
+        Err(ProverError::Usage {
+            rule: "the GPU backend needs a prover built with the `gpu` feature",
+        })
+    }
+
+    pub(crate) fn column_sink(
+        &self,
+        _: u32,
+        _: usize,
+        _: usize,
+        _: &[u64],
+    ) -> Result<Box<dyn ColumnSink + '_>, ProverError> {
         Err(ProverError::Usage {
             rule: "the GPU backend needs a prover built with the `gpu` feature",
         })
@@ -143,6 +155,121 @@ mod enabled {
                 chains: Some(chains),
                 encoder,
             }))
+        }
+    }
+
+    impl Gpu {
+        /// A sink re-encoding rate-1/2 advice rows in blocks of `block` and returning the
+        /// symbols at `columns` (P5).
+        pub(crate) fn column_sink(
+            &self,
+            log_k: u32,
+            mask_coeffs: usize,
+            block: usize,
+            columns: &[u64],
+        ) -> Result<Box<dyn ColumnSink + '_>, ProverError> {
+            let encoder = self.encoder(log_k, mask_coeffs).map_err(ProverError::Pcs)?;
+            let (k, n) = (encoder.message_len(), encoder.codeword_len());
+            let pcs = |e| ProverError::Pcs(device(e));
+            let d = &self.device;
+            Ok(Box::new(ColumnsSink {
+                device: d,
+                k,
+                n,
+                mask_coeffs,
+                block,
+                m: columns.len(),
+                columns: d.upload(columns).map_err(pcs)?,
+                rows: d.zeroed(block * k).map_err(pcs)?,
+                masks: d.zeroed((block * mask_coeffs).max(1)).map_err(pcs)?,
+                codewords: d.zeroed(block * n).map_err(pcs)?,
+                out: d.zeroed((block * columns.len()).max(1)).map_err(pcs)?,
+                encoder,
+            }))
+        }
+    }
+
+    struct ColumnsSink<'d> {
+        device: &'d Device,
+        encoder: Arc<Encoder>,
+        k: usize,
+        n: usize,
+        mask_coeffs: usize,
+        block: usize,
+        m: usize,
+        columns: DeviceBuffer<u64>,
+        rows: DeviceBuffer<u64>,
+        masks: DeviceBuffer<u64>,
+        codewords: DeviceBuffer<u64>,
+        out: DeviceBuffer<u64>,
+    }
+
+    impl ColumnsSink<'_> {
+        fn run(&mut self, rows: &[Goldilocks], masks: &[Goldilocks]) -> Result<Vec<u64>, GpuError> {
+            let d = self.device;
+            let count = rows.len() / self.k;
+            let mut short = None;
+            let (r, m, c) = if count == self.block {
+                (&mut self.rows, &mut self.masks, &mut self.codewords)
+            } else {
+                let s = short.insert((
+                    d.zeroed::<u64>(count * self.k)?,
+                    d.zeroed::<u64>((count * self.mask_coeffs).max(1))?,
+                    d.zeroed::<u64>(count * self.n)?,
+                ));
+                (&mut s.0, &mut s.1, &mut s.2)
+            };
+            d.upload_field_into(rows, r)?;
+            d.upload_field_into(masks, m)?;
+            d.encode_rows(&self.encoder, r, m, c)?;
+            d.gather_columns(c, self.n, count, &self.columns, &mut self.out)?;
+            let words = d.download(&self.out)?;
+            if let Some((mut r, mut m, mut c)) = short {
+                for b in [&mut r, &mut m, &mut c] {
+                    d.clear(b)?;
+                }
+            }
+            Ok(words[..count * self.m].to_vec())
+        }
+    }
+
+    impl ColumnSink for ColumnsSink<'_> {
+        fn select(
+            &mut self,
+            rows: &[Goldilocks],
+            masks: &[Goldilocks],
+        ) -> Result<Vec<Goldilocks>, PcsError> {
+            let count = rows.len() / self.k;
+            if count == 0 || count > self.block || rows.len() != count * self.k {
+                return Err(PcsError::Device {
+                    reason: "a block of whole rows",
+                });
+            }
+            let words = self.run(rows, masks).map_err(device)?;
+            words
+                .into_iter()
+                .map(|w| {
+                    <Goldilocks as tessera_field::PrimeField>::from_canonical_u64(w).ok_or(
+                        PcsError::Device {
+                            reason: "a device symbol is canonical",
+                        },
+                    )
+                })
+                .collect()
+        }
+    }
+
+    impl Drop for ColumnsSink<'_> {
+        fn drop(&mut self) {
+            for b in [
+                &mut self.rows,
+                &mut self.masks,
+                &mut self.codewords,
+                &mut self.out,
+            ] {
+                let _ = self.device.clear(b);
+            }
+            let _ = self.device.synchronize();
         }
     }
 

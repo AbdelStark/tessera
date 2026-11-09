@@ -74,6 +74,7 @@ pub(crate) struct Kernels {
     encode_low: CudaFunction,
     column_init: CudaFunction,
     column_step: CudaFunction,
+    gather_columns: CudaFunction,
 }
 
 impl Kernels {
@@ -84,6 +85,7 @@ impl Kernels {
             encode_low: module.load_function("encode_low")?,
             column_init: module.load_function("column_init")?,
             column_step: module.load_function("column_step")?,
+            gather_columns: module.load_function("gather_columns")?,
         };
         for f in [&kernels.ntt_pass, &kernels.encode_low] {
             f.set_attribute(
@@ -430,6 +432,42 @@ impl Device {
         // SAFETY: matches `column_step` in kernels/commit.cu; thread j < n reads and writes
         // chains[8j..8j+8) (8n words), reads codewords[r·n + j] for r < count (count·n ≤
         // codewords.len(), checked) and params[8..16) (24 words).
+        unsafe { launch.launch(config) }?;
+        Ok(())
+    }
+
+    /// `out[r·m + j] = codewords[r·n + columns[j]]` for the first `rows` codewords of `n`
+    /// symbols and the `m = columns.len()` columns: P5's queried symbols (#735).
+    pub fn gather_columns(
+        &self,
+        codewords: &DeviceBuffer<u64>,
+        n: usize,
+        rows: usize,
+        columns: &DeviceBuffer<u64>,
+        out: &mut DeviceBuffer<u64>,
+    ) -> Result<(), GpuError> {
+        let m = columns.len();
+        if rows * n > codewords.len() || out.len() < rows * m || m == 0 || rows == 0 {
+            return Err(GpuError::Unsupported("gathered columns fit their buffers"));
+        }
+        let (n64, rows32, m32) = (
+            n as u64,
+            u32::try_from(rows).map_err(|_| GpuError::Unsupported("rows fit u32"))?,
+            u32::try_from(m).map_err(|_| GpuError::Unsupported("columns fit u32"))?,
+        );
+        let config = LaunchConfig::for_num_elems(u32::try_from(rows * m).unwrap_or(u32::MAX));
+        let mut launch = self.stream.launch_builder(&self.commit.gather_columns);
+        launch
+            .arg(&codewords.0)
+            .arg(&n64)
+            .arg(&rows32)
+            .arg(&columns.0)
+            .arg(&m32)
+            .arg(&mut out.0);
+        #[allow(unsafe_code)]
+        // SAFETY: matches `gather_columns` in kernels/commit.cu; it reads columns[j] for j < m =
+        // columns.len(), and codewords[r·n + c] only for r < rows and c < n (the kernel checks
+        // c), so below rows·n ≤ codewords.len(); it writes out[i] for i < rows·m ≤ out.len().
         unsafe { launch.launch(config) }?;
         Ok(())
     }

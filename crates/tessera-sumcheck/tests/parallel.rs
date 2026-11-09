@@ -10,9 +10,7 @@ mod common;
 use common::{Fp2, Session, SplitMix64};
 use std::num::NonZeroUsize;
 use tessera_hash::Transcript;
-use tessera_sumcheck::{
-    Instance, Prefix, Protocol, Table, Term, prove_batch, set_parallelism,
-};
+use tessera_sumcheck::{Instance, Prefix, Protocol, Table, Term, prove_batch, set_parallelism};
 
 #[test]
 fn thread_count_never_changes_a_batch_proof() {
@@ -30,13 +28,22 @@ fn thread_count_never_changes_a_batch_proof() {
             Instance::new(vec![Table::ext(&a), Table::ext(&b), Table::base(&c)]),
             Instance::sum_of_products(
                 vec![Table::ext(&a), Table::base(&c), Table::ext(&b)],
-                vec![Term::new(w, vec![0, 1]), Term::new(Fp2::from(c[3]), vec![2, 0, 1])],
+                vec![
+                    Term::new(w, vec![0, 1]),
+                    Term::new(Fp2::from(c[3]), vec![2, 0, 1]),
+                ],
             ),
             Instance::new(vec![Table::ext(&d), Table::ext(&e)]),
         ];
         let mut transcript = Transcript::new(&session.context());
-        let proven =
-            prove_batch(&mut transcript, Protocol::One, Prefix::Stage(1), 3, &instances).unwrap();
+        let proven = prove_batch(
+            &mut transcript,
+            Protocol::One,
+            Prefix::Stage(1),
+            3,
+            &instances,
+        )
+        .unwrap();
         format!("{:?}", proven.proof())
     };
     let one = prove(1);
