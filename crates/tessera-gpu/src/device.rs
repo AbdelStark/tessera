@@ -20,7 +20,8 @@ use cudarc::nvrtc::Ptx;
 const VECTOR_ADD_FATBIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/vector_add.fatbin"));
 /// The fatbin of `kernels/commit.cu`: encoding and column hashing (#55).
 const COMMIT_FATBIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/commit.fatbin"));
-/// The fatbin of `kernels/trees.cu`: product-tree levels and their sumchecks (#64).
+/// The fatbin of `kernels/trees.cu`: product- and fraction-tree levels and their sumchecks (#63,
+/// #64).
 const TREES_FATBIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/trees.fatbin"));
 
 /// An error from the GPU backend. It carries public data only (05 §3).
@@ -99,6 +100,7 @@ pub struct Device {
     vector_add: CudaFunction,
     pub(crate) commit: crate::commit::Kernels,
     pub(crate) trees: crate::trees::Kernels,
+    pub(crate) fraction: crate::fraction::Kernels,
 }
 
 impl Device {
@@ -121,6 +123,7 @@ impl Device {
             vector_add,
             commit: crate::commit::Kernels::load(&commit)?,
             trees: crate::trees::Kernels::load(&trees)?,
+            fraction: crate::fraction::Kernels::load(&trees)?,
         })
     }
 

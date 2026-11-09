@@ -202,3 +202,192 @@ extern "C" __global__ void bind_ext(const fp2 *e, const fp2 *o, uint64_t pairs, 
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Fraction trees (c_l, #63): RFC-0008 'Fraction tree'. Node x of level t is (n, d) = (n_L d_R +
+// n_R d_L, d_L d_R) from entries 2x, 2x + 1 of level t + 1. A level's sumcheck proves
+// sum_x eq(r, x) g(x), g = Ne Do + No De + lambda De Do, Ne(x) = N[2x], No(x) = N[2x + 1], and
+// likewise for D. Levels 1 .. h - 1 are stored as separate N and D tables; the leaves are never
+// stored: leaf j is (n_j, alpha - (k_j + beta v_j)), k_j, v_j and the multiplicity behind
+// n_j = -m_j from the counter generator, or n_j = 1 for a lookup tree.
+
+struct LeafSpec {
+    uint64_t key_seed, value_seed, mult_seed;
+    fp2 alpha, beta;
+    uint32_t unit;  // numerators 1 (a lookup tree) or -m_j (a table tree)
+};
+
+__device__ __forceinline__ fp2 leaf_d(const LeafSpec &l, uint64_t j) {
+    const uint64_t k = gl::counter_value(l.key_seed + j);
+    const uint64_t v = gl::counter_value(l.value_seed + j);
+    return f2_canon({gl::lsub(gl::lsub(l.alpha.a, k), gl::lmul(l.beta.a, v)), gl::lsub(l.alpha.b, gl::lmul(l.beta.b, v))});
+}
+
+// -m_j with m_j = counter mod 2^16, canonical.
+__device__ __forceinline__ fp2 leaf_n(const LeafSpec &l, uint64_t j) {
+    if (l.unit) return {1, 0};
+    const uint64_t m = gl::counter_value(l.mult_seed + j) & 0xFFFF;
+    return {m == 0 ? 0 : gl::P - m, 0};
+}
+
+// Table sources of a level's sumcheck, by pair index i of the current variable's tables:
+// ne(i), no(i), de(i), dd(i) are Ne, No, De, Do at entry i.
+struct StoredSrc {
+    const fp2 *n, *d;
+    __device__ fp2 ne(uint64_t i) const { return n[2 * i]; }
+    __device__ fp2 no(uint64_t i) const { return n[2 * i + 1]; }
+    __device__ fp2 de(uint64_t i) const { return d[2 * i]; }
+    __device__ fp2 dd(uint64_t i) const { return d[2 * i + 1]; }
+};
+struct LeafSrc {
+    LeafSpec l;
+    __device__ fp2 ne(uint64_t i) const { return leaf_n(l, 2 * i); }
+    __device__ fp2 no(uint64_t i) const { return leaf_n(l, 2 * i + 1); }
+    __device__ fp2 de(uint64_t i) const { return leaf_d(l, 2 * i); }
+    __device__ fp2 dd(uint64_t i) const { return leaf_d(l, 2 * i + 1); }
+};
+struct BoundSrc {
+    const fp2 *bne, *bno, *bde, *bdd;
+    uint32_t unit;
+    __device__ fp2 ne(uint64_t i) const { return unit ? fp2{1, 0} : bne[i]; }
+    __device__ fp2 no(uint64_t i) const { return unit ? fp2{1, 0} : bno[i]; }
+    __device__ fp2 de(uint64_t i) const { return bde[i]; }
+    __device__ fp2 dd(uint64_t i) const { return bdd[i]; }
+};
+
+#define LEAF_ARGS                                                                                    \
+    uint64_t key_seed, uint64_t value_seed, uint64_t mult_seed, uint64_t a0, uint64_t a1, uint64_t b0, \
+        uint64_t b1, uint32_t unit
+#define LEAF_SPEC LeafSpec{key_seed, value_seed, mult_seed, {a0, a1}, {b0, b1}, unit}
+
+__device__ __forceinline__ void frac_node(fp2 nl, fp2 dl, fp2 nr, fp2 dr, fp2 *n, fp2 *d) {
+    *n = f2_canon(f2_add(f2_mul(nl, dr), f2_mul(nr, dl)));
+    *d = f2_canon(f2_mul(dl, dr));
+}
+
+// Level h - 1 from the generated leaves.
+extern "C" __global__ void frac_level_leaves(LEAF_ARGS, fp2 *n_out, fp2 *d_out, uint64_t parents) {
+    const LeafSpec l = LEAF_SPEC;
+    const uint64_t stride = static_cast<uint64_t>(gridDim.x) * blockDim.x;
+    for (uint64_t x = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x; x < parents; x += stride) {
+        frac_node(leaf_n(l, 2 * x), leaf_d(l, 2 * x), leaf_n(l, 2 * x + 1), leaf_d(l, 2 * x + 1), &n_out[x], &d_out[x]);
+    }
+}
+
+// Level t from level t + 1.
+extern "C" __global__ void frac_level(const fp2 *n, const fp2 *d, fp2 *n_out, fp2 *d_out, uint64_t parents) {
+    const uint64_t stride = static_cast<uint64_t>(gridDim.x) * blockDim.x;
+    for (uint64_t x = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x; x < parents; x += stride) {
+        frac_node(n[2 * x], d[2 * x], n[2 * x + 1], d[2 * x + 1], &n_out[x], &d_out[x]);
+    }
+}
+
+// The pair (2y, 2y + 1) of the current tables' contribution at c = 0, 1, 2.
+__device__ __forceinline__ void frac_pair(fp2 acc[3], fp2 w, fp2 lambda, fp2 ne0, fp2 ne1, fp2 no0, fp2 no1, fp2 de0,
+                                          fp2 de1, fp2 dd0, fp2 dd1) {
+    const fp2 ne2 = f2_sub(f2_add(ne1, ne1), ne0), no2 = f2_sub(f2_add(no1, no1), no0);
+    const fp2 de2 = f2_sub(f2_add(de1, de1), de0), dd2 = f2_sub(f2_add(dd1, dd1), dd0);
+    const fp2 nes[3] = {ne0, ne1, ne2}, nos[3] = {no0, no1, no2}, des[3] = {de0, de1, de2}, dds[3] = {dd0, dd1, dd2};
+#pragma unroll
+    for (int c = 0; c < 3; ++c) {
+        const fp2 g = f2_add(f2_add(f2_mul(nes[c], dds[c]), f2_mul(nos[c], des[c])), f2_mul(lambda, f2_mul(des[c], dds[c])));
+        acc[c] = f2_add(acc[c], f2_mul(w, g));
+    }
+}
+
+template <typename Src>
+__device__ __forceinline__ void frac_sums(const Src &src, uint64_t pairs, fp2 lambda, const fp2 *eq_lo,
+                                          uint32_t lo_bits, const fp2 *eq_hi, fp2 *partials) {
+    fp2 acc[3] = {{0, 0}, {0, 0}, {0, 0}};
+    const uint64_t stride = static_cast<uint64_t>(gridDim.x) * blockDim.x;
+    for (uint64_t y = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x; y < pairs; y += stride) {
+        frac_pair(acc, weight(y, eq_lo, lo_bits, eq_hi), lambda, src.ne(2 * y), src.ne(2 * y + 1), src.no(2 * y),
+                  src.no(2 * y + 1), src.de(2 * y), src.de(2 * y + 1), src.dd(2 * y), src.dd(2 * y + 1));
+    }
+    block_sums(acc, partials);
+}
+
+// Binds src at c into the four tables (two when unit) of `pairs` pairs, entries 2z and 2z + 1,
+// and adds the sums of the new pairs.
+template <typename Src>
+__device__ __forceinline__ void frac_bind_sums(const Src &src, uint64_t pairs, fp2 c, uint32_t unit, fp2 *bne,
+                                               fp2 *bno, fp2 *bde, fp2 *bdd, fp2 lambda, const fp2 *eq_lo,
+                                               uint32_t lo_bits, const fp2 *eq_hi, fp2 *partials) {
+    fp2 acc[3] = {{0, 0}, {0, 0}, {0, 0}};
+    const uint64_t stride = static_cast<uint64_t>(gridDim.x) * blockDim.x;
+    for (uint64_t z = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x; z < pairs; z += stride) {
+        fp2 ne0 = {1, 0}, ne1 = {1, 0}, no0 = {1, 0}, no1 = {1, 0};
+        if (!unit) {
+            ne0 = f2_line(src.ne(4 * z), src.ne(4 * z + 1), c);
+            ne1 = f2_line(src.ne(4 * z + 2), src.ne(4 * z + 3), c);
+            no0 = f2_line(src.no(4 * z), src.no(4 * z + 1), c);
+            no1 = f2_line(src.no(4 * z + 2), src.no(4 * z + 3), c);
+            bne[2 * z] = ne0;
+            bne[2 * z + 1] = ne1;
+            bno[2 * z] = no0;
+            bno[2 * z + 1] = no1;
+        }
+        const fp2 de0 = f2_line(src.de(4 * z), src.de(4 * z + 1), c), de1 = f2_line(src.de(4 * z + 2), src.de(4 * z + 3), c);
+        const fp2 dd0 = f2_line(src.dd(4 * z), src.dd(4 * z + 1), c), dd1 = f2_line(src.dd(4 * z + 2), src.dd(4 * z + 3), c);
+        bde[2 * z] = de0;
+        bde[2 * z + 1] = de1;
+        bdd[2 * z] = dd0;
+        bdd[2 * z + 1] = dd1;
+        frac_pair(acc, weight(z, eq_lo, lo_bits, eq_hi), lambda, ne0, ne1, no0, no1, de0, de1, dd0, dd1);
+    }
+    block_sums(acc, partials);
+}
+
+// The last binding: the single bound entry of each table, canonical, into out[0..4) as Ne, No,
+// De, Do (1 for unit numerators).
+template <typename Src>
+__device__ __forceinline__ void frac_bind_last(const Src &src, fp2 c, fp2 *out) {
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    out[0] = f2_canon(f2_line(src.ne(0), src.ne(1), c));
+    out[1] = f2_canon(f2_line(src.no(0), src.no(1), c));
+    out[2] = f2_canon(f2_line(src.de(0), src.de(1), c));
+    out[3] = f2_canon(f2_line(src.dd(0), src.dd(1), c));
+}
+
+#define SUM_ARGS uint64_t pairs, uint64_t l0, uint64_t l1, const fp2 *eq_lo, uint32_t lo_bits, const fp2 *eq_hi, fp2 *partials
+#define BIND_ARGS uint64_t c0, uint64_t c1, fp2 *bne, fp2 *bno, fp2 *bde, fp2 *bdd
+
+extern "C" __global__ void frac_sums_stored(const fp2 *n, const fp2 *d, SUM_ARGS) {
+    frac_sums(StoredSrc{n, d}, pairs, {l0, l1}, eq_lo, lo_bits, eq_hi, partials);
+}
+extern "C" __global__ void frac_sums_leaves(LEAF_ARGS, SUM_ARGS) {
+    frac_sums(LeafSrc{LEAF_SPEC}, pairs, {l0, l1}, eq_lo, lo_bits, eq_hi, partials);
+}
+extern "C" __global__ void frac_bind_sums_stored(const fp2 *n, const fp2 *d, BIND_ARGS, SUM_ARGS) {
+    frac_bind_sums(StoredSrc{n, d}, pairs, {c0, c1}, 0, bne, bno, bde, bdd, {l0, l1}, eq_lo, lo_bits, eq_hi, partials);
+}
+extern "C" __global__ void frac_bind_sums_leaves(LEAF_ARGS, BIND_ARGS, SUM_ARGS) {
+    frac_bind_sums(LeafSrc{LEAF_SPEC}, pairs, {c0, c1}, unit, bne, bno, bde, bdd, {l0, l1}, eq_lo, lo_bits, eq_hi,
+                   partials);
+}
+extern "C" __global__ void frac_bind_sums_bound(const fp2 *ne, const fp2 *no, const fp2 *de, const fp2 *dd,
+                                                uint32_t unit, BIND_ARGS, SUM_ARGS) {
+    frac_bind_sums(BoundSrc{ne, no, de, dd, unit}, pairs, {c0, c1}, unit, bne, bno, bde, bdd, {l0, l1}, eq_lo, lo_bits,
+                   eq_hi, partials);
+}
+extern "C" __global__ void frac_last_stored(const fp2 *n, const fp2 *d, uint64_t c0, uint64_t c1, fp2 *out) {
+    frac_bind_last(StoredSrc{n, d}, {c0, c1}, out);
+}
+extern "C" __global__ void frac_last_leaves(LEAF_ARGS, uint64_t c0, uint64_t c1, fp2 *out) {
+    frac_bind_last(LeafSrc{LEAF_SPEC}, {c0, c1}, out);
+}
+extern "C" __global__ void frac_last_bound(const fp2 *ne, const fp2 *no, const fp2 *de, const fp2 *dd, uint32_t unit,
+                                           uint64_t c0, uint64_t c1, fp2 *out) {
+    frac_bind_last(BoundSrc{ne, no, de, dd, unit}, {c0, c1}, out);
+}
+
+// A level on no variable (level 0 of a single tree): its tables' entries, unbound.
+template <typename Src>
+__device__ __forceinline__ void frac_first(const Src &src, fp2 *out) {
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    out[0] = f2_canon(src.ne(0));
+    out[1] = f2_canon(src.no(0));
+    out[2] = f2_canon(src.de(0));
+    out[3] = f2_canon(src.dd(0));
+}
+extern "C" __global__ void frac_first_stored(const fp2 *n, const fp2 *d, fp2 *out) { frac_first(StoredSrc{n, d}, out); }
+extern "C" __global__ void frac_first_leaves(LEAF_ARGS, fp2 *out) { frac_first(LeafSrc{LEAF_SPEC}, out); }
