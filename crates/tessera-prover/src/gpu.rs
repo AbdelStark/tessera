@@ -2,7 +2,8 @@
 
 //! GPU-backed stages (RFC-0018, #731). A [`Gpu`] is opened from `Backend::Gpu`; each stage it
 //! serves computes exactly what the CPU computes, so a GPU proof equals the CPU proof byte for
-//! byte. Today: P1's advice encoding and column hashing (#732).
+//! byte. Today: P1's advice encoding and column hashing (#732), and the rounds of P2's tree
+//! levels (#734) through `tessera_sumcheck`'s level offload.
 
 use tessera_hash::Digest;
 use tessera_pcs::BlockSink;
@@ -40,8 +41,15 @@ impl Gpu {
 #[cfg(feature = "gpu")]
 mod enabled {
     use super::*;
+    use std::sync::Arc;
     use tessera_field::Goldilocks;
-    use tessera_gpu::{ColumnChainsGpu, Device, DeviceBuffer, Encoder, GpuError};
+    use tessera_gpu::{ColumnChainsGpu, Device, DeviceBuffer, Encoder, GpuError, GpuLevels};
+
+    /// Level tables the offload may hold at once, unless `TESSERA_GPU_LEVEL_GIB` says otherwise:
+    /// room on an 80 GB device beside P1's buffers.
+    const LEVEL_GIB: u64 = 60;
+    /// Smaller level tables stay on the host, where a round costs less than a transfer.
+    const LEVEL_MIN_ENTRIES: usize = 1 << 14;
     use tessera_pcs::PcsError;
 
     fn device(e: GpuError) -> PcsError {
@@ -54,8 +62,8 @@ mod enabled {
 
     /// One CUDA device and the encoders built on it, reused across a proof's commitments.
     pub(crate) struct Gpu {
-        device: Device,
-        encoders: std::sync::Mutex<Vec<((u32, usize), std::sync::Arc<Encoder>)>>,
+        device: Arc<Device>,
+        encoders: std::sync::Mutex<Vec<((u32, usize), Arc<Encoder>)>>,
     }
 
     impl Gpu {
@@ -71,17 +79,27 @@ mod enabled {
                     rule: "the GPU backend's device opens",
                 }
             })?;
+            let device = Arc::new(device);
+            let gib = std::env::var("TESSERA_GPU_LEVEL_GIB")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(LEVEL_GIB);
+            let min = std::env::var("TESSERA_GPU_LEVEL_MIN")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(LEVEL_MIN_ENTRIES);
+            tessera_sumcheck::set_level_offload(Some(Arc::new(GpuLevels::new(
+                device.clone(),
+                gib << 30,
+                min,
+            ))));
             Ok(Self {
                 device,
                 encoders: std::sync::Mutex::new(Vec::new()),
             })
         }
 
-        fn encoder(
-            &self,
-            log_k: u32,
-            mask_coeffs: usize,
-        ) -> Result<std::sync::Arc<Encoder>, PcsError> {
+        fn encoder(&self, log_k: u32, mask_coeffs: usize) -> Result<Arc<Encoder>, PcsError> {
             let mut held = self
                 .encoders
                 .lock()
@@ -89,7 +107,7 @@ mod enabled {
             if let Some((_, e)) = held.iter().find(|(key, _)| *key == (log_k, mask_coeffs)) {
                 return Ok(e.clone());
             }
-            let e = std::sync::Arc::new(self.device.encoder(log_k, mask_coeffs).map_err(device)?);
+            let e = Arc::new(self.device.encoder(log_k, mask_coeffs).map_err(device)?);
             held.push(((log_k, mask_coeffs), e.clone()));
             Ok(e)
         }
@@ -128,9 +146,15 @@ mod enabled {
         }
     }
 
+    impl Drop for Gpu {
+        fn drop(&mut self) {
+            tessera_sumcheck::set_level_offload(None);
+        }
+    }
+
     struct AdviceSink<'d> {
         device: &'d Device,
-        encoder: std::sync::Arc<Encoder>,
+        encoder: Arc<Encoder>,
         chains: Option<ColumnChainsGpu>,
         k: usize,
         mask_coeffs: usize,

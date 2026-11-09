@@ -59,7 +59,7 @@ fn digest(threads: usize) -> F {
         statement_digest: [59; 32],
         session_id: [71; 16],
     });
-    prove_table_batch_bounded(
+    let _proven = prove_table_batch_bounded(
         &mut transcript,
         F::new(B::from_u64_reduced(3), B::ONE),
         F::new(B::from_u64_reduced(5), B::from_u64_reduced(7)),

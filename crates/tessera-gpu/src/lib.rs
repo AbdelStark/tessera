@@ -21,6 +21,8 @@ mod device;
 #[cfg(feature = "gpu")]
 mod fraction;
 #[cfg(feature = "gpu")]
+mod level;
+#[cfg(feature = "gpu")]
 mod trees;
 
 #[cfg(feature = "gpu")]
@@ -29,5 +31,7 @@ pub use commit::{ColumnChainsGpu, ENCODE_MAX_LOG_K, Encoder};
 pub use device::{Device, DeviceBuffer, GpuError};
 #[cfg(feature = "gpu")]
 pub use fraction::{FractionLeaves, FractionWorkspace, counter_value};
+#[cfg(feature = "gpu")]
+pub use level::GpuLevels;
 #[cfg(feature = "gpu")]
 pub use trees::ForestWorkspace;

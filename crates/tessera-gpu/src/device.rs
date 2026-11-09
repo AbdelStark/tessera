@@ -101,6 +101,7 @@ pub struct Device {
     pub(crate) commit: crate::commit::Kernels,
     pub(crate) trees: crate::trees::Kernels,
     pub(crate) fraction: crate::fraction::Kernels,
+    pub(crate) level: crate::level::Kernels,
 }
 
 impl Device {
@@ -124,6 +125,7 @@ impl Device {
             commit: crate::commit::Kernels::load(&commit)?,
             trees: crate::trees::Kernels::load(&trees)?,
             fraction: crate::fraction::Kernels::load(&trees)?,
+            level: crate::level::Kernels::load(&trees)?,
         })
     }
 

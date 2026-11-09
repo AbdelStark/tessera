@@ -982,6 +982,7 @@ fn prefix_weights_do_not_overlap_a_consumed_grid_allocation() {
                 end: 32,
             }),
             folded: Vec::new(),
+            device: None,
             bound: 32,
             sum: SecretBuf::filled(F::ZERO, 1),
         };

@@ -388,6 +388,8 @@ struct State<F: PolyField> {
     spec: WindowInstance<F>,
     grid: Option<Grid<F>>,
     folded: Vec<SecretBuf<F>>,
+    /// The folded tables on a device, when a registered offload took them (#734).
+    device: Option<Box<dyn crate::DeviceLevel>>,
     bound: usize,
     /// True initial sum, not a prover-supplied claim. Cleared on drop with the other scalars.
     sum: SecretBuf<F>,
@@ -485,6 +487,7 @@ impl<F: PolyField> State<F> {
                 })?;
                 self.sum[0] = parts.into_iter().fold(F::ZERO, |s, p| s + p);
             }
+            self.offload()?;
             return Ok(());
         }
         let delta = self
@@ -553,9 +556,76 @@ impl<F: PolyField> State<F> {
         Ok(())
     }
 
+    /// Moves the folded tables to the registered offload's device, when it takes this shape
+    /// over `Fp2` (#734). The host copies clear as they drop.
+    fn offload(&mut self) -> Result<(), WindowError> {
+        use core::any::Any;
+        use tessera_field::GoldilocksExt2 as Fp2;
+        let Some(offload) = crate::offload::level_offload() else {
+            return Ok(());
+        };
+        if self.spec.vars == self.bound || self.degree_slots().is_none() {
+            return Ok(());
+        }
+        let xs = [integer::<F>(0), integer::<F>(2), integer::<F>(3)];
+        let shape = match Shape::of(&self.spec.terms, self.folded.len(), &xs) {
+            Some(Shape::Fraction { lambda }) => {
+                let Some(&lambda) = (&lambda as &dyn Any).downcast_ref::<Fp2>() else {
+                    return Ok(());
+                };
+                crate::LevelShape::Fraction { lambda }
+            }
+            Some(Shape::Product) => crate::LevelShape::Product,
+            None => return Ok(()),
+        };
+        let tables: Option<Vec<&[Fp2]>> = self
+            .folded
+            .iter()
+            .map(|t| {
+                (t as &dyn Any)
+                    .downcast_ref::<SecretBuf<Fp2>>()
+                    .map(|t| &t[..])
+            })
+            .collect();
+        let Some(tables) = tables else {
+            return Ok(());
+        };
+        if let Some(device) = offload.load(shape, &tables)? {
+            self.device = Some(device);
+            self.folded = Vec::new();
+        }
+        Ok(())
+    }
+
+    /// `Some` when the instance's polynomial has degree 3, the only one the offload serves.
+    fn degree_slots(&self) -> Option<()> {
+        (self.spec.terms.iter().map(|t| t.factors().len()).max() == Some(2)).then_some(())
+    }
+
     fn message(&self, degree: usize, point: &[F]) -> Result<SecretBuf<F>, WindowError> {
         let mut out = buffer::<F>(degree)?;
         let prefix = self.eq_prefix(point);
+        if let Some(device) = &self.device {
+            use core::any::Any;
+            use tessera_field::GoldilocksExt2 as Fp2;
+            let suffix_eq = Weights::from_eq(&self.spec.eq[self.bound + 1..])?;
+            let (low, high) = (
+                (&suffix_eq.low as &dyn Any).downcast_ref::<Vec<Fp2>>(),
+                (&suffix_eq.high as &dyn Any).downcast_ref::<Vec<Fp2>>(),
+            );
+            let (Some(low), Some(high)) = (low, high) else {
+                return Err(WindowError::Source);
+            };
+            let sums = device.sums(low, high, suffix_eq.low_bits)?;
+            for (slot, value) in out.iter_mut().enumerate() {
+                let sum = *(&sums[slot] as &dyn Any)
+                    .downcast_ref::<F>()
+                    .ok_or(WindowError::Source)?;
+                let x = integer::<F>(if slot == 0 { 0 } else { slot + 1 });
+                *value = sum * (prefix * eq_at(self.spec.eq[self.bound], x));
+            }
+            return Ok(out);
+        }
         if let Some(grid) = &self.grid {
             let rest = grid.end - self.bound - 1;
             let mut line = buffer::<F>(grid.radix)?;
@@ -630,6 +700,15 @@ impl<F: PolyField> State<F> {
     }
 
     fn bind(&mut self, r: F) -> Result<(), WindowError> {
+        if let Some(device) = &mut self.device {
+            use core::any::Any;
+            let r = *(&r as &dyn Any)
+                .downcast_ref::<tessera_field::GoldilocksExt2>()
+                .ok_or(WindowError::Source)?;
+            device.bind(r)?;
+            self.bound += 1;
+            return Ok(());
+        }
         if let Some(grid) = &mut self.grid {
             let weights = basis(grid.radix, r)?;
             let len = grid.values.len() / grid.radix;
@@ -765,6 +844,7 @@ impl<F: PolyField> PreparedWindow<F> {
                 spec,
                 grid: None,
                 folded: Vec::new(),
+                device: None,
                 bound: 0,
                 sum: buffer(1)?,
             };
@@ -886,9 +966,22 @@ impl<F: PolyField> PreparedWindow<F> {
         let vars = self.states.iter().map(|s| s.spec.vars).collect();
         for state in &self.states {
             let start = final_evals.len();
-            for (table, values) in state.spec.tables.iter().zip(&state.folded) {
-                if !table.public {
-                    final_evals.push(values[0]);
+            if let Some(device) = &state.device {
+                use core::any::Any;
+                for (table, value) in state.spec.tables.iter().zip(device.firsts()?) {
+                    if !table.public {
+                        final_evals.push(
+                            *(&value as &dyn Any)
+                                .downcast_ref::<F>()
+                                .ok_or(WindowError::Source)?,
+                        );
+                    }
+                }
+            } else {
+                for (table, values) in state.spec.tables.iter().zip(&state.folded) {
+                    if !table.public {
+                        final_evals.push(values[0]);
+                    }
                 }
             }
             evals.push(start..final_evals.len());

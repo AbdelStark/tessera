@@ -367,6 +367,7 @@ mod level;
 mod linear;
 mod matmul;
 mod merge;
+mod offload;
 mod proof;
 mod prover;
 mod recompose;
@@ -393,6 +394,7 @@ pub use merge::{
     MAX_MERGE_VARS, Merge, MergeClaim, MergeMemory, MergePolynomial, MergeTables,
     largest_table_rounds, prove_merge, prove_merge_two_pass,
 };
+pub use offload::{DeviceLevel, LevelOffload, LevelShape, set_level_offload};
 pub use proof::SumcheckProof;
 pub use prover::window::{
     MAX_WINDOW_VARS, PreparedWindow, WindowError, WindowInstance, WindowMemory,
