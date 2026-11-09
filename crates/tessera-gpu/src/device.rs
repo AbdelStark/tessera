@@ -20,6 +20,8 @@ use cudarc::nvrtc::Ptx;
 const VECTOR_ADD_FATBIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/vector_add.fatbin"));
 /// The fatbin of `kernels/commit.cu`: encoding and column hashing (#55).
 const COMMIT_FATBIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/commit.fatbin"));
+/// The fatbin of `kernels/trees.cu`: product-tree levels and their sumchecks (#64).
+const TREES_FATBIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/trees.fatbin"));
 
 /// An error from the GPU backend. It carries public data only (05 §3).
 #[derive(Debug)]
@@ -96,6 +98,7 @@ pub struct Device {
     pub(crate) stream: Arc<CudaStream>,
     vector_add: CudaFunction,
     pub(crate) commit: crate::commit::Kernels,
+    pub(crate) trees: crate::trees::Kernels,
 }
 
 impl Device {
@@ -104,6 +107,7 @@ impl Device {
         if cfg!(tessera_gpu_kernels_skipped)
             || VECTOR_ADD_FATBIN.is_empty()
             || COMMIT_FATBIN.is_empty()
+            || TREES_FATBIN.is_empty()
         {
             return Err(GpuError::KernelsNotBuilt);
         }
@@ -111,10 +115,12 @@ impl Device {
         let module = context.load_module(Ptx::from_binary(VECTOR_ADD_FATBIN.to_vec()))?;
         let vector_add = module.load_function("vector_add")?;
         let commit = context.load_module(Ptx::from_binary(COMMIT_FATBIN.to_vec()))?;
+        let trees = context.load_module(Ptx::from_binary(TREES_FATBIN.to_vec()))?;
         Ok(Self {
             stream: context.default_stream(),
             vector_add,
             commit: crate::commit::Kernels::load(&commit)?,
+            trees: crate::trees::Kernels::load(&trees)?,
         })
     }
 

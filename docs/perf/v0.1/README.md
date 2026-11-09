@@ -6,4 +6,4 @@ The measurements of [RFC-0020 'Measurement protocol'](../../rfcs/RFC-0020-cost-m
 |---|---|---|---|---|
 | `c_c` | 30 ps | 134.7 ps | 4.49 | [c_c on H100](cc-h100.md) |
 | `c_ℓ` | 40 ps | not measured | | [#63](https://github.com/AbdelStark/tessera/issues/63) |
-| `c_π` | 12 ps | not measured | | [#64](https://github.com/AbdelStark/tessera/issues/64) |
+| `c_π` | 12 ps | 84.6 ps | 7.05 | [c_π on H100](pi-h100.md) |

@@ -2016,6 +2016,7 @@ dependencies = [
  "tessera-hash",
  "tessera-ir",
  "tessera-pcs",
+ "tessera-sumcheck",
  "tessera-witness",
 ]
 

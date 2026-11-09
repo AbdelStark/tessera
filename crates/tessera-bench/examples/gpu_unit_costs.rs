@@ -8,6 +8,10 @@
 //! cargo run --release -p tessera-bench --features gpu --example gpu_unit_costs -- cc
 //! ```
 //!
+//! `pi`: the product-tree levels and level sumchecks of a forest of 2^16 trees of 2^14 leaves
+//! (2^30 leaves), RFC-0010 'Tree levels', leaves generated on the device; the check runs the
+//! CPU prover `tessera_sumcheck::prove_forests` on the same leaves and transcript once.
+//!
 //! `cc`: rate-1/2 coset Reed–Solomon encoding with a vanishing mask (`P = 200`, `ni-100`'s
 //! `τ_A`) and BLAKE3 chained column hashing (`B = 32`) of rows of width `k = 2^22`, 4,096 rows
 //! (2^34 committed elements) per run, inputs generated on the device by a counter-based
@@ -20,10 +24,12 @@ use std::process::Command;
 use std::time::Instant;
 
 use tessera_bench::{Protocol, Statistics, measure};
-use tessera_field::{Goldilocks, PrimeField};
+use tessera_codec::Ascii;
+use tessera_field::{Goldilocks, GoldilocksExt2, PrimeField};
 use tessera_gpu::{Device, DeviceBuffer, GpuError};
-use tessera_hash::ColumnChains;
+use tessera_hash::{ColumnChains, Mode, ParamSetId, SessionContext, Transcript};
 use tessera_pcs::RowEncoder;
+use tessera_sumcheck::{Forest, prove_forests};
 
 const LOG_K: u32 = 22;
 const MASK_COEFFS: usize = 200;
@@ -31,17 +37,22 @@ const BLOCK: usize = 32;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let rows: usize = args
-        .iter()
-        .position(|a| a == "--rows")
-        .and_then(|i| args.get(i + 1))
-        .map_or(Ok(4096), |v| v.parse())?;
+    let rows = option(&args, "--rows", 4096)?;
     environment();
     let device = Device::new(0)?;
-    if args.first().map(String::as_str) != Some("cc") {
-        return Err("usage: gpu_unit_costs cc [--rows N]".into());
+    match args.first().map(String::as_str) {
+        Some("cc") => cc(&device, rows),
+        Some("pi") => pi(&device, option(&args, "--trees-log", 16)?),
+        _ => Err("usage: gpu_unit_costs cc [--rows N] | pi [--trees-log S]".into()),
     }
-    cc(&device, rows)
+}
+
+/// The value after `name`, or `default`.
+fn option(args: &[String], name: &str, default: usize) -> Result<usize, std::num::ParseIntError> {
+    args.iter()
+        .position(|a| a == name)
+        .and_then(|i| args.get(i + 1))
+        .map_or(Ok(default), |v| v.parse())
 }
 
 /// The run manifest's environment lines: GPU, driver, clocks, CUDA.
@@ -146,6 +157,57 @@ fn cc(device: &Device, rows: usize) -> Result<(), Box<dyn std::error::Error>> {
         1e3 * (full.median - encode.median),
     );
     Ok(())
+}
+
+const TREE_HEIGHT: usize = 14;
+
+/// `2^trees_log` trees of `2^14` leaves: RFC-0020 fixes `2^16` (2^30 leaves).
+fn pi(device: &Device, trees_log: usize) -> Result<(), Box<dyn std::error::Error>> {
+    let count = 1usize << (trees_log + TREE_HEIGHT);
+    let mut leaves = device.zeroed::<u64>(count)?;
+    device.fill_counter(&mut leaves, 1 << 61)?;
+
+    let started = Instant::now();
+    let host = device.download(&leaves)?;
+    let fp: Option<Vec<Goldilocks>> = host
+        .iter()
+        .map(|&v| Goldilocks::from_canonical_u64(v))
+        .collect();
+    let fp = fp.ok_or("non-canonical leaf")?;
+    drop(host);
+    let mut cpu = transcript();
+    let (cpu_proofs, cpu_claims) =
+        prove_forests(&mut cpu, &[Forest::<GoldilocksExt2>::new(&fp, TREE_HEIGHT)])?.into_parts();
+    drop(fp);
+    // One workspace for every run: a prover pools its device memory (RFC-0018).
+    let mut workspace = device.forest_workspace(count, TREE_HEIGHT)?;
+    let mut gpu = transcript();
+    let (gpu_proofs, gpu_claim) = device.prove_forest_in(&mut workspace, &mut gpu, &leaves)?;
+    if gpu_proofs != cpu_proofs || cpu_claims.first() != Some(&gpu_claim) {
+        return Err("GPU forest proof differs from the CPU prover's".into());
+    }
+    println!(
+        "check: 2^{trees_log} trees of 2^{TREE_HEIGHT} leaves, every level's messages and the leaf claim equal the CPU prover's ({:.1} s)",
+        started.elapsed().as_secs_f64()
+    );
+
+    let statistics = timed(count as f64, || {
+        device.prove_forest_in(&mut workspace, &mut transcript(), &leaves)?;
+        device.synchronize()
+    })?;
+    report("pi/forest", count, &statistics);
+    println!("c_pi (median): {:.2} ps per leaf", 1e3 * statistics.median);
+    Ok(())
+}
+
+fn transcript() -> Transcript {
+    Transcript::new(&SessionContext {
+        protocol: Ascii::new("tessera-protocol/1").unwrap_or_else(|_| unreachable!()),
+        mode: Mode::NonInteractive,
+        params: ParamSetId(Ascii::new("bench/1").unwrap_or_else(|_| unreachable!())),
+        statement_digest: [0x65; 32],
+        session_id: [0x13; 16],
+    })
 }
 
 /// Block `block`'s rows and masks from the counter-based generator.
