@@ -91,6 +91,7 @@ fn fixture() -> (ClaimList, PublicStatement, NiProof, VerifierConfig) {
         limits: Default::default(),
         accept_bound: FixedBits(0),
         weights,
+        public_tokens: None,
     };
     (c, expected, proof, cfg)
 }

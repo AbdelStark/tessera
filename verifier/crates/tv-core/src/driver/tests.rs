@@ -21,6 +21,7 @@ pub(crate) fn fixture() -> (ClaimList, NiProof, VerifierConfig) {
         limits: ResourceLimits::default(),
         accept_bound: FixedBits(0),
         weights,
+        public_tokens: None,
     };
     let ni = NiProof::open(
         include_bytes!("../../tests/fixtures/driver/ni.tnp"),

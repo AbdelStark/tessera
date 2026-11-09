@@ -88,6 +88,7 @@ fn every_rejection_serializes_public_payloads_and_escapes_parameter_names() {
         R::Params {
             name: ParamSetId::new("bad\\\"/1").unwrap(),
         },
+        R::Tokens,
     ];
     // `verdict-v1.schema.json` lists exactly these codes, in 04 §2's order, and every member of
     // a reason's payload among its properties (`additionalProperties` is false).

@@ -67,6 +67,7 @@ impl Fixture {
                 limits: ResourceLimits::default(),
                 accept_bound: FixedBits(0),
                 weights,
+                public_tokens: None,
             },
         }
     }
