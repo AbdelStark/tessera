@@ -41,6 +41,7 @@ c(S) = max(0, ceil(log2(A S T bytes_per_leaf / free_HBM)))
 | c_r (P4) | 0, explicitly unpriced | Unknown H100 cost; use `--set row_combination_ps=...` (#252) |
 | c_c / c_ℓ / c_π, corrected | 30 / 40 / 12 ps | Assumed targets |
 | c_c / c_ℓ / c_π, counted | 94 / 101 / 41.8 ps | Counts fitted to E1; c_π repriced after #258’s split-eq kernel landed, using EXP-0008’s ratio; no H100 measurement |
+| c_c / c_ℓ / c_π, measured | 134.7 / 297.0 / 84.6 ps | E1 on one H100 SXM, 2026-11-09, first kernels bit-exact against the CPU ([docs/perf/v0.1](../docs/perf/v0.1/README.md)); with them `μ` = 58.3 / 85.2 / 187.1 / 785.3 at 1K/4K/16K/128K; RFC-0020 outcome Stop and redesign ([decision](../docs/perf/v0.1/decision.md)) |
 | glue | 1.15 | Sumcheck overhead assumption; zero-knowledge overhead is not this entire 15% |
 
 Counts come from [the current compiler report](../docs/perf/v0.2/commitment-report-405b-servable-c2-b32.json), refreshed by `cargo test -p tessera-bench --test commitment_report`. They supersede the 326,656 rescale-only count of EXP-0011, which described one class before RFC-0022’s classed residual update. The current per-layer rescale count is 359,424 at two classes, plus 808 row scalars; total commitments and lookups differ. One class still has 326,656 rescale elements, so that historical finding remains correct within its stated setting. [The report guide](../docs/perf/v0.2/README.md) gives all class counts and table bounds.
