@@ -1,0 +1,31 @@
+# Tessera claim card (RFC-0002), draft (#741). Every statement is Tessera's own specification at
+# the pinned commit: SPEC.md, docs/spec/, docs/rfcs/. Reviewed by the system's maintainer.
+schema: "claim/1"
+system: "tessera"
+configuration: "ni-100-public-output"
+card_version: 1
+upstream: {repo: "AbdelStark/tessera", commit: "0000000000000000000000000000000000000000"}
+claim_class: "greedy-continuation/exact-match/committed-weights"
+relation: >
+  If `tessera-verify verify --tokens` exits 0, the integer model D whose weights the trusted weights
+  root commits (RFC-0012) and whose public claim list the verifier validated (RFC-0007), run on the
+  public tokens as prompt then continuation, gives each continuation token as the lowest-indexed
+  maximum of its logits at the position before it (exact greedy, RFC-0053), and every operation of
+  D at every position (embedding, RMSNorm, attention with RoPE and softmax, SwiGLU, requantizations,
+  LM head) is proved by sumcheck and LogUp over Goldilocks under one Ligero-style advice
+  commitment.
+relation_formal: "docs/spec/02-public-api.md, RFC-0014 (protocol/1), RFC-0053, #741 (public tokens)"
+security:
+  notion: {kind: "computational", verifier: "tessera-verify verify, an independent implementation (RFC-0001, SP-6)"}
+  level: "ni-100/1: at least 100 bits for every row of RFC-0014's soundness table, reported per proof"
+  model: {assumption: "random oracle (BLAKE3 Fiat-Shamir, RFC-0004)", adversary: "a prover controlling all hardware and software"}
+  setup: "transparent"
+zero_knowledge: {claimed: "no", hidden: "nothing in this configuration", not_hidden: "tokens; activations are not revealed but no hiding is claimed (protocol/1)", status: "not_claimed"}
+assumptions:
+  - "D is the Tessera quantization (tessera-quant, RFC-0005) of the workload's BF16 checkpoint: W8A8 with integer tables for SiLU, exp and requantization; fidelity to the BF16 model is measured, not proved."
+coverage:
+  phase: "both"
+  unit: "request"
+  tokens_covered: "every prompt and continuation position of the request"
+  operations: "every operation of D, through the logits and the greedy certificate"
+  policy: {kind: "exact_match", detail: "the lowest-indexed maximum of D's integer logits (RFC-0009 Lemma 9)"}

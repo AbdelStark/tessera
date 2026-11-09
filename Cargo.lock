@@ -1897,6 +1897,7 @@ dependencies = [
  "tessera-protocol",
  "tessera-prover",
  "tessera-scoring",
+ "tessera-witness",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",

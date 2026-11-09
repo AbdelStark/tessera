@@ -1,0 +1,23 @@
+# Tessera (RFC-0005 adapter/1), draft for the observatory's systems/tessera (#741). The commit is
+# the Tessera commit the run used; `scripts/gpu-run` records it beside every result.
+schema: "system/1"
+name: "tessera"
+kind: "prover"
+contract: "adapter/1"
+upstream:
+  repo: "AbdelStark/tessera"
+  url: "https://github.com/AbdelStark/tessera"
+  commit: "0000000000000000000000000000000000000000"
+maintainers: ["AbdelStark"]
+workloads: ["l31-8b-c1024"]
+profile: "prover-h100"
+deterministic_proofs: false
+incremental_proofs: false
+proofs:
+  granularity: "request"
+  tokens_covered: "prompt_plus_output"
+  steady_boundary: "not_observable"
+  steady_approximate: false
+  verify_reads: "all"
+forbidden_flags: ["--test-", "test-small"]
+timeouts_s: {commit: 21600, prove: 43200, verify: 3600}
