@@ -5,7 +5,7 @@ Evidence for the MVP plan ([MVP.md](../../roadmap/MVP.md), epic [#722](https://g
 | File | What |
 |---|---|
 | [`benchmark.md`](benchmark.md) | Tessera's numbers in the observatory's units beside FlashProve and SASH, with caveats (#743) |
-| `verdict-8b-h200.json`, `verdict-8b-h200-wrong-token.json`, `verdict-1b-h200.json`, `verdict-1b-h200-p4.json` | Verifier verdicts of the accepted real-model proofs, and the `REJ-TOKENS` control |
+| `verdict-8b-h200.json`, `verdict-8b-h200-v2.json`, `verdict-8b-h200-wrong-token.json`, `verdict-1b-h200.json`, `verdict-1b-h200-p4.json` | Verifier verdicts of the accepted real-model proofs, and the `REJ-TOKENS` control |
 | `commitment-report-8b.json`, `commitment-report-1b.json` | The compiler's per-model counts: commitments and lookups per token, table rows |
 | `serving-{8b,1b}-h200-{8x8,c1024}.json` | Serving baselines on the idle H200 NVL the proofs ran on: vLLM 0.32.0, batch 1, at the proofs' 8 + 8 shape and the workload's 1,024 + 64, median of 8 requests after 2 warm-ups, `gpu_memory_utilization` 0.9 ([`scripts/serving_baseline.py`](../../../scripts/serving_baseline.py)) |
 | `serving-8b-h100.json`, `serving-1b-h100.json` | Production-serving baselines (#742): vLLM 0.32.0, one H100 SXM, batch 1, 1024 prompt and 64 greedy output tokens, median of 8 requests after 2 warm-ups ([`scripts/serving_baseline.py`](../../../scripts/serving_baseline.py)). Measured while the host CPU ran quantization, at `gpu_memory_utilization` 0.5 and 0.3 so that the quantizer kept GPU memory; batch 1 does not use the KV capacity this removes. |
@@ -34,4 +34,4 @@ The run shared the host with another proof for its first 25 minutes. The table s
 
 ## Llama-3.1-8B on one H200: accepted (2026-11-10)
 
-An 8 + 8 request of Tessera's integer model of Llama-3.1-8B-Instruct, proven in 1 h 30 min at 386 GiB peak host memory with GPU P1, P2, P4 and P5, verified with the public tokens in 2 min 15 s: **Accept**. Phases and the comparison: [benchmark.md](benchmark.md).
+An 8 + 8 request of Tessera's integer model of Llama-3.1-8B-Instruct, proven in 1 h 30 min at 386 GiB peak host memory with GPU P1, P2, P4 and P5, verified with the public tokens in 2 min 15 s: **Accept**. The same day's profiled fixes (GPU weight encoding, parallel stage loads) bring the proof to 48 min 22 s, also accepted. Phases and the comparison: [benchmark.md](benchmark.md).
