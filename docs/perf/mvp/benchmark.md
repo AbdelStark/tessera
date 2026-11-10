@@ -1,6 +1,6 @@
 # MVP benchmark: Tessera beside FlashProve and SASH (#743)
 
-Status: first numbers, 2026-11-10. Development runs on rented hardware, measured by Tessera's own scripts ([`scripts/prove-gpu.sh`](../../../scripts/prove-gpu.sh), `/usr/bin/time`), not yet by the observatory's harness. Read the caveats before any figure.
+Status: first numbers, 2026-11-10. Development runs on rented hardware, measured by Tessera's own scripts ([`scripts/prove-gpu.sh`](../../../scripts/prove-gpu.sh), `/usr/bin/time`). The observatory's harness has run the adapter on its workload as a development run, which stops at the prover's memory admission ([below](#the-adapter-through-the-observatorys-harness-2026-11-10)). Read the caveats before any figure.
 
 ## Headline
 
@@ -83,6 +83,18 @@ The run of [README.md](README.md#llama-32-1b-on-one-h200-the-first-accepted-real
 The rented container sees the host's 1 TB but is allowed 558 GiB (`/sys/fs/cgroup/memory.max`, 599,568,416,768 bytes); earlier runs' 900 GiB budgets overstated it. An attempt at 1,024 + 64 with a budget large enough to admit the resident plan (9,000 GiB) computed the witness in 8 minutes and committed 21,584 advice rows, then ran its leaf stage for 3 h 29 min without finishing and was killed by the container's OOM killer at 584 GB (`memory.events` oom_kill 1).
 
 At 1,024 + 64 positions, the prover's resident plan is 10.8 TB: 34.7 G tensor, 17.3 G lookup, 10.1 G table and 90.5 G advice cells at 64 bytes each. A 38-minute physical checkpoint search found no plan under the 900 GiB budget, and the proof stopped with `ERR-RES-MEMORY` before the witness. At 16 positions the same model's resident plan is 5.8 TB and its physical plan 369 GB, so the advice matrix (71.3 G cells at 16 positions, mostly the table side's multiplicities) dominates at both lengths.
+
+## The adapter through the observatory's harness (2026-11-10)
+
+`iproofs run --system tessera --workload l31-8b-c1024 --profile prover-h200-hosted --hosted --gpu 0 --allow-nonconforming` at inference-proofs 7d40d85, inside the rented container (a development install of the adapter at 36aae28 into the provider's `nvidia/cuda` image, so the record is `local/`, never release-eligible, and `nonconforming`: an H200 NVL, not the profile's SXM). The harness's self-test passed. Record: [bench/inference-proofs/tessera/runs/](../../../bench/inference-proofs/tessera/runs/2026-11-10-l31-8b-c1024-hosted-2/run.json).
+
+| Step | Harness clock | Outcome |
+|---|---|---|
+| info, setup | 0.1 s | passed |
+| commit: `tessera-quant compile` of the workload's pinned checkpoint on CUDA (C4 calibration, 128 windows), `tessera compile --params ni-100`, `tessera commit-weights` | 749.4 s | passed: commitment `dc66ed3a…`, prover files 8.03 GB, verifier files 11.8 kB |
+| prove: D's greedy continuation of the workload's 1,024-token prompt, then `tessera prove --backend gpu` on the profile's 15 prover CPUs | 7,386.3 s | **failed `ERR-RES-MEMORY`**: no physical plan fits the container's 523 GiB default budget |
+
+So the harness runs Tessera's adapter end to end up to the prover's memory admission, and records the refusal; the observatory's own numbers for Tessera wait for a prover that fits the workload.
 
 ## What to do next, ranked by this profile
 
