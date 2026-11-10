@@ -117,7 +117,17 @@ def up(a: argparse.Namespace) -> None:
          "cpu_ram": {"gte": a.min_ram * 1024}, "cpu_cores_effective": {"gte": a.min_cores},
          "type": "on-demand",
          "order": [["dph_total", "asc"]], "limit": 10}
-    offers = call("POST", "/bundles/", q).get("offers", [])
+    if a.offer:  # a named offer, whatever its GPU count: e.g. a whole machine for its RAM
+        # The bundles search does not filter on id: list verified and unverified, then pick it.
+        offers = []
+        for verified in (True, False):
+            q = {"rentable": {"eq": True}, "rented": {"eq": False}, "type": "on-demand",
+                 "verified": {"eq": verified}, "cpu_ram": {"gte": a.min_ram * 1024},
+                 "order": [["dph_total", "asc"]], "limit": 500}
+            offers += [o for o in call("POST", "/bundles/", q).get("offers", [])
+                       if o["id"] == a.offer]
+    else:
+        offers = call("POST", "/bundles/", q).get("offers", [])
     if not offers:
         sys.exit(f"gpu-run: no {a.gpu} offer at or below ${a.max_dph}/h")
     o = offers[0]
@@ -223,6 +233,7 @@ def main() -> None:
     u.add_argument("--disk", type=int, default=250, help="GB")
     u.add_argument("--min-ram", type=int, default=128, help="GB of host RAM")
     u.add_argument("--min-cores", type=int, default=32, help="effective host CPU cores")
+    u.add_argument("--offer", type=int, help="rent this offer id instead of searching")
     u.set_defaults(f=up)
     sub.add_parser("resume", help="wait for and set up the recorded instance").set_defaults(
         f=resume)
