@@ -14,8 +14,12 @@ fn main() -> Result<(), tessera_gpu::GpuError> {
     let (log_k, p, rows) = (22u32, 200usize, 32usize);
     let k = 1 << log_k;
     let enc = d.encoder(log_k, p)?;
-    let host: Vec<Goldilocks> = (0..rows * k).map(|i| Goldilocks::from_u64_reduced(i as u64)).collect();
-    let masks: Vec<Goldilocks> = (0..rows * p).map(|i| Goldilocks::from_u64_reduced(i as u64)).collect();
+    let host: Vec<Goldilocks> = (0..rows * k)
+        .map(|i| Goldilocks::from_u64_reduced(i as u64))
+        .collect();
+    let masks: Vec<Goldilocks> = (0..rows * p)
+        .map(|i| Goldilocks::from_u64_reduced(i as u64))
+        .collect();
     let mut r = d.zeroed::<u64>(rows * k)?;
     let mut m = d.zeroed::<u64>(rows * p)?;
     let mut c = d.zeroed::<u64>(rows * 2 * k)?;
@@ -34,8 +38,10 @@ fn main() -> Result<(), tessera_gpu::GpuError> {
         d.absorb_block(&mut chains, &c, rows)?;
         d.synchronize()?;
         let absorb = t.elapsed();
-        println!("round {round}: upload {up:?} ({:.1} GB/s), encode {encode:?}, absorb {absorb:?}",
-            (rows * k * 8) as f64 / up.as_secs_f64() / 1e9);
+        println!(
+            "round {round}: upload {up:?} ({:.1} GB/s), encode {encode:?}, absorb {absorb:?}",
+            (rows * k * 8) as f64 / up.as_secs_f64() / 1e9
+        );
     }
     Ok(())
 }

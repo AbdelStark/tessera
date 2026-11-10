@@ -1005,7 +1005,31 @@ impl<'a> CpuBackend<'a> {
         let opening = Instant::now();
         let prepared = d.p1.prepare(targets.advice(), gamma, &av)?;
         let mut masks = d.seed.masks();
-        let mut pass = prepared.begin(&encoder, &mut masks)?;
+        let a = c.layout.advice;
+        // The GPU encodes P4's rows for their sampled symbol; the leaf self-check checks it.
+        let mut sink = p
+            .gpu
+            .as_ref()
+            .filter(|_| a.log2_inv_rate == 1)
+            .map(|g| {
+                g.column_sink(
+                    u32::from(a.log2_k),
+                    a.mask_coeffs as usize,
+                    a.row_block as usize,
+                    &[prepared.sample_column()],
+                )
+            })
+            .transpose()?;
+        event!(
+            DEBUG,
+            "prover.p4_backend",
+            gpu = sink.is_some();
+            "P4 sampled symbols on the GPU: {gpu}"
+        );
+        let mut pass = match sink.as_deref_mut() {
+            Some(sink) => prepared.begin_with_sink(&encoder, sink, &mut masks)?,
+            None => prepared.begin(&encoder, &mut masks)?,
+        };
         for segment in 0..c.layout.advice.segments {
             crate::advice::visit_rows(&u.lowering, &advice, &source, segment, |r, v| {
                 pass.push_row(r, v).map_err(Into::into)
