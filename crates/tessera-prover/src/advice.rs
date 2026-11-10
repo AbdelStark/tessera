@@ -162,14 +162,6 @@ fn column_rows(
     // reach the sink in that order whatever the worker count.
     // shortcut: the memory plan charges one row; up to 32 rows (1 GiB at 2^22) are resident
     // with several CPU threads. Charge them in the plan when budgets get tight (#728).
-    let order: Vec<u64> = place.nonzero().iter().cloned().flatten().collect();
-    let workers = tessera_sumcheck::parallelism()
-        .clamp(1, 32)
-        .min(order.len().max(1));
-    while pool.len() < workers {
-        pool.push(zeros(width, Goldilocks::ZERO)?);
-    }
-    let rows = &mut pool[..workers];
     let fill = |row: u64, fields: &mut [Goldilocks]| -> Result<(), Error> {
         fields.fill(Goldilocks::ZERO);
         for (column, source) in place
@@ -184,6 +176,22 @@ fn column_rows(
         }
         Ok(())
     };
+    let workers = tessera_sumcheck::parallelism().clamp(1, 32);
+    if workers == 1 {
+        // One clearing row, as the memory plan charges.
+        let mut fields = zeros(width, Goldilocks::ZERO)?;
+        for row in place.nonzero().iter().cloned().flatten() {
+            fill(row, &mut fields)?;
+            sink(row, &fields)?;
+        }
+        return Ok(());
+    }
+    let order: Vec<u64> = place.nonzero().iter().cloned().flatten().collect();
+    let workers = workers.min(order.len().max(1));
+    while pool.len() < workers {
+        pool.push(zeros(width, Goldilocks::ZERO)?);
+    }
+    let rows = &mut pool[..workers];
     for batch in order.chunks(workers) {
         if workers == 1 {
             fill(batch[0], &mut rows[0])?;
@@ -475,26 +483,45 @@ mod tests {
                 })
                 .unwrap();
                 let mut ordered = place.nonzero().iter().cloned().flatten();
-                column_rows(place, &values, &domain, width, &mut |row, fields| {
-                    assert_eq!(Some(row), ordered.next());
-                    let start = (row - place.first_row()) as usize * width;
-                    assert_eq!(fields, &expected[start..start + width]);
-                    Ok(())
-                })
+                column_rows(
+                    place,
+                    &values,
+                    &domain,
+                    width,
+                    &mut Vec::new(),
+                    &mut |row, fields| {
+                        assert_eq!(Some(row), ordered.next());
+                        let start = (row - place.first_row()) as usize * width;
+                        assert_eq!(fields, &expected[start..start + width]);
+                        Ok(())
+                    },
+                )
                 .unwrap();
                 assert_eq!(ordered.next(), None);
                 assert_eq!(
-                    column_rows(place, &[], &domain, width, &mut |_, _| panic!(
-                        "invalid source emitted a row"
-                    )),
+                    column_rows(
+                        place,
+                        &[],
+                        &domain,
+                        width,
+                        &mut Vec::new(),
+                        &mut |_, _| panic!("invalid source emitted a row")
+                    ),
                     Err(Error::Internal)
                 );
                 let mut calls = 0;
                 assert_eq!(
-                    column_rows(place, &values, &domain, width, &mut |_, _| {
-                        calls += 1;
-                        Err(Error::Memory)
-                    }),
+                    column_rows(
+                        place,
+                        &values,
+                        &domain,
+                        width,
+                        &mut Vec::new(),
+                        &mut |_, _| {
+                            calls += 1;
+                            Err(Error::Memory)
+                        }
+                    ),
                     Err(Error::Memory)
                 );
                 assert_eq!(calls, 1);
@@ -512,11 +539,18 @@ mod tests {
                 let mut reused = true;
                 let measured = allocation_counter::measure(|| {
                     let mut row_storage = None;
-                    let result = column_rows(place, &values, &domain, 32, &mut |_, fields| {
-                        let address = fields.as_ptr() as usize;
-                        reused &= *row_storage.get_or_insert(address) == address;
-                        if fail { Err(Error::Memory) } else { Ok(()) }
-                    });
+                    let result = column_rows(
+                        place,
+                        &values,
+                        &domain,
+                        32,
+                        &mut Vec::new(),
+                        &mut |_, fields| {
+                            let address = fields.as_ptr() as usize;
+                            reused &= *row_storage.get_or_insert(address) == address;
+                            if fail { Err(Error::Memory) } else { Ok(()) }
+                        },
+                    );
                     assert_eq!(result, if fail { Err(Error::Memory) } else { Ok(()) });
                 });
                 assert_eq!(
