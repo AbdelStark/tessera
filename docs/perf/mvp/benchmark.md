@@ -10,16 +10,16 @@ Tessera proves a real Llama-3.1-8B request on one H200, and the independent veri
 |---|---|---|---|---|---|---|
 | FlashProve | Llama 4 Maverick, 17B active | observatory workload | 68.2 µs | 223 B | 61× | external, inferenceproofs.ai v0.1, marked not yet checked |
 | SASH | Llama 3.1 8B | 1,024 + 64 | 75.4 ms | 640 kB | 15,760× | external, inferenceproofs.ai v0.1, marked not yet checked |
-| **Tessera** | Llama 3.1 8B (integer model D, W8) | **8 + 8** | **5.26 s** | **4.38 MB** | **about 638,000×** | measured, n = 1, development run |
-| Tessera | Llama 3.2 1B (integer model D, W8) | 8 + 8 | 17.1 s | 23.4 MB | about 577,000× | measured, n = 1, development run, before the GPU P4 |
+| **Tessera** | Llama 3.1 8B (integer model D, W8) | **8 + 8** | **5.26 s** | **4.38 MB** | **107,800×** (1,019,000× against serving at 1,024 + 64) | measured, n = 1, development run |
+| Tessera | Llama 3.2 1B (integer model D, W8) | 8 + 8 | 8.73 s | 23.3 MB | 92,200× (1,186,000× against serving at 1,024 + 64) | measured, n = 1, development run |
 
-Units as the observatory defines them ([README](README.md#units)): per token covered (prompt plus continuation) and per Gbit of active weights, 64.24 Gbit for 8B and 11.99 Gbit for 1B. The overhead is the prover's GPU-seconds per token over vLLM's GPU-seconds per token covered at batch 1 on the 1,024 + 64 shape ([serving-8b-h100.json](serving-8b-h100.json), [serving-1b-h100.json](serving-1b-h100.json)).
+Units as the observatory defines them ([README](README.md#units)): per token covered (prompt plus continuation) and per Gbit of active weights, 64.24 Gbit for 8B and 11.99 Gbit for 1B. The overhead is the prover's GPU-seconds per token over vLLM 0.32.0's GPU-seconds per token covered at batch 1, both on the same idle H200 NVL, first at the proof's own 8 + 8 shape, then at the workload's 1,024 + 64 ([serving-8b-h200-8x8.json](serving-8b-h200-8x8.json), [serving-8b-h200-c1024.json](serving-8b-h200-c1024.json), [serving-1b-h200-8x8.json](serving-1b-h200-8x8.json), [serving-1b-h200-c1024.json](serving-1b-h200-c1024.json); median of 8 requests after 2 warm-ups, `gpu_memory_utilization` 0.9). Serving at 8 + 8 costs 3.14 ms per token at 8B and 1.14 ms at 1B; at 1,024 + 64, 0.332 ms and 0.088 ms. The earlier H100 baselines (`serving-*-h100.json`) ran under host contention and are kept for the record only.
 
 ## Caveats
 
 1. **Different shapes.** Tessera's rows cover 16 positions; SASH's and the serving baseline's cover 1,088. Tessera's cost at 16 positions is mostly fixed: the table side (10.1 G table rows at 8B, [commitment report](commitment-report-8b.json)) does not depend on the request length, so its per-token figures fall as the request grows. These rows are not a like-for-like comparison and must not be quoted as one.
 2. **Not the harness.** The observatory times calls from outside the container, binds CPUs and samples NVML. Tessera's adapter ([`bench/inference-proofs/tessera`](../../../bench/inference-proofs/tessera)) passes `iproofs validate --all`, but no harness run exists: the harness runs real systems only from their pinned image, and Tessera's image is not built yet.
-3. **Different hardware.** Tessera ran on an H200 NVL (141 GB) with 82 host CPUs and 1 TB of RAM; the serving baseline on an H100 SXM under host contention; SASH and FlashProve on the observatory's H200.
+3. **Different hardware.** Tessera and its serving baselines ran on one H200 NVL (141 GB) with 82 host CPUs and 1 TB of RAM; SASH and FlashProve on the observatory's H200 (SXM), with its own serving rows.
 4. **What is proved.** Tessera proves its integer model D, quantized from the BF16 checkpoint by `tessera-quant` (servable profile, affine scales, migration strength 1/2), not the BF16 model; D's fidelity is measured separately. `tessera-protocol/1` at `ni-100/1`, no zero knowledge. The verifier pins the public prompt and continuation (`--tokens`).
 5. **n = 1.** One run per row, no repetitions.
 
@@ -40,6 +40,22 @@ Units as the observatory defines them ([README](README.md#units)): per token cov
 | Verify (`tessera-verify verify --tokens`) | 2 min 15 s, 8.4 GiB, **Accept** ([verdict](verdict-8b-h200.json)) |
 | Verify with one continuation token changed | **Reject `REJ-TOKENS`**, exit 10 ([verdict](verdict-8b-h200-wrong-token.json)) |
 | Proof | 4,498,007,074 bytes |
+
+## Llama-3.2-1B on one H200, with the GPU P4 (2026-11-10)
+
+The run of [README.md](README.md#llama-32-1b-on-one-h200-the-first-accepted-real-model-proof-2026-11-10), repeated on an otherwise idle host at commit 09172b9: the same D, tokens, claim list and weights.
+
+| Phase | Before (shared host, CPU P4) | After (idle host, GPU P4) |
+|---|---|---|
+| Weight recommit, plan (physical, 190 GB, 17 s) and witness | 1 min 23 s | 3 min 6 s |
+| P1 advice commitment, 8,687 rows | 1 min 37 s | 1 min 38 s |
+| P2 leaf stage | 11 min 16 s | 9 min 52 s |
+| P3 reduction stages | 5 min 43 s | 5 min 28 s |
+| P4 openings | 29 min 10 s | **4 min 14 s** |
+| P5 column answers | 3 min 32 s | 3 min 37 s |
+| **Prove, total** | 54 min 36 s | **27 min 55 s** (1,675 s), peak host RSS 176 GiB |
+| Verify `--tokens` | 2 min 8 s | 2 min 9 s, **Accept** ([verdict](verdict-1b-h200-p4.json)) |
+| Proof | 4.48 GB | 4,478,696,586 bytes |
 
 ## The observatory's workload does not fit yet
 
