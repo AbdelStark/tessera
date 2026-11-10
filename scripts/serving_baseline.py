@@ -36,7 +36,7 @@ def main() -> None:
         assert len(out[0].outputs[0].token_ids) == new
     per_request = statistics.median(times)
     print(json.dumps({
-        "engine": "vllm", "model": model, "prompt_tokens": prompt, "output_tokens": new,
+        "schema": "tessera.serving-baseline/1", "engine": "vllm", "model": model, "prompt_tokens": prompt, "output_tokens": new,
         "batch_size": 1, "requests": requests, "gpu_memory_utilization": fraction,
         "seconds_per_request_median": per_request,
         "seconds_per_request_min": min(times), "seconds_per_request_max": max(times),
