@@ -4,20 +4,21 @@ Status: first numbers, 2026-11-10. Development runs on rented hardware, measured
 
 ## Headline
 
-Tessera proves a real Llama-3.1-8B request on one H200, and the independent verifier accepts it. At the shape it can run today, a 16-position request, it is about 37 times slower than SASH per token per Gbit and about 41,000 times slower than FlashProve, after the same day's profiled fixes halved the 8B proof (90 to 48 minutes). It cannot yet run the observatory's 1,088-position workload on one 1 TB host.
+Tessera proves real Llama-3.1-8B requests on one H200, and the independent verifier accepts them. At its longest accepted request, 64 + 64 positions (the workload's 64-token continuation after a 64-token prompt), it is about 5.9 times slower than SASH per token per Gbit, its proof is smaller per token per Gbit than SASH's (571 kB against 640 kB), and its overhead against serving at the same shape is 10,700× (SASH: 15,760× at its own). It is about 6,500 times slower than FlashProve. It cannot yet run the observatory's 1,088-position workload: in a container allowed 558 GiB, that proof was killed for memory after 4 hours, in its leaf stage.
 
 | System | Model | Shape | Prove time per token per Gbit | Proof size per token per Gbit | Overhead vs serving | Evidence |
 |---|---|---|---|---|---|---|
 | FlashProve | Llama 4 Maverick, 17B active | observatory workload | 68.2 µs | 223 B | 61× | external, inferenceproofs.ai v0.1, marked not yet checked |
 | SASH | Llama 3.1 8B | 1,024 + 64 | 75.4 ms | 640 kB | 15,760× | external, inferenceproofs.ai v0.1, marked not yet checked |
-| **Tessera** | Llama 3.1 8B (integer model D, W8) | **8 + 8** | **2.82 s** | **4.38 MB** | **57,800×** (546,000× against serving at 1,024 + 64) | measured, n = 1, development run at 405d552 |
+| **Tessera** | Llama 3.1 8B (integer model D, W8) | **64 + 64** | **443 ms** | **571 kB** | **10,700×** (85,800× against serving at 1,024 + 64) | measured, n = 1, development run at 699d3d8 |
+| Tessera | Llama 3.1 8B (integer model D, W8) | 8 + 8 | 2.82 s | 4.38 MB | 57,800× (546,000× against serving at 1,024 + 64) | measured, n = 1, development run at 405d552 |
 | Tessera | Llama 3.2 1B (integer model D, W8) | 8 + 8 | 6.92 s | 23.3 MB | 73,000× (939,000× against serving at 1,024 + 64) | measured, n = 1, development run at 405d552 |
 
-Units as the observatory defines them ([README](README.md#units)): per token covered (prompt plus continuation) and per Gbit of active weights, 64.24 Gbit for 8B and 11.99 Gbit for 1B. The overhead is the prover's GPU-seconds per token over vLLM 0.32.0's GPU-seconds per token covered at batch 1, both on the same idle H200 NVL, first at the proof's own 8 + 8 shape, then at the workload's 1,024 + 64 ([serving-8b-h200-8x8.json](serving-8b-h200-8x8.json), [serving-8b-h200-c1024.json](serving-8b-h200-c1024.json), [serving-1b-h200-8x8.json](serving-1b-h200-8x8.json), [serving-1b-h200-c1024.json](serving-1b-h200-c1024.json); median of 8 requests after 2 warm-ups, `gpu_memory_utilization` 0.9). Serving at 8 + 8 costs 3.14 ms per token at 8B and 1.14 ms at 1B; at 1,024 + 64, 0.332 ms and 0.088 ms. The earlier H100 baselines (`serving-*-h100.json`) ran under host contention and are kept for the record only.
+Units as the observatory defines them ([README](README.md#units)): per token covered (prompt plus continuation) and per Gbit of active weights, 64.24 Gbit for 8B and 11.99 Gbit for 1B. The overhead is the prover's GPU-seconds per token over vLLM 0.32.0's GPU-seconds per token covered at batch 1, both on the same idle H200 NVL, first at the proof's own shape, then at the workload's 1,024 + 64 ([serving-8b-h200-64x64.json](serving-8b-h200-64x64.json), [serving-8b-h200-8x8.json](serving-8b-h200-8x8.json), [serving-8b-h200-c1024.json](serving-8b-h200-c1024.json), [serving-1b-h200-8x8.json](serving-1b-h200-8x8.json), [serving-1b-h200-c1024.json](serving-1b-h200-c1024.json); median of 8 requests after 2 warm-ups, `gpu_memory_utilization` 0.9). Serving 8B costs 2.66 ms per token at 64 + 64 and 3.14 ms at 8 + 8, and 1B 1.14 ms at 8 + 8; at 1,024 + 64, 0.332 ms and 0.088 ms. The earlier H100 baselines (`serving-*-h100.json`) ran under host contention and are kept for the record only.
 
 ## Caveats
 
-1. **Different shapes.** Tessera's rows cover 16 positions; SASH's and the serving baseline's cover 1,088. Tessera's cost at 16 positions is mostly fixed: the table side (10.1 G table rows at 8B, [commitment report](commitment-report-8b.json)) does not depend on the request length, so its per-token figures fall as the request grows. These rows are not a like-for-like comparison and must not be quoted as one.
+1. **Different shapes.** Tessera's rows cover 128 and 16 positions; SASH's cover 1,088. Tessera's cost is mostly fixed at these lengths: the table side (10.1 G table rows at 8B, [commitment report](commitment-report-8b.json)) does not depend on the request length, so its per-token figures fall as the request grows (8 times the positions cost 1.26 times the time: 2,902 s to 3,646 s). These rows are not a like-for-like comparison and must not be quoted as one; the per-token figures at 1,088 positions would be lower again, if it fit.
 2. **Not the harness.** The observatory times calls from outside the container, binds CPUs and samples NVML. Tessera's adapter ([`bench/inference-proofs/tessera`](../../../bench/inference-proofs/tessera)) passes `iproofs validate --all`, but no harness run exists: the harness runs real systems only from their pinned image, and Tessera's image is not built yet.
 3. **Different hardware.** Tessera and its serving baselines ran on one H200 NVL (141 GB) with 82 host CPUs and 1 TB of RAM; SASH and FlashProve on the observatory's H200 (SXM), with its own serving rows.
 4. **What is proved.** Tessera proves its integer model D, quantized from the BF16 checkpoint by `tessera-quant` (servable profile, affine scales, migration strength 1/2), not the BF16 model; D's fidelity is measured separately. `tessera-protocol/1` at `ni-100/1`, no zero knowledge. The verifier pins the public prompt and continuation (`--tokens`).
@@ -44,6 +45,23 @@ Units as the observatory defines them ([README](README.md#units)): per token cov
 
 The proofs differ in their bytes because each draws fresh masks and challenges; both verify.
 
+## Llama-3.1-8B at 64 + 64 positions (2026-11-10)
+
+The same D, claim list and weights; a 64-token prompt (BOS and the first 63 tokens of the fixed public text) and D's 64-token exact-greedy continuation (generated by the CUDA integer reference in 274 s). `tessera prove --backend gpu --memory-budget 540` at 699d3d8, within the container's 558 GiB.
+
+| Phase | Wall time |
+|---|---|
+| Weight recommit | 1 min 6 s |
+| Memory plan (resident 5.9 TB refused; physical plan of 461 GiB, P2 its peak, found in 19 s) and witness | 1 min 29 s |
+| P1 advice commitment, 17,007 rows | 3 min 59 s |
+| P2 leaf stage | 26 min 43 s |
+| P3 reduction stages | 12 min 32 s |
+| P4 openings | 10 min 21 s |
+| P5 column answers | 4 min 31 s |
+| **Prove, total** | **1 h 0 min 46 s** (3,646 s), peak host RSS 441 GiB |
+| Verify (`tessera-verify verify --tokens`) | 2 min 22 s, 8.8 GiB, **Accept** ([verdict](verdict-8b-h200-128.json)) |
+| Proof | 4,699,361,834 bytes |
+
 ## Llama-3.2-1B on one H200 (2026-11-10)
 
 The run of [README.md](README.md#llama-32-1b-on-one-h200-the-first-accepted-real-model-proof-2026-11-10), repeated on an otherwise idle host: the same D, tokens, claim list and weights.
@@ -61,6 +79,8 @@ The run of [README.md](README.md#llama-32-1b-on-one-h200-the-first-accepted-real
 | Proof | 4.48 GB | 4,478,696,586 bytes | |
 
 ## The observatory's workload does not fit yet
+
+The rented container sees the host's 1 TB but is allowed 558 GiB (`/sys/fs/cgroup/memory.max`, 599,568,416,768 bytes); earlier runs' 900 GiB budgets overstated it. An attempt at 1,024 + 64 with a budget large enough to admit the resident plan (9,000 GiB) computed the witness in 8 minutes and committed 21,584 advice rows, then ran its leaf stage for 3 h 29 min without finishing and was killed by the container's OOM killer at 584 GB (`memory.events` oom_kill 1).
 
 At 1,024 + 64 positions, the prover's resident plan is 10.8 TB: 34.7 G tensor, 17.3 G lookup, 10.1 G table and 90.5 G advice cells at 64 bytes each. A 38-minute physical checkpoint search found no plan under the 900 GiB budget, and the proof stopped with `ERR-RES-MEMORY` before the witness. At 16 positions the same model's resident plan is 5.8 TB and its physical plan 369 GB, so the advice matrix (71.3 G cells at 16 positions, mostly the table side's multiplicities) dominates at both lengths.
 
