@@ -23,7 +23,7 @@ TESSERA_PIN (default the repository's release builds), TESSERA_MODEL_D (a prebui
 TESSERA_CALIBRATION (the calibration spec when D is built here, default calibration.json beside
 this file: C4, 128 windows of 2,048 tokens, 32 held out), TESSERA_ALPHA (migration strength,
 default 1/2), TESSERA_BACKEND (gpu or cpu), TESSERA_THREADS, TESSERA_MAX_LOG2_ROWS (default 32),
-TESSERA_MEMORY_GIB (the prover's --memory-budget; default the host's RAM). In hosted mode the
+TESSERA_MEMORY_GIB (the prover's --memory-budget; default 15/16 of the host's RAM or cgroup limit). In hosted mode the
 harness passes the image's environment only, so the defaults are what a hosted run uses.
 """
 
@@ -55,8 +55,16 @@ def host(container_path: str) -> Path:
 
 
 def host_gib() -> int:
-    """The host's RAM in GiB, the prover's default memory budget."""
-    return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") >> 30
+    """The prover's default memory budget in GiB: the host's RAM, or the container's cgroup limit
+    when that is lower (a rented container may see 1 TB and be allowed 558 GiB)."""
+    total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    try:
+        limit = Path("/sys/fs/cgroup/memory.max").read_text().strip()
+        if limit.isdigit():
+            total = min(total, int(limit))
+    except OSError:
+        pass
+    return total * 15 // 16 >> 30  # leave the host a sixteenth
 
 
 def run(argv: list[str], *, cwd: Path | None = None, env: dict | None = None) -> subprocess.CompletedProcess:
