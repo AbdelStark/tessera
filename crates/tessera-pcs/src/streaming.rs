@@ -143,6 +143,11 @@ impl<'layout, 'work, M: MaskSource + ?Sized> StreamingCommitter<'layout, 'work, 
         mask: &'work mut M,
     ) -> Result<Self, PcsError> {
         let shape = params.shape()?;
+        if layout.params().log2_k != params.log2_k {
+            return Err(PcsError::LayoutData {
+                rule: "the streaming layout uses the commitment's row width",
+            });
+        }
         if encoder.message_len() != shape.k
             || encoder.codeword_len() != shape.n
             || encoder.mask_coeffs() != shape.mask_coeffs

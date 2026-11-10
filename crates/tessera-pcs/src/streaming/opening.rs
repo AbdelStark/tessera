@@ -17,7 +17,7 @@ use tessera_field::{Field, Goldilocks as Fp, GoldilocksExt2 as Fp2, PrimeField, 
 use tessera_hash::{Digest, Domain, Hasher, MerkleTree};
 
 use super::{AdviceCommitment, Rows, SegmentDigests, check_parts, merged_column};
-use crate::opening::{COMBINE_SCRATCH, add_scaled_eq, combine_into};
+use crate::opening::{COMBINE_SCRATCH, add_scaled_eq, combine_add, combine_into};
 use crate::{
     AdviceLayout, ClaimGroup, ColumnAnswer, CombinedRow, MaskSource, PcsError, RowClaim, RowEncoder,
 };
@@ -610,9 +610,15 @@ impl<'g, 'w, 's, 'l> OpeningPass<'g, 'w, 's, 'l> {
         coefficients.push(xi);
         let k = self.encoder.message_len();
         let p = self.encoder.mask_coeffs();
-        combine_into(&coefficients, &self.values[..len * k], k, |g, i, x| {
-            self.u[g][i] += x
-        });
+        // Columns are independent: the encoder's threads combine disjoint column ranges.
+        let threads = self.encoder.thread_count().get();
+        combine_add(
+            &coefficients,
+            &self.values[..len * k],
+            k,
+            &mut self.u,
+            threads,
+        );
         combine_into(&coefficients, &self.mask_values[..len * p], p, |g, i, x| {
             self.m[g][i] += x
         });
