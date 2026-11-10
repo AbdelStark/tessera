@@ -1,0 +1,1054 @@
+{
+  "counts": {
+    "commits_per_token": 1159451.0,
+    "lookups_per_token": 1062493.0,
+    "native_ops_att_per_ctx": 65536.0,
+    "native_ops_lin": 2996830208.0,
+    "reduction_stages": [
+      {
+        "residents": [
+          {
+            "bytes": 1,
+            "count": 1,
+            "count_per_bit": 0,
+            "growth": "keys",
+            "kind": "resident",
+            "log2_entries": 13
+          },
+          {
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "resident",
+            "log2_entries": 9
+          },
+          {
+            "bytes": 1,
+            "count": 1,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "resident",
+            "log2_entries": 15
+          }
+        ],
+        "tables": [
+          {
+            "bytes": 16,
+            "count": 4,
+            "count_per_bit": 0,
+            "growth": "tokens_and_context",
+            "kind": "computed",
+            "log2_entries": 9
+          },
+          {
+            "bytes": 16,
+            "count": 9,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 0
+          },
+          {
+            "bytes": 16,
+            "count": 18,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 4
+          },
+          {
+            "bytes": 16,
+            "count": 4,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 9
+          },
+          {
+            "bytes": 16,
+            "count": 6,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 11
+          },
+          {
+            "bytes": 16,
+            "count": 4,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 13
+          },
+          {
+            "bytes": 16,
+            "count": 16,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 15
+          },
+          {
+            "bytes": 16,
+            "count": 9,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 17
+          },
+          {
+            "bytes": 16,
+            "count": 6,
+            "count_per_bit": 2,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 17
+          },
+          {
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 15
+          }
+        ]
+      },
+      {
+        "residents": [],
+        "tables": [
+          {
+            "bytes": 16,
+            "count": 1,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 11
+          },
+          {
+            "bytes": 16,
+            "count": 1,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 13
+          },
+          {
+            "bytes": 16,
+            "count": 3,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "windowable",
+            "log2_entries": 15
+          },
+          {
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "tokens",
+            "kind": "resident",
+            "log2_entries": 9
+          },
+          {
+            "bytes": 16,
+            "count": 2,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 11
+          },
+          {
+            "bytes": 16,
+            "count": 8,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 15
+          },
+          {
+            "bytes": 16,
+            "count": 4,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 17
+          }
+        ]
+      },
+      {
+        "residents": [],
+        "tables": [
+          {
+            "bytes": 16,
+            "count": 4,
+            "count_per_bit": 0,
+            "growth": "fixed",
+            "kind": "resident",
+            "log2_entries": 15
+          }
+        ]
+      }
+    ],
+    "score_block": 2048.0,
+    "scores_per_token_per_ctx": 256.0,
+    "table_rows": 5167448654.0
+  },
+  "estimates": [],
+  "lowering": {
+    "max_log2_rows": 32,
+    "positions": 16,
+    "stages": 4
+  },
+  "model": {
+    "d_ff": 8192,
+    "d_head": 64,
+    "d_model": 2048,
+    "n_heads": 32,
+    "n_kv_heads": 8,
+    "n_layers": 16,
+    "parameters": 1498415104,
+    "profile": "servable",
+    "vocab": 128256
+  },
+  "multiplicities": {
+    "excludes": "tables without lookups and power-of-two padding",
+    "total": 5167448654
+  },
+  "per_layer_per_token": {
+    "committed": {
+      "checkpoints": 0,
+      "lookup_outputs": 37888,
+      "one_hot": 0,
+      "row_scalars": 566,
+      "split_limbs": 25600,
+      "total": 64054
+    },
+    "lookups": 66138,
+    "requantized": {
+      "AttnNorm": 2048,
+      "AttnOut": 2048,
+      "AttnResidual": 2048,
+      "MlpNorm": 2048,
+      "MlpResidual": 2048,
+      "Product": 8192,
+      "RopeK": 512,
+      "RopeQ": 2048,
+      "Silu": 8192,
+      "Up": 8192,
+      "V": 512,
+      "total": 37888
+    }
+  },
+  "per_score": {
+    "commitments": 1,
+    "lookups": 1,
+    "product_tree_leaves": 1,
+    "scores_per_token_per_ctx": 256.0
+  },
+  "per_token": {
+    "committed": {
+      "checkpoints": 2048,
+      "lookup_outputs": 608256,
+      "one_hot": 128256,
+      "row_scalars": 9243,
+      "split_limbs": 411648,
+      "total": 1159451
+    },
+    "lookups": 1062493
+  },
+  "projection_inputs": {
+    "memory": {
+      "bytes_per_leaf": 32.0,
+      "free_bytes": 200000000000.0
+    },
+    "regen_full_equivalents": 5.0,
+    "scenario": {
+      "batch_tokens": 16384,
+      "eta": 0.3,
+      "gpus": 8,
+      "target_overhead": 0.1,
+      "violations": 100
+    },
+    "unit_costs": {
+      "column_answer_ps": 0.0,
+      "commit_ps": 30.0,
+      "glue_fraction": 0.15,
+      "lookup_ps": 40.0,
+      "merge_ps": 0.0,
+      "native_ops_per_s": 1187400000000000.0,
+      "product_leaf_ps": 12.0,
+      "row_combination_ps": 0.0,
+      "streaming_pass_ps": 0.0,
+      "weight_pass_gpu_s": 0.24,
+      "window_ps": 0.0
+    }
+  },
+  "projections": [
+    {
+      "context": 1024,
+      "detection": 0.3793736893273475,
+      "leaf_groups": 8,
+      "mu": {
+        "attention": 13.084969199178646,
+        "column_answers": 0.0,
+        "linear": 34.442933827210254,
+        "regen": 7.0,
+        "row_combination": 0.0,
+        "streaming": 0.0,
+        "tables": 9.83940939126873,
+        "total": 70.04417291610947,
+        "weights": 5.676860498451844
+      },
+      "proof_time_s": 0.023134763352652667,
+      "reduction_stages": [
+        {
+          "bytes": 1353396256768.0,
+          "own_vars": 4,
+          "window_rounds": 6,
+          "windows": 1
+        },
+        {
+          "bytes": 28735242240.0,
+          "own_vars": 0,
+          "window_rounds": 0,
+          "windows": 0
+        },
+        {
+          "bytes": 2097152.0,
+          "own_vars": 0,
+          "window_rounds": 0,
+          "windows": 0
+        }
+      ],
+      "sampling_rate": 0.004758901696684464,
+      "table_rounds": 0
+    },
+    {
+      "context": 4096,
+      "detection": 0.29272110206298035,
+      "leaf_groups": 16,
+      "mu": {
+        "attention": 42.53515414258189,
+        "column_answers": 0.0,
+        "linear": 32.31928472803737,
+        "regen": 7.0,
+        "row_combination": 0.0,
+        "streaming": 0.0,
+        "tables": 9.23274060413848,
+        "total": 96.41402159950928,
+        "weights": 5.326842124751537
+      },
+      "proof_time_s": 0.13574743629745695,
+      "reduction_stages": [
+        {
+          "bytes": 1490835210240.0,
+          "own_vars": 4,
+          "window_rounds": 8,
+          "windows": 1
+        },
+        {
+          "bytes": 28735242240.0,
+          "own_vars": 0,
+          "window_rounds": 0,
+          "windows": 0
+        },
+        {
+          "bytes": 2097152.0,
+          "own_vars": 0,
+          "window_rounds": 0,
+          "windows": 0
+        }
+      ],
+      "sampling_rate": 0.0034573117872621754,
+      "table_rounds": 0
+    },
+    {
+      "context": 16384,
+      "detection": 0.18283206938100288,
+      "leaf_groups": 32,
+      "mu": {
+        "attention": 120.65170788253477,
+        "column_answers": 0.0,
+        "linear": 25.925361319708493,
+        "regen": 7.0,
+        "row_combination": 0.0,
+        "streaming": 0.0,
+        "tables": 7.406170592809693,
+        "total": 165.25623989203294,
+        "weights": 4.273000096979981
+      },
+      "proof_time_s": 1.1602356855233682,
+      "reduction_stages": [
+        {
+          "bytes": 1628274163712.0,
+          "own_vars": 4,
+          "window_rounds": 10,
+          "windows": 1
+        },
+        {
+          "bytes": 28735242240.0,
+          "own_vars": 0,
+          "window_rounds": 0,
+          "windows": 0
+        },
+        {
+          "bytes": 2097152.0,
+          "own_vars": 0,
+          "window_rounds": 0,
+          "windows": 0
+        }
+      ],
+      "sampling_rate": 0.002017069573597405,
+      "table_rounds": 0
+    },
+    {
+      "context": 131072,
+      "detection": 0.09180352448869208,
+      "leaf_groups": 256,
+      "mu": {
+        "attention": 326.1159176470588,
+        "column_answers": 0.0,
+        "linear": 9.107896166797136,
+        "regen": 7.0,
+        "row_combination": 0.0,
+        "streaming": 0.0,
+        "tables": 2.601878211881197,
+        "total": 346.3268491638798,
+        "weights": 1.5011571381426505
+      },
+      "proof_time_s": 55.36958236242464,
+      "reduction_stages": [
+        {
+          "bytes": 1629213687808.0,
+          "own_vars": 4,
+          "window_rounds": 13,
+          "windows": 1
+        },
+        {
+          "bytes": 28735242240.0,
+          "own_vars": 0,
+          "window_rounds": 0,
+          "windows": 0
+        },
+        {
+          "bytes": 2097152.0,
+          "own_vars": 0,
+          "window_rounds": 0,
+          "windows": 0
+        }
+      ],
+      "sampling_rate": 0.00096248192751467,
+      "table_rounds": 0
+    }
+  ],
+  "schema": "tessera.commitment-report/1",
+  "sequence": {
+    "product_tree_leaves": 131072,
+    "scores": 69632
+  },
+  "stage_tables": [
+    {
+      "residents": [
+        {
+          "bytes": 1,
+          "count": 1,
+          "count_per_bit": 0,
+          "growth": "keys",
+          "kind": "resident",
+          "log2_entries": 13
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "resident",
+          "log2_entries": 9
+        },
+        {
+          "bytes": 1,
+          "count": 1,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "resident",
+          "log2_entries": 15
+        }
+      ],
+      "stage": 1,
+      "tables": [
+        {
+          "bytes": 16,
+          "count": 4,
+          "count_per_bit": 0,
+          "growth": "tokens_and_context",
+          "kind": "computed",
+          "log2_entries": 9
+        },
+        {
+          "bytes": 16,
+          "count": 9,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 0
+        },
+        {
+          "bytes": 16,
+          "count": 18,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 4
+        },
+        {
+          "bytes": 16,
+          "count": 4,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 9
+        },
+        {
+          "bytes": 16,
+          "count": 6,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 11
+        },
+        {
+          "bytes": 16,
+          "count": 4,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 13
+        },
+        {
+          "bytes": 16,
+          "count": 16,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 15
+        },
+        {
+          "bytes": 16,
+          "count": 9,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 6,
+          "count_per_bit": 2,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 17
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 15
+        }
+      ]
+    },
+    {
+      "residents": [],
+      "stage": 2,
+      "tables": [
+        {
+          "bytes": 16,
+          "count": 1,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 11
+        },
+        {
+          "bytes": 16,
+          "count": 1,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 13
+        },
+        {
+          "bytes": 16,
+          "count": 3,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "windowable",
+          "log2_entries": 15
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "tokens",
+          "kind": "resident",
+          "log2_entries": 9
+        },
+        {
+          "bytes": 16,
+          "count": 2,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 11
+        },
+        {
+          "bytes": 16,
+          "count": 8,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 15
+        },
+        {
+          "bytes": 16,
+          "count": 4,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 17
+        }
+      ]
+    },
+    {
+      "residents": [],
+      "stage": 3,
+      "tables": [
+        {
+          "bytes": 16,
+          "count": 4,
+          "count_per_bit": 0,
+          "growth": "fixed",
+          "kind": "resident",
+          "log2_entries": 15
+        }
+      ]
+    }
+  ],
+  "tables": [
+    {
+      "id": 0,
+      "kind": "Rope",
+      "lookups_per_token": 0,
+      "rows": 4194304,
+      "score_lookups": 0
+    },
+    {
+      "id": 1,
+      "kind": "Exp",
+      "lookups_per_token": 0,
+      "rows": 2097152,
+      "score_lookups": 13056
+    },
+    {
+      "id": 2,
+      "kind": "Silu",
+      "lookups_per_token": 8192,
+      "rows": 268435456,
+      "score_lookups": 0
+    },
+    {
+      "id": 3,
+      "kind": "Silu",
+      "lookups_per_token": 8192,
+      "rows": 201326592,
+      "score_lookups": 0
+    },
+    {
+      "id": 4,
+      "kind": "Silu",
+      "lookups_per_token": 16384,
+      "rows": 268435456,
+      "score_lookups": 0
+    },
+    {
+      "id": 5,
+      "kind": "Exp",
+      "lookups_per_token": 0,
+      "rows": 2097152,
+      "score_lookups": 56576
+    },
+    {
+      "id": 6,
+      "kind": "Silu",
+      "lookups_per_token": 16384,
+      "rows": 268435456,
+      "score_lookups": 0
+    },
+    {
+      "id": 7,
+      "kind": "Silu",
+      "lookups_per_token": 57344,
+      "rows": 268435456,
+      "score_lookups": 0
+    },
+    {
+      "id": 8,
+      "kind": "Silu",
+      "lookups_per_token": 8192,
+      "rows": 268435456,
+      "score_lookups": 0
+    },
+    {
+      "id": 9,
+      "kind": "Silu",
+      "lookups_per_token": 8192,
+      "rows": 268435456,
+      "score_lookups": 0
+    },
+    {
+      "id": 10,
+      "kind": "Silu",
+      "lookups_per_token": 8192,
+      "rows": 268435456,
+      "score_lookups": 0
+    },
+    {
+      "id": 11,
+      "kind": "Range",
+      "lookups_per_token": 33,
+      "rows": 1073741824,
+      "score_lookups": 0
+    },
+    {
+      "id": 12,
+      "kind": "Range",
+      "lookups_per_token": 2147,
+      "rows": 65536,
+      "score_lookups": 0
+    },
+    {
+      "id": 13,
+      "kind": "Range",
+      "lookups_per_token": 33,
+      "rows": 128,
+      "score_lookups": 0
+    },
+    {
+      "id": 14,
+      "kind": "Range",
+      "lookups_per_token": 9213,
+      "rows": 256,
+      "score_lookups": 0
+    },
+    {
+      "id": 15,
+      "kind": "Range",
+      "lookups_per_token": 18465,
+      "rows": 64,
+      "score_lookups": 0
+    },
+    {
+      "id": 16,
+      "kind": "Range",
+      "lookups_per_token": 132,
+      "rows": 16777216,
+      "score_lookups": 0
+    },
+    {
+      "id": 17,
+      "kind": "Range",
+      "lookups_per_token": 65668,
+      "rows": 33554432,
+      "score_lookups": 0
+    },
+    {
+      "id": 18,
+      "kind": "Range",
+      "lookups_per_token": 132,
+      "rows": 67108864,
+      "score_lookups": 0
+    },
+    {
+      "id": 19,
+      "kind": "Range",
+      "lookups_per_token": 264,
+      "rows": 134217728,
+      "score_lookups": 0
+    },
+    {
+      "id": 20,
+      "kind": "Range",
+      "lookups_per_token": 139330,
+      "rows": 2097152,
+      "score_lookups": 0
+    },
+    {
+      "id": 21,
+      "kind": "Range",
+      "lookups_per_token": 4162,
+      "rows": 32768,
+      "score_lookups": 0
+    },
+    {
+      "id": 22,
+      "kind": "Range",
+      "lookups_per_token": 4162,
+      "rows": 2048,
+      "score_lookups": 0
+    },
+    {
+      "id": 23,
+      "kind": "Range",
+      "lookups_per_token": 66,
+      "rows": 8,
+      "score_lookups": 0
+    },
+    {
+      "id": 24,
+      "kind": "Range",
+      "lookups_per_token": 2046,
+      "rows": 2,
+      "score_lookups": 0
+    },
+    {
+      "id": 25,
+      "kind": "Range",
+      "lookups_per_token": 67584,
+      "rows": 1048576,
+      "score_lookups": 0
+    },
+    {
+      "id": 26,
+      "kind": "Requant",
+      "lookups_per_token": 2048,
+      "rows": 1048576,
+      "score_lookups": 0
+    },
+    {
+      "id": 27,
+      "kind": "Range",
+      "lookups_per_token": 40960,
+      "rows": 536870912,
+      "score_lookups": 0
+    },
+    {
+      "id": 28,
+      "kind": "Requant",
+      "lookups_per_token": 9216,
+      "rows": 268435456,
+      "score_lookups": 0
+    },
+    {
+      "id": 29,
+      "kind": "Requant",
+      "lookups_per_token": 1536,
+      "rows": 268435456,
+      "score_lookups": 0
+    },
+    {
+      "id": 30,
+      "kind": "Requant",
+      "lookups_per_token": 1024,
+      "rows": 2097152,
+      "score_lookups": 0
+    },
+    {
+      "id": 31,
+      "kind": "Range",
+      "lookups_per_token": 10752,
+      "rows": 131072,
+      "score_lookups": 0
+    },
+    {
+      "id": 32,
+      "kind": "Range",
+      "lookups_per_token": 1024,
+      "rows": 4,
+      "score_lookups": 0
+    },
+    {
+      "id": 33,
+      "kind": "Requant",
+      "lookups_per_token": 10240,
+      "rows": 1048576,
+      "score_lookups": 0
+    },
+    {
+      "id": 34,
+      "kind": "Range",
+      "lookups_per_token": 47104,
+      "rows": 524288,
+      "score_lookups": 0
+    },
+    {
+      "id": 35,
+      "kind": "Requant",
+      "lookups_per_token": 2048,
+      "rows": 8388608,
+      "score_lookups": 0
+    },
+    {
+      "id": 36,
+      "kind": "Requant",
+      "lookups_per_token": 65536,
+      "rows": 33554432,
+      "score_lookups": 0
+    },
+    {
+      "id": 37,
+      "kind": "Requant",
+      "lookups_per_token": 51712,
+      "rows": 2097152,
+      "score_lookups": 0
+    },
+    {
+      "id": 38,
+      "kind": "Requant",
+      "lookups_per_token": 8192,
+      "rows": 65536,
+      "score_lookups": 0
+    },
+    {
+      "id": 39,
+      "kind": "Range",
+      "lookups_per_token": 4096,
+      "rows": 512,
+      "score_lookups": 0
+    },
+    {
+      "id": 40,
+      "kind": "Requant",
+      "lookups_per_token": 4096,
+      "rows": 1024,
+      "score_lookups": 0
+    },
+    {
+      "id": 41,
+      "kind": "Requant",
+      "lookups_per_token": 32768,
+      "rows": 4194304,
+      "score_lookups": 0
+    },
+    {
+      "id": 42,
+      "kind": "Requant",
+      "lookups_per_token": 13824,
+      "rows": 268435456,
+      "score_lookups": 0
+    },
+    {
+      "id": 43,
+      "kind": "Requant",
+      "lookups_per_token": 20480,
+      "rows": 1048576,
+      "score_lookups": 0
+    },
+    {
+      "id": 44,
+      "kind": "Requant",
+      "lookups_per_token": 26624,
+      "rows": 16777216,
+      "score_lookups": 0
+    },
+    {
+      "id": 45,
+      "kind": "Requant",
+      "lookups_per_token": 78336,
+      "rows": 2097152,
+      "score_lookups": 0
+    },
+    {
+      "id": 46,
+      "kind": "Requant",
+      "lookups_per_token": 8192,
+      "rows": 65536,
+      "score_lookups": 0
+    },
+    {
+      "id": 47,
+      "kind": "Range",
+      "lookups_per_token": 4096,
+      "rows": 8192,
+      "score_lookups": 0
+    },
+    {
+      "id": 48,
+      "kind": "Requant",
+      "lookups_per_token": 2048,
+      "rows": 16384,
+      "score_lookups": 0
+    },
+    {
+      "id": 49,
+      "kind": "Requant",
+      "lookups_per_token": 49152,
+      "rows": 65536,
+      "score_lookups": 0
+    },
+    {
+      "id": 50,
+      "kind": "Requant",
+      "lookups_per_token": 18432,
+      "rows": 128,
+      "score_lookups": 0
+    },
+    {
+      "id": 51,
+      "kind": "Requant",
+      "lookups_per_token": 16384,
+      "rows": 268435456,
+      "score_lookups": 0
+    },
+    {
+      "id": 52,
+      "kind": "Requant",
+      "lookups_per_token": 57344,
+      "rows": 65536,
+      "score_lookups": 0
+    },
+    {
+      "id": 53,
+      "kind": "Requant",
+      "lookups_per_token": 6144,
+      "rows": 512,
+      "score_lookups": 0
+    },
+    {
+      "id": 54,
+      "kind": "Requant",
+      "lookups_per_token": 4096,
+      "rows": 67108864,
+      "score_lookups": 0
+    },
+    {
+      "id": 55,
+      "kind": "Requant",
+      "lookups_per_token": 8192,
+      "rows": 65536,
+      "score_lookups": 0
+    },
+    {
+      "id": 56,
+      "kind": "Requant",
+      "lookups_per_token": 2048,
+      "rows": 1048576,
+      "score_lookups": 0
+    },
+    {
+      "id": 57,
+      "kind": "Requant",
+      "lookups_per_token": 8192,
+      "rows": 2097152,
+      "score_lookups": 0
+    },
+    {
+      "id": 58,
+      "kind": "Requant",
+      "lookups_per_token": 2048,
+      "rows": 4096,
+      "score_lookups": 0
+    }
+  ]
+}
