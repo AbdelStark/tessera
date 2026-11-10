@@ -7,8 +7,12 @@ contract: "adapter/1"
 upstream:
   repo: "AbdelStark/tessera"
   url: "https://github.com/AbdelStark/tessera"
-  commit: "0000000000000000000000000000000000000000"
-maintainers: ["AbdelStark"]
+  commit: "7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
+maintainers: [{handle: "AbdelStark", organisation: "Lucid Computing"}]
+# RFC-0014 B7: the images workflow builds systems/tessera/Dockerfile and writes its digest here.
+image:
+  repository: "ghcr.io/ai-verification-observatory/tessera"
+  digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 workloads: ["l31-8b-c1024"]
 profile: "prover-h100"
 deterministic_proofs: false
@@ -19,5 +23,5 @@ proofs:
   steady_boundary: "not_observable"
   steady_approximate: false
   verify_reads: "all"
-forbidden_flags: ["--test-", "test-small"]
+forbidden_flags: ["--test-", "--params=test-small"]
 timeouts_s: {commit: 21600, prove: 43200, verify: 3600}
