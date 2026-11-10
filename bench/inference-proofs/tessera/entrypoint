@@ -154,7 +154,9 @@ def prove(job: dict) -> dict:
         tokens = work / "tokens.ttk"
         out = checked([*PYTHON, "tools/greedy_tokens.py", state / "model.d", "-", tokens,
                        "--prompt-ids", json.dumps(request), "--new", str(new)],
-                      cwd=REPO / "python", env={**os.environ, "PYTHONPATH": "."}).splitlines()
+                      cwd=REPO / "python",
+                      env={"TESSERA_REFERENCE_DEVICE": "cuda" if backend == "gpu" else "cpu",
+                           **os.environ, "PYTHONPATH": "."}).splitlines()
         output = json.loads(out[1])
         checked([BIN, "--json", "prove", "--backend", backend, "--model", state / "model.d",
                  "--plan", state / "compiled/plan.tep", "--weights", state / "weights.twc",
