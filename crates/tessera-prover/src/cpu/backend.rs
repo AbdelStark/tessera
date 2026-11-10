@@ -604,9 +604,22 @@ impl<'a> CpuBackend<'a> {
                 plan = plan.for_budget(prepared.cfg.memory_budget)?;
             }
         }
+        let cells = plan.cells();
+        event!(
+            DEBUG,
+            "prover.plan_resident",
+            tensors = cells.tensors,
+            lookups = cells.lookups,
+            table_rows = cells.table_rows,
+            advice = cells.advice,
+            bytes = plan.resident_bytes().unwrap_or(u64::MAX),
+            budget = prepared.cfg.memory_budget.host;
+            "resident plan: {bytes} bytes for a budget of {budget} (cells: {tensors} tensor, {lookups} lookup, {table_rows} table, {advice} advice)"
+        );
         if (force_physical || plan.check(prepared.cfg.memory_budget).is_err())
             && c.protocol_version == protocol::PROTOCOL_VERSION
         {
+            let search = Instant::now();
             let input = physical::Inputs {
                 claims: c,
                 statement: &batch.statement,
@@ -629,6 +642,13 @@ impl<'a> CpuBackend<'a> {
                 (plan, grouped) =
                     plan_physical_groups(plan, input, prepared.cfg.memory_budget.host)?;
             }
+            event!(
+                DEBUG,
+                "prover.plan_physical",
+                millis = search.elapsed().as_millis() as u64,
+                bytes = plan.resident_bytes().unwrap_or(u64::MAX);
+                "physical plan: {bytes} bytes, found in {millis} ms"
+            );
         }
         if !plan.uses_checkpoints() && plan.check(prepared.cfg.memory_budget).is_ok() {
             let checkpoint = tessera_witness::CheckpointMemory::new(&lowering)?;
