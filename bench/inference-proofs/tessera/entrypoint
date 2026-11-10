@@ -125,7 +125,9 @@ def commit(job: dict) -> dict:
                  host(job["model_dir"]), "--calibration", spec, "--profile", "servable",
                  "--scales", "affine", "--out", model, "--device", "cuda",
                  "--alpha", os.environ.get("TESSERA_ALPHA", "1/2")],
-                cwd=REPO / "python")
+                cwd=REPO / "python",
+                # The adapter user may have no home: the calibration download caches in /io/state.
+                env={"HF_HOME": str(state / "hf-home"), **os.environ})
     compiled = state / "compiled"
     checked([BIN, "--json", "compile", "--model", model, "--params", "ni-100", "--out-dir",
              compiled, "--max-log2-rows", os.environ.get("TESSERA_MAX_LOG2_ROWS", "32")])
