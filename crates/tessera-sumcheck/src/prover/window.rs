@@ -57,6 +57,56 @@ fn par_map<T: Send>(
     })
 }
 
+/// Fills `outs[t][r]` for each range `r` of `0..len` on scoped threads: `f(r, slices)` gets every
+/// table's slice of `r`. `cost` is the work per entry, in reads, which sets how many ranges
+/// there are; each entry is written once, so the thread count never changes a value.
+fn par_fill<F: Copy + Send>(
+    len: usize,
+    cost: usize,
+    outs: &mut [SecretBuf<F>],
+    f: impl Fn(core::ops::Range<usize>, &mut [&mut [F]]) -> Result<(), WindowError> + Sync,
+) -> Result<(), WindowError> {
+    let work = len.saturating_mul(cost.max(1));
+    let threads = parallelism()
+        .min(work / PARALLEL_MIN_ENTRIES)
+        .min(len)
+        .max(1);
+    let per = len.div_ceil(threads).max(1);
+    let ranges: Vec<_> = (0..len)
+        .step_by(per)
+        .map(|start| start..len.min(start + per))
+        .collect();
+    let mut parts: Vec<Vec<&mut [F]>> = ranges.iter().map(|_| Vec::new()).collect();
+    for out in outs.iter_mut() {
+        let whole: &mut [F] = out;
+        let mut rest = whole.get_mut(..len).ok_or(WindowError::Source)?;
+        for (part, range) in parts.iter_mut().zip(&ranges) {
+            let (head, tail) = rest.split_at_mut(range.len());
+            part.push(head);
+            rest = tail;
+        }
+    }
+    if ranges.len() <= 1 {
+        for (range, mut part) in ranges.into_iter().zip(parts) {
+            f(range, &mut part)?;
+        }
+        return Ok(());
+    }
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = ranges
+            .into_iter()
+            .zip(parts)
+            .map(|(range, mut part)| {
+                let f = &f;
+                scope.spawn(move || f(range, &mut part))
+            })
+            .collect();
+        workers
+            .into_iter()
+            .try_for_each(|w| w.join().unwrap_or(Err(WindowError::Allocation)))
+    })
+}
+
 /// RFC-0056's maximum number of own variables in one grid.
 pub const MAX_WINDOW_VARS: usize = 8;
 
@@ -115,6 +165,46 @@ pub trait WindowSource<F: PolyField> {
     /// level's four operands, #694) can be served from it. The values read are unchanged.
     fn read_granule(&self) -> Option<NonZeroUsize> {
         None
+    }
+    /// A reader worker threads may share, when the source has one and sets no
+    /// [`read_granule`](Self::read_granule): its resident tables then load in parallel.
+    fn shared(&self) -> Option<Box<dyn SharedRead<F> + '_>> {
+        None
+    }
+}
+
+/// A reader of a source's entries that worker threads may share: the same values as
+/// [`WindowSource::read`]. A source that lends one has its resident tables loaded in parallel.
+pub trait SharedRead<F: PolyField>: Sync {
+    /// Read consecutive entries of the table named by `table`.
+    fn read(&self, table: usize, start: usize, out: &mut [F]) -> Result<(), WindowError>;
+}
+
+/// `out` from a lent resident table, or from `shared`: [`read_source`] on worker threads.
+fn read_shared<F: PolyField>(
+    resident: Option<Table<'_, F>>,
+    shared: &dyn SharedRead<F>,
+    id: usize,
+    start: usize,
+    out: &mut [F],
+) -> Result<(), WindowError> {
+    match resident {
+        Some(table) => {
+            let end = start.checked_add(out.len()).ok_or(WindowError::Source)?;
+            match table.values {
+                Values::Base(values) => {
+                    let values = values.get(start..end).ok_or(WindowError::Source)?;
+                    for (slot, &value) in out.iter_mut().zip(values) {
+                        *slot = F::from(value);
+                    }
+                }
+                Values::Ext(values) => {
+                    out.copy_from_slice(values.get(start..end).ok_or(WindowError::Source)?)
+                }
+            }
+            Ok(())
+        }
+        None => shared.read(id, start, out),
     }
 }
 
@@ -460,7 +550,54 @@ impl<F: PolyField> State<F> {
                 .iter()
                 .map(|_| buffer::<F>(len))
                 .collect::<Result<Vec<_>, WindowError>>()?;
-            if bound == 0 {
+            let shared = source
+                .read_granule()
+                .is_none()
+                .then(|| source.shared())
+                .flatten();
+            if let Some(shared) = shared {
+                // Each entry is written once from the same reads, on any thread (RFC-0018).
+                let residents: Vec<_> = self
+                    .spec
+                    .tables
+                    .iter()
+                    .map(|t| source.resident(t.id))
+                    .collect();
+                let tables = &self.spec.tables;
+                let one_len = one.len();
+                par_fill(len, 1 << bound, &mut folded, |range, outs| {
+                    if bound == 0 {
+                        for ((out, table), resident) in outs.iter_mut().zip(tables).zip(&residents)
+                        {
+                            read_shared(*resident, &*shared, table.id, range.start, out)?;
+                        }
+                        return Ok(());
+                    }
+                    let mut one = buffer::<F>(one_len)?;
+                    let count = 1usize << bound;
+                    let chunk = count.min(one_len);
+                    for index in range.clone() {
+                        for ((out, table), resident) in outs.iter_mut().zip(tables).zip(&residents)
+                        {
+                            let mut value = F::ZERO;
+                            for prefix in (0..count).step_by(chunk) {
+                                read_shared(
+                                    *resident,
+                                    &*shared,
+                                    table.id,
+                                    (index << bound) | prefix,
+                                    &mut one[..chunk],
+                                )?;
+                                for (offset, &entry) in one[..chunk].iter().enumerate() {
+                                    value += weights.at(prefix + offset) * entry;
+                                }
+                            }
+                            out[index - range.start] = value;
+                        }
+                    }
+                    Ok(())
+                })?;
+            } else if bound == 0 {
                 let step = source.read_granule().map_or(len, |g| g.get().min(len));
                 for start in (0..len).step_by(step) {
                     let end = len.min(start + step);

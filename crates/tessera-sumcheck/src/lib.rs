@@ -397,7 +397,7 @@ pub use merge::{
 pub use offload::{DeviceLevel, LevelOffload, LevelShape, set_level_offload};
 pub use proof::SumcheckProof;
 pub use prover::window::{
-    MAX_WINDOW_VARS, PreparedWindow, WindowError, WindowInstance, WindowMemory,
+    MAX_WINDOW_VARS, PreparedWindow, SharedRead, WindowError, WindowInstance, WindowMemory,
     WindowMetadataMemory, WindowPass, WindowShape, WindowSource, WindowTable,
 };
 pub use prover::{
