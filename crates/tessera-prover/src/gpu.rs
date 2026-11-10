@@ -6,7 +6,7 @@
 //! (#734) through `tessera_sumcheck`'s level offload, and P5's re-encoding for column answers.
 
 use tessera_hash::Digest;
-use tessera_pcs::{BlockSink, ColumnSink};
+use tessera_pcs::{BlockSink, ColumnSink, WeightEncoding};
 
 use crate::ProverError;
 
@@ -48,6 +48,29 @@ impl Gpu {
             rule: "the GPU backend needs a prover built with the `gpu` feature",
         })
     }
+
+    pub(crate) fn weight_encoding(&self) -> Box<dyn WeightEncoding + '_> {
+        Box::new(HostWeights)
+    }
+}
+
+#[cfg(not(feature = "gpu"))]
+/// Declines every matrix: the host encodes it.
+struct HostWeights;
+
+#[cfg(not(feature = "gpu"))]
+impl WeightEncoding for HostWeights {
+    fn matrix(
+        &mut self,
+        _: u32,
+        _: u32,
+        _: usize,
+        _: &Digest,
+        _: usize,
+        _: &[u64],
+    ) -> Result<Option<Box<dyn tessera_pcs::MatrixSink + '_>>, tessera_pcs::PcsError> {
+        Ok(None)
+    }
 }
 
 #[cfg(feature = "gpu")]
@@ -72,10 +95,13 @@ mod enabled {
         }
     }
 
+    /// Encoders by `(log_k, mask_coeffs)`.
+    type Encoders = std::sync::Mutex<Vec<((u32, usize), Arc<Encoder>)>>;
+
     /// One CUDA device and the encoders built on it, reused across a proof's commitments.
     pub(crate) struct Gpu {
         device: Arc<Device>,
-        encoders: std::sync::Mutex<Vec<((u32, usize), Arc<Encoder>)>>,
+        encoders: Encoders,
     }
 
     impl Gpu {
@@ -279,6 +305,158 @@ mod enabled {
     impl Drop for Gpu {
         fn drop(&mut self) {
             tessera_sumcheck::set_level_offload(None);
+        }
+    }
+
+    impl Gpu {
+        /// The weight matrices' rate-1/4 encoding and column hashing on the device (RFC-0040):
+        /// the weight recommit before a proof and P5's regenerated weight answers.
+        pub(crate) fn weight_encoding(&self) -> Box<dyn WeightEncoding + '_> {
+            Box::new(GpuWeights {
+                device: &self.device,
+            })
+        }
+    }
+
+    struct GpuWeights<'d> {
+        device: &'d Device,
+    }
+
+    impl WeightEncoding for GpuWeights<'_> {
+        fn matrix(
+            &mut self,
+            log_k: u32,
+            log2_inv_rate: u32,
+            block: usize,
+            commitment_id: &Digest,
+            columns: usize,
+            queries: &[u64],
+        ) -> Result<Option<Box<dyn tessera_pcs::MatrixSink + '_>>, PcsError> {
+            let k = 1usize << log_k;
+            // The device encodes rate 1/4 (two rate-1/2 cosets); a block absorbs at most 124 rows.
+            if log2_inv_rate != 2 || columns != 4 * k || block == 0 || block > 124 {
+                return Ok(None);
+            }
+            let d = self.device;
+            let [even, odd] = d.rate4_encoders(log_k).map_err(device)?;
+            let alloc = |len: usize| d.zeroed::<u64>(len.max(1)).map_err(device);
+            Ok(Some(Box::new(WeightSink {
+                device: d,
+                k,
+                block,
+                q: queries.len(),
+                chains: Some(d.column_chains(commitment_id, columns).map_err(device)?),
+                queries: d
+                    .upload(if queries.is_empty() { &[0] } else { queries })
+                    .map_err(device)?,
+                even,
+                odd,
+                rows: alloc(block * k)?,
+                halves: [alloc(block * 2 * k)?, alloc(block * 2 * k)?],
+                codewords: alloc(block * 4 * k)?,
+                out: alloc(block * queries.len())?,
+            })))
+        }
+    }
+
+    struct WeightSink<'d> {
+        device: &'d Device,
+        k: usize,
+        block: usize,
+        q: usize,
+        chains: Option<ColumnChainsGpu>,
+        queries: DeviceBuffer<u64>,
+        even: Encoder,
+        odd: Encoder,
+        rows: DeviceBuffer<u64>,
+        halves: [DeviceBuffer<u64>; 2],
+        codewords: DeviceBuffer<u64>,
+        out: DeviceBuffer<u64>,
+    }
+
+    impl WeightSink<'_> {
+        fn run(&mut self, rows: &[Goldilocks], count: usize) -> Result<Vec<u64>, GpuError> {
+            let d = self.device;
+            let k = self.k;
+            // A short final block gets buffers of its exact size: the kernels take whole buffers.
+            let mut short = None;
+            let (r, h, c) = if count == self.block {
+                (&mut self.rows, &mut self.halves, &mut self.codewords)
+            } else {
+                let s = short.insert((
+                    d.zeroed::<u64>(count * k)?,
+                    [
+                        d.zeroed::<u64>(count * 2 * k)?,
+                        d.zeroed::<u64>(count * 2 * k)?,
+                    ],
+                    d.zeroed::<u64>(count * 4 * k)?,
+                ));
+                (&mut s.0, &mut s.1, &mut s.2)
+            };
+            let none = d.upload(&[0u64])?;
+            // encode_rows uses its rows as scratch: each coset encodes a fresh upload.
+            for (encoder, half) in [&self.even, &self.odd].into_iter().zip(h.iter_mut()) {
+                d.upload_field_into(rows, r)?;
+                d.encode_rows(encoder, r, &none, half)?;
+            }
+            d.interleave(&h[0], &h[1], c)?;
+            let chains = self
+                .chains
+                .as_mut()
+                .ok_or(GpuError::Unsupported("chains finished"))?;
+            d.absorb_block(chains, c, count)?;
+            let words = if self.q == 0 {
+                Vec::new()
+            } else {
+                d.gather_columns(c, 4 * k, count, &self.queries, &mut self.out)?;
+                d.download(&self.out)?[..count * self.q].to_vec()
+            };
+            if let Some((mut r, [mut h0, mut h1], mut c)) = short {
+                for b in [&mut r, &mut h0, &mut h1, &mut c] {
+                    d.clear(b)?;
+                }
+            }
+            Ok(words)
+        }
+    }
+
+    impl tessera_pcs::MatrixSink for WeightSink<'_> {
+        fn absorb(&mut self, rows: &[Goldilocks]) -> Result<Vec<Goldilocks>, PcsError> {
+            let count = rows.len() / self.k;
+            if count == 0 || count > self.block || rows.len() != count * self.k {
+                return Err(PcsError::Device {
+                    reason: "a block of whole weight rows",
+                });
+            }
+            let words = self.run(rows, count).map_err(device)?;
+            words
+                .into_iter()
+                .map(|w| {
+                    <Goldilocks as tessera_field::PrimeField>::from_canonical_u64(w).ok_or(
+                        PcsError::Device {
+                            reason: "a device symbol is canonical",
+                        },
+                    )
+                })
+                .collect()
+        }
+
+        fn finish(&mut self) -> Result<Vec<Digest>, PcsError> {
+            let chains = self.chains.take().ok_or(PcsError::Device {
+                reason: "chains finished twice",
+            })?;
+            self.device.download_chains(&chains).map_err(device)
+        }
+    }
+
+    impl Drop for WeightSink<'_> {
+        fn drop(&mut self) {
+            // Weight rows and codewords are secret-class (05 §3 OBS-6).
+            let [h0, h1] = &mut self.halves;
+            for b in [&mut self.rows, h0, h1, &mut self.codewords, &mut self.out] {
+                let _ = self.device.clear(b);
+            }
+            let _ = self.device.synchronize();
         }
     }
 

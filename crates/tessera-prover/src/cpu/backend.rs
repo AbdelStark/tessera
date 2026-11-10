@@ -1410,7 +1410,11 @@ impl ProverEngine for CpuBackend<'_> {
                 .ok_or_else(|| internal("checked query matrix"))?;
             let indices = q.indices.iter().map(|&i| u64::from(i)).collect::<Vec<_>>();
             let source = model_weights(p.model, &u.lowering)?;
-            let a = p.weights.answer(*m, &source, &indices)?;
+            // The regenerated root and every answered column are checked against the tree.
+            let mut device = p.gpu.as_ref().map(crate::gpu::Gpu::weight_encoding);
+            let a = p
+                .weights
+                .answer_with_device(*m, &source, &indices, device.as_deref_mut())?;
             weight_columns.push(protocol::MatrixColumns {
                 matrix: q.matrix,
                 columns: a.columns,

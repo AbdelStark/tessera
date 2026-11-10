@@ -342,3 +342,14 @@ extern "C" __global__ void gather_columns(const uint64_t *codewords, uint64_t n,
         out[i] = c < n ? codewords[r * n + c] : 0;  // an index past the codeword reads nothing
     }
 }
+
+// Rate-1/4 weight codewords from their two rate-1/2 cosets (Device::rate4_encoders):
+// out[2i] = even[i], out[2i + 1] = odd[i] for i < total.
+extern "C" __global__ void interleave2(const uint64_t *even, const uint64_t *odd, uint64_t total,
+                                       uint64_t *out) {
+    const uint64_t stride = static_cast<uint64_t>(gridDim.x) * blockDim.x;
+    for (uint64_t i = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x; i < total; i += stride) {
+        out[2 * i] = even[i];
+        out[2 * i + 1] = odd[i];
+    }
+}

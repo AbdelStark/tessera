@@ -232,14 +232,18 @@ impl<'a> Prover<'a> {
         {
             return Err(ProverError::Resource(ErrorCode::ResMemory));
         }
-        let actual = pcs::RegeneratedWeightCommitment::commit_with_threads(
+        // The GPU encodes the recommit when it can; the comparison below checks its root.
+        let mut device = gpu.as_ref().map(crate::gpu::Gpu::weight_encoding);
+        let actual = pcs::RegeneratedWeightCommitment::commit_with_device(
             &layout,
             NonZeroU32::new(plan.claims.layout.advice.row_block)
                 .ok_or_else(|| usage("zero commitment row block"))?,
             weights.public.epoch,
             &source,
             threads,
+            device.as_deref_mut(),
         )?;
+        drop(device);
         if actual.public() != &weights.public
             || weights
                 .budget

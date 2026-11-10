@@ -103,6 +103,44 @@ fn encoding_matches_the_cpu() {
 }
 
 #[test]
+fn rate4_weight_encoding_matches_the_cpu() {
+    let device = Device::new(0).expect("a CUDA device with this crate's kernels");
+    // RFC-0040 weight rows: rate 1/4, no masks; one tile, one strided pass each way, and k = 2^20.
+    for (log_k, count) in [(1, 3), (4, 2), (12, 2), (13, 2), (17, 2), (20, 2)] {
+        let k = 1usize << log_k;
+        let rows = inputs(count * k, 77 + u64::from(log_k));
+        let encoder = RowEncoder::new(k, 2, 0).expect("encoder");
+        let zero = Goldilocks::from_canonical_u64(0).expect("zero");
+        let mut cpu = vec![zero; 4 * rows.len()];
+        encoder
+            .encode_rows(&field(&rows), &mut || zero, &mut cpu)
+            .expect("encode");
+        let [even, odd] = device.rate4_encoders(log_k).expect("encoders");
+        let none = device.upload(&[0u64]).expect("upload");
+        let mut halves = Vec::new();
+        for e in [&even, &odd] {
+            let mut scratch = device.upload(&rows).expect("upload");
+            let mut half = device.zeroed::<u64>(2 * rows.len()).expect("alloc");
+            device
+                .encode_rows(e, &mut scratch, &none, &mut half)
+                .expect("encode");
+            halves.push(half);
+        }
+        let mut out = device.zeroed::<u64>(4 * rows.len()).expect("alloc");
+        device
+            .interleave(&halves[0], &halves[1], &mut out)
+            .expect("interleave");
+        assert_eq!(
+            device.download(&out).expect("download"),
+            cpu.iter()
+                .map(PrimeField::to_canonical_u64)
+                .collect::<Vec<_>>(),
+            "log_k = {log_k}, rows = {count}"
+        );
+    }
+}
+
+#[test]
 fn chains_match_the_cpu() {
     let device = Device::new(0).expect("a CUDA device with this crate's kernels");
     let id = [0xA5u8; 32];

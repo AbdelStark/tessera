@@ -368,8 +368,8 @@ pub use streaming::{
     AdviceCommitment, BlockSink, SegmentDigests, StreamingCommitter, merge_segments,
 };
 pub use weights::{
-    ChannelParamsRef, ChannelValues, MatrixKind, MatrixLayout, MatrixRows, ModelWeights,
-    OpenedColumns, RegeneratedWeightCommitment, TypeBudget, WeightCombinedRows, WeightCommitment,
-    WeightCommitmentPublic, WeightCommitmentState, WeightFold, WeightLayout, WeightRows,
-    WeightShape, WeightShapes, WeightTensorRef, WeightWorkMemory,
+    ChannelParamsRef, ChannelValues, MatrixKind, MatrixLayout, MatrixRows, MatrixSink,
+    ModelWeights, OpenedColumns, RegeneratedWeightCommitment, TypeBudget, WeightCombinedRows,
+    WeightCommitment, WeightCommitmentPublic, WeightCommitmentState, WeightEncoding, WeightFold,
+    WeightLayout, WeightRows, WeightShape, WeightShapes, WeightTensorRef, WeightWorkMemory,
 };

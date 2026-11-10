@@ -31,5 +31,5 @@ pub use layout::{
 };
 pub use opening::{MatrixRows, WeightCombinedRows, WeightFold};
 pub use public::WeightCommitmentPublic;
-pub use regenerated::RegeneratedWeightCommitment;
+pub use regenerated::{MatrixSink, RegeneratedWeightCommitment, WeightEncoding};
 pub use state::{OpenedColumns, TypeBudget, WeightCommitmentState};
