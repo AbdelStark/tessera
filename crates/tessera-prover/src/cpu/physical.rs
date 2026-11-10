@@ -704,6 +704,23 @@ pub(super) fn select(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate,
         .checked_sub(input.session.map_or(0, |m| m.thread_bytes))
         .ok_or_else(memory)?;
     let candidate = components(input, host)?;
+    let p = &candidate.phases;
+    let gib = |b: Option<u64>| b.map_or(u64::MAX, |b| b >> 30);
+    tessera_codec::event!(
+        DEBUG,
+        "prover.physical_candidate",
+        peak = gib(p.complete_peak()),
+        host = host >> 30,
+        preparation = gib(p.preparation.max(p.session_preparation)),
+        packets = gib(p.packets),
+        p1 = p.p1 >> 30,
+        p2 = p.p2 >> 30,
+        p3 = p.p3 >> 30,
+        targets = p.targets >> 30,
+        p4 = p.p4 >> 30,
+        p5 = p.p5 >> 30;
+        "physical candidate: {peak} GiB for {host} GiB (preparation {preparation}, packets {packets}, P1 {p1}, P2 {p2}, P3 {p3}, targets {targets}, P4 {p4}, P5 {p5})"
+    );
     candidate.check_complete(host)?;
     Ok(candidate)
 }

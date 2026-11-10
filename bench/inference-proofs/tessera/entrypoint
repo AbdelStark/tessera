@@ -20,8 +20,11 @@ Environment (paths on the host when the harness runs this in process, IPROOFS_IO
 IPROOFS_MODELS mapping /io and /models as for systems/fake):
 TESSERA_REPO (the checkout, default the directory three levels up), TESSERA_BIN, TESSERA_VERIFY,
 TESSERA_PIN (default the repository's release builds), TESSERA_MODEL_D (a prebuilt D),
-TESSERA_CALIBRATION (the calibration spec when D is built here), TESSERA_BACKEND (gpu or cpu),
-TESSERA_THREADS, TESSERA_MAX_LOG2_ROWS (default 32).
+TESSERA_CALIBRATION (the calibration spec when D is built here, default calibration.json beside
+this file: C4, 128 windows of 2,048 tokens, 32 held out), TESSERA_ALPHA (migration strength,
+default 1/2), TESSERA_BACKEND (gpu or cpu), TESSERA_THREADS, TESSERA_MAX_LOG2_ROWS (default 32),
+TESSERA_MEMORY_GIB (the prover's --memory-budget; default the host's RAM). In hosted mode the
+harness passes the image's environment only, so the defaults are what a hosted run uses.
 """
 
 import json
@@ -49,6 +52,11 @@ def host(container_path: str) -> Path:
         if container_path == prefix or container_path.startswith(prefix + "/"):
             return Path(os.environ.get(env, prefix) + container_path[len(prefix):])
     raise SystemExit(f"tessera: path {container_path!r} outside /io and /models")
+
+
+def host_gib() -> int:
+    """The host's RAM in GiB, the prover's default memory budget."""
+    return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") >> 30
 
 
 def run(argv: list[str], *, cwd: Path | None = None, env: dict | None = None) -> subprocess.CompletedProcess:
@@ -104,12 +112,11 @@ def commit(job: dict) -> dict:
     if prebuilt:
         shutil.copyfile(prebuilt, model)
     else:
-        spec = os.environ.get("TESSERA_CALIBRATION")
-        if not spec:
-            raise SystemExit("tessera: set TESSERA_MODEL_D or TESSERA_CALIBRATION")
+        spec = os.environ.get("TESSERA_CALIBRATION", str(Path(__file__).with_name("calibration.json")))
         checked([*PYTHON, "-m", "tessera_quant", "compile", "--json", "--checkpoint",
                  host(job["model_dir"]), "--calibration", spec, "--profile", "servable",
-                 "--scales", "affine", "--out", model, "--device", "cuda"],
+                 "--scales", "affine", "--out", model, "--device", "cuda",
+                 "--alpha", os.environ.get("TESSERA_ALPHA", "1/2")],
                 cwd=REPO / "python")
     compiled = state / "compiled"
     checked([BIN, "--json", "compile", "--model", model, "--params", "ni-100", "--out-dir",
@@ -154,6 +161,7 @@ def prove(job: dict) -> dict:
                  "--reference-tokens", tokens, "--prompt-len", str(len(request)),
                  "--request-id", "1", "--request-session", SESSION, "--manifest-digest",
                  MANIFEST, "--threads", os.environ.get("TESSERA_THREADS", str(os.cpu_count())),
+                 "--memory-budget", os.environ.get("TESSERA_MEMORY_GIB", str(host_gib())),
                  *flags, "--out", tmp / "proof.tnp"])
         os.rename(tmp, proofs_dir / proof_id)  # atomic release (RFC-0005 §Proof release protocol)
         proofs.append({"proof_id": proof_id, "request_index": i, "parts": ["proof.tnp"],
