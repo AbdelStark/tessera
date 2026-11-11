@@ -1,16 +1,17 @@
 # MVP benchmark: Tessera beside FlashProve and SASH (#743)
 
-Status: first numbers, 2026-11-11. Development runs on rented hardware, measured by Tessera's own scripts ([`scripts/prove-gpu.sh`](../../../scripts/prove-gpu.sh), `/usr/bin/time`), including the observatory's own workload. The observatory's harness has run the adapter on that workload as a development run in a 558 GiB container, where it stops at the prover's memory admission ([below](#the-adapter-through-the-observatorys-harness-2026-11-10)). Read the caveats before any figure.
+Status: first numbers, 2026-11-11. Development runs on rented hardware, measured by Tessera's own scripts ([`scripts/prove-gpu.sh`](../../../scripts/prove-gpu.sh), `/usr/bin/time`), including the observatory's own workload, and by the observatory's harness itself: a development run of the adapter on the same workload, accepted ([below](#the-adapter-through-the-observatorys-harness)). Read the caveats before any figure.
 
 ## Headline
 
-Tessera proves the observatory's own workload: Llama-3.1-8B, a 1,024-token prompt and its 64-token exact-greedy continuation, on one GPU, accepted by the independent verifier with the public tokens pinned (and `REJ-TOKENS` for one changed token). Per token per Gbit it takes 313 ms, about 4.2 times SASH's 75.4 ms and about 4,600 times FlashProve's 68.2 µs, and its proof is 62.5 kB, a tenth of SASH's 640 kB. Its overhead against vLLM on the same GPU at the same shape is 28,100× (SASH: 15,760× against serving on its H200). It needs a host with 2 TB of RAM: the proof peaked at 1.79 TiB.
+Tessera proves the observatory's own workload: Llama-3.1-8B, a 1,024-token prompt and its 64-token exact-greedy continuation, on one GPU, accepted by the independent verifier with the public tokens pinned (and `REJ-TOKENS` for one changed token). Per token per Gbit it takes 313 ms, about 4.2 times SASH's 75.4 ms and about 4,600 times FlashProve's 68.2 µs, and its proof is 62.5 kB, a tenth of SASH's 640 kB. Its overhead against vLLM on the same GPU at the same shape is 28,100× (SASH: 15,760× against serving on its H200). It needs a host with 2 TB of RAM: the proof peaked at 1.79 TiB. The observatory's own harness reproduces the result: on the same A100 with its profile's 15 prover CPUs it measured 8 h 57 min to prove (461 ms per token per Gbit, 41,500× vLLM), 177 s to verify, and the verdict `accept`.
 
 | System | Model | Shape | Prove time per token per Gbit | Proof size per token per Gbit | Overhead vs serving | Evidence |
 |---|---|---|---|---|---|---|
 | FlashProve | Llama 4 Maverick, 17B active | observatory workload | 68.2 µs | 223 B | 61× | external, inferenceproofs.ai v0.1, marked not yet checked |
 | SASH | Llama 3.1 8B | 1,024 + 64 | 75.4 ms | 640 kB | 15,760× | external, inferenceproofs.ai v0.1, marked not yet checked |
-| **Tessera** | Llama 3.1 8B (integer model D, W8) | **1,024 + 64** | **313 ms** | **62.5 kB** | **28,100×** (against vLLM on the same A100) | measured, n = 1, development run at 6d16160, one A100 80 GB |
+| **Tessera, observatory harness** | Llama 3.1 8B (integer model D, W8) | **1,024 + 64** | **461 ms** | **62.5 kB** | **41,500×** (against vLLM on the same A100) | harness-measured, n = 1, `iproofs run --hosted` development run at ba61755, one A100 80 GB, the profile's 15 prover CPUs, [run.json](../../../bench/inference-proofs/tessera/runs/2026-11-11-l31-8b-c1024-hosted-a100/run.json) |
+| Tessera | Llama 3.1 8B (integer model D, W8) | 1,024 + 64 | 313 ms | 62.5 kB | 28,100× (against vLLM on the same A100) | measured, n = 1, development run at 6d16160, one A100 80 GB, all 128 CPUs |
 | Tessera | Llama 3.1 8B (integer model D, W8) | 64 + 64 | 443 ms | 571 kB | 10,700× (85,800× against serving at 1,024 + 64) | measured, n = 1, development run at 699d3d8, one H200 NVL |
 | Tessera | Llama 3.1 8B (integer model D, W8) | 8 + 8 | 2.82 s | 4.38 MB | 57,800× (546,000× against serving at 1,024 + 64) | measured, n = 1, development run at 405d552 |
 | Tessera | Llama 3.2 1B (integer model D, W8) | 8 + 8 | 6.92 s | 23.3 MB | 73,000× (939,000× against serving at 1,024 + 64) | measured, n = 1, development run at 405d552 |
@@ -20,7 +21,7 @@ Units as the observatory defines them ([README](README.md#units)): per token cov
 ## Caveats
 
 1. **Shapes.** Tessera's first row covers the workload's 1,088 positions, as SASH's does; its other rows cover 128 and 16. Tessera's cost is mostly fixed at these lengths: the table side (10.1 G table rows at 8B, [commitment report](commitment-report-8b.json)) does not depend on the request length, so its per-token figures fall as the request grows (8 times the positions cost 1.26 times the time: 2,902 s to 3,646 s). These rows are not a like-for-like comparison and must not be quoted as one; the per-token figures at 1,088 positions would be lower again, if it fit.
-2. **Not the harness.** The observatory times calls from outside the container, binds CPUs and samples NVML. Tessera's adapter ([`bench/inference-proofs/tessera`](../../../bench/inference-proofs/tessera)) passes `iproofs validate --all`, but no harness run exists: the harness runs real systems only from their pinned image, and Tessera's image is not built yet.
+2. **Harness, but a development run.** The observatory times calls from outside the container, binds CPUs and samples NVML. Its row comes from that harness, but as a development install of the adapter into the provider's `nvidia/cuda` image, so the record is `local/`, `nonconforming` (an A100 80 GB, not the profile's H200) and never release-eligible; a release run needs the pinned adapter image (RFC-0014 B1–B7), which is not built yet. The other Tessera rows are Tessera's own measurements.
 3. **Different hardware.** Tessera's full-workload proof ran on one A100 80 GB PCIe of a rented 6-GPU host (128 CPUs, a 2.07 TB container), and its other rows on one H200 NVL (82 CPUs, a 558 GiB container); each overhead divides by vLLM on the same GPU. SASH and FlashProve ran on the observatory's H200 (SXM), with its own serving rows. An A100 is slower than an H200, so the full-workload row's time is not flattered by the hardware.
 4. **What is proved.** Tessera proves its integer model D, quantized from the BF16 checkpoint by `tessera-quant` (servable profile, affine scales, migration strength 1/2), not the BF16 model; D's fidelity is measured separately. `tessera-protocol/1` at `ni-100/1`, no zero knowledge. The verifier pins the public prompt and continuation (`--tokens`).
 5. **n = 1.** One run per row, no repetitions.
@@ -105,7 +106,25 @@ The rented container sees the host's 1 TB but is allowed 558 GiB (`/sys/fs/cgrou
 
 At 1,024 + 64 positions, the prover's resident plan is 10.8 TB: 34.7 G tensor, 17.3 G lookup, 10.1 G table and 90.5 G advice cells at 64 bytes each. A 38-minute physical checkpoint search found no plan under the 900 GiB budget, and the proof stopped with `ERR-RES-MEMORY` before the witness. At 16 positions the same model's resident plan is 5.8 TB and its physical plan 369 GB, so the advice matrix (71.3 G cells at 16 positions, mostly the table side's multiplicities) dominates at both lengths.
 
-## The adapter through the observatory's harness (2026-11-10)
+## The adapter through the observatory's harness
+
+### Accepted at 1,024 + 64 on one A100 (2026-11-11)
+
+`iproofs run --system tessera --workload l31-8b-c1024 --profile prover-h200-hosted --hosted --gpu 0 --allow-nonconforming` at inference-proofs 7d40d85, the adapter at ba61755 installed into the provider's `nvidia/cuda` image on the rented A100 host (128 CPUs, a 2.07 TB container), with `TESSERA_MEMORY_GIB=11000` in the container's environment so that the prover admits the resident route. The harness bound the prover to CPUs 0–14 and the verifier to CPUs 15–22. Record: [run.json](../../../bench/inference-proofs/tessera/runs/2026-11-11-l31-8b-c1024-hosted-a100/run.json), [manifest](../../../bench/inference-proofs/tessera/runs/2026-11-11-l31-8b-c1024-hosted-a100/manifest.json); its warnings are the single repetition and the profile mismatch (GPU model, memory, driver).
+
+| Harness metric | Value |
+|---|---|
+| commit (quantize, compile, commit weights) | 832.7 s, 27.5 GB host peak |
+| prove (greedy continuation, then `tessera prove --backend gpu`) | 32,249 s (8 h 57 min), 1.96 TB host peak, GPU 62.8 GB peak, 1.2 % mean GPU utilization |
+| verify | 176.5 s (176.7 s on one CPU), 9.25 GB, **accept** |
+| proof | 4.37 GB, 4.02 MB per token covered |
+| per token per Gbit | 461 ms prove, 62.5 kB proof, 2.53 ms verify |
+| GPU-s per token | 29.6, against vLLM's 0.715 ms per token on the same A100: 41,500× |
+| verifier download | 11,750 bytes |
+
+The prover's time is 1.47 times the 128-CPU run's (21,907 s): the harness's 15 CPUs slow its host-bound phases, which is where the GPU sits idle (point 2 below).
+
+### Stopped at memory admission in a 558 GiB container (2026-11-10)
 
 `iproofs run --system tessera --workload l31-8b-c1024 --profile prover-h200-hosted --hosted --gpu 0 --allow-nonconforming` at inference-proofs 7d40d85, inside the rented container (a development install of the adapter at 36aae28 into the provider's `nvidia/cuda` image, so the record is `local/`, never release-eligible, and `nonconforming`: an H200 NVL, not the profile's SXM). The harness's self-test passed. Record: [bench/inference-proofs/tessera/runs/](../../../bench/inference-proofs/tessera/runs/2026-11-10-l31-8b-c1024-hosted-2/run.json).
 
@@ -126,4 +145,4 @@ A stack-sampling profile of the 1B proof (`gdb` launching the prover, since the 
 3. **P4 and P5's row pipeline** (13 min at 8B): one thread regenerates advice rows and copies them to the device from pageable memory; overlapping regeneration, pinned uploads and the GPU would bound them by the device.
 4. **P1's row generation** (3 min at 8B): `visit_rows` feeds the GPU encoder from one thread.
 5. **Memory at 1,088 positions** (#728, #739): the proof peaks at 1.79 TiB, and the planner's resident charge (10.9 TB) overstates it six times while its physical search admits nothing under 1,850 GiB. Token groups and windows (RFC-0054, RFC-0055), or a smaller physical floor, would bring the workload to an ordinary 1 TB GPU host.
-6. **A harness run** (#741): build the adapter image (RFC-0014 B1–B7) and run `iproofs run --hosted`.
+6. **A release harness run** (#741): build the pinned adapter image (RFC-0014 B1–B7) and run it on the profile's H200; the development run above is accepted but `local/` and `nonconforming`.

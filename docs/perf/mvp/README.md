@@ -39,3 +39,5 @@ An 8 + 8 request of Tessera's integer model of Llama-3.1-8B-Instruct, proven in 
 ## Llama-3.1-8B at the observatory's workload: accepted (2026-11-11)
 
 1,024 prompt tokens and the 64-token exact-greedy continuation, proven on one A100 80 GB in 6 h 5 min at 1.79 TiB peak host memory and accepted with the public tokens in 2 min 58 s; one changed token gives `REJ-TOKENS`. 313 ms and 62.5 kB per token per Gbit: [benchmark.md](benchmark.md).
+
+The observatory's harness (`iproofs run --hosted`, development run) reproduces it on the same A100 with its 15 prover CPUs: prove 8 h 57 min, verify 177 s, `accept`; 461 ms and 62.5 kB per token per Gbit ([record](../../../bench/inference-proofs/tessera/runs/2026-11-11-l31-8b-c1024-hosted-a100/run.json), [benchmark.md](benchmark.md#the-adapter-through-the-observatorys-harness)).
