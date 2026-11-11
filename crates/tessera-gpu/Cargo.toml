@@ -47,3 +47,7 @@ tessera-witness = { path = "../tessera-witness" }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "advice_block"
+required-features = ["gpu"]
