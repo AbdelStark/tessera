@@ -24,4 +24,6 @@ proofs:
   steady_approximate: false
   verify_reads: "all"
 forbidden_flags: ["--test-", "--params=test-small"]
-timeouts_s: {commit: 21600, prove: 43200, verify: 3600}
+# prove: D's greedy continuation (about 2 h on the CUDA reference) and a 6 h proof on 128 CPUs at
+# 1,024 + 64; the hosted profile binds 15.
+timeouts_s: {commit: 21600, prove: 86400, verify: 7200}

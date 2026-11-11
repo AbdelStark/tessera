@@ -137,7 +137,9 @@ def up(a: argparse.Namespace) -> None:
     life, idle = int(a.max_hours * 3600), int(a.idle_hours * 3600)
     r = call("PUT", f"/asks/{o['id']}/", {
         "client_id": "me", "image": IMAGE, "disk": a.disk, "runtype": "ssh",
-        "onstart": WATCHDOG.format(life=life, idle=idle), "label": "tessera-gpu-run"})
+        "onstart": WATCHDOG.format(life=life, idle=idle), "label": "tessera-gpu-run",
+        # The container's own environment: what a hosted harness run hands the adapter.
+        "env": dict(kv.split("=", 1) for kv in a.env)})
     if not r.get("success"):
         sys.exit(f"gpu-run: rent failed: {r}")
     STATE.parent.mkdir(parents=True, exist_ok=True)
@@ -234,6 +236,8 @@ def main() -> None:
     u.add_argument("--min-ram", type=int, default=128, help="GB of host RAM")
     u.add_argument("--min-cores", type=int, default=32, help="effective host CPU cores")
     u.add_argument("--offer", type=int, help="rent this offer id instead of searching")
+    u.add_argument("--env", action="append", default=[], metavar="KEY=VALUE",
+                   help="set in the container's environment (never a secret)")
     u.set_defaults(f=up)
     sub.add_parser("resume", help="wait for and set up the recorded instance").set_defaults(
         f=resume)
