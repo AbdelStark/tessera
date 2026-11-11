@@ -113,63 +113,102 @@ impl<F: PolyField> Numerator<F> for InExt<F> {
     }
 }
 
-/// The level above the halves `(n_even, n_odd)` and `(d_even, d_odd)` of level `t + 1`, in one
-/// pass. Entry `z` of level `t` combines entries `2z` (left) and `2z + 1` (right) of level
-/// `t + 1`, which are `(n_even[z], d_even[z])` and `(n_odd[z], d_odd[z])`; its halves hold its
-/// entries `2y` and `2y + 1`.
+/// Below this many nodes per thread, one thread builds a level.
+const PARALLEL_MIN_NODES: usize = 1 << 16;
+
+/// Runs `f(first, outs)` on at most `threads` contiguous ranges of the `len` entries of every slice of `outs`,
+/// `first` being the range's first index, on scoped threads when there is enough work. Each entry
+/// is written once from its own inputs, so the thread count never changes a value (RFC-0018 'CPU
+/// backend').
+fn par_ranges<F: Send, const K: usize>(
+    threads: usize,
+    len: usize,
+    outs: [&mut [F]; K],
+    f: impl Fn(usize, [&mut [F]; K]) + Sync,
+) {
+    let threads = threads.min(len / PARALLEL_MIN_NODES).max(1);
+    if threads == 1 {
+        return f(0, outs);
+    }
+    let per = len.div_ceil(threads);
+    let mut chunks = outs.map(|out| out.chunks_mut(per));
+    std::thread::scope(|scope| {
+        let mut first = 0;
+        loop {
+            let next = chunks.each_mut().map(Iterator::next);
+            if next.iter().any(Option::is_none) {
+                break;
+            }
+            let part = next.map(Option::unwrap_or_default);
+            let count = part[0].len();
+            let f = &f;
+            scope.spawn(move || f(first, part));
+            first += count;
+        }
+    });
+}
+
+/// The level above the denominators' halves `(d_even, d_odd)` of level `t + 1`, whose
+/// numerators' halves `numerators(i)` gives as `(n_even[i], n_odd[i])`. Entry `z` of level `t`
+/// combines entries `2z` (left) and `2z + 1` (right) of level `t + 1`, which are
+/// `(n_even[z], d_even[z])` and `(n_odd[z], d_odd[z])`; its halves hold its entries `2y` and
+/// `2y + 1`.
 fn combine<F: PolyField, N: Numerator<F>>(
-    n_even: impl Iterator<Item = N>,
-    n_odd: impl Iterator<Item = N>,
+    threads: usize,
+    numerators: impl Fn(usize) -> (N, N) + Sync,
     denominators: &Halves<F>,
 ) -> FractionLevel<F> {
     let half = denominators.even.len() / 2;
-    let mut numerators = Halves::zeroed(half);
-    let mut products = Halves::zeroed(half);
-    let mut n_even = n_even;
-    let mut n_odd = n_odd;
-    let outputs = (numerators.even.iter_mut().zip(numerators.odd.iter_mut()))
-        .zip(products.even.iter_mut().zip(products.odd.iter_mut()));
-    let inputs = denominators
-        .even
-        .chunks_exact(2)
-        .zip(denominators.odd.chunks_exact(2));
-    for (((n0, n1), (p0, p1)), (de, d_o)) in outputs.zip(inputs) {
-        // Entries 2y and 2y + 1 of the level: left children de, right children d_o.
-        let (Some(l0), Some(r0), Some(l1), Some(r1)) =
-            (n_even.next(), n_odd.next(), n_even.next(), n_odd.next())
-        else {
-            break;
-        };
-        *n0 = N::cross(l0, de[0], r0, d_o[0]);
-        *p0 = de[0] * d_o[0];
-        *n1 = N::cross(l1, de[1], r1, d_o[1]);
-        *p1 = de[1] * d_o[1];
-    }
+    let mut n = Halves::zeroed(half);
+    let mut p = Halves::zeroed(half);
+    let (d_even, d_odd) = (&denominators.even[..], &denominators.odd[..]);
+    let outs = [
+        &mut n.even[..],
+        &mut n.odd[..],
+        &mut p.even[..],
+        &mut p.odd[..],
+    ];
+    par_ranges(threads, half, outs, |first, [n0s, n1s, p0s, p1s]| {
+        let rows = n0s
+            .iter_mut()
+            .zip(n1s.iter_mut())
+            .zip(p0s.iter_mut().zip(p1s.iter_mut()));
+        for (y, ((n0, n1), (p0, p1))) in (first..).zip(rows) {
+            // Entries 2y and 2y + 1 of the level: left children d_even, right children d_odd.
+            let ((l0, r0), (l1, r1)) = (numerators(2 * y), numerators(2 * y + 1));
+            let (de0, de1, do0, do1) = (
+                d_even[2 * y],
+                d_even[2 * y + 1],
+                d_odd[2 * y],
+                d_odd[2 * y + 1],
+            );
+            *n0 = N::cross(l0, de0, r0, do0);
+            *p0 = de0 * do0;
+            *n1 = N::cross(l1, de1, r1, do1);
+            *p1 = de1 * do1;
+        }
+    });
     FractionLevel {
-        numerators: Numerators::Ext(numerators),
-        denominators: products,
+        numerators: Numerators::Ext(n),
+        denominators: p,
     }
 }
 
 /// The level above `below`, whatever its numerators: three products per entry, one when its
 /// numerators are 1, of which two by base elements when they are in the prime subfield.
-fn level_above_fractions<F: PolyField>(below: &FractionLevel<F>) -> FractionLevel<F> {
+fn level_above_fractions<F: PolyField>(
+    below: &FractionLevel<F>,
+    threads: usize,
+) -> FractionLevel<F> {
     let d = &below.denominators;
     match &below.numerators {
-        Numerators::Unit => {
-            let ones = || core::iter::repeat_n(One, d.even.len());
-            combine::<F, One>(ones(), ones(), d)
+        Numerators::Unit => combine::<F, One>(threads, |_| (One, One), d),
+        Numerators::Base(n) => {
+            combine::<F, InBase<F::Base>>(threads, |i| (InBase(n.even[i]), InBase(n.odd[i])), d)
         }
-        Numerators::Base(n) => combine::<F, InBase<F::Base>>(
-            n.even.iter().map(|&b| InBase(b)),
-            n.odd.iter().map(|&b| InBase(b)),
-            d,
-        ),
-        Numerators::Ext(n) => combine::<F, InExt<F>>(
-            n.even.iter().map(|&x| InExt(x)),
-            n.odd.iter().map(|&x| InExt(x)),
-            d,
-        ),
+        Numerators::Ext(n) => {
+            combine::<F, InExt<F>>(threads, |i| (InExt(n.even[i]), InExt(n.odd[i])), d)
+        }
     }
 }
 
@@ -228,8 +267,9 @@ pub struct FractionTree<F: PolyField> {
 
 impl<F: PolyField> FractionTree<F> {
     /// The tree of height `height` whose leaf `x < 2^height` is `(n_x, denominators(x))`, `n_x`
-    /// from `numerators`, building every level bottom-up. `denominators` is called once per
-    /// leaf, in order.
+    /// from `numerators`, building every level bottom-up on up to
+    /// [`parallelism`](crate::parallelism) threads. `denominators` is called once per leaf, from
+    /// any of them, so it must be a pure function of the leaf.
     ///
     /// # Errors
     ///
@@ -239,7 +279,17 @@ impl<F: PolyField> FractionTree<F> {
     pub fn new(
         height: usize,
         numerators: LeafNumerators<'_, F::Base>,
-        mut denominators: impl FnMut(usize) -> F,
+        denominators: impl Fn(usize) -> F + Sync,
+    ) -> Result<Self, SumcheckError> {
+        Self::new_threads(crate::parallelism(), height, numerators, denominators)
+    }
+
+    /// [`new`](Self::new) on at most `threads` threads.
+    fn new_threads(
+        threads: usize,
+        height: usize,
+        numerators: LeafNumerators<'_, F::Base>,
+        denominators: impl Fn(usize) -> F + Sync,
     ) -> Result<Self, SumcheckError> {
         let leaves = u32::try_from(height)
             .ok()
@@ -266,11 +316,13 @@ impl<F: PolyField> FractionTree<F> {
             });
         }
         let mut halves = Halves::zeroed(leaves / 2);
-        let outputs = halves.even.iter_mut().zip(halves.odd.iter_mut());
-        for (x, (even, odd)) in outputs.enumerate() {
-            *even = denominators(2 * x);
-            *odd = denominators(2 * x + 1);
-        }
+        let outs = [&mut halves.even[..], &mut halves.odd[..]];
+        par_ranges(threads, leaves / 2, outs, |first, [evens, odds]| {
+            for (x, (even, odd)) in (first..).zip(evens.iter_mut().zip(odds.iter_mut())) {
+                *even = denominators(2 * x);
+                *odd = denominators(2 * x + 1);
+            }
+        });
         let leaf_numerators = match numerators {
             LeafNumerators::Unit => Numerators::Unit,
             LeafNumerators::Base(values) => Numerators::Base(leaf_level(values)),
@@ -282,7 +334,7 @@ impl<F: PolyField> FractionTree<F> {
             denominators: halves,
         };
         for t in (1..height).rev() {
-            levels[t] = level_above_fractions(&levels[t + 1]);
+            levels[t] = level_above_fractions(&levels[t + 1], threads);
         }
         let root = root_of(&levels[1]);
         Ok(Self {
@@ -1030,6 +1082,72 @@ mod tests {
                 root(&lifted, &denominators),
                 "height {height}, base numerators"
             );
+        }
+    }
+    /// Levels split over threads (#744: the 8B workload's 18.5 G lookups) hold the same entries
+    /// as the definition's level-by-level pairs, at every level and with each numerator kind.
+    #[test]
+    fn a_tree_built_on_threads_holds_every_level_of_the_definition() {
+        let height = 19;
+        let leaves = 1usize << height;
+        let denominator = |x: usize| fp2(3 * x as u64 + 7, (x * x) as u64 + 1);
+        let numerators: Vec<Fp> = (0..leaves as u64)
+            .map(|x| Fp::from_u64_reduced(5 * x + 2))
+            .collect();
+        for base in [false, true] {
+            let tree = match base {
+                false => {
+                    FractionTree::<Fp2>::new_threads(8, height, LeafNumerators::Unit, denominator)
+                }
+                true => FractionTree::<Fp2>::new_threads(
+                    8,
+                    height,
+                    LeafNumerators::Base(&numerators),
+                    denominator,
+                ),
+            }
+            .expect("a tree");
+            let mut level: Vec<(Fp2, Fp2)> = (0..leaves)
+                .map(|x| match base {
+                    false => (Fp2::ONE, denominator(x)),
+                    true => (Fp2::from(numerators[x]), denominator(x)),
+                })
+                .collect();
+            for t in (1..=height).rev() {
+                let built = &tree.levels[t];
+                for (z, &(n, d)) in level.iter().enumerate() {
+                    let half = if z % 2 == 0 {
+                        &built.denominators.even
+                    } else {
+                        &built.denominators.odd
+                    };
+                    assert_eq!(half[z / 2], d, "denominator {z} of level {t}");
+                    let numerator = match &built.numerators {
+                        Numerators::Unit => Fp2::ONE,
+                        Numerators::Base(h) => Fp2::from(if z % 2 == 0 {
+                            h.even[z / 2]
+                        } else {
+                            h.odd[z / 2]
+                        }),
+                        Numerators::Ext(h) => {
+                            if z % 2 == 0 {
+                                h.even[z / 2]
+                            } else {
+                                h.odd[z / 2]
+                            }
+                        }
+                    };
+                    assert_eq!(numerator, n, "numerator {z} of level {t}");
+                }
+                level = level
+                    .chunks_exact(2)
+                    .map(|pair| {
+                        let ((nl, dl), (nr, dr)) = (pair[0], pair[1]);
+                        (nl * dr + nr * dl, dl * dr)
+                    })
+                    .collect();
+            }
+            assert_eq!(tree.root(), level[0], "the root");
         }
     }
 }

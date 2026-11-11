@@ -9,7 +9,10 @@ use std::num::NonZeroUsize;
 use tessera_codec::Ascii;
 use tessera_field::{Field, Goldilocks as B, GoldilocksExt2 as F, PrimeField, QuadraticExtension};
 use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};
-use tessera_logup::{TableBatchBudget, TableSource, prove_table_batch_bounded};
+use tessera_logup::{
+    LogUpInstance, TableBatchBudget, TableSource, TreeId, Tuples, prove_logup,
+    prove_table_batch_bounded,
+};
 use tessera_sumcheck::{SumcheckTranscript, WindowError, set_parallelism};
 
 struct Table {
@@ -80,4 +83,47 @@ fn thread_count_never_changes_the_table_batch_transcript() {
     for threads in [2, 8, 33] {
         assert_eq!(digest(threads), one, "{threads} threads");
     }
+    // In the same test: the setting is global, so a second test would race this one.
+    let one = lookup_digest(1);
+    for threads in [2, 8, 33] {
+        assert_eq!(
+            lookup_digest(threads),
+            one,
+            "{threads} threads, resident lookups"
+        );
+    }
+}
+
+/// A resident lookup tree of 2^19 leaves and its table tree, built and proven at `threads`: the
+/// trees' levels split over threads (#744) and the resident level tables load on them.
+fn lookup_digest(threads: usize) -> F {
+    set_parallelism(NonZeroUsize::new(threads).unwrap());
+    let rows: Vec<B> = (0..1u64 << 12).map(B::from_u64_reduced).collect();
+    let values: Vec<B> = (0..1u64 << 12)
+        .map(|j| B::from_u64_reduced(j * j + 3))
+        .collect();
+    let picks: Vec<usize> = (0..(1usize << 19) - 5)
+        .map(|i| (i * 2_654_435_761) % rows.len())
+        .collect();
+    let keys: Vec<B> = picks.iter().map(|&j| rows[j]).collect();
+    let looked: Vec<B> = picks.iter().map(|&j| values[j]).collect();
+    let mut counts = vec![0u64; rows.len()];
+    for &j in &picks {
+        counts[j] += 1;
+    }
+    let counts: Vec<B> = counts.into_iter().map(B::from_u64_reduced).collect();
+    let instance = LogUpInstance::new(
+        Tuples::new(&rows, Some(&values)),
+        Tuples::new(&keys, Some(&looked)),
+        &counts,
+    );
+    let mut transcript = Transcript::new(&SessionContext {
+        protocol: Ascii::new("tessera-protocol/1").unwrap(),
+        mode: Mode::NonInteractive,
+        params: ParamSetId(Ascii::new("test-small/1").unwrap()),
+        statement_digest: [61; 32],
+        session_id: [73; 16],
+    });
+    let _proven = prove_logup(&mut transcript, &[instance], &[], &TreeId::paired(1)).unwrap();
+    SumcheckTranscript::<F>::challenge(&mut transcript, "test/digest")
 }

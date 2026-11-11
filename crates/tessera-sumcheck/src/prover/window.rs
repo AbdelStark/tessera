@@ -180,6 +180,15 @@ pub trait SharedRead<F: PolyField>: Sync {
     fn read(&self, table: usize, start: usize, out: &mut [F]) -> Result<(), WindowError>;
 }
 
+/// The shared reader of a source whose tables are all resident: [`read_shared`] never asks it.
+struct Unshared;
+
+impl<F: PolyField> SharedRead<F> for Unshared {
+    fn read(&self, _: usize, _: usize, _: &mut [F]) -> Result<(), WindowError> {
+        Err(WindowError::Source)
+    }
+}
+
 /// `out` from a lent resident table, or from `shared`: [`read_source`] on worker threads.
 fn read_shared<F: PolyField>(
     resident: Option<Table<'_, F>>,
@@ -550,19 +559,27 @@ impl<F: PolyField> State<F> {
                 .iter()
                 .map(|_| buffer::<F>(len))
                 .collect::<Result<Vec<_>, WindowError>>()?;
+            let residents: Vec<_> = self
+                .spec
+                .tables
+                .iter()
+                .map(|t| source.resident(t.id))
+                .collect();
+            // Tables that are all resident (a tree level's halves) need no shared reader.
             let shared = source
                 .read_granule()
                 .is_none()
-                .then(|| source.shared())
+                .then(|| {
+                    source.shared().or_else(|| {
+                        residents
+                            .iter()
+                            .all(Option::is_some)
+                            .then(|| Box::new(Unshared) as Box<dyn SharedRead<F>>)
+                    })
+                })
                 .flatten();
             if let Some(shared) = shared {
                 // Each entry is written once from the same reads, on any thread (RFC-0018).
-                let residents: Vec<_> = self
-                    .spec
-                    .tables
-                    .iter()
-                    .map(|t| source.resident(t.id))
-                    .collect();
                 let tables = &self.spec.tables;
                 let one_len = one.len();
                 par_fill(len, 1 << bound, &mut folded, |range, outs| {
