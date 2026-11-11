@@ -1,16 +1,17 @@
 # MVP benchmark: Tessera beside FlashProve and SASH (#743)
 
-Status: first numbers, 2026-11-10. Development runs on rented hardware, measured by Tessera's own scripts ([`scripts/prove-gpu.sh`](../../../scripts/prove-gpu.sh), `/usr/bin/time`). The observatory's harness has run the adapter on its workload as a development run, which stops at the prover's memory admission ([below](#the-adapter-through-the-observatorys-harness-2026-11-10)). Read the caveats before any figure.
+Status: first numbers, 2026-11-11. Development runs on rented hardware, measured by Tessera's own scripts ([`scripts/prove-gpu.sh`](../../../scripts/prove-gpu.sh), `/usr/bin/time`), including the observatory's own workload. The observatory's harness has run the adapter on that workload as a development run in a 558 GiB container, where it stops at the prover's memory admission ([below](#the-adapter-through-the-observatorys-harness-2026-11-10)). Read the caveats before any figure.
 
 ## Headline
 
-Tessera proves real Llama-3.1-8B requests on one H200, and the independent verifier accepts them. At its longest accepted request, 64 + 64 positions (the workload's 64-token continuation after a 64-token prompt), it is about 5.9 times slower than SASH per token per Gbit, its proof is smaller per token per Gbit than SASH's (571 kB against 640 kB), and its overhead against serving at the same shape is 10,700× (SASH: 15,760× at its own). It is about 6,500 times slower than FlashProve. It cannot yet run the observatory's 1,088-position workload: in a container allowed 558 GiB, that proof was killed for memory after 4 hours, in its leaf stage.
+Tessera proves the observatory's own workload: Llama-3.1-8B, a 1,024-token prompt and its 64-token exact-greedy continuation, on one GPU, accepted by the independent verifier with the public tokens pinned (and `REJ-TOKENS` for one changed token). Per token per Gbit it takes 313 ms, about 4.2 times SASH's 75.4 ms and about 4,600 times FlashProve's 68.2 µs, and its proof is 62.5 kB, a tenth of SASH's 640 kB. Its overhead against vLLM on the same GPU at the same shape is 28,100× (SASH: 15,760× against serving on its H200). It needs a host with 2 TB of RAM: the proof peaked at 1.79 TiB.
 
 | System | Model | Shape | Prove time per token per Gbit | Proof size per token per Gbit | Overhead vs serving | Evidence |
 |---|---|---|---|---|---|---|
 | FlashProve | Llama 4 Maverick, 17B active | observatory workload | 68.2 µs | 223 B | 61× | external, inferenceproofs.ai v0.1, marked not yet checked |
 | SASH | Llama 3.1 8B | 1,024 + 64 | 75.4 ms | 640 kB | 15,760× | external, inferenceproofs.ai v0.1, marked not yet checked |
-| **Tessera** | Llama 3.1 8B (integer model D, W8) | **64 + 64** | **443 ms** | **571 kB** | **10,700×** (85,800× against serving at 1,024 + 64) | measured, n = 1, development run at 699d3d8 |
+| **Tessera** | Llama 3.1 8B (integer model D, W8) | **1,024 + 64** | **313 ms** | **62.5 kB** | **28,100×** (against vLLM on the same A100) | measured, n = 1, development run at 6d16160, one A100 80 GB |
+| Tessera | Llama 3.1 8B (integer model D, W8) | 64 + 64 | 443 ms | 571 kB | 10,700× (85,800× against serving at 1,024 + 64) | measured, n = 1, development run at 699d3d8, one H200 NVL |
 | Tessera | Llama 3.1 8B (integer model D, W8) | 8 + 8 | 2.82 s | 4.38 MB | 57,800× (546,000× against serving at 1,024 + 64) | measured, n = 1, development run at 405d552 |
 | Tessera | Llama 3.2 1B (integer model D, W8) | 8 + 8 | 6.92 s | 23.3 MB | 73,000× (939,000× against serving at 1,024 + 64) | measured, n = 1, development run at 405d552 |
 
@@ -18,9 +19,9 @@ Units as the observatory defines them ([README](README.md#units)): per token cov
 
 ## Caveats
 
-1. **Different shapes.** Tessera's rows cover 128 and 16 positions; SASH's cover 1,088. Tessera's cost is mostly fixed at these lengths: the table side (10.1 G table rows at 8B, [commitment report](commitment-report-8b.json)) does not depend on the request length, so its per-token figures fall as the request grows (8 times the positions cost 1.26 times the time: 2,902 s to 3,646 s). These rows are not a like-for-like comparison and must not be quoted as one; the per-token figures at 1,088 positions would be lower again, if it fit.
+1. **Shapes.** Tessera's first row covers the workload's 1,088 positions, as SASH's does; its other rows cover 128 and 16. Tessera's cost is mostly fixed at these lengths: the table side (10.1 G table rows at 8B, [commitment report](commitment-report-8b.json)) does not depend on the request length, so its per-token figures fall as the request grows (8 times the positions cost 1.26 times the time: 2,902 s to 3,646 s). These rows are not a like-for-like comparison and must not be quoted as one; the per-token figures at 1,088 positions would be lower again, if it fit.
 2. **Not the harness.** The observatory times calls from outside the container, binds CPUs and samples NVML. Tessera's adapter ([`bench/inference-proofs/tessera`](../../../bench/inference-proofs/tessera)) passes `iproofs validate --all`, but no harness run exists: the harness runs real systems only from their pinned image, and Tessera's image is not built yet.
-3. **Different hardware.** Tessera and its serving baselines ran on one H200 NVL (141 GB) with 82 host CPUs and 1 TB of RAM; SASH and FlashProve on the observatory's H200 (SXM), with its own serving rows.
+3. **Different hardware.** Tessera's full-workload proof ran on one A100 80 GB PCIe of a rented 6-GPU host (128 CPUs, a 2.07 TB container), and its other rows on one H200 NVL (82 CPUs, a 558 GiB container); each overhead divides by vLLM on the same GPU. SASH and FlashProve ran on the observatory's H200 (SXM), with its own serving rows. An A100 is slower than an H200, so the full-workload row's time is not flattered by the hardware.
 4. **What is proved.** Tessera proves its integer model D, quantized from the BF16 checkpoint by `tessera-quant` (servable profile, affine scales, migration strength 1/2), not the BF16 model; D's fidelity is measured separately. `tessera-protocol/1` at `ni-100/1`, no zero knowledge. The verifier pins the public prompt and continuation (`--tokens`).
 5. **n = 1.** One run per row, no repetitions.
 
@@ -44,6 +45,26 @@ Units as the observatory defines them ([README](README.md#units)): per token cov
 | Proof | 4,498,007,074 bytes | 4,498,009,922 bytes |
 
 The proofs differ in their bytes because each draws fresh masks and challenges; both verify.
+
+## Llama-3.1-8B at the observatory's workload, 1,024 + 64 (2026-11-11)
+
+The workload's checkpoint at its pinned revision, quantized here (C4 calibration, 128 windows, migration strength 1/2), compiled with `--params ni-100 --max-log2-rows 32`, and one request: 1,024 prompt tokens (BOS and the fixed public text) and D's 64-token exact-greedy continuation from the CUDA integer reference (7,475 s: it recomputes every position at every step). `tessera prove --backend gpu --memory-budget 11000` at 6d16160 on one A100 80 GB PCIe. The budget admits the resident route: the physical planner found no plan under 1,850 GiB in 58 minutes, and the resident plan charges 10.9 TB, against the 1.79 TiB the proof used.
+
+| Phase | Wall time |
+|---|---|
+| Weight recommit and memory plan | 1 min 48 s |
+| Witness, 32 layers at 1,088 positions | 14 min 2 s |
+| P1 advice commitment, 21,582 rows (GPU) | 21 min 9 s |
+| P2 leaf stage: lookup and table trees | **4 h 6 min 59 s** |
+| P3 reduction stages 1 to 3 | 34 min 12 s |
+| P4 openings | 26 min 16 s |
+| P5 column answers | 20 min 41 s |
+| **Prove, total** | **6 h 5 min 7 s** (21,907 s), peak host RSS 1.79 TiB |
+| Verify (`tessera-verify verify --tokens`, 1,088 public tokens) | 2 min 58 s, 8.1 GiB, **Accept** ([verdict](verdict-8b-a100-c1024.json)) |
+| Verify with the last continuation token changed | **Reject `REJ-TOKENS`**, exit 10 ([verdict](verdict-8b-a100-c1024-wrong.json)) |
+| Proof | 4,370,880,874 bytes |
+
+Serving baseline on the same A100: vLLM 0.32.0, batch 1, 0.778 s per request, 0.715 ms per token covered ([serving-8b-a100-c1024.json](serving-8b-a100-c1024.json)). P2 is two thirds of the proof; it is the next target.
 
 ## Llama-3.1-8B at 64 + 64 positions (2026-11-10)
 
@@ -78,7 +99,7 @@ The run of [README.md](README.md#llama-32-1b-on-one-h200-the-first-accepted-real
 | Verify `--tokens` | 2 min 8 s, Accept | 2 min 9 s, **Accept** ([verdict](verdict-1b-h200-p4.json)) | Accept |
 | Proof | 4.48 GB | 4,478,696,586 bytes | |
 
-## The observatory's workload does not fit yet
+## Memory at the observatory's workload
 
 The rented container sees the host's 1 TB but is allowed 558 GiB (`/sys/fs/cgroup/memory.max`, 599,568,416,768 bytes); earlier runs' 900 GiB budgets overstated it. An attempt at 1,024 + 64 with a budget large enough to admit the resident plan (9,000 GiB) computed the witness in 8 minutes and committed 21,584 advice rows, then ran its leaf stage for 3 h 29 min without finishing and was killed by the container's OOM killer at 584 GB (`memory.events` oom_kill 1).
 
@@ -94,15 +115,15 @@ At 1,024 + 64 positions, the prover's resident plan is 10.8 TB: 34.7 G tensor, 1
 | commit: `tessera-quant compile` of the workload's pinned checkpoint on CUDA (C4 calibration, 128 windows), `tessera compile --params ni-100`, `tessera commit-weights` | 749.4 s | passed: commitment `dc66ed3a…`, prover files 8.03 GB, verifier files 11.8 kB |
 | prove: D's greedy continuation of the workload's 1,024-token prompt, then `tessera prove --backend gpu` on the profile's 15 prover CPUs | 7,386.3 s | **failed `ERR-RES-MEMORY`**: no physical plan fits the container's 523 GiB default budget |
 
-So the harness runs Tessera's adapter end to end up to the prover's memory admission, and records the refusal; the observatory's own numbers for Tessera wait for a prover that fits the workload.
+So the harness runs Tessera's adapter end to end up to the prover's memory admission, and records the refusal. On a 2 TB host the same prover completes the workload ([above](#llama-31-8b-at-the-observatorys-workload-1024--64-2026-11-11)), but only with a budget that admits the resident route: a harness run there needs the physical planner to admit what the resident route uses (1.79 TiB), or the adapter to pass that budget.
 
 ## What to do next, ranked by this profile
 
 A stack-sampling profile of the 1B proof (`gdb` launching the prover, since the container forbids attaching; one sample every 20 s) shows most of the remaining time on one host thread.
 
-1. **The fixed table side** (#729, #745): it sets the advice matrix's size, most of P2 (22 min at 8B) and the floor of every phase. Restricting tables to the workload's ranges or a structured table evaluation (#691) shrinks every phase at once.
+1. **P2 at the workload** (4 h 7 min of 6 h 5 min): the leaf stage's lookup and table trees over 18.5 G lookups. **The fixed table side** (#729, #745) sets the advice matrix's size and the floor of every phase. Restricting tables to the workload's ranges or a structured table evaluation (#691) shrinks every phase at once.
 2. **P2's single-threaded host work**: between short bursts on every core (level regeneration and round messages), one thread prepares the window grids and allocates, fills and clears multi-gigabyte `SecretBuf` tables.
 3. **P4 and P5's row pipeline** (13 min at 8B): one thread regenerates advice rows and copies them to the device from pageable memory; overlapping regeneration, pinned uploads and the GPU would bound them by the device.
 4. **P1's row generation** (3 min at 8B): `visit_rows` feeds the GPU encoder from one thread.
-5. **Memory at 1,088 positions** (#728, #739): token groups and windows (RFC-0054, RFC-0055), or a smaller physical floor, before the observatory's workload can run on one host.
+5. **Memory at 1,088 positions** (#728, #739): the proof peaks at 1.79 TiB, and the planner's resident charge (10.9 TB) overstates it six times while its physical search admits nothing under 1,850 GiB. Token groups and windows (RFC-0054, RFC-0055), or a smaller physical floor, would bring the workload to an ordinary 1 TB GPU host.
 6. **A harness run** (#741): build the adapter image (RFC-0014 B1–B7) and run `iproofs run --hosted`.
