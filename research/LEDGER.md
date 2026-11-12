@@ -6,7 +6,7 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 
 | Kind | Next identifier |
 |---|---|
-| Survey | SUR-0018 |
+| Survey | SUR-0019 |
 | Idea | IDEA-0045 |
 | Experiment | EXP-0037 |
 
@@ -91,6 +91,7 @@ Upstream on 2026-10-19 (`gh issue list`): every issue the loop fed upstream is c
 
 | ID | Topic | Status | Date | Ideas seeded |
 |---|---|---|---|---|
+| [SUR-0018](surveys/SUR-0018-mvp-measured-profile.md) | `lookups`/`commitments`/`sumcheck`: the redesign queue against the MVP's measured 8B profile (#745) | `current (2026-11-12)` | 2026-11-12 | per-step leaf-stage profile; table-side leaves on the device; windowed attention as the only protocol lever on attention's lookups |
 | [SUR-0016](surveys/SUR-0016-weight-mask-draw-cost.md) | `hash`: complete weight-mask draws and the missing XOF rate (#568) | `current (2026-10-29)` | 2026-10-29 | full-support bounded regeneration; matched secret-store comparison; separately gated support exclusion |
 | [SUR-0017](surveys/SUR-0017-chunked-requests.md) | `commitments`/`statements`: chunked long requests and cross-proof KV binding (#470) | `current (2026-11-06)` | 2026-11-06 | context commitment under RFC-0012 rules; shared-seed chunked session; prefix commitment (item 54); Ligerito-style second level; score-free attention rows |
 | [SUR-0015](surveys/SUR-0015-witness-multiplicity-storage.md) | `passes`: bounded complete witness multiplicities for #112 | `stale` | 2026-10-20 | bounded dense/sorted/windowed counters |
@@ -358,3 +359,4 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-11-08 | #394 / IDEA-0044 second review | Second agent reading against the specification: the quotient reduction and challenge independence hold; four gaps remain in the application, namely linking-proof proximity rows uncounted (link rows are not spare), epoch 0 can reach zero spare rows at 682 proofs, `ChannelParams` `θ_T = 0`, and the scalar clause, which `D_N` does not cover. Claim narrowed to Lemma 7's vector-rank part |
 | 2026-11-08 | #394 / IDEA-0044 items 1 and 3 | Linking proofs join as extra sessions with their four rows dropped; the bound becomes `(N+L)·ε + N/q` but needs `U ≥ 2L+1` unreserved rows, which full budget violates (weights later epochs U = 2; epoch 0 U = 0 at 682). A cap `N_0 ≤ 681`, `N_1 ≤ 680` (at most two proofs per epoch) satisfies it in both layouts; it is a spec decision. `θ_T = 0` for `ChannelParams` costs `N/q`. Item 4, the scalar clause, is the remaining research |
 | 2026-11-08 | #394 / IDEA-0044 item 4 reduction | Scalars are rank-one functionals `r ⊗ φ`. After the quotient, a session's row directions span its plane `P_i`, so a leak needs either a plane inside the tensor vectors' span (B: bounded at `N(N+L)ϑ/p^2`, `2^-105.0` per matrix, needs `U ≥ 2L+3`, met by the cap), or cross-session dependence of the column functionals (A′, open). Within a proof R10 rules dependence out |
+| 2026-11-12 | `/autoresearch survey` for #745 | SUR-0018 ranks the commitment, LogUp and tree-level ideas against the MVP's E3 profile: P2 is 67.6% of the 8B 1,024 + 64 proof, a lookup costs about 734 ns end to end against the 297 ps kernel and the GPU is 1.2% busy, so leaf-stage engineering leads every component's list; RFC-0021 (Draft) carries the commitment's protocol change, and the LogUp and tree kernels already promoted (IDEA-0021, 0026, 0030) are prover-only under RFC-0010. |
