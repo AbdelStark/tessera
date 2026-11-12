@@ -150,6 +150,13 @@ def up(a: argparse.Namespace) -> None:
 
 def resume(a: argparse.Namespace) -> None:
     s = state()
+    i = call("GET", f"/instances/{s['id']}/").get("instances") or {}
+    if i.get("actual_status") != "running":
+        # A container the watchdog stopped keeps its disk; starting it again restarts the watchdog.
+        r = call("PUT", f"/instances/{s['id']}/", {"state": "running"})
+        if not r.get("success"):
+            # resources_unavailable: another renter holds the GPUs; the start stays queued.
+            sys.exit(f"gpu-run: start refused: {r.get('error')}: {r.get('msg')}")
     for _ in range(90):
         time.sleep(10)
         i = call("GET", f"/instances/{s['id']}/").get("instances") or {}
