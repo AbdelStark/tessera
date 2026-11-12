@@ -1216,7 +1216,7 @@ impl<B: PrimeField> OneSidedLog2<B> {
     }
 }
 
-fn check_columns_only<B: Copy + Send>(
+fn check_columns_only<B: Copy>(
     rows: usize,
     columns: &Log2BatchColumns<B>,
     expected: &[Log2Column],
@@ -1234,7 +1234,7 @@ fn check_columns_only<B: Copy + Send>(
     Ok(())
 }
 
-fn check_batch_columns<B: Copy + Send>(
+fn check_batch_columns<B: Copy>(
     selector: &BatchedLog2Selector<B>,
     evaluated: &BatchedLog2Evaluation<B>,
     columns: &Log2BatchColumns<B>,
@@ -1447,11 +1447,11 @@ impl fmt::Debug for Log2Witness {
 }
 
 /// Column-major clearing storage of committed [`Log2Column`]s across `padded_rows` rows.
-pub struct Log2BatchColumns<B: Copy + Send> {
+pub struct Log2BatchColumns<B: Copy> {
     columns: Vec<(Log2Column, SecretBuf<B>)>,
 }
 
-impl<B: Copy + Send> Log2BatchColumns<B> {
+impl<B: Copy> Log2BatchColumns<B> {
     /// Assemble from `(Log2Column, SecretBuf<B>)` pairs in canonical order.
     pub fn from_columns(columns: Vec<(Log2Column, SecretBuf<B>)>) -> Self {
         Self { columns }
@@ -1471,7 +1471,7 @@ impl<B: Copy + Send> Log2BatchColumns<B> {
     }
 }
 
-impl<B: Copy + Send> fmt::Debug for Log2BatchColumns<B> {
+impl<B: Copy> fmt::Debug for Log2BatchColumns<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_map()
             .entries(self.columns.iter().map(|(c, vals)| (c, vals.len())))
@@ -1509,7 +1509,7 @@ impl<B> BatchedLog2Selector<B> {
 /// Evaluated virtual sums `Z_t`, `Y_t`, per-row `B_t` (secret-class), and total field claim
 /// `Σ_t B_t` across `padded_rows` rows.
 #[must_use]
-pub struct BatchedLog2Evaluation<B: Copy + Send> {
+pub struct BatchedLog2Evaluation<B: Copy> {
     /// Per-row virtual partition sums `Z_t`.
     pub totals: SecretBuf<B>,
     /// Per-row virtual recorded-token exponentials `Y_t`.
@@ -1519,14 +1519,14 @@ pub struct BatchedLog2Evaluation<B: Copy + Send> {
     uhat_field: SecretBuf<B>,
 }
 
-impl<B: Copy + Send> BatchedLog2Evaluation<B> {
+impl<B: Copy> BatchedLog2Evaluation<B> {
     /// Batch field sum `Σ_t B_t` (`Û_r` in `B` when the batch spans one request).
     pub fn uhat_field(&self) -> B {
         self.uhat_field[0]
     }
 }
 
-impl<B: Copy + Send> fmt::Debug for BatchedLog2Evaluation<B> {
+impl<B: Copy> fmt::Debug for BatchedLog2Evaluation<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BatchedLog2Evaluation")
             .field("rows", &self.totals.len())

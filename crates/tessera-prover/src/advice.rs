@@ -50,7 +50,7 @@ impl From<tessera_pcs::AdviceOpeningError> for Error {
         Self::Opening(e)
     }
 }
-fn zeros<T: Copy + Send>(n: usize, value: T) -> Result<SecretBuf<T>, Error> {
+fn zeros<T: Copy>(n: usize, value: T) -> Result<SecretBuf<T>, Error> {
     let mut v = SecretBuf::try_with_capacity(n).map_err(|_| Error::Memory)?;
     v.resize(n, value);
     Ok(v)

@@ -239,12 +239,12 @@ impl<F> fmt::Debug for ProvenForests<F> {
 /// A level of a tree as its two halves, the tables of the sumcheck one level up: its even
 /// entries `V[2z]`, the table of `Ṽ(0 ‖ x)`, and its odd entries `V[2z + 1]`, that of `Ṽ(1 ‖ x)`.
 /// Each is allocated once, at its size, and cleared when it drops (05 §3 OBS-6).
-pub(crate) struct Halves<B: Copy + Send> {
+pub(crate) struct Halves<B: Copy> {
     pub(crate) even: SecretBuf<B>,
     pub(crate) odd: SecretBuf<B>,
 }
 
-impl<B: Copy + Send> Halves<B> {
+impl<B: Copy> Halves<B> {
     pub(crate) fn empty() -> Self {
         Self {
             even: SecretBuf::new(),

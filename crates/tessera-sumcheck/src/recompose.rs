@@ -252,7 +252,7 @@ fn spread<B: PrimeField>(operand: &[B], low: usize, vars: usize) -> SecretBuf<B>
 }
 
 /// `x` laid out over the instance's variables: a secret operand or a public table.
-enum XTable<B: Copy + Send> {
+enum XTable<B: Copy> {
     Operand(SecretBuf<B>),
     Public(Vec<B>),
 }

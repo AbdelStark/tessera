@@ -590,7 +590,7 @@ impl fmt::Debug for SoftmaxWitness {
 /// Check the lookups by LogUp, the forest against root, and both padding checks against zero;
 /// all descriptions must be reduced to the committed columns by the later stages.
 #[must_use]
-pub struct SoftmaxEvaluation<B: Copy + Send> {
+pub struct SoftmaxEvaluation<B: Copy> {
     /// Exp and row-range lookups, grouped by canonical table id.
     pub lookups: Lookups<B>,
     /// Row-major product leaves for a forest of height log2(row length).
@@ -601,7 +601,7 @@ pub struct SoftmaxEvaluation<B: Copy + Send> {
     pub root: B,
 }
 
-impl<B: Copy + Send> fmt::Debug for SoftmaxEvaluation<B> {
+impl<B: Copy> fmt::Debug for SoftmaxEvaluation<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SoftmaxEvaluation")
             .field("lookups", &self.lookups)

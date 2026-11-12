@@ -127,9 +127,7 @@ impl<const N: usize> core::borrow::BorrowMut<[u8; N]> for HeapKey<N> {
 /// as fast as `memset`, followed by [`zeroize::optimization_barrier`], which the compiler must
 /// assume reads them, so it cannot drop the fill as dead before the free. (`Vec`'s own `Zeroize`
 /// clears spare capacity one volatile byte at a time, about 4 GB/s, and an engine's tables are
-/// mostly spare capacity once binding has halved them.) An allocation of 64 MiB or more is
-/// cleared in parallel, on up to 16 threads: one thread fills about 10 GB/s, and the leaf stage
-/// clears tables of many gigabytes.
+/// mostly spare capacity once binding has halved them.)
 ///
 /// Like [`Secret`], it has no `Debug`, `Display`, `Clone` or TCE `Encode`. Unlike `Secret`, it
 /// lends its values to whoever holds it, as a slice: it is working memory for code that computes
@@ -139,9 +137,9 @@ impl<const N: usize> core::borrow::BorrowMut<[u8; N]> for HeapKey<N> {
 /// - a copy taken out of it, such as `to_vec()` or a value read into a local;
 /// - registers and stack slots that held its values, which the compiler places;
 /// - a buffer that never drops (`core::mem::forget`, `Box::leak`, a reference cycle).
-pub struct SecretBuf<T: Copy + Send>(Vec<T>);
+pub struct SecretBuf<T: Copy>(Vec<T>);
 
-impl<T: Copy + Send> SecretBuf<T> {
+impl<T: Copy> SecretBuf<T> {
     /// An empty buffer, which allocates nothing.
     pub const fn new() -> Self {
         Self(Vec::new())
@@ -212,66 +210,28 @@ impl<T: Copy + Send> SecretBuf<T> {
 }
 
 /// Empties `values` and overwrites its whole allocation with zeros that the compiler keeps.
-fn clear<T: Copy + Send>(values: &mut Vec<T>) {
+fn clear<T: Copy>(values: &mut Vec<T>) {
     values.clear();
     let allocation = values.spare_capacity_mut();
-    let threads = (size_of_val(allocation) / PARALLEL_CLEAR_BYTES)
-        .min(std::thread::available_parallelism().map_or(1, |n| n.get()))
-        .min(16);
-    if threads <= 1 {
-        return zero(allocation);
-    }
-    let per = allocation.len().div_ceil(threads);
-    // A thread the system refuses (memory pressure, a thread limit) must not panic in a drop:
-    // this thread then clears that chunk itself.
-    let chunks: Vec<_> = allocation
-        .chunks_mut(per)
-        .map(|chunk| std::sync::Mutex::new(Some(chunk)))
-        .collect();
-    std::thread::scope(|scope| {
-        for slot in &chunks {
-            let spawned = std::thread::Builder::new().spawn_scoped(scope, || {
-                if let Some(chunk) = take(slot) {
-                    zero(chunk);
-                }
-            });
-            if spawned.is_err()
-                && let Some(chunk) = take(slot)
-            {
-                zero(chunk);
-            }
-        }
-    });
+    allocation.fill(MaybeUninit::zeroed());
+    zeroize::optimization_barrier(allocation);
 }
 
-/// The value in `slot`, once: a poisoned lock still holds it.
-fn take<C>(slot: &std::sync::Mutex<Option<C>>) -> Option<C> {
-    slot.lock().unwrap_or_else(|e| e.into_inner()).take()
-}
-
-/// Below this many bytes per thread, one thread clears an allocation.
-const PARALLEL_CLEAR_BYTES: usize = 64 << 20;
-
-fn zero<T: Copy>(memory: &mut [MaybeUninit<T>]) {
-    memory.fill(MaybeUninit::zeroed());
-    zeroize::optimization_barrier(memory);
-}
-
-impl<T: Copy + Send> Drop for SecretBuf<T> {
+impl<T: Copy> Drop for SecretBuf<T> {
     fn drop(&mut self) {
         clear(&mut self.0);
     }
 }
 
-impl<T: Copy + Send> ZeroizeOnDrop for SecretBuf<T> {}
+impl<T: Copy> ZeroizeOnDrop for SecretBuf<T> {}
 
-impl<T: Copy + Send> Default for SecretBuf<T> {
+impl<T: Copy> Default for SecretBuf<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Copy + Send> Deref for SecretBuf<T> {
+impl<T: Copy> Deref for SecretBuf<T> {
     type Target = [T];
 
     fn deref(&self) -> &[T] {
@@ -279,13 +239,13 @@ impl<T: Copy + Send> Deref for SecretBuf<T> {
     }
 }
 
-impl<T: Copy + Send> DerefMut for SecretBuf<T> {
+impl<T: Copy> DerefMut for SecretBuf<T> {
     fn deref_mut(&mut self) -> &mut [T] {
         &mut self.0
     }
 }
 
-impl<T: Copy + Send> AsRef<[T]> for SecretBuf<T> {
+impl<T: Copy> AsRef<[T]> for SecretBuf<T> {
     fn as_ref(&self) -> &[T] {
         &self.0
     }
@@ -293,7 +253,7 @@ impl<T: Copy + Send> AsRef<[T]> for SecretBuf<T> {
 
 /// Appends the values, growing as [`SecretBuf::reserve`] does: once by the iterator's lower
 /// bound, then one value at a time past it.
-impl<T: Copy + Send> Extend<T> for SecretBuf<T> {
+impl<T: Copy> Extend<T> for SecretBuf<T> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, values: I) {
         let mut values = values.into_iter();
         self.reserve(values.size_hint().0);
@@ -306,7 +266,7 @@ impl<T: Copy + Send> Extend<T> for SecretBuf<T> {
     }
 }
 
-impl<T: Copy + Send> FromIterator<T> for SecretBuf<T> {
+impl<T: Copy> FromIterator<T> for SecretBuf<T> {
     fn from_iter<I: IntoIterator<Item = T>>(values: I) -> Self {
         let mut buffer = Self::new();
         buffer.extend(values);

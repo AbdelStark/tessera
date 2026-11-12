@@ -111,7 +111,7 @@ fn softmax_gaps(
         })
 }
 
-fn buffer<T: Copy + Send>(len: usize, value: T) -> Result<SecretBuf<T>, LeafError> {
+fn buffer<T: Copy>(len: usize, value: T) -> Result<SecretBuf<T>, LeafError> {
     let mut out = SecretBuf::try_with_capacity(len).map_err(|_| LeafError::Memory)?;
     out.resize(len, value);
     Ok(out)

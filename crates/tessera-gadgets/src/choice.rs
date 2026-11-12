@@ -127,10 +127,10 @@ impl<B: PrimeField> OneHot<B> {
 
 /// A clearing committed indicator. Its holder follows the secret-access rules of
 /// [`crate::Witness::tensor`]. Debug shows only the length.
-pub struct OneHotWitness<B: Copy + Send> {
+pub struct OneHotWitness<B: Copy> {
     indicator: SecretBuf<B>,
 }
-impl<B: Copy + Send> OneHotWitness<B> {
+impl<B: Copy> OneHotWitness<B> {
     /// An arbitrary assignment, including an adversarial one. Relations check its public shape.
     pub fn from_column(indicator: SecretBuf<B>) -> Self {
         Self { indicator }
@@ -140,7 +140,7 @@ impl<B: Copy + Send> OneHotWitness<B> {
         &self.indicator
     }
 }
-impl<B: Copy + Send> fmt::Debug for OneHotWitness<B> {
+impl<B: Copy> fmt::Debug for OneHotWitness<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OneHotWitness")
             .field("len", &self.indicator.len())
@@ -671,10 +671,10 @@ pub fn suffix_kernel<F: PolyField>(rho: &[F], point: &[F]) -> Result<F, GadgetEr
 }
 
 /// The sole committed Argmax column. Debug exposes only its length.
-pub struct ArgmaxWitness<B: Copy + Send> {
+pub struct ArgmaxWitness<B: Copy> {
     maximum: SecretBuf<B>,
 }
-impl<B: Copy + Send> ArgmaxWitness<B> {
+impl<B: Copy> ArgmaxWitness<B> {
     /// Any assignment, including an adversarial one; public shape is checked by evaluate.
     pub fn from_column(maximum: SecretBuf<B>) -> Self {
         Self { maximum }
@@ -684,7 +684,7 @@ impl<B: Copy + Send> ArgmaxWitness<B> {
         &self.maximum
     }
 }
-impl<B: Copy + Send> fmt::Debug for ArgmaxWitness<B> {
+impl<B: Copy> fmt::Debug for ArgmaxWitness<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ArgmaxWitness")
             .field("len", &self.maximum.len())
@@ -694,13 +694,13 @@ impl<B: Copy + Send> fmt::Debug for ArgmaxWitness<B> {
 
 /// Virtual columns, bound by the key relation and suffix dot-product reduction.
 #[must_use]
-pub struct ArgmaxEvaluation<B: Copy + Send> {
+pub struct ArgmaxEvaluation<B: Copy> {
     /// `Σ_{w>v}h_w`, over the full padded vocabulary.
     pub suffix: SecretBuf<B>,
     /// `C_v·(m−ℓ_v−lt_v)`, with public zero keys at vocabulary padding.
     pub keys: SecretBuf<B>,
 }
-impl<B: Copy + Send> fmt::Debug for ArgmaxEvaluation<B> {
+impl<B: Copy> fmt::Debug for ArgmaxEvaluation<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ArgmaxEvaluation")
             .field("len", &self.keys.len())
@@ -747,7 +747,7 @@ impl<B> BatchedArgmaxSelector<B> {
 
 /// Evaluated virtual suffixes, masked keys and `Range` [`Lookups`] across `padded_rows` rows.
 #[must_use]
-pub struct BatchedArgmaxEvaluation<B: Copy + Send> {
+pub struct BatchedArgmaxEvaluation<B: Copy> {
     /// `Range` lookup instance for `keys`.
     pub lookups: Lookups<B>,
     /// Flat row-major strict suffixes `L(t, v) = Σ_{w > v} ĥ(t, w)`.
@@ -756,7 +756,7 @@ pub struct BatchedArgmaxEvaluation<B: Copy + Send> {
     pub keys: SecretBuf<B>,
 }
 
-impl<B: Copy + Send> fmt::Debug for BatchedArgmaxEvaluation<B> {
+impl<B: Copy> fmt::Debug for BatchedArgmaxEvaluation<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BatchedArgmaxEvaluation")
             .field("lookups", &self.lookups)

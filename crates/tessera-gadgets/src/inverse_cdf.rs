@@ -1152,14 +1152,14 @@ impl fmt::Debug for CdfWitness {
 
 /// The virtual columns of a row, bound by the contractions and the suffix's dot product.
 #[must_use]
-pub struct CdfEvaluation<B: Copy + Send> {
+pub struct CdfEvaluation<B: Copy> {
     /// `L_v = Σ_{w > v} ĥ_w`, over the padded vocabulary.
     pub suffix: SecretBuf<B>,
     /// `Z`, `B` and `S`, in that order.
     pub sums: SecretBuf<B>,
 }
 
-impl<B: Copy + Send> fmt::Debug for CdfEvaluation<B> {
+impl<B: Copy> fmt::Debug for CdfEvaluation<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CdfEvaluation")
             .field("len", &self.suffix.len())
@@ -1196,11 +1196,11 @@ impl<B> BatchedCdfSelector<B> {
 }
 
 /// Column-major clearing storage of committed [`CdfColumn`]s across a power-of-two batch of rows.
-pub struct CdfBatchColumns<B: Copy + Send> {
+pub struct CdfBatchColumns<B: Copy> {
     columns: Vec<(CdfColumn, SecretBuf<B>)>,
 }
 
-impl<B: Copy + Send> CdfBatchColumns<B> {
+impl<B: Copy> CdfBatchColumns<B> {
     /// Assemble from `(CdfColumn, SecretBuf<B>)` pairs in RFC-0058 order.
     pub fn from_columns(columns: Vec<(CdfColumn, SecretBuf<B>)>) -> Self {
         Self { columns }
@@ -1220,7 +1220,7 @@ impl<B: Copy + Send> CdfBatchColumns<B> {
     }
 }
 
-impl<B: Copy + Send> fmt::Debug for CdfBatchColumns<B> {
+impl<B: Copy> fmt::Debug for CdfBatchColumns<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_map()
             .entries(self.columns.iter().map(|(c, vals)| (c, vals.len())))
@@ -1230,7 +1230,7 @@ impl<B: Copy + Send> fmt::Debug for CdfBatchColumns<B> {
 
 /// Evaluated virtual suffixes and per-row sums `Z_t`, `B_t`, `S_t` for a batch of rows.
 #[must_use]
-pub struct BatchedCdfEvaluation<B: Copy + Send> {
+pub struct BatchedCdfEvaluation<B: Copy> {
     /// Flat row-major strict suffixes `L(t, v) = Σ_{w > v} ĥ(t, w)`.
     pub suffix: SecretBuf<B>,
     /// Per-row partitions `Z_t`.
@@ -1241,7 +1241,7 @@ pub struct BatchedCdfEvaluation<B: Copy + Send> {
     pub selecteds: SecretBuf<B>,
 }
 
-impl<B: Copy + Send> fmt::Debug for BatchedCdfEvaluation<B> {
+impl<B: Copy> fmt::Debug for BatchedCdfEvaluation<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BatchedCdfEvaluation")
             .field("rows", &self.totals.len())

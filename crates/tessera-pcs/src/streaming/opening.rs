@@ -101,7 +101,7 @@ fn public_zeros<T: Copy + Default>(len: usize) -> Result<Vec<T>> {
     Ok(out)
 }
 
-fn zeros<T: Copy + Default + Send>(len: usize) -> Result<SecretBuf<T>> {
+fn zeros<T: Copy + Default>(len: usize) -> Result<SecretBuf<T>> {
     let mut out = SecretBuf::try_with_capacity(len).map_err(|_| capacity(len as u64, 1))?;
     out.resize(len, T::default());
     Ok(out)
