@@ -14,6 +14,7 @@ use cudarc::driver::{
     PushKernelArg, ValidAsZeroBits,
 };
 use cudarc::nvrtc::Ptx;
+use tessera_codec::metrics::{self, Direction};
 
 /// The fatbin of `kernels/vector_add.cu`, for `sm_90` and `sm_100` (empty when the build skipped
 /// kernel compilation).
@@ -79,6 +80,11 @@ impl From<DriverError> for GpuError {
     }
 }
 
+/// `tessera_device_bytes_total`: one copy of `data` (05 §4).
+fn transferred<T>(direction: Direction, data: &[T]) {
+    metrics::device_transfer(direction, size_of_val(data) as u64);
+}
+
 /// A buffer of `T` in device memory, owned by one [`Device`].
 pub struct DeviceBuffer<T>(pub(crate) CudaSlice<T>);
 
@@ -131,7 +137,10 @@ impl Device {
 
     /// Copies `host` into a new device buffer.
     pub fn upload<T: DeviceRepr>(&self, host: &[T]) -> Result<DeviceBuffer<T>, GpuError> {
-        Ok(DeviceBuffer(self.stream.clone_htod(host)?))
+        let buffer = DeviceBuffer(self.stream.clone_htod(host)?);
+        transferred(Direction::HostToDevice, host);
+        self.record_memory();
+        Ok(buffer)
     }
 
     /// Copies `host` into the first `host.len()` elements of `buffer`.
@@ -148,6 +157,7 @@ impl Device {
         }
         let mut view = buffer.0.slice_mut(0..host.len());
         self.stream.memcpy_htod(host, &mut view)?;
+        transferred(Direction::HostToDevice, host);
         Ok(())
     }
 
@@ -180,7 +190,19 @@ impl Device {
         &self,
         len: usize,
     ) -> Result<DeviceBuffer<T>, GpuError> {
-        Ok(DeviceBuffer(self.stream.alloc_zeros(len)?))
+        let buffer = DeviceBuffer(self.stream.alloc_zeros(len)?);
+        self.record_memory();
+        Ok(buffer)
+    }
+
+    /// Records the device memory in use now, every process's allocations included, toward the
+    /// run's and the current pass's peaks (05 §4 `tessera_device_memory_peak_bytes`).
+    fn record_memory(&self) {
+        let context = self.stream.context();
+        // A failed query loses one sample, never the proof.
+        if let Ok((free, total)) = context.mem_get_info() {
+            metrics::device_memory(context.ordinal(), total.saturating_sub(free) as u64);
+        }
     }
 
     /// Waits until all work queued on the device completes.
@@ -190,7 +212,9 @@ impl Device {
 
     /// Copies a device buffer back to the host, after the work queued before it completes.
     pub fn download<T: DeviceRepr>(&self, buffer: &DeviceBuffer<T>) -> Result<Vec<T>, GpuError> {
-        Ok(self.stream.clone_dtoh(&buffer.0)?)
+        let host = self.stream.clone_dtoh(&buffer.0)?;
+        transferred(Direction::DeviceToHost, &host);
+        Ok(host)
     }
 
     /// `a[i] + b[i]` modulo `2^64`, element by element.

@@ -3,8 +3,12 @@
 # The MVP pipeline for one real Llama model on a rented GPU host (#722, #730, #737):
 # download, quantize on CUDA, greedy tokens, compile, commit, prove, verify, with each step's
 # wall time and peak RSS in $RUN/steps.tsv. Steps whose output exists are skipped, so the
-# script resumes. ALPHA fixes the migration strength (tessera-quant --alpha); PROVER_FEATURES=gpu
-# with `--backend gpu` among the prove flags proves on the GPU. Run from the repository root:
+# script resumes. ALPHA fixes the migration strength (tessera-quant --alpha), 1/2 unless set: an
+# empty ALPHA searches strengths on the held-out windows, about 40 CPU minutes per window and
+# strength for the 8B model. PROVER_FEATURES=gpu with `--backend gpu` among the prove flags proves
+# on the GPU. RECORD names a run manifest to compare the proof's per-stage profile with (#744):
+# the script then exits 1 when a phase, pass or stage regressed by more than 5%. Run from the
+# repository root:
 #
 #   scripts/mvp-model.sh 1b|8b PROMPT_LEN NEW_TOKENS [extra `tessera prove` flags]
 set -euo pipefail
@@ -13,6 +17,7 @@ repo=$PWD
 models=${TESSERA_MODEL_DIR:-/root/models}
 run=${RUN:-/root/runs/$which-p$prompt-n$new}
 max_log2_rows=${MAX_LOG2_ROWS:-32}
+ALPHA=${ALPHA-1/2}
 mkdir -p "$models" "$run"
 case $which in
   1b) repo_id=NousResearch/Llama-3.2-1B; rev=a9745ffc3556f145a830ac0c203509ba860582a3
@@ -77,3 +82,5 @@ step verify "$run/verdict.json" "$V" verify --json --claims "$run/compiled/claim
   --weights "$run/weights.twr" --weights-root "${pin#* }" --statement-digest "${pin% *}" \
   --bound 0 --out "$run/verdict.json" --proof "$run/proof.tnp"
 ls -l "$run/proof.tnp"; cat "$run/steps.tsv"
+# The prove step's manifest, beside the weights, against the record (#744).
+if [ -n "${RECORD:-}" ]; then scripts/perf-regress.py "$RECORD" "$run/run-manifest.json"; fi
