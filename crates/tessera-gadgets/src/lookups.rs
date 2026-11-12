@@ -93,7 +93,7 @@ impl<B: PrimeField> TableColumns<B> {
 ///
 /// The columns are secret-class (05 §3), in `SecretBuf`s, and the instance lends them to the code
 /// that holds it. The debug form shows the shapes, never an entry.
-pub struct Group<B: Copy> {
+pub struct Group<B: Copy + Send> {
     table: TableId,
     lookups: Vec<usize>,
     lengths: Vec<usize>,
@@ -101,7 +101,7 @@ pub struct Group<B: Copy> {
     values: Option<SecretBuf<B>>,
 }
 
-impl<B: Copy> Group<B> {
+impl<B: Copy + Send> Group<B> {
     /// The table the lookups read.
     pub fn table(&self) -> TableId {
         self.table
@@ -139,7 +139,7 @@ impl<B: Copy> Group<B> {
 }
 
 /// Shows the shapes, never an entry (05 §3).
-impl<B: Copy> fmt::Debug for Group<B> {
+impl<B: Copy + Send> fmt::Debug for Group<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Group")
             .field("table", &self.table)
@@ -151,12 +151,12 @@ impl<B: Copy> fmt::Debug for Group<B> {
 }
 
 /// A gadget's lookups as LogUp columns, one [`Group`] per table it reads, in order of first use.
-pub struct Lookups<B: Copy> {
+pub struct Lookups<B: Copy + Send> {
     groups: Vec<Group<B>>,
 }
 
 /// Shows the shapes, never an entry (05 §3).
-impl<B: Copy> fmt::Debug for Lookups<B> {
+impl<B: Copy + Send> fmt::Debug for Lookups<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Lookups")
             .field("groups", &self.groups)

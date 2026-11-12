@@ -494,12 +494,12 @@ impl<B: PrimeField> VocabMax<B> {
 }
 
 /// Committed maximum and exponential columns in clearing storage (OBS-6).
-pub struct VocabWitness<B: Copy> {
+pub struct VocabWitness<B: Copy + Send> {
     maximum: SecretBuf<B>,
     exponentials: SecretBuf<B>,
 }
 
-impl<B: Copy> VocabWitness<B> {
+impl<B: Copy + Send> VocabWitness<B> {
     /// Construct from arbitrary clearing columns (for batch assembly or adversarial tests).
     pub fn from_columns(maximum: SecretBuf<B>, exponentials: SecretBuf<B>) -> Self {
         Self {
@@ -521,7 +521,7 @@ impl<B: Copy> VocabWitness<B> {
     }
 }
 
-impl<B: Copy> fmt::Debug for VocabWitness<B> {
+impl<B: Copy + Send> fmt::Debug for VocabWitness<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("VocabWitness")
             .field("rows", &self.maximum.len())
@@ -532,7 +532,7 @@ impl<B: Copy> fmt::Debug for VocabWitness<B> {
 
 /// Evaluated lookup columns, product leaves, padding zero-check values and public roots.
 #[must_use]
-pub struct VocabEvaluation<B: Copy> {
+pub struct VocabEvaluation<B: Copy + Send> {
     /// `(κ, e)` lookup instance on `Exp_T`.
     pub lookups: Lookups<B>,
     /// Flat row-major lookup keys `κ_{t,v}`.
@@ -545,7 +545,7 @@ pub struct VocabEvaluation<B: Copy> {
     pub roots: Vec<B>,
 }
 
-impl<B: Copy> fmt::Debug for VocabEvaluation<B> {
+impl<B: Copy + Send> fmt::Debug for VocabEvaluation<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("VocabEvaluation")
             .field("lookups", &self.lookups)

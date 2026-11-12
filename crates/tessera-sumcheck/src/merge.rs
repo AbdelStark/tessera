@@ -292,7 +292,7 @@ fn pow2<F: PolyField>(e: usize) -> F {
 
 /// `table` in binding order: entry `y` is the entry whose variable `order[t]` is bit `t` of `y`.
 /// The table is checked non-empty, `2^{n_i}` entries.
-fn permuted<B: Copy>(table: &[B], order: &[usize]) -> SecretBuf<B> {
+fn permuted<B: Copy + Send>(table: &[B], order: &[usize]) -> SecretBuf<B> {
     let Some(&first) = table.first() else {
         return SecretBuf::new();
     };
@@ -727,7 +727,7 @@ trait AsMutTable<F> {
     fn halve(&mut self);
 }
 
-impl<F: Copy> AsMutTable<F> for SecretBuf<F> {
+impl<F: Copy + Send> AsMutTable<F> for SecretBuf<F> {
     fn entries(&mut self) -> &mut [F] {
         self
     }

@@ -16,7 +16,7 @@ use tessera_sumcheck::{FractionTreeRows, FractionTreeSource, WindowError};
 use tessera_tables::{GeneratedTable, Table, TableKind};
 use tessera_witness::TileWitness;
 
-fn buffer<T: Copy>(len: usize, value: T) -> Result<SecretBuf<T>, WindowError> {
+fn buffer<T: Copy + Send>(len: usize, value: T) -> Result<SecretBuf<T>, WindowError> {
     let mut out = SecretBuf::try_with_capacity(len).map_err(|_| WindowError::Allocation)?;
     out.resize(len, value);
     Ok(out)

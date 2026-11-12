@@ -92,7 +92,7 @@ fn nonzero_bytes_when_freed<T>(block: *const T, free: impl FnOnce()) -> usize {
     recorder::NONZERO.load(Ordering::SeqCst)
 }
 
-fn check<T: Copy + Zeroize + PartialEq + Debug>(element: fn(u64) -> T) {
+fn check<T: Copy + Send + Zeroize + PartialEq + Debug>(element: fn(u64) -> T) {
     let size = size_of::<T>();
 
     let plain = filled(element);
@@ -149,4 +149,16 @@ fn secret_containers_free_only_zeros() {
     // One test, so that no other test of this binary frees memory while a block is watched.
     check(repeated);
     check(|k| GoldilocksExt2::new(repeated(k), repeated(255 - k)));
+
+    // 512 MiB, past the size at which several threads clear it: every chunk is zeroed, the last
+    // one short included.
+    let large = (512 << 20) / size_of::<Goldilocks>() - 3;
+    let mut buffer: SecretBuf<Goldilocks> = SecretBuf::with_capacity(large);
+    buffer.extend((0..large as u64).map(|i| repeated(1 + i % 254)));
+    buffer.truncate(large / 3);
+    let freed = nonzero_bytes_when_freed(buffer.as_ptr(), || drop(buffer));
+    assert_eq!(
+        freed, 0,
+        "a large SecretBuf frees zeros only, on every thread"
+    );
 }
