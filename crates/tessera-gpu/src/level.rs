@@ -126,7 +126,10 @@ impl LevelOffload for GpuLevels {
             }
             Err(e) => {
                 *self.used.lock().unwrap_or_else(PoisonError::into_inner) -= bytes;
-                Err(window(e))
+                // The host proves any level the device cannot hold (out of device memory, say),
+                // with the same messages: the load failing costs time, never the proof.
+                tessera_codec::event!(WARN, "gpu.level_error", error = tessera_codec::Public(format!("{e}")); "GPU level: {error}; the host proves this level");
+                Ok(None)
             }
         }
     }

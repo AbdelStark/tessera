@@ -205,6 +205,11 @@ impl Device {
         }
     }
 
+    /// The device's memory, in bytes.
+    pub fn total_memory(&self) -> Result<u64, GpuError> {
+        Ok(self.stream.context().total_mem()? as u64)
+    }
+
     /// Waits until all work queued on the device completes.
     pub fn synchronize(&self) -> Result<(), GpuError> {
         Ok(self.stream.synchronize()?)

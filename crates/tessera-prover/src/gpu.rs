@@ -81,8 +81,10 @@ mod enabled {
     use tessera_gpu::{ColumnChainsGpu, Device, DeviceBuffer, Encoder, GpuError, GpuLevels};
 
     /// Level tables the offload may hold at once, unless `TESSERA_GPU_LEVEL_GIB` says otherwise:
-    /// room on an 80 GB device beside P1's buffers.
+    /// the device's memory less `LEVEL_HEADROOM_GIB` for P1's buffers, at most 60 GiB (room on an
+    /// 80 GB device; 28 GiB on a 48 GB one).
     const LEVEL_GIB: u64 = 60;
+    const LEVEL_HEADROOM_GIB: u64 = 20;
     /// Smaller level tables stay on the host, where a round costs less than a transfer.
     const LEVEL_MIN_ENTRIES: usize = 1 << 14;
     use tessera_pcs::PcsError;
@@ -121,7 +123,10 @@ mod enabled {
             let gib = std::env::var("TESSERA_GPU_LEVEL_GIB")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(LEVEL_GIB);
+                .unwrap_or_else(|| {
+                    let total = device.total_memory().map_or(0, |b| b >> 30);
+                    total.saturating_sub(LEVEL_HEADROOM_GIB).min(LEVEL_GIB)
+                });
             let min = std::env::var("TESSERA_GPU_LEVEL_MIN")
                 .ok()
                 .and_then(|v| v.parse().ok())
