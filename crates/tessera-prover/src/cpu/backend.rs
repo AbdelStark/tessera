@@ -42,6 +42,8 @@ pub(super) struct Unit {
     table_allowance: u64,
     table_chunk_rows: NonZeroUsize,
     table_cache_log_rows: Option<usize>,
+    /// Whether P2 reads dense counts (the table plan charged them).
+    table_densify: bool,
     table_retained: u64,
     forest_bytes: u64,
     checkpoint_sources: bool,
@@ -666,6 +668,7 @@ impl<'a> CpuBackend<'a> {
             (table.working_bytes, table.retained, table.forests);
         let table_chunk_rows = NonZeroUsize::new(table.chunk_rows).ok_or_else(memory)?;
         let table_cache_log_rows = table.cache_log_rows;
+        let table_densify = table.densify;
         let scoped_leaf_sources = plan.uses_physical_bound() && grouped.is_some();
         Ok((
             Unit {
@@ -680,6 +683,7 @@ impl<'a> CpuBackend<'a> {
                 table_allowance,
                 table_chunk_rows,
                 table_cache_log_rows,
+                table_densify,
                 table_retained,
                 forest_bytes,
                 checkpoint_sources: plan.uses_checkpoints(),
@@ -780,10 +784,13 @@ impl<'a> CpuBackend<'a> {
                 metrics::table_rows(i.table.0, generated.row_count());
                 let tile = advice.tiles().iter().find(|tile| matches!(tile.tile, compiler::Tile::Table { table } if table == i.table.0))
                     .ok_or_else(|| internal("the advice plan has each leaf table's canonical count tile"))?;
-                GeneratedCounts::new(generated, source.tile(tile)?)
+                let counts = GeneratedCounts::new(generated, source.tile(tile)?)
                     .map(|table| table.with_cache_depth(table_plan::cache_depth(
                         usize::from(spec.log2_rows), u.table_cache_log_rows,
                     )))
+                    .map_err(ProverError::Leaf)?;
+                // The table plan charged dense counts: every chunk read is then a copy.
+                if u.table_densify { counts.densified() } else { Ok(counts) }
                     .map_err(ProverError::Leaf)
             })
             .collect::<Result<_, _>>()?;

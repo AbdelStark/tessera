@@ -57,6 +57,8 @@ mod tests {
             cuts: Vec::new(),
             chunk_rows: CHUNK_ROWS,
             cache_log_rows: None,
+            densify_bytes: 0,
+            densify: true,
         }
     }
 
@@ -307,6 +309,8 @@ mod tests {
                 cuts: Vec::new(),
                 chunk_rows: CHUNK_ROWS,
                 cache_log_rows: None,
+                densify_bytes: 0,
+                densify: false,
             }
             .select(u64::MAX)
             .unwrap();
@@ -410,6 +414,8 @@ mod tests {
                 cuts: Vec::new(),
                 chunk_rows: CHUNK_ROWS,
                 cache_log_rows: None,
+                densify_bytes: 0,
+                densify: false,
             }
             .select(u64::MAX)
             .unwrap();
@@ -570,6 +576,10 @@ pub(super) struct TablePlan {
     pub(super) cuts: Vec<usize>,
     pub(super) chunk_rows: usize,
     pub(super) cache_log_rows: Option<usize>,
+    /// Extra source bytes when weighted count columns are densified for P2 reads.
+    densify_bytes: u64,
+    /// Whether P2 densifies weighted count columns: chosen when the allowance admits it.
+    pub(super) densify: bool,
 }
 
 fn add(a: u64, b: u64) -> Result<u64, ProverError> {
@@ -857,6 +867,7 @@ impl TablePlan {
         // A cached-route caller can instead supply the canonical public backing
         // plans derived by Engine::runtime_multiplicity_plans. No secret sparsity
         // or arbitrary host allowance enters this selection (RFC-0018).
+        let mut densify_bytes = 0u64;
         let table_sources = if let Some(plans) = physical_counts {
             if plans.len() != leaf.instances().len() {
                 return Err(memory());
@@ -876,6 +887,9 @@ impl TablePlan {
                     return Err(memory());
                 }
                 bytes = add(bytes, plan.payload_bytes())?;
+                // Densified reads hold the dense column beside the weighted one while it is
+                // built, then in its place: charge the dense payload in full (P2 table reads).
+                densify_bytes = add(densify_bytes, plan.dense_bytes())?;
             }
             bytes
         } else {
@@ -917,6 +931,9 @@ impl TablePlan {
             cuts: Vec::new(),
             chunk_rows: CHUNK_ROWS,
             cache_log_rows: None,
+            // The resident charge, 16 bytes per table row, already covers dense counts.
+            densify_bytes,
+            densify: true,
         }
         .select(u64::MAX)
     }
@@ -930,8 +947,12 @@ impl TablePlan {
                 scratch = scratch.max(add(add(mul(128, chunk)?, mul(32, add(height, 1)?)?)?, 512)?);
             }
         }
+        let densified = if self.densify { self.densify_bytes } else { 0 };
         add(
-            add(add(self.fixed, scratch)?, self.cache_bytes()?)?,
+            add(
+                add(add(self.fixed, densified)?, scratch)?,
+                self.cache_bytes()?,
+            )?,
             mul(
                 self.trees.len() as u64,
                 TABLE_BATCH_CONSTRUCTION_BYTES_PER_TREE,
@@ -1009,6 +1030,12 @@ impl TablePlan {
         // `scratch` remains the original charge, so repeated selection can shrink again.
         self.chunk_rows = CHUNK_ROWS;
         self.cache_log_rows = None;
+        // Dense count reads first: a weighted read scans every update per chunk. They are
+        // given up, never a streaming round, when the allowance cannot hold them.
+        self.densify = true;
+        if self.fixed_bytes(CHUNK_ROWS)? > allowance {
+            self.densify = false;
+        }
         let fixed = self.fixed_bytes(CHUNK_ROWS)?;
         if fixed > allowance {
             return Err(memory());

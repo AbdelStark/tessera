@@ -115,6 +115,10 @@ impl MultiplicityPlan {
         };
         self.capacity as u64 * element as u64
     }
+    /// Payload of the dense form [`MultiplicityColumn::densify`] builds: 8 bytes per padded row.
+    pub fn dense_bytes(&self) -> u64 {
+        self.rows * size_of::<u64>() as u64
+    }
 }
 
 /// One canonical multiplicity column, including zero table-tree padding (RFC-0045).
@@ -178,6 +182,40 @@ impl MultiplicityColumn {
             }
         }
         Ok(())
+    }
+
+    /// Convert weighted storage to dense counts, so each later chunk read is a copy instead of
+    /// a scan of every update: a table read in `rows / chunk` chunks costs `updates + rows`, not
+    /// `chunks * updates`. The loop visits every public-capacity entry, dummies included, and
+    /// only adds at keyed addresses (INV-ARCH-2 permits keyed addresses for counting). The
+    /// logical column is unchanged; the weighted backing is cleared on release (OBS-6).
+    /// Dense storage is left as it is.
+    ///
+    /// # Errors
+    /// `MemoryTable` if the dense column cannot be allocated; the column is then unchanged.
+    pub fn densify(&mut self) -> Result<(), WitnessError> {
+        let Storage::Weighted(updates) = &self.storage else {
+            return Ok(());
+        };
+        let memory = WitnessError::MemoryTable { table: self.table };
+        let rows = usize::try_from(self.rows).map_err(|_| memory)?;
+        let mut counts = SecretBuf::try_with_capacity(rows).map_err(|_| memory)?;
+        counts.extend(core::iter::repeat_n(0, rows));
+        for update in updates.iter() {
+            // `Multiplicities::add` checked `row < actual <= rows` and the total below P.
+            counts[update.row as usize] += update.count;
+        }
+        self.storage = Storage::Dense(counts);
+        Ok(())
+    }
+
+    /// The whole dense column, or `None` for weighted storage. Lent under
+    /// [`crate::TileWitness`]'s borrowing/redaction rules.
+    pub fn dense_rows(&self) -> Option<&[u64]> {
+        match &self.storage {
+            Storage::Dense(values) => Some(values),
+            Storage::Weighted(_) => None,
+        }
     }
 
     pub(crate) fn bytes(&self) -> usize {
@@ -464,6 +502,91 @@ mod tests {
         assert_eq!(
             WitnessError::MemoryTable { table: TableId(1) }.code(),
             tessera_codec::error::ErrorCode::ResMemory
+        );
+    }
+
+    fn random_weighted(seed: u64, actual: u64, updates: u64) -> MultiplicityColumn {
+        let mut state = seed;
+        let mut next = || {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            state >> 11
+        };
+        // Spare capacity leaves dummy row-0 entries; the row-0 tail is the last real update.
+        let mut counts = Multiplicities::new(TableId(3), actual, updates + 3).unwrap();
+        let hot = next() % actual;
+        for _ in 0..updates {
+            // Every fourth update repeats one row, so duplicates always occur.
+            let row = if next() % 4 == 0 {
+                hot
+            } else {
+                next() % actual
+            };
+            counts.add(row, 1 + next() % 5).unwrap();
+        }
+        let column = counts.finish(None).unwrap();
+        assert!(column.dense_rows().is_none(), "the plan stays weighted");
+        column
+    }
+
+    #[test]
+    fn densified_column_reads_every_chunk_identically() {
+        for (seed, actual, updates) in [(1, 1000, 40), (2, 1 << 12, 300), (3, 4097, 1500)] {
+            let weighted = random_weighted(seed, actual, updates);
+            let mut dense = random_weighted(seed, actual, updates);
+            let before = dense.bytes();
+            dense.densify().unwrap();
+            assert_eq!(dense.bytes() as u64, 8 * dense.rows());
+            assert!(before < dense.bytes());
+            dense.densify().unwrap();
+            let rows = weighted.rows() as usize;
+            let mut whole = SecretBuf::filled(0, rows);
+            weighted.read_rows(0, &mut whole).unwrap();
+            assert!(whole[..] == dense.dense_rows().unwrap()[..]);
+            assert!(whole[0] > 0, "the row-0 tail is counted");
+            for chunk in [1, 7, 64, 256, 1000, rows] {
+                let mut a = SecretBuf::filled(9, chunk);
+                let mut b = SecretBuf::filled(9, chunk);
+                for start in (0..rows).step_by(chunk) {
+                    let len = chunk.min(rows - start);
+                    a.resize(len, 9);
+                    b.resize(len, 9);
+                    weighted.read_rows(start as u64, &mut a).unwrap();
+                    dense.read_rows(start as u64, &mut b).unwrap();
+                    assert!(a[..] == b[..], "chunk {chunk} at {start}");
+                    assert!(a[..] == whole[start..start + len]);
+                }
+            }
+        }
+    }
+
+    /// `cargo test -p tessera-witness --release --lib densify_speedup -- --ignored --nocapture`
+    #[test]
+    #[ignore = "timing, not a check"]
+    #[allow(clippy::print_stdout)] // the timing is the output
+    fn densify_speedup() {
+        let (actual, updates, chunk) = (1u64 << 24, 1u64 << 22, 65_536usize);
+        let mut column = random_weighted(7, actual, updates - 4);
+        let scan = |column: &MultiplicityColumn| {
+            let started = std::time::Instant::now();
+            let mut out = SecretBuf::filled(0, chunk);
+            let mut sum = 0u64;
+            for start in (0..column.rows()).step_by(chunk) {
+                column.read_rows(start, &mut out).unwrap();
+                sum = sum.wrapping_add(out[0]);
+            }
+            (started.elapsed(), sum)
+        };
+        let (weighted, a) = scan(&column);
+        let started = std::time::Instant::now();
+        column.densify().unwrap();
+        let conversion = started.elapsed();
+        let (dense, b) = scan(&column);
+        assert_eq!(a, b);
+        println!(
+            "rows 2^24, updates 2^22, chunk {chunk}: weighted scan {weighted:?}, \
+             densify {conversion:?}, dense scan {dense:?}"
         );
     }
 
