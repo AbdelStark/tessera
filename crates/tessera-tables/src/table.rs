@@ -458,26 +458,22 @@ fn core_buffer(values: u64) -> Result<Vec<i64>, TableError> {
 fn generate_core(kind: &TableKind, rows: u64) -> Result<Vec<i64>, TableError> {
     let length = dense_core_len(kind, rows)?;
     let mut core = core_buffer(length)?;
+    // Each value is a function of its index alone, so filling in parallel changes nothing.
+    core.resize(usize::try_from(length).map_err(|_| TableError::Memory)?, 0);
     match kind {
         TableKind::Exp { sigma, scale, .. } => {
-            for k in 0..length {
-                core.push(exp_value(
-                    k,
-                    *sigma,
-                    scale.num().unsigned_abs(),
-                    scale.den(),
-                ));
-            }
+            let (num, den) = (scale.num().unsigned_abs(), scale.den());
+            fill(&mut core, |k| exp_value(k as u64, *sigma, num, den));
         }
         TableKind::Exp2Frac {
             frac_bits,
             out_bits,
         } => {
-            for f in 0..rows {
-                let x = (u128::from(f) * LN2) >> frac_bits;
+            fill(&mut core, |f| {
+                let x = (u128::from(f as u64) * LN2) >> frac_bits;
                 // `≤ 2^63 >> (62 − out_bits) = 2^{out_bits + 1} ≤ 2^57`.
-                core.push(i64::try_from(exp_pos(x) >> (62 - out_bits)).unwrap_or(i64::MAX));
-            }
+                i64::try_from(exp_pos(x) >> (62 - out_bits)).unwrap_or(i64::MAX)
+            });
         }
         TableKind::Silu {
             b,
@@ -485,17 +481,44 @@ fn generate_core(kind: &TableKind, rows: u64) -> Result<Vec<i64>, TableError> {
             in_exp,
             out_exp,
         } => {
+            let mut rest = core.as_mut_slice();
             for &r in r_by_class {
                 let half = 1i64 << (b - 1 - r);
-                for h in -half..half {
-                    core.push(silu_value(h, *in_exp, *out_exp));
-                }
+                let (class, tail) = rest.split_at_mut((2 * half) as usize);
+                fill(class, |j| silu_value(j as i64 - half, *in_exp, *out_exp));
+                rest = tail;
             }
         }
         _ => {}
     }
     debug_assert_eq!(core.len() as u64, length);
     Ok(core)
+}
+
+/// `out[i] = value(i)`, split over the machine's threads for large tables.
+fn fill(out: &mut [i64], value: impl Fn(usize) -> i64 + Sync) {
+    const MIN: usize = 1 << 16;
+    let threads = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZeroUsize::get)
+        .min(out.len() / MIN)
+        .max(1);
+    if threads == 1 {
+        for (i, o) in out.iter_mut().enumerate() {
+            *o = value(i);
+        }
+        return;
+    }
+    let per = out.len().div_ceil(threads).max(1);
+    std::thread::scope(|scope| {
+        for (c, chunk) in out.chunks_mut(per).enumerate() {
+            let value = &value;
+            scope.spawn(move || {
+                for (j, o) in chunk.iter_mut().enumerate() {
+                    *o = value(c * per + j);
+                }
+            });
+        }
+    });
 }
 
 /// `clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)` in the fixed point of RFC-0008:

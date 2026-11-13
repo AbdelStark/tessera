@@ -14,6 +14,7 @@ deterministic algorithms.
 """
 
 import platform
+import time
 from collections.abc import Callable, Mapping
 from contextlib import closing
 from fractions import Fraction
@@ -25,6 +26,7 @@ import blake3
 import numpy as np
 import torch
 
+from tessera_quant import log
 from tessera_quant._streaming import transformed_checkpoint
 from tessera_quant.arch import ArchSpec
 from tessera_quant.capture import CalibrationResult, iter_reference_logits, points
@@ -103,8 +105,11 @@ def quantize(
     affine = affine_weights(arch, the_profile) if scales == "affine" else ()
 
     def quantized(alpha: Fraction) -> Quantized:
+        started = time.monotonic()
         migrated, migrated_maxima = transformed_checkpoint(model, maxima, alpha)
-        return choose(arch, the_profile, migrated, migrated_maxima, affine=affine)
+        q = choose(arch, the_profile, migrated, migrated_maxima, affine=affine)
+        _progress(f"alpha {alpha}: built in {time.monotonic() - started:.1f} s")
+        return q
 
     def divergence(alpha: Fraction) -> float:
         rows: list[torch.Tensor] = []
@@ -128,9 +133,11 @@ def quantize(
             for window in held_out:
                 if reference is None:
                     reference = next_reference()
+                started = time.monotonic()
                 found = torch.as_tensor(
                     run_reference(d, np.array(window.tokens, dtype=np.uint32))
                 ).to(torch.float64)
+                _progress(f"alpha {alpha}: held-out window in {time.monotonic() - started:.1f} s")
                 rows.append(kl_rows(reference, found * 2.0**d.quant.public.logits_exponent))
                 reference = None
                 del found
@@ -140,8 +147,15 @@ def quantize(
         return float(torch.cat(rows).mean())
 
     admissible = _admissible_alphas(quantized, alphas)
-    alpha = select_alpha(divergence, admissible)
+    # One admissible strength is the choice whatever its divergence (a fixed `--alpha`).
+    alpha = admissible[0] if len(admissible) == 1 else select_alpha(divergence, admissible)
     return assembled(quantized(alpha), alpha)
+
+
+def _progress(detail: str) -> None:
+    log.event(
+        "info", "progress", "tessera-quant quantize: {detail}", target=__name__, detail=detail
+    )
 
 
 def _check_statistics(arch: ArchSpec, maxima: Mapping[str, torch.Tensor]) -> None:

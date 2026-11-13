@@ -71,6 +71,7 @@
 
 pub mod advice;
 pub mod cpu;
+mod gpu;
 pub mod leaf;
 mod model;
 pub mod native;

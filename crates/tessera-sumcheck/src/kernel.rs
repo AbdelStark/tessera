@@ -73,6 +73,14 @@ impl<F: PolyField> Scratch<F> {
             terms: TermScratch::new(),
         }
     }
+
+    /// Fresh scratch whose term rows fit what `other`'s fit.
+    pub(crate) fn sized_like(other: &Self) -> Self {
+        Self {
+            terms: TermScratch::sized_like(&other.terms),
+            ..Self::new()
+        }
+    }
 }
 
 /// The values of `a + z·(b − a)` at the `N` nodes, in entries `0..N`: `0, 2, 3, …, N` when
@@ -404,6 +412,14 @@ impl<F: Field> TermScratch<F> {
             product: SecretBuf::new(),
             groups: SecretBuf::new(),
         }
+    }
+
+    /// Fresh rows of the same sizes as `other`'s: a thread's own scratch for a split round.
+    pub(crate) fn sized_like(other: &Self) -> Self {
+        let mut s = Self::new();
+        let row = TERM_BLOCK * NODES;
+        s.fit(other.lines.len() / row, other.groups.len());
+        s
     }
 
     /// Grows the rows to fit a plan of `lines` line slots and `groups` groups, before any round:

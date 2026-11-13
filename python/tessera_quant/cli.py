@@ -26,6 +26,7 @@ import json
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, NoReturn, cast
 
@@ -46,6 +47,7 @@ from tessera_quant.checkpoint import import_checkpoint, read_tokenizer
 from tessera_quant.errors import ArchitectureError, CalibrationError, TesseraQuantError, UsageError
 from tessera_quant.fidelity import RESAMPLES, EvalSpec, evaluate_fidelity, select
 from tessera_quant.integer_model import INTEGER_MODEL, IntegerModel
+from tessera_quant.migration import ALPHAS
 from tessera_quant.reference import run_reference
 from tessera_quant.tce import (
     INTEGER_MODEL_LIMITS,
@@ -294,7 +296,12 @@ def _compile(args: argparse.Namespace) -> dict[str, Any]:
     _say(args, f"capturing the statistics of {spec.sequences} sequences on {args.device}")
     result = calibrate(model, calibration, args.device)
     _say(args, f"quantizing ({args.profile}, {args.scales})")
-    d = quantize(model, result, profile=args.profile, scales=args.scales, device=args.device)
+    if args.alpha is not None and args.alpha not in ALPHAS:
+        raise UsageError(f"--alpha is one of {', '.join(str(a) for a in ALPHAS)}")
+    alphas = ALPHAS if args.alpha is None else (args.alpha,)
+    d = quantize(
+        model, result, profile=args.profile, scales=args.scales, alphas=alphas, device=args.device
+    )
     digest = export(d, args.out)
     _say(args, f"wrote {args.out}")
     if args.report is not None:
@@ -481,6 +488,12 @@ def parser() -> argparse.ArgumentParser:
     compile_.add_argument("--report", type=Path, metavar="CALIB.json")
     compile_.add_argument("--seed", type=_seed, default=0, metavar="INT")
     compile_.add_argument("--device", default="cpu")
+    compile_.add_argument(
+        "--alpha",
+        type=Fraction,
+        metavar="N/D",
+        help="a fixed migration strength, one of RFC-0005's, instead of choosing on held-out data",
+    )
 
     evaluate = command("eval", "measure D against its BF16 reference")
     evaluate.add_argument("--model", type=Path, required=True, metavar="MODEL.d")

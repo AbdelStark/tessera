@@ -18,6 +18,40 @@ use crate::{AdviceLayout, CommitmentParams, MaskSource, PcsError, RowEncoder};
 
 type Rows<'a> = Peekable<Flatten<Cloned<Iter<'a, Range<u64>>>>>;
 
+/// An external encoder and column hasher for [`StreamingCommitter::with_sink`], such as a GPU
+/// (RFC-0018). It must produce exactly what [`RowEncoder`] and [`ColumnChains`] produce on the
+/// same rows and masks: its digests are the commitment.
+pub trait BlockSink {
+    /// Encodes one block of whole rows, `k` values each in push order, with `masks` (`P`
+    /// coefficients per row, `m_0` first, in draw order), and absorbs the block's codewords into
+    /// every column chain (RFC-0004 'Column digests').
+    ///
+    /// # Errors
+    /// A device or shape failure, which ends the commitment.
+    fn absorb(&mut self, rows: &[Goldilocks], masks: &[Goldilocks]) -> Result<(), PcsError>;
+
+    /// The final column chain values, one per codeword column, in column order.
+    ///
+    /// # Errors
+    /// A device failure.
+    fn finish(&mut self) -> Result<Vec<Digest>, PcsError>;
+}
+
+enum Engine<'work> {
+    /// Rows are encoded on push and blocks absorbed on the host.
+    Host {
+        encoder: &'work RowEncoder,
+        chains: ColumnChains,
+    },
+    /// Rows and their masks are buffered whole, and each block goes to the sink.
+    Sink {
+        sink: &'work mut dyn BlockSink,
+        masks: SecretBuf<Goldilocks>,
+        k: usize,
+        mask_coeffs: usize,
+    },
+}
+
 /// The advice commitment (RFC-0011 'Column digests and root'). Its encoding is unchanged
 /// when re-exported by the protocol's `Round1` message (RFC-0036).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Encode, Decode)]
@@ -74,9 +108,10 @@ pub struct StreamingCommitter<'layout, 'work, M: MaskSource + ?Sized> {
     params: CommitmentParams,
     segment: u32,
     rows: Rows<'layout>,
-    encoder: &'work RowEncoder,
+    engine: Engine<'work>,
     mask: &'work mut M,
-    chains: ColumnChains,
+    /// Codeword symbols per row: `n`.
+    columns: usize,
     buffer: SecretBuf<Goldilocks>,
     buffered: usize,
 }
@@ -85,7 +120,7 @@ impl<M: MaskSource + ?Sized> fmt::Debug for StreamingCommitter<'_, '_, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("StreamingCommitter")
             .field("segment", &self.segment)
-            .field("columns", &self.encoder.codeword_len())
+            .field("columns", &self.columns)
             .field("buffered_rows", &self.buffered)
             .finish_non_exhaustive()
     }
@@ -121,6 +156,56 @@ impl<'layout, 'work, M: MaskSource + ?Sized> StreamingCommitter<'layout, 'work, 
                 rule: "the streaming encoder uses the commitment's k, n and P",
             });
         }
+        let chains = ColumnChains::new(
+            &params.commitment_id,
+            NonZeroUsize::new(shape.n).expect("a checked codeword has at least two columns"),
+            params.row_block,
+        );
+        Self::start(
+            params,
+            layout,
+            segment,
+            Engine::Host { encoder, chains },
+            mask,
+        )
+    }
+
+    /// As [`Self::new`], with `sink` encoding and hashing each block of rows in place of a
+    /// [`RowEncoder`] and host chains. The sink must start from the chains of
+    /// `params.commitment_id` with `n` columns and use `k` and `P` of `params`.
+    ///
+    /// # Errors
+    /// As [`Self::new`].
+    pub fn with_sink(
+        params: CommitmentParams,
+        layout: &'layout AdviceLayout,
+        segment: u32,
+        sink: &'work mut dyn BlockSink,
+        mask: &'work mut M,
+    ) -> Result<Self, PcsError> {
+        let shape = params.shape()?;
+        let engine = Engine::Sink {
+            sink,
+            masks: SecretBuf::new(),
+            k: shape.k,
+            mask_coeffs: shape.mask_coeffs,
+        };
+        Self::start(params, layout, segment, engine, mask)
+    }
+
+    fn start(
+        params: CommitmentParams,
+        layout: &'layout AdviceLayout,
+        segment: u32,
+        mut engine: Engine<'work>,
+        mask: &'work mut M,
+    ) -> Result<Self, PcsError> {
+        let shape = params.shape()?;
+        if layout.params().log2_k != params.log2_k {
+            return Err(PcsError::LayoutData {
+                rule: "the streaming layout uses the commitment's row width",
+            });
+        }
         let part = layout
             .segments()
             .get(segment as usize)
@@ -133,24 +218,31 @@ impl<'layout, 'work, M: MaskSource + ?Sized> StreamingCommitter<'layout, 'work, 
             .row_block
             .get()
             .min(usize::try_from(count).unwrap_or(usize::MAX));
+        // The host engine buffers codewords; a sink buffers rows and their masks.
+        let width = match &engine {
+            Engine::Host { .. } => shape.n,
+            Engine::Sink { .. } => shape.k,
+        };
         let symbols = block
-            .checked_mul(shape.n)
+            .checked_mul(width)
             .filter(|&len| len <= isize::MAX as usize / size_of::<Goldilocks>())
             .ok_or(PcsError::LayoutData {
                 rule: "one streaming codeword block fits the platform's capacity",
             })?;
+        if let Engine::Sink {
+            masks, mask_coeffs, ..
+        } = &mut engine
+        {
+            *masks = SecretBuf::filled(Goldilocks::ZERO, block * *mask_coeffs);
+        }
         Ok(Self {
             layout,
             params,
             segment,
             rows: part.nonzero.iter().cloned().flatten().peekable(),
-            encoder,
+            engine,
             mask,
-            chains: ColumnChains::new(
-                &params.commitment_id,
-                NonZeroUsize::new(shape.n).expect("a checked codeword has at least two columns"),
-                params.row_block,
-            ),
+            columns: shape.n,
             buffer: SecretBuf::filled(Goldilocks::ZERO, symbols),
             buffered: 0,
         })
@@ -171,14 +263,39 @@ impl<'layout, 'work, M: MaskSource + ?Sized> StreamingCommitter<'layout, 'work, 
                 found: Some(row),
             });
         }
-        let n = self.encoder.codeword_len();
-        let start = self.buffered * n;
-        self.encoder
-            .encode_row(values, self.mask, &mut self.buffer[start..start + n])?;
+        let width = match &mut self.engine {
+            Engine::Host { encoder, .. } => {
+                let n = encoder.codeword_len();
+                let start = self.buffered * n;
+                encoder.encode_row(values, self.mask, &mut self.buffer[start..start + n])?;
+                n
+            }
+            Engine::Sink {
+                masks,
+                k,
+                mask_coeffs,
+                ..
+            } => {
+                if values.len() != *k {
+                    return Err(PcsError::RowLength {
+                        expected: *k,
+                        found: values.len(),
+                    });
+                }
+                let start = self.buffered * *k;
+                self.buffer[start..start + *k].copy_from_slice(values);
+                // RowEncoder::encode draws m_0, …, m_{P−1} for each row in turn.
+                let first = self.buffered * *mask_coeffs;
+                for m in &mut masks[first..first + *mask_coeffs] {
+                    *m = self.mask.draw();
+                }
+                *k
+            }
+        };
         self.rows.next();
         self.buffered += 1;
-        if self.buffered * n == self.buffer.len() {
-            self.flush();
+        if self.buffered * width == self.buffer.len() {
+            self.flush()?;
         }
         Ok(())
     }
@@ -197,21 +314,49 @@ impl<'layout, 'work, M: MaskSource + ?Sized> StreamingCommitter<'layout, 'work, 
             });
         }
         if self.buffered != 0 {
-            self.flush();
+            self.flush()?;
         }
+        let digests = match self.engine {
+            Engine::Host { chains, .. } => chains.finish(),
+            Engine::Sink { sink, .. } => {
+                let digests = sink.finish()?;
+                if digests.len() != self.columns {
+                    return Err(PcsError::LayoutData {
+                        rule: "a block sink returns one chain per codeword column",
+                    });
+                }
+                digests
+            }
+        };
         Ok(SegmentDigests {
             layout: self.layout,
             params: self.params,
             segment: self.segment,
-            digests: self.chains.finish(),
+            digests,
         })
     }
 
-    fn flush(&mut self) {
-        let used = self.buffered * self.encoder.codeword_len();
-        self.chains
-            .absorb_block_no_alloc(&self.buffer[..used])
-            .expect("a full block, or the one short final block, of whole codewords");
+    fn flush(&mut self) -> Result<(), PcsError> {
+        match &mut self.engine {
+            Engine::Host { encoder, chains } => {
+                let used = self.buffered * encoder.codeword_len();
+                chains
+                    .absorb_block_no_alloc(&self.buffer[..used])
+                    .expect("a full block, or the one short final block, of whole codewords");
+            }
+            Engine::Sink {
+                sink,
+                masks,
+                k,
+                mask_coeffs,
+            } => {
+                sink.absorb(
+                    &self.buffer[..self.buffered * *k],
+                    &masks[..self.buffered * *mask_coeffs],
+                )?;
+                masks.iter_mut().for_each(Zeroize::zeroize);
+            }
+        }
         tessera_codec::event!(
             TRACE,
             "pcs.row_block_committed",
@@ -222,6 +367,7 @@ impl<'layout, 'work, M: MaskSource + ?Sized> StreamingCommitter<'layout, 'work, 
         // A live buffer holds no previous block while the next row is regenerated (RFC-0011).
         self.buffer.iter_mut().for_each(Zeroize::zeroize);
         self.buffered = 0;
+        Ok(())
     }
 }
 
@@ -295,6 +441,106 @@ fn merged_column(parts: &[SegmentDigests<'_>], column: usize) -> Digest {
 mod tests {
     use super::*;
     use crate::{Axis, DenseShape, LayoutParams, Padding, TensorShape, TileShape};
+
+    /// The reference sink: the host encoder and chains, one block at a time.
+    struct HostSink {
+        encoder: RowEncoder,
+        chains: Option<ColumnChains>,
+    }
+    impl BlockSink for HostSink {
+        fn absorb(&mut self, rows: &[Goldilocks], masks: &[Goldilocks]) -> Result<(), PcsError> {
+            let mut drawn = masks.iter().copied();
+            let mut source = || drawn.next().expect("one mask per draw");
+            let mut codewords = vec![Goldilocks::ZERO; rows.len() * 2];
+            self.encoder
+                .encode_rows(rows, &mut source, &mut codewords)?;
+            assert!(drawn.next().is_none(), "every mask is drawn");
+            self.chains
+                .as_mut()
+                .expect("open")
+                .absorb_block(&codewords)
+                .expect("whole codewords");
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<Vec<Digest>, PcsError> {
+            Ok(self.chains.take().expect("open").finish())
+        }
+    }
+
+    #[test]
+    fn a_block_sink_commits_the_same_chains_as_the_host_engine() {
+        use tessera_field::PrimeField;
+        // Seven rows of k = 8 in blocks of three: two full blocks and a short final one.
+        let layout = AdviceLayout::new(
+            LayoutParams {
+                log2_k: 3,
+                segments: 1,
+                layers: 1,
+                group: 1,
+                query_block: 1,
+                max_context: 1,
+            },
+            1,
+            &[TileShape {
+                layer: Some(0),
+                values: vec![TensorShape::Dense(DenseShape::new(
+                    vec![Axis::new(56)],
+                    Padding::Zero,
+                ))],
+            }],
+        )
+        .expect("layout");
+        let params = CommitmentParams {
+            log2_k: 3,
+            log2_inv_rate: 1,
+            mask_coeffs: 3,
+            row_block: NonZeroUsize::new(3).expect("B"),
+            commitment_id: [7; 32],
+        };
+        let rows: Vec<u64> = layout.segments()[0]
+            .nonzero
+            .iter()
+            .cloned()
+            .flatten()
+            .collect();
+        assert_eq!(rows.len(), 7);
+        let row = |r: u64| -> Vec<Goldilocks> {
+            (0..8)
+                .map(|i| Goldilocks::from_u64_reduced(r * 31 + i * i + 5))
+                .collect()
+        };
+        let counter = |seed: u64| {
+            let mut next = seed;
+            move || {
+                next += 1;
+                Goldilocks::from_u64_reduced(next * 0x9E37_79B9)
+            }
+        };
+        let encoder = RowEncoder::new(8, 1, 3).expect("encoder");
+        let mut masks = counter(11);
+        let mut host =
+            StreamingCommitter::new(params, &layout, 0, &encoder, &mut masks).expect("host");
+        for &r in &rows {
+            host.push_row(r, &row(r)).expect("host row");
+        }
+        let expected = host.finish().expect("host").digests;
+
+        let mut sink = HostSink {
+            encoder: RowEncoder::new(8, 1, 3).expect("encoder"),
+            chains: Some(ColumnChains::new(
+                &params.commitment_id,
+                NonZeroUsize::new(16).expect("n"),
+                params.row_block,
+            )),
+        };
+        let mut masks = counter(11);
+        let mut sunk =
+            StreamingCommitter::with_sink(params, &layout, 0, &mut sink, &mut masks).expect("sink");
+        for &r in &rows {
+            sunk.push_row(r, &row(r)).expect("sink row");
+        }
+        assert_eq!(sunk.finish().expect("sink").digests, expected);
+    }
 
     #[test]
     fn a_flushed_block_is_cleared_before_the_next_row() {

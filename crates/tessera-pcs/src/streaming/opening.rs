@@ -17,7 +17,7 @@ use tessera_field::{Field, Goldilocks as Fp, GoldilocksExt2 as Fp2, PrimeField, 
 use tessera_hash::{Digest, Domain, Hasher, MerkleTree};
 
 use super::{AdviceCommitment, Rows, SegmentDigests, check_parts, merged_column};
-use crate::opening::{COMBINE_SCRATCH, add_scaled_eq, combine_into};
+use crate::opening::{COMBINE_SCRATCH, add_scaled_eq, combine_add, combine_into};
 use crate::{
     AdviceLayout, ClaimGroup, ColumnAnswer, CombinedRow, MaskSource, PcsError, RowClaim, RowEncoder,
 };
@@ -232,13 +232,55 @@ impl<'layout> AdviceOpening<'layout> {
         }
         Ok(ColumnPass {
             state: self,
-            encoder,
+            encoder: Some(encoder),
             masks,
             cursor: Cursor::new(&self.layout),
             codeword: zeros(encoder.codeword_len())?,
             distinct,
             columns,
+            sink: None,
         })
+    }
+
+    /// As [`Self::begin_columns`], with `sink` encoding blocks of `block` rows and selecting
+    /// [`Self::column_indices`] of `queries`, in place of `encoder`.
+    ///
+    /// # Errors
+    /// As [`Self::begin_columns`].
+    pub fn begin_columns_with_sink<'state, 'work>(
+        &'state self,
+        permit: &ColumnPermit,
+        encoder: &'work RowEncoder,
+        sink: &'work mut dyn ColumnSink,
+        block: usize,
+        masks: &'work mut dyn MaskSource,
+        queries: &[u64],
+    ) -> Result<ColumnPass<'work, 'state, 'layout>> {
+        let mut pass = self.begin_columns(permit, encoder, masks, queries)?;
+        let shape = self.params.shape()?;
+        let block = block.max(1);
+        pass.encoder = None;
+        pass.sink = Some(Pending {
+            sink,
+            rows: zeros(block * shape.k)?,
+            masks: zeros((block * shape.mask_coeffs).max(1))?,
+            k: shape.k,
+            mask_coeffs: shape.mask_coeffs,
+            block,
+            count: 0,
+        });
+        Ok(pass)
+    }
+
+    /// The distinct sorted columns a [`ColumnSink`] selects for `queries`.
+    ///
+    /// # Errors
+    /// An allocation failure.
+    pub fn column_indices(queries: &[u64]) -> Result<Vec<u64>> {
+        let mut distinct = copied(queries)?;
+        distinct.sort_unstable();
+        distinct.dedup();
+        Ok(distinct)
     }
 
     /// The exact Round1 commitment represented by this tree.
@@ -347,6 +389,29 @@ impl<'s, 'l> OpeningGroups<'s, 'l> {
     ) -> Result<OpeningPass<'g, 'work, 's, 'l>> {
         OpeningPass::new(self, encoder, masks)
     }
+
+    /// Like [`begin`](Self::begin), but `sink` encodes the rows, in blocks of the layout's row
+    /// block, and returns each one's symbol at [`sample_column`](Self::sample_column). The
+    /// sampled-leaf self-check in `finish` still checks every symbol the sink returns.
+    ///
+    /// # Errors
+    /// As [`begin`](Self::begin).
+    pub fn begin_with_sink<'g, 'work>(
+        &'g self,
+        encoder: &'work RowEncoder,
+        sink: &'work mut dyn ColumnSink,
+        masks: &'work mut dyn MaskSource,
+    ) -> Result<OpeningPass<'g, 'work, 's, 'l>> {
+        let mut pass = OpeningPass::new(self, encoder, masks)?;
+        pass.sink = Some(sink);
+        Ok(pass)
+    }
+
+    /// The public codeword column P4's self-check samples, for a [`ColumnSink`].
+    #[must_use]
+    pub fn sample_column(&self) -> u64 {
+        self.state.sample as u64
+    }
 }
 
 struct Cursor<'layout> {
@@ -433,6 +498,7 @@ pub struct OpeningPass<'groups, 'work, 'state, 'layout> {
     mask_values: SecretBuf<Fp>,
     codeword: SecretBuf<Fp>,
     samples: SecretBuf<Fp>,
+    sink: Option<&'work mut dyn ColumnSink>,
     numbers: Vec<u64>,
     u: Vec<SecretBuf<Fp2>>,
     m: Vec<SecretBuf<Fp2>>,
@@ -489,6 +555,7 @@ impl<'g, 'w, 's, 'l> OpeningPass<'g, 'w, 's, 'l> {
             mask_values: zeros(mask_size)?,
             codeword: zeros(encoder.codeword_len())?,
             samples: zeros(b)?,
+            sink: None,
             numbers: public_capacity(b)?,
             u,
             m,
@@ -516,34 +583,51 @@ impl<'g, 'w, 's, 'l> OpeningPass<'g, 'w, 's, 'l> {
             .into());
         }
         while self.segment < segment {
-            self.end_segment();
+            self.end_segment()?;
         }
         let r = self.numbers.len();
         let p = self.encoder.mask_coeffs();
         let own = &mut self.mask_values[r * p..(r + 1) * p];
-        let mut next = 0;
-        let mut capture = || {
-            let x = self.masks.draw();
-            own[next] = x;
-            next += 1;
-            x
-        };
-        self.encoder
-            .encode_row(values, &mut capture, &mut self.codeword)?;
+        if self.sink.is_some() {
+            // RowEncoder draws m_0, …, m_{P−1} for each row in turn; the sink encodes at flush.
+            own.iter_mut().for_each(|m| *m = self.masks.draw());
+        } else {
+            let mut next = 0;
+            let mut capture = || {
+                let x = self.masks.draw();
+                own[next] = x;
+                next += 1;
+                x
+            };
+            self.encoder
+                .encode_row(values, &mut capture, &mut self.codeword)?;
+            self.samples[r] = self.codeword[self.groups.state.sample];
+        }
         self.values[r * k..(r + 1) * k].copy_from_slice(values);
-        self.samples[r] = self.codeword[self.groups.state.sample];
         self.numbers.push(row);
         self.cursor.rows.next();
         if self.numbers.len() == self.block {
-            self.flush();
+            self.flush()?;
         }
         Ok(())
     }
 
-    fn flush(&mut self) {
+    fn flush(&mut self) -> Result<()> {
         let len = self.numbers.len();
         if len == 0 {
-            return;
+            return Ok(());
+        }
+        let k = self.encoder.message_len();
+        let p = self.encoder.mask_coeffs();
+        if let Some(sink) = &mut self.sink {
+            let mut selected =
+                sink.select(&self.values[..len * k], &self.mask_values[..len * p])?;
+            if selected.len() != len {
+                selected.zeroize();
+                return Err(invalid("a column sink returns each row's selected symbols"));
+            }
+            self.samples[..len].copy_from_slice(&selected);
+            selected.zeroize();
         }
         let mut coefficients = Vec::with_capacity(self.groups.groups.len() + 1);
         for group in &self.groups.groups {
@@ -566,11 +650,15 @@ impl<'g, 'w, 's, 'l> OpeningPass<'g, 'w, 's, 'l> {
             Fp2::ONE,
         );
         coefficients.push(xi);
-        let k = self.encoder.message_len();
-        let p = self.encoder.mask_coeffs();
-        combine_into(&coefficients, &self.values[..len * k], k, |g, i, x| {
-            self.u[g][i] += x
-        });
+        // Columns are independent: the encoder's threads combine disjoint column ranges.
+        let threads = self.encoder.thread_count().get();
+        combine_add(
+            &coefficients,
+            &self.values[..len * k],
+            k,
+            &mut self.u,
+            threads,
+        );
         combine_into(&coefficients, &self.mask_values[..len * p], p, |g, i, x| {
             self.m[g][i] += x
         });
@@ -589,12 +677,14 @@ impl<'g, 'w, 's, 'l> OpeningPass<'g, 'w, 's, 'l> {
         self.mask_values.iter_mut().for_each(Zeroize::zeroize);
         self.samples.iter_mut().for_each(Zeroize::zeroize);
         self.numbers.clear();
+        Ok(())
     }
-    fn end_segment(&mut self) {
-        self.flush();
+    fn end_segment(&mut self) -> Result<()> {
+        self.flush()?;
         self.merge.update(&self.chain);
         self.chain = init(self.groups.state);
         self.segment += 1;
+        Ok(())
     }
 
     /// Completes P4: checks every row arrived, the sampled merged leaf, and each combined row
@@ -606,7 +696,7 @@ impl<'g, 'w, 's, 'l> OpeningPass<'g, 'w, 's, 'l> {
     pub fn finish(mut self) -> Result<CheckedOpening<'s, 'l>> {
         self.cursor.finish()?;
         while self.segment < self.groups.state.layout.segments().len() {
-            self.end_segment();
+            self.end_segment()?;
         }
         if self.merge.finalize() != self.groups.state.leaf {
             return Err(AdviceOpeningError::SelfCheck);
@@ -727,12 +817,35 @@ impl<'s, 'l> CheckedOpening<'s, 'l> {
 /// the witness or codeword matrix; dropping an incomplete pass clears partial output columns.
 pub struct ColumnPass<'work, 'state, 'layout> {
     state: &'state AdviceOpening<'layout>,
-    encoder: &'work RowEncoder,
+    encoder: Option<&'work RowEncoder>,
     masks: &'work mut dyn MaskSource,
     cursor: Cursor<'state>,
     codeword: SecretBuf<Fp>,
     distinct: Vec<u64>,
     columns: Vec<SecretBuf<Fp>>,
+    sink: Option<Pending<'work>>,
+}
+
+/// An external encoder for P5's column answers, such as a GPU (RFC-0018): it must give exactly
+/// the symbols [`RowEncoder`] gives on the same rows and masks.
+pub trait ColumnSink {
+    /// Encodes a block of whole rows, `k` values each, with `masks` (`P` per row, `m_0` first,
+    /// in draw order), and returns each row's symbols at the sink's columns, row by row.
+    ///
+    /// # Errors
+    /// A device failure, which ends the answer.
+    fn select(&mut self, rows: &[Fp], masks: &[Fp]) -> core::result::Result<Vec<Fp>, PcsError>;
+}
+
+/// Rows and masks buffered for a [`ColumnSink`], `block` rows at a time.
+struct Pending<'work> {
+    sink: &'work mut dyn ColumnSink,
+    rows: SecretBuf<Fp>,
+    masks: SecretBuf<Fp>,
+    k: usize,
+    mask_coeffs: usize,
+    block: usize,
+    count: usize,
 }
 impl ColumnPass<'_, '_, '_> {
     /// Encodes the next retained row with the replayed P1 mask stream and keeps just queried symbols.
@@ -741,12 +854,61 @@ impl ColumnPass<'_, '_, '_> {
     /// `StreamRow` before the encoder's `RowLength`; refused rows consume no mask or cursor entry.
     pub fn push_row(&mut self, row: u64, values: &[Fp]) -> Result<()> {
         self.cursor.check(row)?;
-        self.encoder
-            .encode_row(values, self.masks, &mut self.codeword)?;
+        if let Some(p) = &mut self.sink {
+            if values.len() != p.k {
+                return Err(PcsError::RowLength {
+                    expected: p.k,
+                    found: values.len(),
+                }
+                .into());
+            }
+            p.rows[p.count * p.k..(p.count + 1) * p.k].copy_from_slice(values);
+            // RowEncoder draws m_0, …, m_{P−1} for each row in turn.
+            for m in &mut p.masks[p.count * p.mask_coeffs..(p.count + 1) * p.mask_coeffs] {
+                *m = self.masks.draw();
+            }
+            p.count += 1;
+            self.cursor.rows.next();
+            if p.count == p.block {
+                self.flush()?;
+            }
+            return Ok(());
+        }
+        let encoder = self
+            .encoder
+            .ok_or_else(|| invalid("a column pass has an encoder"))?;
+        encoder.encode_row(values, self.masks, &mut self.codeword)?;
         for (column, &index) in self.columns.iter_mut().zip(&self.distinct) {
             column.push(self.codeword[index as usize]);
         }
         self.cursor.rows.next();
+        Ok(())
+    }
+
+    /// Sends the buffered rows to the sink and keeps their selected symbols.
+    fn flush(&mut self) -> Result<()> {
+        let Some(p) = &mut self.sink else {
+            return Ok(());
+        };
+        if p.count == 0 {
+            return Ok(());
+        }
+        let selected = p.sink.select(
+            &p.rows[..p.count * p.k],
+            &p.masks[..p.count * p.mask_coeffs],
+        )?;
+        let m = self.distinct.len();
+        if selected.len() != p.count * m {
+            return Err(invalid("a column sink returns each row's selected symbols"));
+        }
+        for row in selected.chunks_exact(m) {
+            for (column, &symbol) in self.columns.iter_mut().zip(row) {
+                column.push(symbol);
+            }
+        }
+        p.rows.iter_mut().for_each(Zeroize::zeroize);
+        p.masks.iter_mut().for_each(Zeroize::zeroize);
+        p.count = 0;
         Ok(())
     }
 
@@ -755,6 +917,7 @@ impl ColumnPass<'_, '_, '_> {
     /// # Errors
     /// `StreamRow` for missing rows. No partial answer is returned on failure.
     pub fn finish(mut self) -> Result<ColumnAnswer> {
+        self.flush()?;
         self.cursor.finish()?;
         let proof = self
             .state
@@ -1154,6 +1317,174 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The reference sink: the host encoder on each block, then the selected columns.
+    struct HostColumns {
+        encoder: RowEncoder,
+        columns: Vec<u64>,
+    }
+    impl ColumnSink for HostColumns {
+        fn select(&mut self, rows: &[Fp], masks: &[Fp]) -> core::result::Result<Vec<Fp>, PcsError> {
+            let mut drawn = masks.iter().copied();
+            let mut source = || drawn.next().expect("one mask per draw");
+            let n = self.encoder.codeword_len();
+            let mut codewords = vec![Fp::ZERO; rows.len() / self.encoder.message_len() * n];
+            self.encoder
+                .encode_rows(rows, &mut source, &mut codewords)?;
+            Ok(codewords
+                .chunks_exact(n)
+                .flat_map(|c| self.columns.iter().map(move |&j| c[j as usize]))
+                .collect())
+        }
+    }
+
+    #[test]
+    fn a_column_sink_answers_the_same_columns_as_the_encoder() {
+        let (layout, params, encoder) = fixture();
+        let mut row_values = vec![Fp::ZERO; encoder.message_len()];
+        let mut masks = || Fp::from_u64_reduced(7);
+        let parts = layout
+            .segments()
+            .iter()
+            .enumerate()
+            .map(|(segment, part)| {
+                let mut committer =
+                    StreamingCommitter::new(params, &layout, segment as u32, &encoder, &mut masks)
+                        .unwrap();
+                for row in part.nonzero.iter().cloned().flatten() {
+                    row_values.fill(Fp::from_u64_reduced(row + 3));
+                    committer.push_row(row, &row_values).unwrap();
+                }
+                committer.finish().unwrap()
+            })
+            .collect::<Vec<_>>();
+        let state = AdviceOpening::build(&parts, |out| {
+            out.fill(0);
+            Ok(())
+        })
+        .unwrap();
+        let groups = state
+            .prepare(&[], Fp2::ONE, &vec![Fp2::ONE; layout.row_vars() as usize])
+            .unwrap();
+        let mut p4 = groups.begin(&encoder, &mut masks).unwrap();
+        for segment in layout.segments() {
+            for row in segment.nonzero.iter().cloned().flatten() {
+                row_values.fill(Fp::from_u64_reduced(row + 3));
+                p4.push_row(row, &row_values).unwrap();
+            }
+        }
+        let (_, permit) = p4.finish().unwrap().into_parts();
+        let n = encoder.codeword_len() as u64;
+        // Order-sensitive masks: a sink drawing them out of order answers differently.
+        let counter = || {
+            let mut next = 0u64;
+            move || {
+                next += 1;
+                Fp::from_u64_reduced(next * 0x9E37_79B9 + 1)
+            }
+        };
+        let queries = vec![n - 1, 0, 3, n - 1, 5];
+        let answer = |sink: Option<(&mut HostColumns, usize)>| {
+            let mut masks = counter();
+            let mut pass = match sink {
+                Some((sink, block)) => state
+                    .begin_columns_with_sink(&permit, &encoder, sink, block, &mut masks, &queries)
+                    .unwrap(),
+                None => state
+                    .begin_columns(&permit, &encoder, &mut masks, &queries)
+                    .unwrap(),
+            };
+            for segment in layout.segments() {
+                for row in segment.nonzero.iter().cloned().flatten() {
+                    let values: Vec<Fp> = (0..encoder.message_len() as u64)
+                        .map(|i| Fp::from_u64_reduced(row * 97 + i * i + 1))
+                        .collect();
+                    pass.push_row(row, &values).unwrap();
+                }
+            }
+            pass.finish().unwrap().columns
+        };
+        let expected = answer(None);
+        for block in [1, 2, 3, 64] {
+            let mut sink = HostColumns {
+                encoder: fixture().2,
+                columns: AdviceOpening::column_indices(&queries).unwrap(),
+            };
+            assert_eq!(answer(Some((&mut sink, block))), expected, "block {block}");
+        }
+    }
+
+    #[test]
+    fn a_sample_sink_opens_the_same_combined_rows_and_a_wrong_symbol_fails_the_self_check() {
+        let (layout, params, encoder) = fixture();
+        // Order-sensitive masks: a sink drawing them out of order fails the leaf check.
+        let counter = || {
+            let mut next = 0u64;
+            move || {
+                next += 1;
+                Fp::from_u64_reduced(next * 0x9E37_79B9 + 1)
+            }
+        };
+        let values = |row: u64| -> Vec<Fp> {
+            (0..encoder.message_len() as u64)
+                .map(|i| Fp::from_u64_reduced(row * 97 + i * i + 1))
+                .collect()
+        };
+        let mut masks = counter();
+        let parts = layout
+            .segments()
+            .iter()
+            .enumerate()
+            .map(|(segment, part)| {
+                let mut committer =
+                    StreamingCommitter::new(params, &layout, segment as u32, &encoder, &mut masks)
+                        .unwrap();
+                for row in part.nonzero.iter().cloned().flatten() {
+                    committer.push_row(row, &values(row)).unwrap();
+                }
+                committer.finish().unwrap()
+            })
+            .collect::<Vec<_>>();
+        let state = AdviceOpening::build(&parts, |out| {
+            out.fill(0);
+            Ok(())
+        })
+        .unwrap();
+        let xi = vec![Fp2::from(Fp::from_u64_reduced(5)); layout.row_vars() as usize];
+        let groups = state.prepare(&[], Fp2::ONE, &xi).unwrap();
+        let open = |sink: Option<&mut dyn ColumnSink>| {
+            let mut masks = counter();
+            let mut pass = match sink {
+                Some(sink) => groups.begin_with_sink(&encoder, sink, &mut masks).unwrap(),
+                None => groups.begin(&encoder, &mut masks).unwrap(),
+            };
+            for segment in layout.segments() {
+                for row in segment.nonzero.iter().cloned().flatten() {
+                    pass.push_row(row, &values(row)).unwrap();
+                }
+            }
+            pass.finish().map(|c| {
+                let (rows, _) = c.into_parts();
+                rows.into_iter().map(|r| (r.u, r.mask)).collect::<Vec<_>>()
+            })
+        };
+        let expected = open(None).unwrap();
+        let mut sink = HostColumns {
+            encoder: fixture().2,
+            columns: vec![groups.sample_column()],
+        };
+        assert_eq!(open(Some(&mut sink)).unwrap(), expected);
+        // A sink answering a neighbouring column: every symbol is wrong, P4 refuses.
+        let n = encoder.codeword_len() as u64;
+        let mut wrong = HostColumns {
+            encoder: fixture().2,
+            columns: vec![(groups.sample_column() + 1) % n],
+        };
+        assert!(matches!(
+            open(Some(&mut wrong)),
+            Err(AdviceOpeningError::SelfCheck)
+        ));
     }
 
     #[test]

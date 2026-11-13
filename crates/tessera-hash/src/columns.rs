@@ -108,14 +108,18 @@ impl ColumnChains {
     /// The checks and byte sequence are identical to [`Self::absorb_block`].
     pub fn absorb_block_no_alloc(&mut self, rows: &[Goldilocks]) -> Result<(), ColumnError> {
         let (columns, _) = self.check_block(rows)?;
-        for (j, chain) in self.chains.iter_mut().enumerate() {
-            let mut input = Hasher::new(Domain::ColumnStep);
-            input.update(chain);
-            for row in rows.chunks_exact(columns) {
-                input.update(&row[j].to_canonical_u64().to_le_bytes());
+        // Each column's chain is its own hash: contiguous column ranges on separate threads
+        // give the same digests.
+        split(&mut self.chains, |first, chains| {
+            for (j, chain) in (first..).zip(chains.iter_mut()) {
+                let mut input = Hasher::new(Domain::ColumnStep);
+                input.update(chain);
+                for row in rows.chunks_exact(columns) {
+                    input.update(&row[j].to_canonical_u64().to_le_bytes());
+                }
+                *chain = input.finalize();
             }
-            *chain = input.finalize();
-        }
+        });
         Ok(())
     }
 
@@ -145,4 +149,25 @@ impl ColumnChains {
     pub fn finish(self) -> Vec<Digest> {
         self.chains
     }
+}
+
+/// Runs `f(first, chunk)` over contiguous chunks of `chains`, on the machine's threads when there
+/// are enough columns to pay for them.
+fn split(chains: &mut [Digest], f: impl Fn(usize, &mut [Digest]) + Sync) {
+    const MIN: usize = 1 << 12;
+    let threads = std::thread::available_parallelism()
+        .map_or(1, NonZeroUsize::get)
+        .min(chains.len() / MIN)
+        .max(1);
+    if threads == 1 {
+        f(0, chains);
+        return;
+    }
+    let per = chains.len().div_ceil(threads);
+    std::thread::scope(|scope| {
+        for (c, chunk) in chains.chunks_mut(per).enumerate() {
+            let f = &f;
+            scope.spawn(move || f(c * per, chunk));
+        }
+    });
 }

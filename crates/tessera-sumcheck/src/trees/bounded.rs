@@ -180,6 +180,10 @@ impl<F: PolyField> WindowSource<F> for LevelSource<'_, '_, F> {
         Ok(())
     }
     fn read_granule(&self) -> Option<NonZeroUsize> {
+        // With several threads a level is read whole (see `read`), so callers need not chunk.
+        if crate::parallelism() > 1 {
+            return None;
+        }
         self.operands
             .iter()
             .filter_map(|operand| match operand {
@@ -208,7 +212,15 @@ impl<F: PolyField> WindowSource<F> for LevelSource<'_, '_, F> {
                 if out.is_empty() {
                     return Ok(());
                 }
-                let count = rows.chunk_rows().min(out.len());
+                // With several threads, one read regenerates the whole requested range, so
+                // read_level splits it over every thread; bounded chunks leave reads too small
+                // to split. shortcut: the plan charges one chunk of memo; a whole-level read holds
+                // the level twice while it is folded. Charge it when budgets get tight (#729).
+                let count = if crate::parallelism() > 1 {
+                    out.len()
+                } else {
+                    rows.chunk_rows().min(out.len())
+                };
                 let pair_count = count.checked_mul(2).ok_or_else(allocation)?;
                 let mut memo = self.memo.borrow_mut();
                 for (block, output) in out.chunks_mut(count).enumerate() {
@@ -678,8 +690,9 @@ impl<'a, F: PolyField> PreparedTreeBatch<'a, F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sync_cell::Cell;
     use crate::{Forest, FractionTree, FractionTreeSource, LeafNumerators, prove_trees_in};
-    use core::{cell::Cell, num::NonZeroUsize};
+    use core::num::NonZeroUsize;
     use tessera_codec::Ascii;
     use tessera_field::{Goldilocks as G, GoldilocksExt2 as F, PrimeField, QuadraticExtension};
     use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};

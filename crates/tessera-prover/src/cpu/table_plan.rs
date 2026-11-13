@@ -11,7 +11,9 @@ use tessera_sumcheck::{MergePolynomial, WindowMemory, WindowShape};
 pub(super) const CHUNK_ROWS: usize = 256;
 const CACHE_CHUNK_ROWS: usize = 65_536;
 const MAX_CHUNK_ROWS: usize = 1_048_576;
-const MAX_CACHE_LOG_ROWS: usize = 20;
+// A cache at depth h − 4 costs 2 bytes per leaf and cuts regeneration about fivefold at h = 28;
+// only the allowance limits it (#729).
+const MAX_CACHE_LOG_ROWS: usize = 30;
 
 pub(super) fn cache_depth(height: usize, log_rows: Option<usize>) -> Option<usize> {
     // Retain at most the selected public cap and keep at least four original leaf bits.
@@ -55,6 +57,8 @@ mod tests {
             cuts: Vec::new(),
             chunk_rows: CHUNK_ROWS,
             cache_log_rows: None,
+            densify_bytes: 0,
+            densify: true,
         }
     }
 
@@ -82,6 +86,31 @@ mod tests {
         assert!(preserved.chunk_rows < 1_048_576);
         assert_eq!(preserved.cuts, wide.cuts);
         assert!(preserved.working_bytes <= allowance);
+    }
+
+    #[test]
+    fn dense_count_reads_take_only_what_the_plan_leaves() {
+        for allowance in [80 << 20, 84 << 20, 96 << 20, 128 << 20, 1 << 32, u64::MAX] {
+            let Ok(reference) = stress(true).select_cached(allowance) else {
+                continue;
+            };
+            for densify_bytes in [0, 1 << 20, 16 << 20, 1 << 40] {
+                let plan = TablePlan {
+                    densify_bytes,
+                    ..stress(true)
+                }
+                .select_cached(allowance)
+                .unwrap();
+                // The windows, cache and chunks are those of the plan without dense reads.
+                assert_eq!(plan.cuts, reference.cuts);
+                assert_eq!(plan.cache_log_rows, reference.cache_log_rows);
+                assert_eq!(plan.chunk_rows, reference.chunk_rows);
+                let fits = reference.working_bytes + densify_bytes <= allowance;
+                assert_eq!(plan.densify, fits, "{allowance} {densify_bytes}");
+                let charged = if fits { densify_bytes } else { 0 };
+                assert_eq!(plan.working_bytes, reference.working_bytes + charged);
+            }
+        }
     }
 
     #[test]
@@ -234,7 +263,7 @@ mod tests {
 
     #[test]
     fn enlarged_read_scratch_is_charged_and_bounds_actual_allocations() {
-        use std::cell::Cell;
+        use std::sync::atomic::{AtomicUsize, Ordering};
         use tessera_codec::{Ascii, SecretBuf};
         use tessera_field::{
             Field, Goldilocks as B, GoldilocksExt2 as F, PrimeField, QuadraticExtension,
@@ -244,7 +273,7 @@ mod tests {
         use tessera_sumcheck::WindowError;
         struct AllocatingSource {
             rows: usize,
-            maximum_read: Cell<usize>,
+            maximum_read: AtomicUsize,
         }
         impl TableSource<B> for AllocatingSource {
             fn rows(&self) -> usize {
@@ -271,8 +300,7 @@ mod tests {
                 {
                     return Err(WindowError::Source);
                 }
-                self.maximum_read
-                    .set(self.maximum_read.get().max(keys.len()));
+                self.maximum_read.fetch_max(keys.len(), Ordering::Relaxed);
                 let mut scratch = SecretBuf::try_with_capacity(keys.len())
                     .map_err(|_| WindowError::Allocation)?;
                 scratch.resize(keys.len(), 0u64);
@@ -288,7 +316,7 @@ mod tests {
             let rows = 1usize << height;
             let source = AllocatingSource {
                 rows,
-                maximum_read: Cell::new(0),
+                maximum_read: AtomicUsize::new(0),
             };
             let owned = 16 * rows as u64 + NATIVE_DESCRIPTOR_BYTES_PER_TREE;
             let plan = TablePlan {
@@ -306,6 +334,8 @@ mod tests {
                 cuts: Vec::new(),
                 chunk_rows: CHUNK_ROWS,
                 cache_log_rows: None,
+                densify_bytes: 0,
+                densify: false,
             }
             .select(u64::MAX)
             .unwrap();
@@ -334,7 +364,7 @@ mod tests {
                     .unwrap(),
                 );
             });
-            assert_eq!(source.maximum_read.get(), plan.chunk_rows);
+            assert_eq!(source.maximum_read.load(Ordering::Relaxed), plan.chunk_rows);
             assert!(
                 measured.bytes_max <= plan.working_bytes,
                 "actual allocated peak {} exceeds charged {}",
@@ -409,6 +439,8 @@ mod tests {
                 cuts: Vec::new(),
                 chunk_rows: CHUNK_ROWS,
                 cache_log_rows: None,
+                densify_bytes: 0,
+                densify: false,
             }
             .select(u64::MAX)
             .unwrap();
@@ -569,6 +601,10 @@ pub(super) struct TablePlan {
     pub(super) cuts: Vec<usize>,
     pub(super) chunk_rows: usize,
     pub(super) cache_log_rows: Option<usize>,
+    /// Extra source bytes when weighted count columns are densified for P2 reads.
+    densify_bytes: u64,
+    /// Whether P2 densifies weighted count columns: chosen when the allowance admits it.
+    pub(super) densify: bool,
 }
 
 fn add(a: u64, b: u64) -> Result<u64, ProverError> {
@@ -856,6 +892,7 @@ impl TablePlan {
         // A cached-route caller can instead supply the canonical public backing
         // plans derived by Engine::runtime_multiplicity_plans. No secret sparsity
         // or arbitrary host allowance enters this selection (RFC-0018).
+        let mut densify_bytes = 0u64;
         let table_sources = if let Some(plans) = physical_counts {
             if plans.len() != leaf.instances().len() {
                 return Err(memory());
@@ -875,6 +912,11 @@ impl TablePlan {
                     return Err(memory());
                 }
                 bytes = add(bytes, plan.payload_bytes())?;
+                // A weighted column densified for P2 reads holds its dense payload beside the
+                // weighted one, which stays charged above. Dense plans are already read as copies.
+                if !plan.is_dense() {
+                    densify_bytes = add(densify_bytes, plan.dense_bytes())?;
+                }
             }
             bytes
         } else {
@@ -916,6 +958,9 @@ impl TablePlan {
             cuts: Vec::new(),
             chunk_rows: CHUNK_ROWS,
             cache_log_rows: None,
+            // The resident charge, 16 bytes per table row, already covers dense counts.
+            densify_bytes,
+            densify: true,
         }
         .select(u64::MAX)
     }
@@ -939,7 +984,23 @@ impl TablePlan {
     }
 
     pub(super) fn select(self, allowance: u64) -> Result<Self, ProverError> {
-        self.select_with_chunk_limit(allowance, MAX_CHUNK_ROWS)
+        self.select_with_chunk_limit(allowance, MAX_CHUNK_ROWS)?
+            .with_densify(allowance)
+    }
+
+    /// Dense count reads from what the chosen windows, cache and chunks leave of the allowance:
+    /// they never displace a cache level or a wider chunk, which a densify charge taken first
+    /// did, slowing a 1B leaf stage by half on the H100 (2026-11-13).
+    fn with_densify(mut self, allowance: u64) -> Result<Self, ProverError> {
+        if let Some(bytes) = self
+            .working_bytes
+            .checked_add(self.densify_bytes)
+            .filter(|&bytes| bytes <= allowance)
+        {
+            self.densify = true;
+            self.working_bytes = bytes;
+        }
+        Ok(self)
     }
 
     fn cache_bytes(&self) -> Result<u64, ProverError> {
@@ -970,7 +1031,7 @@ impl TablePlan {
             .checked_sub(plan.fixed_bytes(plan.chunk_rows)?)
             .ok_or_else(memory)?;
         plan.widen_chunks(allowance, window_peak, MAX_CHUNK_ROWS)?;
-        Ok(plan)
+        plan.with_densify(allowance)
     }
 
     fn with_cache(mut self, allowance: u64) -> Result<Self, ProverError> {
@@ -1008,6 +1069,8 @@ impl TablePlan {
         // `scratch` remains the original charge, so repeated selection can shrink again.
         self.chunk_rows = CHUNK_ROWS;
         self.cache_log_rows = None;
+        // Dense count reads are added last, from the allowance left over (`with_densify`).
+        self.densify = false;
         let fixed = self.fixed_bytes(CHUNK_ROWS)?;
         if fixed > allowance {
             return Err(memory());

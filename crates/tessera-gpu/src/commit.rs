@@ -74,6 +74,8 @@ pub(crate) struct Kernels {
     encode_low: CudaFunction,
     column_init: CudaFunction,
     column_step: CudaFunction,
+    gather_columns: CudaFunction,
+    interleave2: CudaFunction,
 }
 
 impl Kernels {
@@ -84,6 +86,8 @@ impl Kernels {
             encode_low: module.load_function("encode_low")?,
             column_init: module.load_function("column_init")?,
             column_step: module.load_function("column_step")?,
+            gather_columns: module.load_function("gather_columns")?,
+            interleave2: module.load_function("interleave2")?,
         };
         for f in [&kernels.ntt_pass, &kernels.encode_low] {
             f.set_attribute(
@@ -170,6 +174,35 @@ impl Device {
     /// The encoder of rows of `k = 2^log_k` values into codewords of `2k` symbols with
     /// `mask_coeffs = P` mask coefficients, `1 ≤ log_k ≤` [`ENCODE_MAX_LOG_K`], `P ≤ k`.
     pub fn encoder(&self, log_k: u32, mask_coeffs: usize) -> Result<Encoder, GpuError> {
+        self.coset_encoder(log_k, mask_coeffs, SHIFT)
+    }
+
+    /// The two encoders whose interleaved codewords are the rate-1/4 codeword of RFC-0011
+    /// 'Encoding' without masks (a weight row of `tessera-protocol/1`, RFC-0040): symbol `2m` of
+    /// `g(7·ω_{4k}^j)` is `g(7·ω_{2k}^m)` and symbol `2m + 1` is `g(7·ω_{4k}·ω_{2k}^m)`, the
+    /// rate-1/2 encodings of the same row on the cosets `7·L` and `7·ω_{4k}·L`. Pass both
+    /// codewords to [`Device::interleave`].
+    pub fn rate4_encoders(&self, log_k: u32) -> Result<[Encoder; 2], GpuError> {
+        if !(1..ENCODE_MAX_LOG_K).contains(&log_k) {
+            return Err(GpuError::Unsupported("log_k outside 1..26"));
+        }
+        let omega_4k = pow(SHIFT, (P - 1) >> (log_k + 2));
+        Ok([
+            self.coset_encoder(log_k, 0, SHIFT)?,
+            self.coset_encoder(log_k, 0, mul(SHIFT, omega_4k))?,
+        ])
+    }
+
+    /// The rate-1/2 encoder evaluating on the coset `shift·L` (masks need `shift = 7`).
+    fn coset_encoder(
+        &self,
+        log_k: u32,
+        mask_coeffs: usize,
+        shift: u64,
+    ) -> Result<Encoder, GpuError> {
+        if mask_coeffs > 0 && shift != SHIFT {
+            return Err(GpuError::Unsupported("masks need the coset shift 7"));
+        }
         if !(1..=ENCODE_MAX_LOG_K).contains(&log_k) {
             return Err(GpuError::Unsupported("log_k outside 1..=26"));
         }
@@ -183,7 +216,7 @@ impl Device {
         let omega = pow(SHIFT, (P - 1) / n as u64);
         let omega_inv = pow(omega, P - 2);
         let k_inv = pow(k as u64, P - 2);
-        let shift_powers = powers(SHIFT, k);
+        let shift_powers = powers(shift, k);
         let scale: Vec<u64> = (0..k)
             .map(|t| {
                 mul(
@@ -204,8 +237,34 @@ impl Device {
             forward: self.upload(&powers(omega, k))?,
             scale: self.upload(&scale)?,
             mask_pow: self.upload(&mask_pow)?,
-            shift_pow_k: pow(SHIFT, k as u64),
+            shift_pow_k: pow(shift, k as u64),
         })
+    }
+
+    /// `out[2i] = even[i]`, `out[2i + 1] = odd[i]`: the rate-1/4 codewords of
+    /// [`Device::rate4_encoders`] from their two rate-1/2 halves, row after row.
+    pub fn interleave(
+        &self,
+        even: &DeviceBuffer<u64>,
+        odd: &DeviceBuffer<u64>,
+        out: &mut DeviceBuffer<u64>,
+    ) -> Result<(), GpuError> {
+        let half = even.len();
+        check_len("odd", odd, half)?;
+        check_len("out", out, 2 * half)?;
+        if half == 0 {
+            return Err(GpuError::Unsupported("interleave at least one symbol"));
+        }
+        let total = half as u64;
+        let config = LaunchConfig::for_num_elems(u32::try_from(half).unwrap_or(u32::MAX));
+        let mut launch = self.stream.launch_builder(&self.commit.interleave2);
+        launch.arg(&even.0).arg(&odd.0).arg(&total).arg(&mut out.0);
+        #[allow(unsafe_code)]
+        // SAFETY: matches `interleave2` in kernels/commit.cu; it reads even[i] and odd[i] for
+        // i < total = even.len() = odd.len() (checked) and writes out[2i], out[2i + 1] below
+        // 2·total = out.len() (checked).
+        unsafe { launch.launch(config) }?;
+        Ok(())
     }
 
     /// Encodes `rows` (`r` rows of `k` canonical values, one after another) with `masks` (`P`
@@ -430,6 +489,42 @@ impl Device {
         // SAFETY: matches `column_step` in kernels/commit.cu; thread j < n reads and writes
         // chains[8j..8j+8) (8n words), reads codewords[r·n + j] for r < count (count·n ≤
         // codewords.len(), checked) and params[8..16) (24 words).
+        unsafe { launch.launch(config) }?;
+        Ok(())
+    }
+
+    /// `out[r·m + j] = codewords[r·n + columns[j]]` for the first `rows` codewords of `n`
+    /// symbols and the `m = columns.len()` columns: P5's queried symbols (#735).
+    pub fn gather_columns(
+        &self,
+        codewords: &DeviceBuffer<u64>,
+        n: usize,
+        rows: usize,
+        columns: &DeviceBuffer<u64>,
+        out: &mut DeviceBuffer<u64>,
+    ) -> Result<(), GpuError> {
+        let m = columns.len();
+        if rows * n > codewords.len() || out.len() < rows * m || m == 0 || rows == 0 {
+            return Err(GpuError::Unsupported("gathered columns fit their buffers"));
+        }
+        let (n64, rows32, m32) = (
+            n as u64,
+            u32::try_from(rows).map_err(|_| GpuError::Unsupported("rows fit u32"))?,
+            u32::try_from(m).map_err(|_| GpuError::Unsupported("columns fit u32"))?,
+        );
+        let config = LaunchConfig::for_num_elems(u32::try_from(rows * m).unwrap_or(u32::MAX));
+        let mut launch = self.stream.launch_builder(&self.commit.gather_columns);
+        launch
+            .arg(&codewords.0)
+            .arg(&n64)
+            .arg(&rows32)
+            .arg(&columns.0)
+            .arg(&m32)
+            .arg(&mut out.0);
+        #[allow(unsafe_code)]
+        // SAFETY: matches `gather_columns` in kernels/commit.cu; it reads columns[j] for j < m =
+        // columns.len(), and codewords[r·n + c] only for r < rows and c < n (the kernel checks
+        // c), so below rows·n ≤ codewords.len(); it writes out[i] for i < rows·m ≤ out.len().
         unsafe { launch.launch(config) }?;
         Ok(())
     }

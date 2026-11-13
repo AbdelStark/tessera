@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AbdelStark/tessera/blob/main/spec/schemas/serving-baseline-v1.schema.json",
+  "title": "tessera.serving-baseline/1",
+  "description": "A production-serving baseline for the MVP benchmark (#742): one engine serving one model at batch 1 on the observatory's shape, median of `requests` timed requests after warm-ups. Written by `scripts/serving_baseline.py`; `gpu_seconds_per_token_covered` is the median request time over prompt plus output tokens, on one GPU.",
+  "type": "object",
+  "required": ["schema", "engine", "model", "prompt_tokens", "output_tokens", "batch_size", "requests", "gpu_memory_utilization", "seconds_per_request_median", "seconds_per_request_min", "seconds_per_request_max", "gpu_seconds_per_token_covered", "decode_tokens_per_second"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "tessera.serving-baseline/1"},
+    "engine": {"type": "string", "minLength": 1},
+    "model": {"type": "string", "minLength": 1},
+    "prompt_tokens": {"type": "integer", "minimum": 1},
+    "output_tokens": {"type": "integer", "minimum": 1},
+    "batch_size": {"type": "integer", "minimum": 1},
+    "requests": {"type": "integer", "minimum": 1},
+    "gpu_memory_utilization": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+    "seconds_per_request_median": {"type": "number", "exclusiveMinimum": 0},
+    "seconds_per_request_min": {"type": "number", "exclusiveMinimum": 0},
+    "seconds_per_request_max": {"type": "number", "exclusiveMinimum": 0},
+    "gpu_seconds_per_token_covered": {"type": "number", "exclusiveMinimum": 0},
+    "decode_tokens_per_second": {"type": "number", "exclusiveMinimum": 0}
+  }
+}

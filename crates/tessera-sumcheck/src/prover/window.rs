@@ -16,7 +16,96 @@ use tessera_field::PrimeField;
 use tessera_poly::PolyField;
 
 use super::{Labels, Prefix, ProvenBatch, Table, Values, padding_scale};
-use crate::{Protocol, SumcheckProof, SumcheckTranscript, Term};
+use crate::{Protocol, SumcheckProof, SumcheckTranscript, Term, parallelism};
+
+/// Below this many entries per thread, one thread runs a resident round.
+const PARALLEL_MIN_ENTRIES: usize = 1 << 14;
+
+/// `0..len` in at most `parallelism()` contiguous ranges of at least `PARALLEL_MIN_ENTRIES`.
+fn ranges(len: usize) -> Vec<core::ops::Range<usize>> {
+    let threads = parallelism().min(len / PARALLEL_MIN_ENTRIES).max(1);
+    let per = len.div_ceil(threads).max(1);
+    (0..len)
+        .step_by(per)
+        .map(|start| start..len.min(start + per))
+        .collect()
+}
+
+/// Runs `f` on each range of `ranges(len)`, on scoped threads when there are several, and
+/// returns the results in range order. Results are combined by exact field addition by the
+/// callers, so the thread count never changes a value (RFC-0018 'CPU backend').
+fn par_map<T: Send>(
+    len: usize,
+    f: impl Fn(core::ops::Range<usize>) -> Result<T, WindowError> + Sync,
+) -> Result<Vec<T>, WindowError> {
+    let ranges = ranges(len);
+    if ranges.len() <= 1 {
+        return ranges.into_iter().map(&f).collect();
+    }
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = ranges
+            .into_iter()
+            .map(|range| {
+                let f = &f;
+                scope.spawn(move || f(range))
+            })
+            .collect();
+        workers
+            .into_iter()
+            .map(|w| w.join().unwrap_or(Err(WindowError::Allocation)))
+            .collect()
+    })
+}
+
+/// Fills `outs[t][r]` for each range `r` of `0..len` on scoped threads: `f(r, slices)` gets every
+/// table's slice of `r`. `cost` is the work per entry, in reads, which sets how many ranges
+/// there are; each entry is written once, so the thread count never changes a value.
+fn par_fill<F: Copy + Send>(
+    len: usize,
+    cost: usize,
+    outs: &mut [SecretBuf<F>],
+    f: impl Fn(core::ops::Range<usize>, &mut [&mut [F]]) -> Result<(), WindowError> + Sync,
+) -> Result<(), WindowError> {
+    let work = len.saturating_mul(cost.max(1));
+    let threads = parallelism()
+        .min(work / PARALLEL_MIN_ENTRIES)
+        .min(len)
+        .max(1);
+    let per = len.div_ceil(threads).max(1);
+    let ranges: Vec<_> = (0..len)
+        .step_by(per)
+        .map(|start| start..len.min(start + per))
+        .collect();
+    let mut parts: Vec<Vec<&mut [F]>> = ranges.iter().map(|_| Vec::new()).collect();
+    for out in outs.iter_mut() {
+        let whole: &mut [F] = out;
+        let mut rest = whole.get_mut(..len).ok_or(WindowError::Source)?;
+        for (part, range) in parts.iter_mut().zip(&ranges) {
+            let (head, tail) = rest.split_at_mut(range.len());
+            part.push(head);
+            rest = tail;
+        }
+    }
+    if ranges.len() <= 1 {
+        for (range, mut part) in ranges.into_iter().zip(parts) {
+            f(range, &mut part)?;
+        }
+        return Ok(());
+    }
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = ranges
+            .into_iter()
+            .zip(parts)
+            .map(|(range, mut part)| {
+                let f = &f;
+                scope.spawn(move || f(range, &mut part))
+            })
+            .collect();
+        workers
+            .into_iter()
+            .try_for_each(|w| w.join().unwrap_or(Err(WindowError::Allocation)))
+    })
+}
 
 /// RFC-0056's maximum number of own variables in one grid.
 pub const MAX_WINDOW_VARS: usize = 8;
@@ -76,6 +165,55 @@ pub trait WindowSource<F: PolyField> {
     /// level's four operands, #694) can be served from it. The values read are unchanged.
     fn read_granule(&self) -> Option<NonZeroUsize> {
         None
+    }
+    /// A reader worker threads may share, when the source has one and sets no
+    /// [`read_granule`](Self::read_granule): its resident tables then load in parallel.
+    fn shared(&self) -> Option<Box<dyn SharedRead<F> + '_>> {
+        None
+    }
+}
+
+/// A reader of a source's entries that worker threads may share: the same values as
+/// [`WindowSource::read`]. A source that lends one has its resident tables loaded in parallel.
+pub trait SharedRead<F: PolyField>: Sync {
+    /// Read consecutive entries of the table named by `table`.
+    fn read(&self, table: usize, start: usize, out: &mut [F]) -> Result<(), WindowError>;
+}
+
+/// The shared reader of a source whose tables are all resident: [`read_shared`] never asks it.
+struct Unshared;
+
+impl<F: PolyField> SharedRead<F> for Unshared {
+    fn read(&self, _: usize, _: usize, _: &mut [F]) -> Result<(), WindowError> {
+        Err(WindowError::Source)
+    }
+}
+
+/// `out` from a lent resident table, or from `shared`: [`read_source`] on worker threads.
+fn read_shared<F: PolyField>(
+    resident: Option<Table<'_, F>>,
+    shared: &dyn SharedRead<F>,
+    id: usize,
+    start: usize,
+    out: &mut [F],
+) -> Result<(), WindowError> {
+    match resident {
+        Some(table) => {
+            let end = start.checked_add(out.len()).ok_or(WindowError::Source)?;
+            match table.values {
+                Values::Base(values) => {
+                    let values = values.get(start..end).ok_or(WindowError::Source)?;
+                    for (slot, &value) in out.iter_mut().zip(values) {
+                        *slot = F::from(value);
+                    }
+                }
+                Values::Ext(values) => {
+                    out.copy_from_slice(values.get(start..end).ok_or(WindowError::Source)?)
+                }
+            }
+            Ok(())
+        }
+        None => shared.read(id, start, out),
     }
 }
 
@@ -150,6 +288,91 @@ fn boolean_eq<F: PolyField>(z: &[Option<F>], index: usize) -> F {
     z.iter()
         .enumerate()
         .fold(F::ONE, |v, (j, &z)| v * eq_at(z, integer((index >> j) & 1)))
+}
+
+/// The two polynomials of tree levels, evaluated with fewer products than the generic terms:
+/// a fraction level's `N0·D1 + N1·D0 + λ·D0·D1` over columns `[N0, N1, D0, D1]`, and a product
+/// level's `V0·V1`. Lines at `x = 2, 3` are sums of the pair's slope, and every product is the
+/// same field element the generic evaluation forms (RFC-0010 'Tree levels').
+#[derive(Clone, Copy)]
+enum Shape<F> {
+    Fraction { lambda: F },
+    Product,
+}
+
+impl<F: PolyField> Shape<F> {
+    /// The shape of `terms` over `columns` tables, when it is one and the slots are `0, 2, 3`.
+    fn of(terms: &[Term<F>], columns: usize, xs: &[F]) -> Option<Self> {
+        let standard = xs.len() == 3
+            && xs[0] == F::ZERO
+            && xs[1] == integer::<F>(2)
+            && xs[2] == integer::<F>(3);
+        if !standard {
+            return None;
+        }
+        match (columns, terms) {
+            (4, [a, b, c])
+                if *a.weight() == F::ONE
+                    && a.factors() == [0, 3]
+                    && *b.weight() == F::ONE
+                    && b.factors() == [1, 2]
+                    && c.factors() == [2, 3] =>
+            {
+                Some(Self::Fraction {
+                    lambda: *c.weight(),
+                })
+            }
+            (2, [a]) if *a.weight() == F::ONE && a.factors() == [0, 1] => Some(Self::Product),
+            _ => None,
+        }
+    }
+
+    /// `Σ_pairs suffix(pair)·P(line(x))` at `x = 0, 2, 3` over `pairs`.
+    fn sums(
+        self,
+        folded: &[SecretBuf<F>],
+        suffix_eq: &Weights<F>,
+        pairs: core::ops::Range<usize>,
+        degree: usize,
+    ) -> Result<SecretBuf<F>, WindowError> {
+        let mut part = buffer::<F>(degree)?;
+        let mut sums = [F::ZERO; 3];
+        // Each column at x = 0, 2, 3: a, a + 2(b − a), a + 3(b − a).
+        let at = |t: &SecretBuf<F>, pair: usize| {
+            let (a, b) = (t[2 * pair], t[2 * pair + 1]);
+            let d = b - a;
+            let two = b + d;
+            [a, two, two + d]
+        };
+        match self {
+            Self::Fraction { lambda } => {
+                for pair in pairs {
+                    let w = suffix_eq.at(pair);
+                    let (n0, n1, d0, d1) = (
+                        at(&folded[0], pair),
+                        at(&folded[1], pair),
+                        at(&folded[2], pair),
+                        at(&folded[3], pair),
+                    );
+                    for z in 0..3 {
+                        let p = n0[z] * d1[z] + n1[z] * d0[z] + lambda * (d0[z] * d1[z]);
+                        sums[z] += w * p;
+                    }
+                }
+            }
+            Self::Product => {
+                for pair in pairs {
+                    let w = suffix_eq.at(pair);
+                    let (v0, v1) = (at(&folded[0], pair), at(&folded[1], pair));
+                    for z in 0..3 {
+                        sums[z] += w * (v0[z] * v1[z]);
+                    }
+                }
+            }
+        }
+        part.copy_from_slice(&sums[..degree]);
+        Ok(part)
+    }
 }
 
 /// Public split EQ weights: no allocation of the full `2^bound` prefix.
@@ -264,6 +487,8 @@ struct State<F: PolyField> {
     spec: WindowInstance<F>,
     grid: Option<Grid<F>>,
     folded: Vec<SecretBuf<F>>,
+    /// The folded tables on a device, when a registered offload took them (#734).
+    device: Option<Box<dyn crate::DeviceLevel>>,
     bound: usize,
     /// True initial sum, not a prover-supplied claim. Cleared on drop with the other scalars.
     sum: SecretBuf<F>,
@@ -334,7 +559,62 @@ impl<F: PolyField> State<F> {
                 .iter()
                 .map(|_| buffer::<F>(len))
                 .collect::<Result<Vec<_>, WindowError>>()?;
-            if bound == 0 {
+            let residents: Vec<_> = self
+                .spec
+                .tables
+                .iter()
+                .map(|t| source.resident(t.id))
+                .collect();
+            // Tables that are all resident (a tree level's halves) need no shared reader.
+            let shared = source
+                .read_granule()
+                .is_none()
+                .then(|| {
+                    source.shared().or_else(|| {
+                        residents
+                            .iter()
+                            .all(Option::is_some)
+                            .then(|| Box::new(Unshared) as Box<dyn SharedRead<F>>)
+                    })
+                })
+                .flatten();
+            if let Some(shared) = shared {
+                // Each entry is written once from the same reads, on any thread (RFC-0018).
+                let tables = &self.spec.tables;
+                let one_len = one.len();
+                par_fill(len, 1 << bound, &mut folded, |range, outs| {
+                    if bound == 0 {
+                        for ((out, table), resident) in outs.iter_mut().zip(tables).zip(&residents)
+                        {
+                            read_shared(*resident, &*shared, table.id, range.start, out)?;
+                        }
+                        return Ok(());
+                    }
+                    let mut one = buffer::<F>(one_len)?;
+                    let count = 1usize << bound;
+                    let chunk = count.min(one_len);
+                    for index in range.clone() {
+                        for ((out, table), resident) in outs.iter_mut().zip(tables).zip(&residents)
+                        {
+                            let mut value = F::ZERO;
+                            for prefix in (0..count).step_by(chunk) {
+                                read_shared(
+                                    *resident,
+                                    &*shared,
+                                    table.id,
+                                    (index << bound) | prefix,
+                                    &mut one[..chunk],
+                                )?;
+                                for (offset, &entry) in one[..chunk].iter().enumerate() {
+                                    value += weights.at(prefix + offset) * entry;
+                                }
+                            }
+                            out[index - range.start] = value;
+                        }
+                    }
+                    Ok(())
+                })?;
+            } else if bound == 0 {
                 let step = source.read_granule().map_or(len, |g| g.get().min(len));
                 for start in (0..len).step_by(step) {
                     let end = len.min(start + step);
@@ -354,10 +634,14 @@ impl<F: PolyField> State<F> {
             self.grid = None;
             if initial {
                 let eq = Weights::from_eq(&self.spec.eq)?;
-                self.sum[0] = (0..len).fold(F::ZERO, |s, index| {
-                    s + eq.at(index) * self.polynomial(&self.folded, index)
-                });
+                let parts = par_map(len, |range| {
+                    Ok(range.fold(F::ZERO, |s, index| {
+                        s + eq.at(index) * self.polynomial(&self.folded, index)
+                    }))
+                })?;
+                self.sum[0] = parts.into_iter().fold(F::ZERO, |s, p| s + p);
             }
+            self.offload()?;
             return Ok(());
         }
         let delta = self
@@ -426,9 +710,95 @@ impl<F: PolyField> State<F> {
         Ok(())
     }
 
+    /// Moves the folded tables to the registered offload's device, when it takes this shape
+    /// over `Fp2` (#734). The host copies clear as they drop.
+    fn offload(&mut self) -> Result<(), WindowError> {
+        use core::any::Any;
+        use tessera_field::GoldilocksExt2 as Fp2;
+        let Some(offload) = crate::offload::level_offload() else {
+            return Ok(());
+        };
+        if self.spec.vars == self.bound || self.degree_slots().is_none() {
+            return Ok(());
+        }
+        let xs = [integer::<F>(0), integer::<F>(2), integer::<F>(3)];
+        let shape = match Shape::of(&self.spec.terms, self.folded.len(), &xs) {
+            Some(Shape::Fraction { lambda }) => {
+                let Some(&lambda) = (&lambda as &dyn Any).downcast_ref::<Fp2>() else {
+                    return Ok(());
+                };
+                crate::LevelShape::Fraction { lambda }
+            }
+            Some(Shape::Product) => crate::LevelShape::Product,
+            None => return Ok(()),
+        };
+        let tables: Option<Vec<&[Fp2]>> = self
+            .folded
+            .iter()
+            .map(|t| {
+                (t as &dyn Any)
+                    .downcast_ref::<SecretBuf<Fp2>>()
+                    .map(|t| &t[..])
+            })
+            .collect();
+        let Some(tables) = tables else {
+            return Ok(());
+        };
+        if let Some(device) = offload.load(shape, &tables)? {
+            self.device = Some(device);
+            self.folded = Vec::new();
+        }
+        Ok(())
+    }
+
+    /// `Some` when the instance's polynomial has degree 3, the only one the offload serves.
+    fn degree_slots(&self) -> Option<()> {
+        (self.spec.terms.iter().map(|t| t.factors().len()).max() == Some(2)).then_some(())
+    }
+
     fn message(&self, degree: usize, point: &[F]) -> Result<SecretBuf<F>, WindowError> {
         let mut out = buffer::<F>(degree)?;
         let prefix = self.eq_prefix(point);
+        if let Some(device) = &self.device {
+            use core::any::Any;
+            use tessera_field::GoldilocksExt2 as Fp2;
+            let suffix_eq = Weights::from_eq(&self.spec.eq[self.bound + 1..])?;
+            let (low, high) = (
+                (&suffix_eq.low as &dyn Any).downcast_ref::<Vec<Fp2>>(),
+                (&suffix_eq.high as &dyn Any).downcast_ref::<Vec<Fp2>>(),
+            );
+            let (Some(low), Some(high)) = (low, high) else {
+                return Err(WindowError::Source);
+            };
+            let sums = device.sums(low, high, suffix_eq.low_bits)?;
+            let mut s = [F::ZERO; 3];
+            for (out, sum) in s.iter_mut().zip(&sums) {
+                *out = *(sum as &dyn Any)
+                    .downcast_ref::<F>()
+                    .ok_or(WindowError::Source)?;
+            }
+            // The offloaded polynomial has degree 2 in x, so its sums at a batch's further
+            // nodes are the Lagrange interpolation through x = 0, 2, 3: the same field elements
+            // the host computes at those nodes directly.
+            let inverse = |n: usize| integer::<F>(n).inverse().ok_or(WindowError::Source);
+            let (sixth, half, third) = (inverse(6)?, inverse(2)?, inverse(3)?);
+            for (slot, value) in out.iter_mut().enumerate() {
+                let node = if slot == 0 { 0 } else { slot + 1 };
+                let x = integer::<F>(node);
+                let sum = match node {
+                    0 => s[0],
+                    2 => s[1],
+                    3 => s[2],
+                    _ => {
+                        let (two, three) = (integer::<F>(2), integer::<F>(3));
+                        s[0] * (x - two) * (x - three) * sixth - s[1] * x * (x - three) * half
+                            + s[2] * x * (x - two) * third
+                    }
+                };
+                *value = sum * (prefix * eq_at(self.spec.eq[self.bound], x));
+            }
+            return Ok(out);
+        }
         if let Some(grid) = &self.grid {
             let rest = grid.end - self.bound - 1;
             let mut line = buffer::<F>(grid.radix)?;
@@ -452,30 +822,66 @@ impl<F: PolyField> State<F> {
             }
         } else {
             let len = 1 << (self.spec.vars - self.bound - 1);
-            let mut line = buffer::<F>(self.folded.len())?;
             let suffix_eq = Weights::from_eq(&self.spec.eq[self.bound + 1..])?;
-            for pair in 0..len {
-                let suffix = suffix_eq.at(pair);
-                for (slot, value) in out.iter_mut().enumerate() {
-                    let node = if slot == 0 { 0 } else { slot + 1 };
-                    let x = integer::<F>(node);
-                    for (column, table) in line.iter_mut().zip(&self.folded) {
-                        *column = table[2 * pair] + x * (table[2 * pair + 1] - table[2 * pair]);
-                    }
-                    let polynomial = self.spec.terms.iter().fold(F::ZERO, |s, term| {
-                        s + term
-                            .factors()
-                            .iter()
-                            .fold(*term.weight(), |v, &k| v * line[k])
-                    });
-                    *value += prefix * eq_at(self.spec.eq[self.bound], x) * suffix * polynomial;
+            // Slot `s` evaluates at x = 0, 2, 3, …: the round's first, third, … values.
+            let xs: Vec<F> = (0..degree)
+                .map(|slot| integer::<F>(if slot == 0 { 0 } else { slot + 1 }))
+                .collect();
+            let columns = self.folded.len();
+            let shape = Shape::of(&self.spec.terms, columns, &xs);
+            // Σ_pairs suffix·P(line(x)) per slot; the public factor prefix·eq(z, x) is applied
+            // once after the sum, which distributivity makes the same field element.
+            let parts = par_map(len, |pairs| {
+                if let Some(shape) = shape {
+                    return shape.sums(&self.folded, &suffix_eq, pairs, degree);
                 }
+                let mut part = buffer::<F>(degree)?;
+                let mut base = buffer::<F>(columns)?;
+                let mut slope = buffer::<F>(columns)?;
+                let mut line = buffer::<F>(columns)?;
+                for pair in pairs {
+                    let suffix = suffix_eq.at(pair);
+                    for (k, table) in self.folded.iter().enumerate() {
+                        base[k] = table[2 * pair];
+                        slope[k] = table[2 * pair + 1] - base[k];
+                    }
+                    for (value, &x) in part.iter_mut().zip(&xs) {
+                        for k in 0..columns {
+                            line[k] = base[k] + x * slope[k];
+                        }
+                        let polynomial = self.spec.terms.iter().fold(F::ZERO, |s, term| {
+                            s + term
+                                .factors()
+                                .iter()
+                                .fold(*term.weight(), |v, &k| v * line[k])
+                        });
+                        *value += suffix * polynomial;
+                    }
+                }
+                Ok(part)
+            })?;
+            for part in parts {
+                for (value, p) in out.iter_mut().zip(part.iter()) {
+                    *value += *p;
+                }
+            }
+            for (value, &x) in out.iter_mut().zip(&xs) {
+                *value *= prefix * eq_at(self.spec.eq[self.bound], x);
             }
         }
         Ok(out)
     }
 
     fn bind(&mut self, r: F) -> Result<(), WindowError> {
+        if let Some(device) = &mut self.device {
+            use core::any::Any;
+            let r = *(&r as &dyn Any)
+                .downcast_ref::<tessera_field::GoldilocksExt2>()
+                .ok_or(WindowError::Source)?;
+            device.bind(r)?;
+            self.bound += 1;
+            return Ok(());
+        }
         if let Some(grid) = &mut self.grid {
             let weights = basis(grid.radix, r)?;
             let len = grid.values.len() / grid.radix;
@@ -488,10 +894,30 @@ impl<F: PolyField> State<F> {
         } else {
             for table in &mut self.folded {
                 let len = table.len() / 2;
-                for index in 0..len {
-                    table[index] = table[2 * index] + r * (table[2 * index + 1] - table[2 * index]);
+                if ranges(len).len() <= 1 {
+                    for index in 0..len {
+                        table[index] =
+                            table[2 * index] + r * (table[2 * index + 1] - table[2 * index]);
+                    }
+                    table.truncate(len);
+                    continue;
                 }
-                table.truncate(len);
+                // Out of place across threads: in place, one thread's writes would overlap
+                // another's reads.
+                let source: &SecretBuf<F> = table;
+                let halves = par_map(len, |range| {
+                    let mut out = buffer::<F>(range.len())?;
+                    for (o, index) in out.iter_mut().zip(range) {
+                        *o = source[2 * index] + r * (source[2 * index + 1] - source[2 * index]);
+                    }
+                    Ok(out)
+                })?;
+                let mut bound =
+                    SecretBuf::try_with_capacity(len).map_err(|_| WindowError::Allocation)?;
+                for half in &halves {
+                    bound.extend(half.iter().copied());
+                }
+                *table = bound;
             }
         }
         self.bound += 1;
@@ -591,6 +1017,7 @@ impl<F: PolyField> PreparedWindow<F> {
                 spec,
                 grid: None,
                 folded: Vec::new(),
+                device: None,
                 bound: 0,
                 sum: buffer(1)?,
             };
@@ -712,9 +1139,22 @@ impl<F: PolyField> PreparedWindow<F> {
         let vars = self.states.iter().map(|s| s.spec.vars).collect();
         for state in &self.states {
             let start = final_evals.len();
-            for (table, values) in state.spec.tables.iter().zip(&state.folded) {
-                if !table.public {
-                    final_evals.push(values[0]);
+            if let Some(device) = &state.device {
+                use core::any::Any;
+                for (table, value) in state.spec.tables.iter().zip(device.firsts()?) {
+                    if !table.public {
+                        final_evals.push(
+                            *(&value as &dyn Any)
+                                .downcast_ref::<F>()
+                                .ok_or(WindowError::Source)?,
+                        );
+                    }
+                }
+            } else {
+                for (table, values) in state.spec.tables.iter().zip(&state.folded) {
+                    if !table.public {
+                        final_evals.push(values[0]);
+                    }
                 }
             }
             evals.push(start..final_evals.len());

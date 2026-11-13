@@ -1,0 +1,64 @@
+# Tessera claim card (RFC-0002), draft (#741). Every statement is Tessera's own specification at
+# the pinned commit: SPEC.md, docs/spec/, docs/rfcs/. Sources are repository paths at that commit.
+schema: "claim/1"
+system: "tessera"
+configuration: "ni-100-public-output"
+card_version: 1
+upstream: {repo: "AbdelStark/tessera", commit: "3c75bdf78e4cc5c9ed2140900ff109d5933e3006"}
+claim_class: "greedy-continuation/exact-match/committed-weights"
+relation: >
+  If `tessera-verify verify --tokens` exits 0, the integer model D whose weights the trusted weights
+  root commits and whose public claim list the verifier validated, run on the public tokens as
+  prompt then continuation, gives each continuation token as the lowest-indexed maximum of its
+  logits at the position before it (exact greedy), and every operation of D at every position
+  (embedding, RMSNorm, attention with RoPE and softmax, SwiGLU, requantizations, LM head) is proved
+  by sumcheck and LogUp over Goldilocks under one Ligero-style advice commitment.
+relation_formal: "docs/spec/02-public-api.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+security:
+  notion: {kind: "soundness", verifier: "tessera-verify verify, an implementation independent of the prover (RFC-0001, SP-6)"}
+  level: "ni-100/1: at least 100 bits for every row of RFC-0014's soundness table, in the random-oracle model"
+  model: {assumption: "BLAKE3 as a random oracle for Fiat-Shamir and commitments (RFC-0004)", adversary: "classical"}
+  setup: "transparent"
+zero_knowledge: {claimed: false, hidden: "nothing is claimed hidden in this configuration (tessera-protocol/1)", not_hidden: "the tokens are public; the proof's openings are not simulated", status: "neither"}
+assumptions:
+  - >-
+    D is Tessera's quantization (tessera-quant, RFC-0005) of the workload's BF16 checkpoint: 8-bit
+    weights, integer activations and integer tables for SiLU, exp and requantization. Its fidelity
+    to the BF16 model is measured, not proved.
+  - >-
+    The verifier is given the weights root of `tessera commit-weights` by the harness, and the
+    prompt and continuation ids (--tokens), against which the proved token stream is checked
+    (REJ-TOKENS).
+coverage:
+  phase: "both"
+  unit: "request"
+  tokens_covered: "every prompt and continuation position of the request"
+  operations: "every operation of D at every position, through the logits and the greedy certificate"
+  policy: {kind: "exact_match", detail: "the lowest-indexed maximum of D's integer logits (RFC-0009 Lemma 9)"}
+binding:
+  statement: >-
+    One advice commitment holds every committed value of D's execution; the weights are bound by
+    the trusted weights root; each layer's input is the previous layer's committed output; the
+    embedding rows are the committed token ids' rows; each continuation token is bound to the
+    previous position's logits by the argmax gadget.
+residual: ["The integer model D, not the BF16 checkpoint, is what is proved."]
+availability: "research"
+sources:
+  relation: "docs/spec/02-public-api.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  security.level: "docs/rfcs/RFC-0014-interaction-and-soundness.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  security.model: "docs/rfcs/RFC-0004-hashing-and-transcript.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  assumptions.0: "docs/rfcs/RFC-0005-integer-model.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  coverage.policy: "docs/rfcs/RFC-0009-gadgets.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  availability: "README.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  relation_formal: "docs/spec/02-public-api.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  security.notion: "docs/rfcs/RFC-0001-workspace-and-verifier-independence.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  security.setup: "docs/rfcs/RFC-0014-interaction-and-soundness.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  zero_knowledge: "docs/rfcs/RFC-0014-interaction-and-soundness.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  assumptions: "docs/rfcs/RFC-0005-integer-model.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  assumptions.1: "docs/spec/04-error-model.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  coverage: "SPEC.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  binding: "SPEC.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  residual: "docs/rfcs/RFC-0005-integer-model.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  forbidden_flags: "docs/rfcs/RFC-0001-workspace-and-verifier-independence.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+reviewed_by: []
+forbidden_flags: ["--test-", "--params=test-small"]

@@ -205,10 +205,34 @@ struct Source<'a, R, W> {
     witness: Option<W>,
     started: Option<Instant>,
 }
+/// The entries of a regenerated stage, shared by the window engine's worker threads.
+struct Reader<'a, W> {
+    arena: &'a Arena,
+    factors: &'a [Factor],
+    witness: &'a W,
+}
+impl<W: WitnessSource + Sync> tessera_sumcheck::SharedRead<F> for Reader<'_, W> {
+    fn read(&self, id: usize, start: usize, out: &mut [F]) -> Result<(), WindowError> {
+        let factor = self.factors.get(id).ok_or(WindowError::Source)?;
+        for (offset, value) in out.iter_mut().enumerate() {
+            *value = factor
+                .value(self.arena, self.witness, start + offset)
+                .map_err(|e| {
+                    if matches!(e, StageError::Memory) {
+                        WindowError::Allocation
+                    } else {
+                        WindowError::Source
+                    }
+                })?;
+        }
+        Ok(())
+    }
+}
+
 impl<R, W> WindowSource<F> for Source<'_, R, W>
 where
     R: FnMut() -> Result<W, StageError>,
-    W: WitnessSource,
+    W: WitnessSource + Sync,
 {
     fn regenerate(&mut self, _pass: WindowPass) -> Result<(), WindowError> {
         self.started = Some(Instant::now());
@@ -244,20 +268,20 @@ where
         }
     }
     fn read(&self, id: usize, start: usize, out: &mut [F]) -> Result<(), WindowError> {
-        let factor = self.factors.get(id).ok_or(WindowError::Source)?;
-        let witness = self.witness.as_ref().ok_or(WindowError::Source)?;
-        for (offset, value) in out.iter_mut().enumerate() {
-            *value = factor
-                .value(self.arena, witness, start + offset)
-                .map_err(|e| {
-                    if matches!(e, StageError::Memory) {
-                        WindowError::Allocation
-                    } else {
-                        WindowError::Source
-                    }
-                })?;
+        use tessera_sumcheck::SharedRead as _;
+        Reader {
+            arena: self.arena,
+            factors: self.factors,
+            witness: self.witness.as_ref().ok_or(WindowError::Source)?,
         }
-        Ok(())
+        .read(id, start, out)
+    }
+    fn shared(&self) -> Option<Box<dyn tessera_sumcheck::SharedRead<F> + '_>> {
+        Some(Box::new(Reader {
+            arena: self.arena,
+            factors: self.factors,
+            witness: self.witness.as_ref()?,
+        }))
     }
 }
 
@@ -580,7 +604,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
     ) -> Result<PreparedStage, StageError>
     where
         R: FnMut() -> Result<V, StageError>,
-        V: WitnessSource,
+        V: WitnessSource + Sync,
     {
         let stage = self
             .schedule
@@ -780,7 +804,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
     where
         T: tessera_sumcheck::SumcheckTranscript<F> + ?Sized,
         R: FnMut() -> Result<V, StageError>,
-        V: WitnessSource,
+        V: WitnessSource + Sync,
     {
         if k == 0 || self.parts.len() != usize::from(k) {
             return internal("windowed stages follow the previous stage's splits");
@@ -905,7 +929,7 @@ impl<W: WitnessSource + ?Sized> StageProver<'_, W> {
     where
         T: tessera_sumcheck::SumcheckTranscript<F> + ?Sized,
         R: FnMut() -> Result<V, StageError>,
-        V: WitnessSource,
+        V: WitnessSource + Sync,
     {
         self.prove_stage_windowed_composed(
             transcript,

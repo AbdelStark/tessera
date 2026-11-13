@@ -42,6 +42,8 @@ pub(super) struct Unit {
     table_allowance: u64,
     table_chunk_rows: NonZeroUsize,
     table_cache_log_rows: Option<usize>,
+    /// Whether P2 reads dense counts (the table plan charged them).
+    table_densify: bool,
     table_retained: u64,
     forest_bytes: u64,
     checkpoint_sources: bool,
@@ -604,9 +606,22 @@ impl<'a> CpuBackend<'a> {
                 plan = plan.for_budget(prepared.cfg.memory_budget)?;
             }
         }
+        let cells = plan.cells();
+        event!(
+            DEBUG,
+            "prover.plan_resident",
+            tensors = cells.tensors,
+            lookups = cells.lookups,
+            table_rows = cells.table_rows,
+            advice = cells.advice,
+            bytes = plan.resident_bytes().unwrap_or(u64::MAX),
+            budget = prepared.cfg.memory_budget.host;
+            "resident plan: {bytes} bytes for a budget of {budget} (cells: {tensors} tensor, {lookups} lookup, {table_rows} table, {advice} advice)"
+        );
         if (force_physical || plan.check(prepared.cfg.memory_budget).is_err())
             && c.protocol_version == protocol::PROTOCOL_VERSION
         {
+            let search = Instant::now();
             let input = physical::Inputs {
                 claims: c,
                 statement: &batch.statement,
@@ -629,6 +644,13 @@ impl<'a> CpuBackend<'a> {
                 (plan, grouped) =
                     plan_physical_groups(plan, input, prepared.cfg.memory_budget.host)?;
             }
+            event!(
+                DEBUG,
+                "prover.plan_physical",
+                millis = search.elapsed().as_millis() as u64,
+                bytes = plan.resident_bytes().unwrap_or(u64::MAX);
+                "physical plan: {bytes} bytes, found in {millis} ms"
+            );
         }
         if !plan.uses_checkpoints() && plan.check(prepared.cfg.memory_budget).is_ok() {
             let checkpoint = tessera_witness::CheckpointMemory::new(&lowering)?;
@@ -646,6 +668,7 @@ impl<'a> CpuBackend<'a> {
             (table.working_bytes, table.retained, table.forests);
         let table_chunk_rows = NonZeroUsize::new(table.chunk_rows).ok_or_else(memory)?;
         let table_cache_log_rows = table.cache_log_rows;
+        let table_densify = table.densify;
         let scoped_leaf_sources = plan.uses_physical_bound() && grouped.is_some();
         Ok((
             Unit {
@@ -660,6 +683,7 @@ impl<'a> CpuBackend<'a> {
                 table_allowance,
                 table_chunk_rows,
                 table_cache_log_rows,
+                table_densify,
                 table_retained,
                 forest_bytes,
                 checkpoint_sources: plan.uses_checkpoints(),
@@ -760,10 +784,13 @@ impl<'a> CpuBackend<'a> {
                 metrics::table_rows(i.table.0, generated.row_count());
                 let tile = advice.tiles().iter().find(|tile| matches!(tile.tile, compiler::Tile::Table { table } if table == i.table.0))
                     .ok_or_else(|| internal("the advice plan has each leaf table's canonical count tile"))?;
-                GeneratedCounts::new(generated, source.tile(tile)?)
+                let counts = GeneratedCounts::new(generated, source.tile(tile)?)
                     .map(|table| table.with_cache_depth(table_plan::cache_depth(
                         usize::from(spec.log2_rows), u.table_cache_log_rows,
                     )))
+                    .map_err(ProverError::Leaf)?;
+                // The table plan charged dense counts: every chunk read is then a copy.
+                if u.table_densify { counts.densified() } else { Ok(counts) }
                     .map_err(ProverError::Leaf)
             })
             .collect::<Result<_, _>>()?;
@@ -1005,7 +1032,31 @@ impl<'a> CpuBackend<'a> {
         let opening = Instant::now();
         let prepared = d.p1.prepare(targets.advice(), gamma, &av)?;
         let mut masks = d.seed.masks();
-        let mut pass = prepared.begin(&encoder, &mut masks)?;
+        let a = c.layout.advice;
+        // The GPU encodes P4's rows for their sampled symbol; the leaf self-check checks it.
+        let mut sink = p
+            .gpu
+            .as_ref()
+            .filter(|_| a.log2_inv_rate == 1)
+            .map(|g| {
+                g.column_sink(
+                    u32::from(a.log2_k),
+                    a.mask_coeffs as usize,
+                    a.row_block as usize,
+                    &[prepared.sample_column()],
+                )
+            })
+            .transpose()?;
+        event!(
+            DEBUG,
+            "prover.p4_backend",
+            gpu = sink.is_some();
+            "P4 sampled symbols on the GPU: {gpu}"
+        );
+        let mut pass = match sink.as_deref_mut() {
+            Some(sink) => prepared.begin_with_sink(&encoder, sink, &mut masks)?,
+            None => prepared.begin(&encoder, &mut masks)?,
+        };
         for segment in 0..c.layout.advice.segments {
             crate::advice::visit_rows(&u.lowering, &advice, &source, segment, |r, v| {
                 pass.push_row(r, v).map_err(Into::into)
@@ -1181,14 +1232,45 @@ impl CpuBackend<'_> {
         parts
             .try_reserve_exact(a.segments as usize)
             .map_err(|_| memory())?;
+        // #732: the GPU encodes and hashes rate-1/2 advice blocks; the bytes are the CPU's.
+        let gpu = self
+            .prepared
+            .gpu
+            .as_ref()
+            .filter(|_| params.log2_inv_rate == 1);
+        event!(
+            DEBUG,
+            "prover.p1_backend",
+            gpu = gpu.is_some();
+            "P1 advice encoding on the GPU: {gpu}"
+        );
         for segment in 0..a.segments {
-            let mut pass = pcs::StreamingCommitter::new(
-                params,
-                advice.layout(),
-                segment,
-                &encoder,
-                &mut masks,
-            )?;
+            let mut sink = gpu
+                .map(|g| {
+                    g.advice_sink(
+                        params.log2_k,
+                        params.mask_coeffs,
+                        params.row_block.get(),
+                        &params.commitment_id,
+                    )
+                })
+                .transpose()?;
+            let mut pass = match sink.as_deref_mut() {
+                Some(sink) => pcs::StreamingCommitter::with_sink(
+                    params,
+                    advice.layout(),
+                    segment,
+                    sink,
+                    &mut masks,
+                )?,
+                None => pcs::StreamingCommitter::new(
+                    params,
+                    advice.layout(),
+                    segment,
+                    &encoder,
+                    &mut masks,
+                )?,
+            };
             crate::advice::visit_rows(&unit.lowering, &advice, &source, segment, |r, v| {
                 pass.push_row(r, v).map_err(Into::into)
             })?;
@@ -1290,7 +1372,38 @@ impl ProverEngine for CpuBackend<'_> {
             .iter()
             .map(|&i| u64::from(i))
             .collect::<Vec<_>>();
-        let mut pass = d.p1.begin_columns(permit, &encoder, &mut masks, &indices)?;
+        let a = c.layout.advice;
+        let columns = pcs::AdviceOpening::column_indices(&indices)?;
+        let mut sink = p
+            .gpu
+            .as_ref()
+            .filter(|_| a.log2_inv_rate == 1)
+            .map(|g| {
+                g.column_sink(
+                    u32::from(a.log2_k),
+                    a.mask_coeffs as usize,
+                    a.row_block as usize,
+                    &columns,
+                )
+            })
+            .transpose()?;
+        event!(
+            DEBUG,
+            "prover.p5_backend",
+            gpu = sink.is_some();
+            "P5 column answers on the GPU: {gpu}"
+        );
+        let mut pass = match sink.as_deref_mut() {
+            Some(sink) => d.p1.begin_columns_with_sink(
+                permit,
+                &encoder,
+                sink,
+                a.row_block as usize,
+                &mut masks,
+                &indices,
+            )?,
+            None => d.p1.begin_columns(permit, &encoder, &mut masks, &indices)?,
+        };
         for segment in 0..c.layout.advice.segments {
             crate::advice::visit_rows(&u.lowering, &advice, &source, segment, |r, v| {
                 pass.push_row(r, v).map_err(Into::into)
@@ -1304,7 +1417,11 @@ impl ProverEngine for CpuBackend<'_> {
                 .ok_or_else(|| internal("checked query matrix"))?;
             let indices = q.indices.iter().map(|&i| u64::from(i)).collect::<Vec<_>>();
             let source = model_weights(p.model, &u.lowering)?;
-            let a = p.weights.answer(*m, &source, &indices)?;
+            // The regenerated root and every answered column are checked against the tree.
+            let mut device = p.gpu.as_ref().map(crate::gpu::Gpu::weight_encoding);
+            let a = p
+                .weights
+                .answer_with_device(*m, &source, &indices, device.as_deref_mut())?;
             weight_columns.push(protocol::MatrixColumns {
                 matrix: q.matrix,
                 columns: a.columns,

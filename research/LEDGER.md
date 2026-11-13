@@ -6,7 +6,7 @@ Read first, update last. Status words: [README.md](README.md#status-vocabulary).
 
 | Kind | Next identifier |
 |---|---|
-| Survey | SUR-0018 |
+| Survey | SUR-0019 |
 | Idea | IDEA-0045 |
 | Experiment | EXP-0037 |
 
@@ -34,6 +34,7 @@ Upstream on 2026-10-19 (`gh issue list`): every issue the loop fed upstream is c
 
 | # | Action | Mode | Why | Feasible here |
 |---|---|---|---|---|
+| 0 | RFC-0020 decision ([docs/perf/v0.1/decision.md](../docs/perf/v0.1/decision.md), #66): **Stop and redesign**. Measured on one H100: `c_c` 134.7, `c_ℓ` 297.0, `c_π` 84.6 ps (`ρ` 4.49 / 7.42 / 7.05); `μ` at measured costs 58.3 (1K) and 187.1 (16K) against SC-2's 12 and 45. Survey and ideate one superseding design per component (commitment encoding, LogUp, tree levels), scored against the MVP's measured stage profile (#744, #745; MVP plan `docs/roadmap/MVP.md`) | survey → ideate | every ρ > 4; floors (ρ_c ≥ 2.6) show kernel work alone cannot meet SC-2 | yes (E0/E1); E2 runs on rented H100 |
 | 0 | #394/#145: IDEA-0044 item 4 (A′): the column functionals of different sessions, each session's structured point set certified independent per proof by R10, are jointly independent except with small probability: Lemma B for a structured point set over the column cube. Case (B) is bounded at `N(N+L)ϑ/p^2`, about `2^-101.7` over ten matrices, under the proposed cap `N_0 ≤ 681`, `N_1 ≤ 680` | ideate → review | the last open step before Lemma 7 holds without R2 (margin then 1.7 bits); R2 stays the safe choice | cap needs a maintainer decision |
 | 0a | #470: settle IDEA-0043's zero-knowledge gate (a context commitment opened across sessions, with #145's simulator) and write the chain check's adversarial cases (a chunk whose predecessor was never accepted, a substituted root, a reordered chain: the Jolt/OpenVM class of SUR-0017), then re-register EXP-0032's chunk model with its per-proof constant | ideate → promote | Statements above 24K tokens and the 128K target need it; no other mechanism found | yes for the analysis and tests; #145 for the simulator |
 | 0 | Review draft [RFC-0075](../docs/rfcs/RFC-0075-weight-mask-cost.md), #568's full-support regeneration/accounting decision from EXP-0028, preserving #394/#145 prerequisites | review | EXP-0028 validates the finite accounting domain. The draft selects bounded regeneration, complete W and separate core/total gates; no blinder-exclusion credit, GPU rate or baseline ZK approval | maintainer decision; E2 needs #38 |
@@ -90,6 +91,7 @@ Upstream on 2026-10-19 (`gh issue list`): every issue the loop fed upstream is c
 
 | ID | Topic | Status | Date | Ideas seeded |
 |---|---|---|---|---|
+| [SUR-0018](surveys/SUR-0018-mvp-measured-profile.md) | `lookups`/`commitments`/`sumcheck`: the redesign queue against the MVP's measured 8B profile (#745) | `current (2026-11-12)` | 2026-11-12 | per-step leaf-stage profile; table-side leaves on the device; windowed attention as the only protocol lever on attention's lookups |
 | [SUR-0016](surveys/SUR-0016-weight-mask-draw-cost.md) | `hash`: complete weight-mask draws and the missing XOF rate (#568) | `current (2026-10-29)` | 2026-10-29 | full-support bounded regeneration; matched secret-store comparison; separately gated support exclusion |
 | [SUR-0017](surveys/SUR-0017-chunked-requests.md) | `commitments`/`statements`: chunked long requests and cross-proof KV binding (#470) | `current (2026-11-06)` | 2026-11-06 | context commitment under RFC-0012 rules; shared-seed chunked session; prefix commitment (item 54); Ligerito-style second level; score-free attention rows |
 | [SUR-0015](surveys/SUR-0015-witness-multiplicity-storage.md) | `passes`: bounded complete witness multiplicities for #112 | `stale` | 2026-10-20 | bounded dense/sorted/windowed counters |
@@ -357,3 +359,4 @@ Survey summaries (what each one settled; every number as the survey labels it):
 | 2026-11-08 | #394 / IDEA-0044 second review | Second agent reading against the specification: the quotient reduction and challenge independence hold; four gaps remain in the application, namely linking-proof proximity rows uncounted (link rows are not spare), epoch 0 can reach zero spare rows at 682 proofs, `ChannelParams` `θ_T = 0`, and the scalar clause, which `D_N` does not cover. Claim narrowed to Lemma 7's vector-rank part |
 | 2026-11-08 | #394 / IDEA-0044 items 1 and 3 | Linking proofs join as extra sessions with their four rows dropped; the bound becomes `(N+L)·ε + N/q` but needs `U ≥ 2L+1` unreserved rows, which full budget violates (weights later epochs U = 2; epoch 0 U = 0 at 682). A cap `N_0 ≤ 681`, `N_1 ≤ 680` (at most two proofs per epoch) satisfies it in both layouts; it is a spec decision. `θ_T = 0` for `ChannelParams` costs `N/q`. Item 4, the scalar clause, is the remaining research |
 | 2026-11-08 | #394 / IDEA-0044 item 4 reduction | Scalars are rank-one functionals `r ⊗ φ`. After the quotient, a session's row directions span its plane `P_i`, so a leak needs either a plane inside the tensor vectors' span (B: bounded at `N(N+L)ϑ/p^2`, `2^-105.0` per matrix, needs `U ≥ 2L+3`, met by the cap), or cross-session dependence of the column functionals (A′, open). Within a proof R10 rules dependence out |
+| 2026-11-12 | `/autoresearch survey` for #745 | SUR-0018 ranks the commitment, LogUp and tree-level ideas against the MVP's E3 profile: P2 is 67.6% of the 8B 1,024 + 64 proof, a lookup costs about 734 ns end to end against the 297 ps kernel and the GPU is 1.2% busy, so leaf-stage engineering leads every component's list; RFC-0021 (Draft) carries the commitment's protocol change, and the LogUp and tree kernels already promoted (IDEA-0021, 0026, 0030) are prover-only under RFC-0010. |

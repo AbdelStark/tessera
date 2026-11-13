@@ -1,0 +1,4 @@
+# RFC-0013 POL-3: lines of adapter source that name a forbidden flag, with their guard.
+# Format: <file name><TAB><line content, stripped>. Reviewers check the guard.
+# The list itself; prove() refuses such a control flag outside a control job before any upstream process.
+entrypoint	FORBIDDEN_FLAGS = ["--test-", "--params=test-small", "test-small"]

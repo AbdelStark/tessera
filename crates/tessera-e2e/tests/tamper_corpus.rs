@@ -133,6 +133,7 @@ fn every_non_interactive_case_yields_its_predeclared_verdict() {
         limits: ResourceLimits::default(),
         accept_bound: FixedBits(0),
         weights,
+        public_tokens: None,
     };
     let verify = |bytes: &[u8]| verify_non_interactive_bytes(&claims, &expected, bytes, &config);
     let accepted = verify(&base("ni.tnp"));

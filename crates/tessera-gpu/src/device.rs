@@ -11,9 +11,10 @@ use std::sync::Arc;
 
 use cudarc::driver::{
     CudaContext, CudaFunction, CudaSlice, CudaStream, DeviceRepr, DriverError, LaunchConfig,
-    PushKernelArg, ValidAsZeroBits,
+    PinnedHostSlice, PushKernelArg, ValidAsZeroBits,
 };
 use cudarc::nvrtc::Ptx;
+use tessera_codec::metrics::{self, Direction};
 
 /// The fatbin of `kernels/vector_add.cu`, for `sm_90` and `sm_100` (empty when the build skipped
 /// kernel compilation).
@@ -79,6 +80,42 @@ impl From<DriverError> for GpuError {
     }
 }
 
+/// `tessera_device_bytes_total`: one copy of `data` (05 §4).
+fn transferred<T>(direction: Direction, data: &[T]) {
+    metrics::device_transfer(direction, size_of_val(data) as u64);
+}
+
+/// The canonical `u64` of each field element, borrowed in place.
+fn field_words(host: &[tessera_field::Goldilocks]) -> &[u64] {
+    #[allow(unsafe_code)]
+    // SAFETY: `Goldilocks` is `#[repr(transparent)]` over its canonical `u64`, so the slice's
+    // memory is `host.len()` initialized, aligned `u64`s, borrowed for the result's lifetime.
+    unsafe {
+        std::slice::from_raw_parts(host.as_ptr().cast::<u64>(), host.len())
+    }
+}
+
+/// Two page-locked host blocks that stage uploads ([`Device::upload_field_staged`]), so a copy
+/// overlaps the host's work on the next block. The blocks hold secret-class rows: dropping
+/// waits for their copies and clears them before release (05 §3 OBS-6).
+pub struct Staging {
+    slots: [PinnedHostSlice<u64>; 2],
+    next: usize,
+}
+
+impl Drop for Staging {
+    fn drop(&mut self) {
+        for slot in &mut self.slots {
+            // A failed wait leaves the copy in flight; the memory is then released uncleared,
+            // as for any driver failure.
+            if let Ok(words) = slot.as_mut_slice() {
+                words.fill(0);
+            }
+        }
+        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// A buffer of `T` in device memory, owned by one [`Device`].
 pub struct DeviceBuffer<T>(pub(crate) CudaSlice<T>);
 
@@ -101,6 +138,7 @@ pub struct Device {
     pub(crate) commit: crate::commit::Kernels,
     pub(crate) trees: crate::trees::Kernels,
     pub(crate) fraction: crate::fraction::Kernels,
+    pub(crate) level: crate::level::Kernels,
 }
 
 impl Device {
@@ -124,12 +162,102 @@ impl Device {
             commit: crate::commit::Kernels::load(&commit)?,
             trees: crate::trees::Kernels::load(&trees)?,
             fraction: crate::fraction::Kernels::load(&trees)?,
+            level: crate::level::Kernels::load(&trees)?,
         })
     }
 
     /// Copies `host` into a new device buffer.
     pub fn upload<T: DeviceRepr>(&self, host: &[T]) -> Result<DeviceBuffer<T>, GpuError> {
-        Ok(DeviceBuffer(self.stream.clone_htod(host)?))
+        let buffer = DeviceBuffer(self.stream.clone_htod(host)?);
+        transferred(Direction::HostToDevice, host);
+        self.record_memory();
+        Ok(buffer)
+    }
+
+    /// Copies `host` into the first `host.len()` elements of `buffer`.
+    pub fn upload_into<T: DeviceRepr>(
+        &self,
+        host: &[T],
+        buffer: &mut DeviceBuffer<T>,
+    ) -> Result<(), GpuError> {
+        if host.len() > buffer.len() {
+            return Err(GpuError::LengthMismatch {
+                left: host.len(),
+                right: buffer.len(),
+            });
+        }
+        let mut view = buffer.0.slice_mut(0..host.len());
+        self.stream.memcpy_htod(host, &mut view)?;
+        transferred(Direction::HostToDevice, host);
+        Ok(())
+    }
+
+    /// Copies field elements into the first `host.len()` words of `buffer`, as the canonical
+    /// `u64` each holds, without a host copy.
+    pub fn upload_field_into(
+        &self,
+        host: &[tessera_field::Goldilocks],
+        buffer: &mut DeviceBuffer<u64>,
+    ) -> Result<(), GpuError> {
+        self.upload_into(field_words(host), buffer)
+    }
+
+    /// Two zeroed page-locked host blocks of `len` words for [`Self::upload_field_staged`].
+    pub fn staging(&self, len: usize) -> Result<Staging, GpuError> {
+        let context = self.stream.context();
+        let slot = || -> Result<PinnedHostSlice<u64>, GpuError> {
+            #[allow(unsafe_code)]
+            // SAFETY: `alloc_pinned` returns `len` aligned, uninitialized `u64`s; `write_bytes`
+            // initializes all of them before any reference to the memory is formed.
+            unsafe {
+                let mut slot = context.alloc_pinned::<u64>(len)?;
+                std::ptr::write_bytes(slot.as_mut_ptr()?, 0, len);
+                Ok(slot)
+            }
+        };
+        Ok(Staging {
+            slots: [slot()?, slot()?],
+            next: 0,
+        })
+    }
+
+    /// As [`Self::upload_field_into`], through the next page-locked slot of `staging`: the copy
+    /// is queued on the stream and this returns without waiting for it or for earlier work, so
+    /// the host fills the other slot meanwhile. A slot is rewritten only after its previous
+    /// copy completes. A block of another length than the slots' goes through pageable memory.
+    pub fn upload_field_staged(
+        &self,
+        staging: &mut Staging,
+        host: &[tessera_field::Goldilocks],
+        buffer: &mut DeviceBuffer<u64>,
+    ) -> Result<(), GpuError> {
+        let slot = &mut staging.slots[staging.next];
+        if host.len() != slot.len() {
+            return self.upload_field_into(host, buffer);
+        }
+        if host.len() > buffer.len() {
+            return Err(GpuError::LengthMismatch {
+                left: host.len(),
+                right: buffer.len(),
+            });
+        }
+        staging.next ^= 1;
+        // Waits for this slot's previous copy, recorded on the stream by `memcpy_htod`.
+        slot.as_mut_slice()?.copy_from_slice(field_words(host));
+        let mut view = buffer.0.slice_mut(0..host.len());
+        self.stream.memcpy_htod(&*slot, &mut view)?;
+        transferred(Direction::HostToDevice, host);
+        Ok(())
+    }
+
+    /// Overwrites every element of `buffer` with zero: device memory that held secret-class
+    /// values is cleared before it is released or reused for public data (05 §3 OBS-6).
+    pub fn clear<T: DeviceRepr + ValidAsZeroBits>(
+        &self,
+        buffer: &mut DeviceBuffer<T>,
+    ) -> Result<(), GpuError> {
+        self.stream.memset_zeros(&mut buffer.0)?;
+        Ok(())
     }
 
     /// A new device buffer of `len` zeroed elements.
@@ -137,7 +265,24 @@ impl Device {
         &self,
         len: usize,
     ) -> Result<DeviceBuffer<T>, GpuError> {
-        Ok(DeviceBuffer(self.stream.alloc_zeros(len)?))
+        let buffer = DeviceBuffer(self.stream.alloc_zeros(len)?);
+        self.record_memory();
+        Ok(buffer)
+    }
+
+    /// Records the device memory in use now, every process's allocations included, toward the
+    /// run's and the current pass's peaks (05 §4 `tessera_device_memory_peak_bytes`).
+    fn record_memory(&self) {
+        let context = self.stream.context();
+        // A failed query loses one sample, never the proof.
+        if let Ok((free, total)) = context.mem_get_info() {
+            metrics::device_memory(context.ordinal(), total.saturating_sub(free) as u64);
+        }
+    }
+
+    /// The device's memory, in bytes.
+    pub fn total_memory(&self) -> Result<u64, GpuError> {
+        Ok(self.stream.context().total_mem()? as u64)
     }
 
     /// Waits until all work queued on the device completes.
@@ -147,7 +292,9 @@ impl Device {
 
     /// Copies a device buffer back to the host, after the work queued before it completes.
     pub fn download<T: DeviceRepr>(&self, buffer: &DeviceBuffer<T>) -> Result<Vec<T>, GpuError> {
-        Ok(self.stream.clone_dtoh(&buffer.0)?)
+        let host = self.stream.clone_dtoh(&buffer.0)?;
+        transferred(Direction::DeviceToHost, &host);
+        Ok(host)
     }
 
     /// `a[i] + b[i]` modulo `2^64`, element by element.

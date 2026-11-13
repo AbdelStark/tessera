@@ -29,7 +29,7 @@ pub const TABLE_BATCH_CONSTRUCTION_BYTES_PER_TREE: u64 = 4096;
 /// row 0's key/value, while counts are the exact committed counts at those positions.
 /// Sources must reproduce identical data on every pass. They may generate rows directly
 /// and read fixed-capacity count storage; no table-sized conversion is required.
-pub trait TableSource<B: PrimeField> {
+pub trait TableSource<B: PrimeField>: Sync {
     /// Actual table rows, before row-0 padding; at least one.
     fn rows(&self) -> usize;
     /// Whether this table has values. `Range` has none.
@@ -504,8 +504,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sync_cell::Cell;
     use crate::{LogUpInstance, prove_logup, prove_table_batch};
-    use core::cell::Cell;
     use tessera_codec::Ascii;
     use tessera_field::{Goldilocks as B, GoldilocksExt2 as F};
     use tessera_hash::{Mode, ParamSetId, SessionContext, Transcript};

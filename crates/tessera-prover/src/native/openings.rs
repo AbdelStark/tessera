@@ -63,11 +63,14 @@ impl ModelNativePlan {
                 };
                 match (slot.relation, &family.kind) {
                     (Relation::Product, Kind::Root { digits, .. }) => {
-                        for j in 0..digits - 1 {
-                            push(p, AuxColumn::RootByte(j as u32));
-                        }
+                        // RFC-0037 'The complete current-model advice opening' and RFC-0050:
+                        // input-low limbs, then root-low bytes. The order sets each claim's
+                        // power of gamma, so the verifier's must be matched exactly.
                         for j in 0..3 {
                             push(p, AuxColumn::InputLimb(j));
+                        }
+                        for j in 0..digits - 1 {
+                            push(p, AuxColumn::RootByte(j as u32));
                         }
                     }
                     (Relation::Key | Relation::Forest, Kind::Softmax { .. }) => {
