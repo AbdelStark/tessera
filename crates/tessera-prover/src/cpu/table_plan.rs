@@ -89,6 +89,31 @@ mod tests {
     }
 
     #[test]
+    fn dense_count_reads_take_only_what_the_plan_leaves() {
+        for allowance in [80 << 20, 84 << 20, 96 << 20, 128 << 20, 1 << 32, u64::MAX] {
+            let Ok(reference) = stress(true).select_cached(allowance) else {
+                continue;
+            };
+            for densify_bytes in [0, 1 << 20, 16 << 20, 1 << 40] {
+                let plan = TablePlan {
+                    densify_bytes,
+                    ..stress(true)
+                }
+                .select_cached(allowance)
+                .unwrap();
+                // The windows, cache and chunks are those of the plan without dense reads.
+                assert_eq!(plan.cuts, reference.cuts);
+                assert_eq!(plan.cache_log_rows, reference.cache_log_rows);
+                assert_eq!(plan.chunk_rows, reference.chunk_rows);
+                let fits = reference.working_bytes + densify_bytes <= allowance;
+                assert_eq!(plan.densify, fits, "{allowance} {densify_bytes}");
+                let charged = if fits { densify_bytes } else { 0 };
+                assert_eq!(plan.working_bytes, reference.working_bytes + charged);
+            }
+        }
+    }
+
+    #[test]
     fn caches_use_only_spare_budget_and_preserve_the_uncached_plan() {
         for generated in [false, true] {
             for allowance in [0, 80 << 20, 84 << 20, 96 << 20, 128 << 20, u64::MAX] {
@@ -887,9 +912,11 @@ impl TablePlan {
                     return Err(memory());
                 }
                 bytes = add(bytes, plan.payload_bytes())?;
-                // Densified reads hold the dense column beside the weighted one while it is
-                // built, then in its place: charge the dense payload in full (P2 table reads).
-                densify_bytes = add(densify_bytes, plan.dense_bytes())?;
+                // A weighted column densified for P2 reads holds its dense payload beside the
+                // weighted one, which stays charged above. Dense plans are already read as copies.
+                if !plan.is_dense() {
+                    densify_bytes = add(densify_bytes, plan.dense_bytes())?;
+                }
             }
             bytes
         } else {
@@ -947,12 +974,8 @@ impl TablePlan {
                 scratch = scratch.max(add(add(mul(128, chunk)?, mul(32, add(height, 1)?)?)?, 512)?);
             }
         }
-        let densified = if self.densify { self.densify_bytes } else { 0 };
         add(
-            add(
-                add(add(self.fixed, densified)?, scratch)?,
-                self.cache_bytes()?,
-            )?,
+            add(add(self.fixed, scratch)?, self.cache_bytes()?)?,
             mul(
                 self.trees.len() as u64,
                 TABLE_BATCH_CONSTRUCTION_BYTES_PER_TREE,
@@ -961,7 +984,23 @@ impl TablePlan {
     }
 
     pub(super) fn select(self, allowance: u64) -> Result<Self, ProverError> {
-        self.select_with_chunk_limit(allowance, MAX_CHUNK_ROWS)
+        self.select_with_chunk_limit(allowance, MAX_CHUNK_ROWS)?
+            .with_densify(allowance)
+    }
+
+    /// Dense count reads from what the chosen windows, cache and chunks leave of the allowance:
+    /// they never displace a cache level or a wider chunk, which a densify charge taken first
+    /// did, slowing a 1B leaf stage by half on the H100 (2026-11-13).
+    fn with_densify(mut self, allowance: u64) -> Result<Self, ProverError> {
+        if let Some(bytes) = self
+            .working_bytes
+            .checked_add(self.densify_bytes)
+            .filter(|&bytes| bytes <= allowance)
+        {
+            self.densify = true;
+            self.working_bytes = bytes;
+        }
+        Ok(self)
     }
 
     fn cache_bytes(&self) -> Result<u64, ProverError> {
@@ -992,7 +1031,7 @@ impl TablePlan {
             .checked_sub(plan.fixed_bytes(plan.chunk_rows)?)
             .ok_or_else(memory)?;
         plan.widen_chunks(allowance, window_peak, MAX_CHUNK_ROWS)?;
-        Ok(plan)
+        plan.with_densify(allowance)
     }
 
     fn with_cache(mut self, allowance: u64) -> Result<Self, ProverError> {
@@ -1030,12 +1069,8 @@ impl TablePlan {
         // `scratch` remains the original charge, so repeated selection can shrink again.
         self.chunk_rows = CHUNK_ROWS;
         self.cache_log_rows = None;
-        // Dense count reads first: a weighted read scans every update per chunk. They are
-        // given up, never a streaming round, when the allowance cannot hold them.
-        self.densify = true;
-        if self.fixed_bytes(CHUNK_ROWS)? > allowance {
-            self.densify = false;
-        }
+        // Dense count reads are added last, from the allowance left over (`with_densify`).
+        self.densify = false;
         let fixed = self.fixed_bytes(CHUNK_ROWS)?;
         if fixed > allowance {
             return Err(memory());
