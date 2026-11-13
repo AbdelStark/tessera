@@ -1,0 +1,1478 @@
+{
+  "arguments": [
+    "--json",
+    "--log-level",
+    "debug",
+    "prove",
+    "--model",
+    "/root/runs/8b-p256-n16/model.d",
+    "--plan",
+    "/root/runs/8b-p256-n16/compiled/plan.tep",
+    "--weights",
+    "/root/runs/8b-p256-n16/weights.twc",
+    "--reference-tokens",
+    "/root/runs/8b-p256-n16/tokens.ttk",
+    "--prompt-len",
+    "256",
+    "--request-id",
+    "1",
+    "--request-session",
+    "11111111111111111111111111111111",
+    "--manifest-digest",
+    "1313131313131313131313131313131313131313131313131313131313131313",
+    "--out",
+    "/root/runs/8b-p256-n16/proof.tnp",
+    "--backend",
+    "gpu",
+    "--memory-budget",
+    "11000"
+  ],
+  "command": "prove",
+  "elapsed_seconds": 8432.563407359,
+  "error_code": null,
+  "exit_code": 0,
+  "host": {
+    "arch": "x86_64",
+    "cores": 244,
+    "cpu_model": "AMD EPYC 7662 64-Core Processor",
+    "ecc": null,
+    "gpus": [],
+    "memory_bytes": 2151611617280,
+    "os": "linux"
+  },
+  "inputs": [
+    {
+      "class": "secret",
+      "digest": null,
+      "path": "/root/runs/8b-p256-n16/model.d",
+      "schema": "IntegerModel"
+    },
+    {
+      "class": "private",
+      "digest": "f081dfd45aa3b512afa0a26256d2fd61eaf1f6afc8ccdd8d1424e81cb29c67bb",
+      "path": "/root/runs/8b-p256-n16/compiled/plan.tep",
+      "schema": "ExecutionPlan"
+    },
+    {
+      "class": "secret",
+      "digest": null,
+      "path": "/root/runs/8b-p256-n16/weights.twc",
+      "schema": "WeightCommitmentState"
+    },
+    {
+      "class": "secret",
+      "digest": null,
+      "path": "/root/runs/8b-p256-n16/tokens.ttk",
+      "schema": "TokenFile"
+    }
+  ],
+  "metrics": [
+    {
+      "labels": {
+        "class": "advice"
+      },
+      "name": "tessera_committed_elements_total",
+      "type": "counter",
+      "value": 71881981952
+    },
+    {
+      "labels": {
+        "class": "mask"
+      },
+      "name": "tessera_committed_elements_total",
+      "type": "counter",
+      "value": 3427600
+    },
+    {
+      "labels": {
+        "class": "weight"
+      },
+      "name": "tessera_committed_elements_total",
+      "type": "counter",
+      "value": 8314159104
+    },
+    {
+      "labels": {
+        "direction": "device_to_host"
+      },
+      "name": "tessera_device_bytes_total",
+      "type": "counter",
+      "value": 4866235136
+    },
+    {
+      "labels": {
+        "direction": "host_to_device"
+      },
+      "name": "tessera_device_bytes_total",
+      "type": "counter",
+      "value": 2120351193200
+    },
+    {
+      "labels": {
+        "device": "0"
+      },
+      "name": "tessera_device_memory_peak_bytes",
+      "type": "gauge",
+      "value": 30482300928.0
+    },
+    {
+      "labels": {},
+      "name": "tessera_glue_fraction",
+      "type": "gauge",
+      "value": 0.07741497163659702
+    },
+    {
+      "labels": {},
+      "name": "tessera_host_memory_peak_bytes",
+      "type": "gauge",
+      "value": 701264281600.0
+    },
+    {
+      "labels": {
+        "table": "1"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 150994944
+    },
+    {
+      "labels": {
+        "table": "10"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 8388608
+    },
+    {
+      "labels": {
+        "table": "11"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 16777216
+    },
+    {
+      "labels": {
+        "table": "12"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 8388608
+    },
+    {
+      "labels": {
+        "table": "13"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 33280
+    },
+    {
+      "labels": {
+        "table": "14"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 12749312
+    },
+    {
+      "labels": {
+        "table": "15"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 39912448
+    },
+    {
+      "labels": {
+        "table": "16"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 3095040
+    },
+    {
+      "labels": {
+        "table": "17"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 66560
+    },
+    {
+      "labels": {
+        "table": "18"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 133120
+    },
+    {
+      "labels": {
+        "table": "19"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 134417408
+    },
+    {
+      "labels": {
+        "table": "2"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 8388608
+    },
+    {
+      "labels": {
+        "table": "20"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 2363392
+    },
+    {
+      "labels": {
+        "table": "21"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 66560
+    },
+    {
+      "labels": {
+        "table": "22"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 2163712
+    },
+    {
+      "labels": {
+        "table": "23"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 12649472
+    },
+    {
+      "labels": {
+        "table": "24"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 2063360
+    },
+    {
+      "labels": {
+        "table": "25"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 201326592
+    },
+    {
+      "labels": {
+        "table": "26"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 2097152
+    },
+    {
+      "labels": {
+        "table": "27"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 83886080
+    },
+    {
+      "labels": {
+        "table": "28"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 52428800
+    },
+    {
+      "labels": {
+        "table": "29"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 10485760
+    },
+    {
+      "labels": {
+        "table": "3"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 8388608
+    },
+    {
+      "labels": {
+        "table": "30"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 10485760
+    },
+    {
+      "labels": {
+        "table": "31"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 524288
+    },
+    {
+      "labels": {
+        "table": "32"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 1048576
+    },
+    {
+      "labels": {
+        "table": "33"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 39845888
+    },
+    {
+      "labels": {
+        "table": "34"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 270532608
+    },
+    {
+      "labels": {
+        "table": "35"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 2097152
+    },
+    {
+      "labels": {
+        "table": "36"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 6291456
+    },
+    {
+      "labels": {
+        "table": "37"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 98041856
+    },
+    {
+      "labels": {
+        "table": "38"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 25165824
+    },
+    {
+      "labels": {
+        "table": "39"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 58720256
+    },
+    {
+      "labels": {
+        "table": "4"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 92274688
+    },
+    {
+      "labels": {
+        "table": "40"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 39845888
+    },
+    {
+      "labels": {
+        "table": "41"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 69206016
+    },
+    {
+      "labels": {
+        "table": "42"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 25165824
+    },
+    {
+      "labels": {
+        "table": "43"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 168296448
+    },
+    {
+      "labels": {
+        "table": "44"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 6291456
+    },
+    {
+      "labels": {
+        "table": "45"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 8388608
+    },
+    {
+      "labels": {
+        "table": "46"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 2097152
+    },
+    {
+      "labels": {
+        "table": "47"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 2097152
+    },
+    {
+      "labels": {
+        "table": "48"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 2097152
+    },
+    {
+      "labels": {
+        "table": "49"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 127926272
+    },
+    {
+      "labels": {
+        "table": "5"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 117440512
+    },
+    {
+      "labels": {
+        "table": "50"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 44040192
+    },
+    {
+      "labels": {
+        "table": "51"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 109051904
+    },
+    {
+      "labels": {
+        "table": "52"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 12582912
+    },
+    {
+      "labels": {
+        "table": "53"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 117440512
+    },
+    {
+      "labels": {
+        "table": "54"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 6291456
+    },
+    {
+      "labels": {
+        "table": "55"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 20971520
+    },
+    {
+      "labels": {
+        "table": "56"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 18874368
+    },
+    {
+      "labels": {
+        "table": "57"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 8388608
+    },
+    {
+      "labels": {
+        "table": "58"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 8388608
+    },
+    {
+      "labels": {
+        "table": "59"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 10485760
+    },
+    {
+      "labels": {
+        "table": "6"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 16777216
+    },
+    {
+      "labels": {
+        "table": "60"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 10485760
+    },
+    {
+      "labels": {
+        "table": "61"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 2097152
+    },
+    {
+      "labels": {
+        "table": "62"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 2097152
+    },
+    {
+      "labels": {
+        "table": "7"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 16777216
+    },
+    {
+      "labels": {
+        "table": "8"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 83886080
+    },
+    {
+      "labels": {
+        "table": "9"
+      },
+      "name": "tessera_lookups_total",
+      "type": "counter",
+      "value": 8388608
+    },
+    {
+      "labels": {
+        "pass": "p1"
+      },
+      "name": "tessera_pass_device_bytes",
+      "type": "counter",
+      "value": 712203468344
+    },
+    {
+      "labels": {
+        "pass": "p2"
+      },
+      "name": "tessera_pass_device_bytes",
+      "type": "counter",
+      "value": 127940956384
+    },
+    {
+      "labels": {
+        "pass": "p4"
+      },
+      "name": "tessera_pass_device_bytes",
+      "type": "counter",
+      "value": 575083413896
+    },
+    {
+      "labels": {
+        "pass": "p5"
+      },
+      "name": "tessera_pass_device_bytes",
+      "type": "counter",
+      "value": 709989589712
+    },
+    {
+      "labels": {
+        "pass": "p1"
+      },
+      "name": "tessera_pass_device_memory_peak_bytes",
+      "type": "gauge",
+      "value": 5081595904.0
+    },
+    {
+      "labels": {
+        "pass": "p2"
+      },
+      "name": "tessera_pass_device_memory_peak_bytes",
+      "type": "gauge",
+      "value": 30482300928.0
+    },
+    {
+      "labels": {
+        "pass": "p3"
+      },
+      "name": "tessera_pass_device_memory_peak_bytes",
+      "type": "gauge",
+      "value": 30482300928.0
+    },
+    {
+      "labels": {
+        "pass": "p4"
+      },
+      "name": "tessera_pass_device_memory_peak_bytes",
+      "type": "gauge",
+      "value": 30482300928.0
+    },
+    {
+      "labels": {
+        "pass": "p5"
+      },
+      "name": "tessera_pass_device_memory_peak_bytes",
+      "type": "gauge",
+      "value": 7866613760.0
+    },
+    {
+      "count": 1,
+      "labels": {
+        "pass": "p1"
+      },
+      "max": 608.812541754,
+      "min": 608.812541754,
+      "name": "tessera_pass_seconds",
+      "sum": 608.812541754,
+      "type": "histogram"
+    },
+    {
+      "count": 1,
+      "labels": {
+        "pass": "p2"
+      },
+      "max": 5866.339482049,
+      "min": 5866.339482049,
+      "name": "tessera_pass_seconds",
+      "sum": 5866.339482049,
+      "type": "histogram"
+    },
+    {
+      "count": 3,
+      "labels": {
+        "pass": "p3"
+      },
+      "max": 306.204835639,
+      "min": 13.569730827,
+      "name": "tessera_pass_seconds",
+      "sum": 487.394624376,
+      "type": "histogram"
+    },
+    {
+      "count": 1,
+      "labels": {
+        "pass": "p4"
+      },
+      "max": 770.903348906,
+      "min": 770.903348906,
+      "name": "tessera_pass_seconds",
+      "sum": 770.903348906,
+      "type": "histogram"
+    },
+    {
+      "count": 1,
+      "labels": {
+        "pass": "p5"
+      },
+      "max": 552.418339117,
+      "min": 552.418339117,
+      "name": "tessera_pass_seconds",
+      "sum": 552.418339117,
+      "type": "histogram"
+    },
+    {
+      "labels": {
+        "pass": "p1"
+      },
+      "name": "tessera_passes_total",
+      "type": "counter",
+      "value": 1
+    },
+    {
+      "labels": {
+        "pass": "p2"
+      },
+      "name": "tessera_passes_total",
+      "type": "counter",
+      "value": 1
+    },
+    {
+      "labels": {
+        "pass": "p3"
+      },
+      "name": "tessera_passes_total",
+      "type": "counter",
+      "value": 3
+    },
+    {
+      "labels": {
+        "pass": "p4"
+      },
+      "name": "tessera_passes_total",
+      "type": "counter",
+      "value": 1
+    },
+    {
+      "labels": {
+        "pass": "p5"
+      },
+      "name": "tessera_passes_total",
+      "type": "counter",
+      "value": 1
+    },
+    {
+      "count": 1,
+      "labels": {
+        "phase": "opening"
+      },
+      "max": 770.903342086,
+      "min": 770.903342086,
+      "name": "tessera_phase_seconds",
+      "sum": 770.903342086,
+      "type": "histogram"
+    },
+    {
+      "count": 1,
+      "labels": {
+        "phase": "round1"
+      },
+      "max": 429.530000359,
+      "min": 429.530000359,
+      "name": "tessera_phase_seconds",
+      "sum": 429.530000359,
+      "type": "histogram"
+    },
+    {
+      "count": 1,
+      "labels": {
+        "phase": "round3"
+      },
+      "max": 552.418331757,
+      "min": 552.418331757,
+      "name": "tessera_phase_seconds",
+      "sum": 552.418331757,
+      "type": "histogram"
+    },
+    {
+      "count": 4,
+      "labels": {
+        "phase": "stage"
+      },
+      "max": 5866.339476529,
+      "min": 13.569726567,
+      "name": "tessera_phase_seconds",
+      "sum": 6353.734089065,
+      "type": "histogram"
+    },
+    {
+      "count": 1,
+      "labels": {
+        "phase": "witness"
+      },
+      "max": 142.238031214,
+      "min": 142.238031214,
+      "name": "tessera_phase_seconds",
+      "sum": 142.238031214,
+      "type": "histogram"
+    },
+    {
+      "labels": {},
+      "name": "tessera_product_leaves_total",
+      "type": "counter",
+      "value": 268435456
+    },
+    {
+      "labels": {
+        "part": "columns"
+      },
+      "name": "tessera_proof_bytes",
+      "type": "gauge",
+      "value": 34854538.0
+    },
+    {
+      "labels": {
+        "part": "openings"
+      },
+      "name": "tessera_proof_bytes",
+      "type": "gauge",
+      "value": 4462932938.0
+    },
+    {
+      "labels": {
+        "part": "round1"
+      },
+      "name": "tessera_proof_bytes",
+      "type": "gauge",
+      "value": 228.0
+    },
+    {
+      "labels": {
+        "part": "sumcheck"
+      },
+      "name": "tessera_proof_bytes",
+      "type": "gauge",
+      "value": 444182.0
+    },
+    {
+      "count": 1,
+      "labels": {
+        "stage": "0"
+      },
+      "max": 5866.339469489,
+      "min": 5866.339469489,
+      "name": "tessera_stage_seconds",
+      "sum": 5866.339469489,
+      "type": "histogram"
+    },
+    {
+      "count": 1,
+      "labels": {
+        "stage": "1"
+      },
+      "max": 306.204825549,
+      "min": 306.204825549,
+      "name": "tessera_stage_seconds",
+      "sum": 306.204825549,
+      "type": "histogram"
+    },
+    {
+      "count": 1,
+      "labels": {
+        "stage": "2"
+      },
+      "max": 167.62004864,
+      "min": 167.62004864,
+      "name": "tessera_stage_seconds",
+      "sum": 167.62004864,
+      "type": "histogram"
+    },
+    {
+      "count": 1,
+      "labels": {
+        "stage": "3"
+      },
+      "max": 13.569682247,
+      "min": 13.569682247,
+      "name": "tessera_stage_seconds",
+      "sum": 13.569682247,
+      "type": "histogram"
+    },
+    {
+      "labels": {
+        "table": "1"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 4194304
+    },
+    {
+      "labels": {
+        "table": "10"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 402653184
+    },
+    {
+      "labels": {
+        "table": "11"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 536870912
+    },
+    {
+      "labels": {
+        "table": "12"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 536870912
+    },
+    {
+      "labels": {
+        "table": "13"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 2147483648
+    },
+    {
+      "labels": {
+        "table": "14"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 65536
+    },
+    {
+      "labels": {
+        "table": "15"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 128
+    },
+    {
+      "labels": {
+        "table": "16"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 256
+    },
+    {
+      "labels": {
+        "table": "17"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 16777216
+    },
+    {
+      "labels": {
+        "table": "18"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 33554432
+    },
+    {
+      "labels": {
+        "table": "19"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 67108864
+    },
+    {
+      "labels": {
+        "table": "2"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 536870912
+    },
+    {
+      "labels": {
+        "table": "20"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 134217728
+    },
+    {
+      "labels": {
+        "table": "21"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 8388608
+    },
+    {
+      "labels": {
+        "table": "22"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 8192
+    },
+    {
+      "labels": {
+        "table": "23"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 32
+    },
+    {
+      "labels": {
+        "table": "24"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 2
+    },
+    {
+      "labels": {
+        "table": "25"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 1048576
+    },
+    {
+      "labels": {
+        "table": "26"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 524288
+    },
+    {
+      "labels": {
+        "table": "27"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 536870912
+    },
+    {
+      "labels": {
+        "table": "28"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 536870912
+    },
+    {
+      "labels": {
+        "table": "29"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 2097152
+    },
+    {
+      "labels": {
+        "table": "3"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 402653184
+    },
+    {
+      "labels": {
+        "table": "30"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 4194304
+    },
+    {
+      "labels": {
+        "table": "31"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 131072
+    },
+    {
+      "labels": {
+        "table": "32"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 4
+    },
+    {
+      "labels": {
+        "table": "33"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 1048576
+    },
+    {
+      "labels": {
+        "table": "34"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 4194304
+    },
+    {
+      "labels": {
+        "table": "35"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 2097152
+    },
+    {
+      "labels": {
+        "table": "36"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 33554432
+    },
+    {
+      "labels": {
+        "table": "37"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 2097152
+    },
+    {
+      "labels": {
+        "table": "38"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 65536
+    },
+    {
+      "labels": {
+        "table": "39"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 262144
+    },
+    {
+      "labels": {
+        "table": "4"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 536870912
+    },
+    {
+      "labels": {
+        "table": "40"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 256
+    },
+    {
+      "labels": {
+        "table": "41"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 4194304
+    },
+    {
+      "labels": {
+        "table": "42"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 536870912
+    },
+    {
+      "labels": {
+        "table": "43"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 2097152
+    },
+    {
+      "labels": {
+        "table": "44"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 1048576
+    },
+    {
+      "labels": {
+        "table": "45"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 65536
+    },
+    {
+      "labels": {
+        "table": "46"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 1024
+    },
+    {
+      "labels": {
+        "table": "47"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 32768
+    },
+    {
+      "labels": {
+        "table": "48"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 65536
+    },
+    {
+      "labels": {
+        "table": "49"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 33554432
+    },
+    {
+      "labels": {
+        "table": "5"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 4194304
+    },
+    {
+      "labels": {
+        "table": "50"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 16777216
+    },
+    {
+      "labels": {
+        "table": "51"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 65536
+    },
+    {
+      "labels": {
+        "table": "52"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 64
+    },
+    {
+      "labels": {
+        "table": "53"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 65536
+    },
+    {
+      "labels": {
+        "table": "54"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 536870912
+    },
+    {
+      "labels": {
+        "table": "55"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 1048576
+    },
+    {
+      "labels": {
+        "table": "56"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 67108864
+    },
+    {
+      "labels": {
+        "table": "57"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 8388608
+    },
+    {
+      "labels": {
+        "table": "58"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 65536
+    },
+    {
+      "labels": {
+        "table": "59"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 512
+    },
+    {
+      "labels": {
+        "table": "6"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 536870912
+    },
+    {
+      "labels": {
+        "table": "60"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 1024
+    },
+    {
+      "labels": {
+        "table": "61"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 4096
+    },
+    {
+      "labels": {
+        "table": "62"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 16384
+    },
+    {
+      "labels": {
+        "table": "7"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 536870912
+    },
+    {
+      "labels": {
+        "table": "8"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 536870912
+    },
+    {
+      "labels": {
+        "table": "9"
+      },
+      "name": "tessera_table_rows_total",
+      "type": "counter",
+      "value": 402653184
+    },
+    {
+      "labels": {
+        "kind": "commit"
+      },
+      "name": "tessera_unit_cost_ps",
+      "type": "gauge",
+      "value": 5975.489109994539
+    },
+    {
+      "labels": {
+        "kind": "lookup"
+      },
+      "name": "tessera_unit_cost_ps",
+      "type": "gauge",
+      "value": 472480.14468961983
+    },
+    {
+      "labels": {
+        "kind": "product_leaf"
+      },
+      "name": "tessera_unit_cost_ps",
+      "type": "gauge",
+      "value": 472480.14468961983
+    }
+  ],
+  "outputs": [
+    {
+      "class": "protocol",
+      "digest": "5ff85e09070c5a02aab75106fdd2a0c7e8fc8c5f614a861e66feb7470de938e0",
+      "path": "/root/runs/8b-p256-n16/proof.tnp",
+      "schema": "NiProof"
+    }
+  ],
+  "params": "ni-100/1",
+  "protocol": "tessera-protocol/1",
+  "public_seeds": [],
+  "schema": "tessera.run-manifest/1",
+  "started_at": "2026-11-12T18:16:05.956511Z",
+  "tool": {
+    "features": [],
+    "git_commit": "cea5e3924eb986d96d5518f1e0a984a7da8cbc57",
+    "name": "tessera",
+    "profile": "release",
+    "version": "0.1.0"
+  },
+  "toolchain": {
+    "cuda_driver": null,
+    "cuda_runtime": null,
+    "python": null,
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "torch": null
+  }
+}

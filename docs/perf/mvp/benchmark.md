@@ -136,6 +136,25 @@ The prover's time is 1.47 times the 128-CPU run's (21,907 s): the harness's 15 C
 
 So the harness runs Tessera's adapter end to end up to the prover's memory admission, and records the refusal. On a 2 TB host the same prover completes the workload ([above](#llama-31-8b-at-the-observatorys-workload-1024--64-2026-11-11)), but only with a budget that admits the resident route: a harness run there needs the physical planner to admit what the resident route uses (1.79 TiB), or the adapter to pass that budget.
 
+## Llama-3.1-8B at 256 + 16 on an A40: the leaf-stage changes measured (2026-11-12)
+
+The workload's checkpoint, quantized here at migration strength 1/2, and one request of 256 prompt tokens and 16 greedy tokens. `tessera prove --backend gpu --memory-budget 11000` with `TESSERA_GPU_LEVEL_GIB=28` on a rented host with four A40 48 GB, an AMD EPYC 7662 (244 cores in the container) and 2 TB. Two binaries proved the same request at once, each on its own GPU: 01963ac, and cea5e39, which adds the parallel lookup fraction trees and resident loads (9d1a5dd), the device-sized level budget with host fallback (65ef8c4) and the per-pass device profile (669addb). Both proofs are accepted with the public tokens ([verdict](verdict-8b-a40-p256-n16.json)); they differ in their bytes, as any two production proofs do, since the commitment masks come from the OS RNG. Run manifests: [01963ac](records/8b-p256-n16-a40-01963ac.json), [cea5e39](records/8b-p256-n16-a40-cea5e39.json), the #744 record.
+
+| Pass | 01963ac | cea5e39 |
+|---|---|---|
+| P1 witness and advice commitment | 570 s | 609 s |
+| **P2 leaf stage** | **5,900 s** | **5,866 s** |
+| P3 reduction stages | 484 s | 487 s |
+| P4 openings | 804 s | 771 s |
+| P5 column answers | 611 s | 552 s |
+| **Prove, total** | **8,512 s** | **8,433 s**, peak host RSS 652 GiB |
+| Verify `--tokens` | 277 s, Accept | 276 s, Accept |
+| Proof | 4,498,232,546 bytes | 4,498,231,970 bytes |
+
+- **P2 did not move.** Building the lookup fraction trees on every thread leaves the leaf stage at 70% of the proof. The device holds its 28 GiB of level tables (30.5 GB device peak), and P2 copies 128 GB to it.
+- **The P1 difference** is within what sharing the host explains: cea5e39's P1 ran beside 01963ac's P4 and P5.
+- **Two failures on the way, both fixed.** The level offload's fixed 60 GiB budget ran a 48 GB device out of memory after 2.5 hours, and the failed load aborted the proof (65ef8c4: the budget follows the device, and the host proves what it cannot load). Clearing large `SecretBuf`s on 16 threads per drop (1d327b9) made P1's tile regeneration 14 to 25 times slower, because thread stacks serialize with the regeneration workers' page faults; it was reverted (cea5e39).
+
 ## What to do next, ranked by this profile
 
 A stack-sampling profile of the 1B proof (`gdb` launching the prover, since the container forbids attaching; one sample every 20 s) shows most of the remaining time on one host thread.
