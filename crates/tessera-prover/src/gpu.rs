@@ -78,7 +78,9 @@ mod enabled {
     use super::*;
     use std::sync::Arc;
     use tessera_field::Goldilocks;
-    use tessera_gpu::{ColumnChainsGpu, Device, DeviceBuffer, Encoder, GpuError, GpuLevels};
+    use tessera_gpu::{
+        ColumnChainsGpu, Device, DeviceBuffer, Encoder, GpuError, GpuLevels, Staging,
+    };
 
     /// Level tables the offload may hold at once, unless `TESSERA_GPU_LEVEL_GIB` says otherwise:
     /// the device's memory less `LEVEL_HEADROOM_GIB` for P1's buffers, at most 60 GiB (room on an
@@ -186,6 +188,10 @@ mod enabled {
                 rows: alloc(block * k)?,
                 masks: alloc((block * mask_coeffs).max(1))?,
                 codewords: alloc(block * n)?,
+                staging: self
+                    .device
+                    .staging(block * k)
+                    .map_err(|e| ProverError::Pcs(device(e)))?,
                 chains: Some(chains),
                 encoder,
             }))
@@ -213,6 +219,7 @@ mod enabled {
                 mask_coeffs,
                 block,
                 m: columns.len(),
+                staging: d.staging(block * k).map_err(pcs)?,
                 columns: d.upload(columns).map_err(pcs)?,
                 rows: d.zeroed(block * k).map_err(pcs)?,
                 masks: d.zeroed((block * mask_coeffs).max(1)).map_err(pcs)?,
@@ -231,6 +238,8 @@ mod enabled {
         mask_coeffs: usize,
         block: usize,
         m: usize,
+        /// Page-locked blocks the rows upload through (secret-class, cleared on drop).
+        staging: Staging,
         columns: DeviceBuffer<u64>,
         rows: DeviceBuffer<u64>,
         masks: DeviceBuffer<u64>,
@@ -253,7 +262,7 @@ mod enabled {
                 ));
                 (&mut s.0, &mut s.1, &mut s.2)
             };
-            d.upload_field_into(rows, r)?;
+            d.upload_field_staged(&mut self.staging, rows, r)?;
             d.upload_field_into(masks, m)?;
             d.encode_rows(&self.encoder, r, m, c)?;
             d.gather_columns(c, self.n, count, &self.columns, &mut self.out)?;
@@ -479,6 +488,8 @@ mod enabled {
         rows: DeviceBuffer<u64>,
         masks: DeviceBuffer<u64>,
         codewords: DeviceBuffer<u64>,
+        /// Page-locked blocks the rows upload through (secret-class, cleared on drop).
+        staging: Staging,
     }
 
     impl AdviceSink<'_> {
@@ -501,7 +512,7 @@ mod enabled {
                 ));
                 (&mut s.0, &mut s.1, &mut s.2)
             };
-            d.upload_field_into(rows, r)?;
+            d.upload_field_staged(&mut self.staging, rows, r)?;
             d.upload_field_into(masks, m)?;
             d.encode_rows(&self.encoder, r, m, c)?;
             let chains = self

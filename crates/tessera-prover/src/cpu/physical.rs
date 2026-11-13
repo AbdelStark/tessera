@@ -881,11 +881,15 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     let source = sum([
         source_metadata.bytes(),
         engine.source_replay_validation_memory()?,
-        engine.runtime_source_tile_work_memory(runtime)?,
+        // visit_rows regenerates the next tile while emitting this one's rows.
+        times(
+            crate::advice::TILES_RESIDENT,
+            engine.runtime_source_tile_work_memory(runtime)?,
+        )?,
         count_payload,
     ])?;
     let width = 1u64.checked_shl(u32::from(a.log2_k)).ok_or_else(memory)?;
-    // table_rows keeps one bounded u64 chunk beside one clearing field row.
+    // table_rows keeps one bounded u64 chunk; the row pipeline holds its clearing field rows.
     let rank = advice
         .tiles()
         .iter()
@@ -903,7 +907,9 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     })?;
     let rows = sum([
         array::<u64>(width.max(1 << 16))?,
-        array::<tessera_field::Goldilocks>(width)?,
+        array::<tessera_field::Goldilocks>(times(crate::advice::rows_resident(width), width)?)?,
+        // A GPU sink's two page-locked upload blocks (`tessera_gpu::Staging`).
+        array::<u64>(times(2 * u64::from(a.row_block), width)?)?,
         array::<u32>(times(4, (rank as u64).max(4))?)?,
         mapping,
     ])?;
