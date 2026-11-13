@@ -1,4 +1,4 @@
-# Tessera (RFC-0005 adapter/1), draft for the observatory's systems/tessera (#741). The commit is
+# Tessera (RFC-0005 adapter/1). The commit is
 # the Tessera commit the run used; `scripts/gpu-run` records it beside every result.
 schema: "system/1"
 name: "tessera"
@@ -7,12 +7,12 @@ contract: "adapter/1"
 upstream:
   repo: "AbdelStark/tessera"
   url: "https://github.com/AbdelStark/tessera"
-  commit: "7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
+  commit: "3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
 maintainers: [{handle: "AbdelStark", organisation: "Lucid Computing"}]
 # RFC-0014 B7: the images workflow builds systems/tessera/Dockerfile and writes its digest here.
 image:
   repository: "ghcr.io/ai-verification-observatory/tessera"
-  digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  digest: "sha256:b8330b6331c16935b0ceb7ca484ca6e3d9000520ae66d55eb4854cfb9f6963dc"
 workloads: ["l31-8b-c1024"]
 profile: "prover-h100"
 deterministic_proofs: false

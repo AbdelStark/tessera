@@ -40,6 +40,7 @@ BIN = Path(os.environ.get("TESSERA_BIN", REPO / "target/release/tessera"))
 VERIFY = Path(os.environ.get("TESSERA_VERIFY", REPO / "verifier/target/release/tessera-verify"))
 PIN = Path(os.environ.get("TESSERA_PIN", REPO / "verifier/target/release/examples/statement_pin"))
 PYTHON = [os.environ.get("TESSERA_PYTHON", str(REPO / "python/.venv/bin/python"))]
+INPUTS = Path(os.environ.get("IPROOFS_INPUTS", "/opt/iproofs/inputs.json"))  # RFC-0014 B5
 FORBIDDEN_FLAGS = ["--test-", "--params=test-small", "test-small"]
 SESSION = "11" * 16
 MANIFEST = "13" * 32
@@ -101,9 +102,14 @@ def upstream_commit() -> str:
 
 
 def info(job: dict) -> dict:
-    return {**base("info"), "system": "tessera", "upstream_commit": upstream_commit(),
-            "image_inputs": [], "workloads": ["l31-8b-c1024"], "profile": "h100-1",
-            "contract_versions": ["adapter/1"]}
+    out = {**base("info"), "system": "tessera", "upstream_commit": upstream_commit(),
+           "image_inputs": json.loads(INPUTS.read_text())["inputs"] if INPUTS.is_file() else [],
+           "workloads": ["l31-8b-c1024"], "profile": "h100-1",
+           "contract_versions": ["adapter/1"]}
+    if "IPROOFS_ADAPTER_COMMIT" in os.environ:  # baked in by the image build (RFC-0014 B6)
+        out["adapter_commit"] = os.environ["IPROOFS_ADAPTER_COMMIT"]
+        out["adapter_dirty"] = os.environ.get("IPROOFS_ADAPTER_DIRTY", "true") != "false"
+    return out
 
 
 def setup(job: dict) -> dict:

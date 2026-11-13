@@ -1,0 +1,19 @@
+# RFC-0014 B2: every external input the fetch stage downloads, one per line:
+# <name>	<url>	sha256:<hex>
+# The upstream source at the pin: the digest is of `git archive --format=tar HEAD`, which the fetch
+# stage recomputes after checking `git rev-parse HEAD` (INV-ADAPTER-2). Its Rust crates come through
+# Cargo.lock and Cargo.lock under verifier/ (checksums) and its Python packages through
+# python/uv.lock (hashes), each fetched by the locked tool in the fetch stage.
+tessera	https://github.com/AbdelStark/tessera.git#3c75bdf78e4cc5c9ed2140900ff109d5933e3006	sha256:8c4f41f7d548da6732646a8c8de9b3864fea1bc0bde3f142b036438f3d055395
+# rust-toolchain.toml's 1.95.0, the standalone installer.
+rust-1.95.0	https://static.rust-lang.org/dist/rust-1.95.0-x86_64-unknown-linux-gnu.tar.xz	sha256:2e0338f18ecbaa4a0f631b9e80e8b8e26bb6fe77dd5454fba8a70cf96c1e84a1
+# tessera-quant's calibration set (RFC-0005 of Tessera): C4's en validation split at its pinned
+# revision, by the Hub's LFS sha256, so that `commit` reads it with no network.
+c4-validation-0	https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00000-of-00008.json.gz	sha256:1f25b6af12da84115301d4ee93ea5246c8fea5bb4a2008472794d95b917cc97f
+c4-validation-1	https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00001-of-00008.json.gz	sha256:db4c23d7a336032de37dfe2f3ed39653c8afd94004d4e8d9c73c03222299292c
+c4-validation-2	https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00002-of-00008.json.gz	sha256:4bf6b248b0f910dcde2cdf2118d6369d8208c8f9515ec29ab73e531f380b18e2
+c4-validation-3	https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00003-of-00008.json.gz	sha256:082b72c1ec600502df2e4403df6884390c85627ffdf37a5b700397c9a1ac6b8e
+c4-validation-4	https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00004-of-00008.json.gz	sha256:37c2ce46864db0b6f1fe89220ebf4ef811ea10485c8336f1712227bbbdb530e1
+c4-validation-5	https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00005-of-00008.json.gz	sha256:00b164e59df49df5dc1df170db99bb0d9207a6329cb9272ed8b6ef7a55058359
+c4-validation-6	https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00006-of-00008.json.gz	sha256:86896a9baffe0ab9df39a2901f0e515009989ca1fec9a42583d718ce16166b5a
+c4-validation-7	https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00007-of-00008.json.gz	sha256:0bf87534c7050091c60466df50f174c3147d052ec7dc645da9574c902445beaf

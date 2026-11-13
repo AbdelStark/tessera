@@ -4,7 +4,7 @@ schema: "claim/1"
 system: "tessera"
 configuration: "ni-100-public-output"
 card_version: 1
-upstream: {repo: "AbdelStark/tessera", commit: "7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"}
+upstream: {repo: "AbdelStark/tessera", commit: "3c75bdf78e4cc5c9ed2140900ff109d5933e3006"}
 claim_class: "greedy-continuation/exact-match/committed-weights"
 relation: >
   If `tessera-verify verify --tokens` exits 0, the integer model D whose weights the trusted weights
@@ -13,7 +13,7 @@ relation: >
   logits at the position before it (exact greedy), and every operation of D at every position
   (embedding, RMSNorm, attention with RoPE and softmax, SwiGLU, requantizations, LM head) is proved
   by sumcheck and LogUp over Goldilocks under one Ligero-style advice commitment.
-relation_formal: "docs/spec/02-public-api.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
+relation_formal: "docs/spec/02-public-api.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
 security:
   notion: {kind: "soundness", verifier: "tessera-verify verify, an implementation independent of the prover (RFC-0001, SP-6)"}
   level: "ni-100/1: at least 100 bits for every row of RFC-0014's soundness table, in the random-oracle model"
@@ -44,21 +44,21 @@ binding:
 residual: ["The integer model D, not the BF16 checkpoint, is what is proved."]
 availability: "research"
 sources:
-  relation: "docs/spec/02-public-api.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  security.level: "docs/rfcs/RFC-0014-interaction-and-soundness.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  security.model: "docs/rfcs/RFC-0004-hashing-and-transcript.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  assumptions.0: "docs/rfcs/RFC-0005-integer-model.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  coverage.policy: "docs/rfcs/RFC-0009-gadgets.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  availability: "README.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  relation_formal: "docs/spec/02-public-api.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  security.notion: "docs/rfcs/RFC-0001-workspace-and-verifier-independence.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  security.setup: "docs/rfcs/RFC-0014-interaction-and-soundness.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  zero_knowledge: "docs/rfcs/RFC-0014-interaction-and-soundness.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  assumptions: "docs/rfcs/RFC-0005-integer-model.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  assumptions.1: "docs/spec/04-error-model.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  coverage: "SPEC.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  binding: "SPEC.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  residual: "docs/rfcs/RFC-0005-integer-model.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
-  forbidden_flags: "docs/rfcs/RFC-0001-workspace-and-verifier-independence.md@7d45e1d4dbad9096943c3b7dbeb1ba08596a2b6d"
+  relation: "docs/spec/02-public-api.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  security.level: "docs/rfcs/RFC-0014-interaction-and-soundness.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  security.model: "docs/rfcs/RFC-0004-hashing-and-transcript.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  assumptions.0: "docs/rfcs/RFC-0005-integer-model.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  coverage.policy: "docs/rfcs/RFC-0009-gadgets.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  availability: "README.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  relation_formal: "docs/spec/02-public-api.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  security.notion: "docs/rfcs/RFC-0001-workspace-and-verifier-independence.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  security.setup: "docs/rfcs/RFC-0014-interaction-and-soundness.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  zero_knowledge: "docs/rfcs/RFC-0014-interaction-and-soundness.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  assumptions: "docs/rfcs/RFC-0005-integer-model.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  assumptions.1: "docs/spec/04-error-model.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  coverage: "SPEC.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  binding: "SPEC.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  residual: "docs/rfcs/RFC-0005-integer-model.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+  forbidden_flags: "docs/rfcs/RFC-0001-workspace-and-verifier-independence.md@3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
 reviewed_by: []
 forbidden_flags: ["--test-", "--params=test-small"]
