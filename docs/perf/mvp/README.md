@@ -1,9 +1,10 @@
 # MVP measurements
 
-Evidence for the MVP plan ([MVP.md](../../roadmap/MVP.md), epic [#722](https://github.com/AbdelStark/tessera/issues/722)). Every figure here is measured on rented hardware through [`scripts/gpu-run`](../../../scripts/gpu-run) and [`scripts/mvp-model.sh`](../../../scripts/mvp-model.sh), with the commit that produced it.
+Evidence for the MVP plan ([MVP.md](../../roadmap/MVP.md), epic [#722](https://github.com/AbdelStark/tessera/issues/722)). Measurements use rented hardware through [`scripts/gpu-run`](../../../scripts/gpu-run), [`scripts/mvp-model.sh`](../../../scripts/mvp-model.sh), or the recorded Lucid Slurm jobs, with source provenance beside the results.
 
 | File | What |
 |---|---|
+| [`p4-device-combine.md`](p4-device-combine.md) | Lucid H100 upload regression fix and P4 device combination, including accepted 1B proof and source provenance |
 | [`benchmark.md`](benchmark.md) | Tessera's numbers in the observatory's units beside FlashProve and SASH, with caveats (#743) |
 | `verdict-8b-a100-c1024.json`, `verdict-8b-a100-c1024-wrong.json`, `verdict-8b-h200.json`, `verdict-8b-h200-v2.json`, `verdict-8b-h200-wrong-token.json`, `verdict-1b-h200.json`, `verdict-1b-h200-p4.json` | Verifier verdicts of the accepted real-model proofs, and the `REJ-TOKENS` control |
 | `commitment-report-8b.json`, `commitment-report-1b.json` | The compiler's per-model counts: commitments and lookups per token, table rows |

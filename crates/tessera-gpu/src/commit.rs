@@ -76,6 +76,7 @@ pub(crate) struct Kernels {
     column_step: CudaFunction,
     gather_columns: CudaFunction,
     interleave2: CudaFunction,
+    combine_rows: CudaFunction,
 }
 
 impl Kernels {
@@ -88,6 +89,7 @@ impl Kernels {
             column_step: module.load_function("column_step")?,
             gather_columns: module.load_function("gather_columns")?,
             interleave2: module.load_function("interleave2")?,
+            combine_rows: module.load_function("combine_rows")?,
         };
         for f in [&kernels.ntt_pass, &kernels.encode_low] {
             f.set_attribute(
@@ -525,6 +527,69 @@ impl Device {
         // SAFETY: matches `gather_columns` in kernels/commit.cu; it reads columns[j] for j < m =
         // columns.len(), and codewords[r·n + c] only for r < rows and c < n (the kernel checks
         // c), so below rows·n ≤ codewords.len(); it writes out[i] for i < rows·m ≤ out.len().
+        unsafe { launch.launch(config) }?;
+        Ok(())
+    }
+
+    /// P4's combined rows (RFC-0011 'Opening'): `acc[g][i] += Σ_r coefficients[g][r]·values[r][i]`
+    /// over the first `rows` rows of `values` (`k` canonical words each, row-major), in place on
+    /// the device. `coefficients` holds `groups` lists of `rows` elements; `acc` holds `groups`
+    /// rows of `k` `Fp2` values as word pairs, canonical. Exact field sums, so the result does
+    /// not depend on the order and equals the host's `combine_add`.
+    pub fn combine_rows(
+        &self,
+        values: &DeviceBuffer<u64>,
+        rows: usize,
+        k: usize,
+        coefficients: &[Vec<tessera_field::GoldilocksExt2>],
+        acc: &mut DeviceBuffer<u64>,
+    ) -> Result<(), GpuError> {
+        let groups = coefficients.len();
+        if rows == 0 || k == 0 || groups == 0 {
+            return Ok(());
+        }
+        let fits = |len: Option<usize>, capacity| len.is_some_and(|n| n <= capacity);
+        if !fits(rows.checked_mul(k), values.len())
+            || !fits(
+                groups.checked_mul(k).and_then(|n| n.checked_mul(2)),
+                acc.len(),
+            )
+            || coefficients.iter().any(|c| c.len() != rows)
+        {
+            return Err(GpuError::Unsupported("combined rows fit their buffers"));
+        }
+        let (rows32, groups32, k64) = (
+            u32::try_from(rows).map_err(|_| GpuError::Unsupported("rows fit u32"))?,
+            u32::try_from(groups).map_err(|_| GpuError::Unsupported("groups fit u32"))?,
+            k as u64,
+        );
+        let words_len = groups
+            .checked_mul(rows)
+            .and_then(|n| n.checked_mul(2))
+            .ok_or(GpuError::Unsupported("combined rows fit their buffers"))?;
+        let mut words = Vec::with_capacity(words_len);
+        for list in coefficients {
+            for c in list {
+                let [c0, c1] = tessera_field::QuadraticExtension::coeffs(c);
+                words.push(tessera_field::PrimeField::to_canonical_u64(&c0));
+                words.push(tessera_field::PrimeField::to_canonical_u64(&c1));
+            }
+        }
+        let coeff = self.upload(&words)?;
+        let config = LaunchConfig::for_num_elems(u32::try_from(k).unwrap_or(u32::MAX));
+        let mut launch = self.stream.launch_builder(&self.commit.combine_rows);
+        launch
+            .arg(&values.0)
+            .arg(&rows32)
+            .arg(&k64)
+            .arg(&coeff.0)
+            .arg(&groups32)
+            .arg(&mut acc.0);
+        #[allow(unsafe_code)]
+        // SAFETY: matches `combine_rows` in kernels/commit.cu; it reads values[r·k + i] for
+        // r < rows and i < k (rows·k ≤ values.len()), coeff[2(g·rows + r) + {0,1}] for g < groups
+        // (coeff holds 2·groups·rows words), and reads and writes acc[2(g·k + i) + {0,1}] below
+        // 2·groups·k ≤ acc.len(). The stream orders the launch before coeff's release.
         unsafe { launch.launch(config) }?;
         Ok(())
     }

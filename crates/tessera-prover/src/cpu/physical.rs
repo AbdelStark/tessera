@@ -908,8 +908,6 @@ fn components(input: &Inputs<'_>, host: u64) -> Result<PhysicalCandidate, Prover
     let rows = sum([
         array::<u64>(width.max(1 << 16))?,
         array::<tessera_field::Goldilocks>(times(crate::advice::rows_resident(width), width)?)?,
-        // A GPU sink's two page-locked upload blocks (`tessera_gpu::Staging`).
-        array::<u64>(times(2 * u64::from(a.row_block), width)?)?,
         array::<u32>(times(4, (rank as u64).max(4))?)?,
         mapping,
     ])?;

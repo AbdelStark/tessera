@@ -353,3 +353,35 @@ extern "C" __global__ void interleave2(const uint64_t *even, const uint64_t *odd
         out[2 * i + 1] = odd[i];
     }
 }
+
+// P4's combined rows (RFC-0011 'Opening'): acc[g][i] += sum_r coeff[g][r] * values[r][i] for
+// i < k, g < groups, r < rows, in Fp2 = (a, b) word pairs, canonical in and out. values is rows
+// row-major (r * k + i); coeff is groups x rows pairs (2 (g * rows + r)); acc is groups x k pairs
+// (2 (g * k + i)). Each thread owns columns, so no two threads write one accumulator; groups go
+// eight at a time so the sums stay in registers while each value is read once per eight.
+extern "C" __global__ void combine_rows(const uint64_t *values, std::uint32_t rows, uint64_t k,
+                                        const uint64_t *coeff, std::uint32_t groups, uint64_t *acc) {
+    const uint64_t stride = static_cast<uint64_t>(gridDim.x) * blockDim.x;
+    for (uint64_t i = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x; i < k; i += stride) {
+        for (uint64_t g0 = 0; g0 < groups; g0 += 8) {
+            const std::uint32_t gs = groups - g0 < 8 ? groups - g0 : 8;
+            uint64_t s0[8], s1[8];
+            for (std::uint32_t g = 0; g < gs; ++g) {
+                s0[g] = acc[2 * ((g0 + g) * k + i)];
+                s1[g] = acc[2 * ((g0 + g) * k + i) + 1];
+            }
+            for (std::uint32_t r = 0; r < rows; ++r) {
+                const uint64_t x = values[static_cast<uint64_t>(r) * k + i];
+                for (std::uint32_t g = 0; g < gs; ++g) {
+                    const uint64_t *c = coeff + 2 * (static_cast<uint64_t>(g0 + g) * rows + r);
+                    s0[g] = gl::add(s0[g], gl::mul(c[0], x));
+                    s1[g] = gl::add(s1[g], gl::mul(c[1], x));
+                }
+            }
+            for (std::uint32_t g = 0; g < gs; ++g) {
+                acc[2 * ((g0 + g) * k + i)] = s0[g];
+                acc[2 * ((g0 + g) * k + i) + 1] = s1[g];
+            }
+        }
+    }
+}

@@ -619,16 +619,7 @@ impl<'g, 'w, 's, 'l> OpeningPass<'g, 'w, 's, 'l> {
         }
         let k = self.encoder.message_len();
         let p = self.encoder.mask_coeffs();
-        if let Some(sink) = &mut self.sink {
-            let mut selected =
-                sink.select(&self.values[..len * k], &self.mask_values[..len * p])?;
-            if selected.len() != len {
-                selected.zeroize();
-                return Err(invalid("a column sink returns each row's selected symbols"));
-            }
-            self.samples[..len].copy_from_slice(&selected);
-            selected.zeroize();
-        }
+        // The combination weights depend only on the public row numbers and claims.
         let mut coefficients = Vec::with_capacity(self.groups.groups.len() + 1);
         for group in &self.groups.groups {
             let mut row = vec![Fp2::ZERO; len];
@@ -650,15 +641,33 @@ impl<'g, 'w, 's, 'l> OpeningPass<'g, 'w, 's, 'l> {
             Fp2::ONE,
         );
         coefficients.push(xi);
-        // Columns are independent: the encoder's threads combine disjoint column ranges.
-        let threads = self.encoder.thread_count().get();
-        combine_add(
-            &coefficients,
-            &self.values[..len * k],
-            k,
-            &mut self.u,
-            threads,
-        );
+        let mut combined_on_sink = false;
+        if let Some(sink) = &mut self.sink {
+            let (rows, masks) = (&self.values[..len * k], &self.mask_values[..len * p]);
+            combined_on_sink = sink.combines();
+            let mut selected = if combined_on_sink {
+                sink.select_combining(rows, masks, &coefficients)?
+            } else {
+                sink.select(rows, masks)?
+            };
+            if selected.len() != len {
+                selected.zeroize();
+                return Err(invalid("a column sink returns each row's selected symbols"));
+            }
+            self.samples[..len].copy_from_slice(&selected);
+            selected.zeroize();
+        }
+        if !combined_on_sink {
+            // Columns are independent: the encoder's threads combine disjoint column ranges.
+            let threads = self.encoder.thread_count().get();
+            combine_add(
+                &coefficients,
+                &self.values[..len * k],
+                k,
+                &mut self.u,
+                threads,
+            );
+        }
         combine_into(&coefficients, &self.mask_values[..len * p], p, |g, i, x| {
             self.m[g][i] += x
         });
@@ -697,6 +706,11 @@ impl<'g, 'w, 's, 'l> OpeningPass<'g, 'w, 's, 'l> {
         self.cursor.finish()?;
         while self.segment < self.groups.state.layout.segments().len() {
             self.end_segment()?;
+        }
+        if let Some(sink) = &mut self.sink
+            && sink.combines()
+        {
+            sink.combined(&mut self.u)?;
         }
         if self.merge.finalize() != self.groups.state.leaf {
             return Err(AdviceOpeningError::SelfCheck);
@@ -835,6 +849,38 @@ pub trait ColumnSink {
     /// # Errors
     /// A device failure, which ends the answer.
     fn select(&mut self, rows: &[Fp], masks: &[Fp]) -> core::result::Result<Vec<Fp>, PcsError>;
+
+    /// Whether [`Self::select_combining`] combines on the sink. P4 then leaves its combined rows'
+    /// `u` sums to the sink and collects them with [`Self::combined`].
+    fn combines(&self) -> bool {
+        false
+    }
+
+    /// As [`Self::select`], and adds `Σ_r coefficients[g][r]·rows[r]` over the block's rows to
+    /// the sink's own sums, one per list in `coefficients` (P4's combined rows, RFC-0011
+    /// 'Opening'). Called only when [`Self::combines`] holds.
+    ///
+    /// # Errors
+    /// A device failure, which ends the opening.
+    fn select_combining(
+        &mut self,
+        rows: &[Fp],
+        masks: &[Fp],
+        coefficients: &[Vec<Fp2>],
+    ) -> core::result::Result<Vec<Fp>, PcsError> {
+        let _ = coefficients;
+        self.select(rows, masks)
+    }
+
+    /// Adds the sums [`Self::select_combining`] accumulated into `out`, one row of `k` per list,
+    /// and clears them. Called once, when the opening finishes.
+    ///
+    /// # Errors
+    /// A device failure.
+    fn combined(&mut self, out: &mut [SecretBuf<Fp2>]) -> core::result::Result<(), PcsError> {
+        let _ = out;
+        Ok(())
+    }
 }
 
 /// Rows and masks buffered for a [`ColumnSink`], `block` rows at a time.
@@ -1417,7 +1463,14 @@ mod tests {
 
     #[test]
     fn a_sample_sink_opens_the_same_combined_rows_and_a_wrong_symbol_fails_the_self_check() {
-        let (layout, params, encoder) = fixture();
+        for block in [1, 2, 3, 64] {
+            sample_sink_case(block);
+        }
+    }
+
+    fn sample_sink_case(block: usize) {
+        let (layout, mut params, encoder) = fixture();
+        params.row_block = NonZeroUsize::new(block).unwrap();
         // Order-sensitive masks: a sink drawing them out of order fails the leaf check.
         let counter = || {
             let mut next = 0u64;
@@ -1452,7 +1505,18 @@ mod tests {
         })
         .unwrap();
         let xi = vec![Fp2::from(Fp::from_u64_reduced(5)); layout.row_vars() as usize];
-        let groups = state.prepare(&[], Fp2::ONE, &xi).unwrap();
+        let claims: Vec<_> = (2..=4)
+            .map(|group| AdviceClaim {
+                pieces: vec![AdvicePoint {
+                    point: vec![
+                        Fp2::from(Fp::from_u64_reduced(group));
+                        layout.variables() as usize
+                    ],
+                    weight: Fp2::ONE,
+                }],
+            })
+            .collect();
+        let groups = state.prepare(&claims, Fp2::ONE, &xi).unwrap();
         let open = |sink: Option<&mut dyn ColumnSink>| {
             let mut masks = counter();
             let mut pass = match sink {
@@ -1485,6 +1549,67 @@ mod tests {
             open(Some(&mut wrong)),
             Err(AdviceOpeningError::SelfCheck)
         ));
+        // A sink combining the rows itself (as the GPU does) opens the same combined rows, in
+        // any block size; one that drops a group's contribution fails the self-check.
+        for block_skip in [None, Some(0), Some(1), Some(2), Some(3)] {
+            let mut combining = CombiningHost {
+                columns: HostColumns {
+                    encoder: fixture().2,
+                    columns: vec![groups.sample_column()],
+                },
+                sums: Vec::new(),
+                skip: block_skip,
+            };
+            let opened = open(Some(&mut combining));
+            match block_skip {
+                None => assert_eq!(opened.unwrap(), expected),
+                Some(_) => assert!(matches!(opened, Err(AdviceOpeningError::SelfCheck))),
+            }
+        }
+    }
+
+    /// A sink that combines P4's rows on its own side, with the host kernel, as a device does;
+    /// `skip` drops that group's contribution of the first block.
+    struct CombiningHost {
+        columns: HostColumns,
+        sums: Vec<SecretBuf<Fp2>>,
+        skip: Option<usize>,
+    }
+    impl ColumnSink for CombiningHost {
+        fn select(&mut self, rows: &[Fp], masks: &[Fp]) -> core::result::Result<Vec<Fp>, PcsError> {
+            self.columns.select(rows, masks)
+        }
+        fn combines(&self) -> bool {
+            true
+        }
+        fn select_combining(
+            &mut self,
+            rows: &[Fp],
+            masks: &[Fp],
+            coefficients: &[Vec<Fp2>],
+        ) -> core::result::Result<Vec<Fp>, PcsError> {
+            let k = self.columns.encoder.message_len();
+            if self.sums.is_empty() {
+                self.sums = (0..coefficients.len())
+                    .map(|_| SecretBuf::filled(Fp2::ZERO, k))
+                    .collect();
+            }
+            let mut used = coefficients.to_vec();
+            if let Some(g) = self.skip.take() {
+                used[g].iter_mut().for_each(|c| *c = Fp2::ZERO);
+            }
+            combine_add(&used, rows, k, &mut self.sums, 3);
+            self.columns.select(rows, masks)
+        }
+        fn combined(&mut self, out: &mut [SecretBuf<Fp2>]) -> core::result::Result<(), PcsError> {
+            for (row, sums) in out.iter_mut().zip(&self.sums) {
+                for (o, &s) in row.iter_mut().zip(sums.iter()) {
+                    *o += s;
+                }
+            }
+            self.sums.clear();
+            Ok(())
+        }
     }
 
     #[test]

@@ -77,10 +77,9 @@ impl WeightEncoding for HostWeights {
 mod enabled {
     use super::*;
     use std::sync::Arc;
+    use tessera_codec::SecretBuf;
     use tessera_field::Goldilocks;
-    use tessera_gpu::{
-        ColumnChainsGpu, Device, DeviceBuffer, Encoder, GpuError, GpuLevels, Staging,
-    };
+    use tessera_gpu::{ColumnChainsGpu, Device, DeviceBuffer, Encoder, GpuError, GpuLevels};
 
     /// Level tables the offload may hold at once, unless `TESSERA_GPU_LEVEL_GIB` says otherwise:
     /// the device's memory less `LEVEL_HEADROOM_GIB` for P1's buffers, at most 60 GiB (room on an
@@ -188,10 +187,6 @@ mod enabled {
                 rows: alloc(block * k)?,
                 masks: alloc((block * mask_coeffs).max(1))?,
                 codewords: alloc(block * n)?,
-                staging: self
-                    .device
-                    .staging(block * k)
-                    .map_err(|e| ProverError::Pcs(device(e)))?,
                 chains: Some(chains),
                 encoder,
             }))
@@ -219,12 +214,12 @@ mod enabled {
                 mask_coeffs,
                 block,
                 m: columns.len(),
-                staging: d.staging(block * k).map_err(pcs)?,
                 columns: d.upload(columns).map_err(pcs)?,
                 rows: d.zeroed(block * k).map_err(pcs)?,
                 masks: d.zeroed((block * mask_coeffs).max(1)).map_err(pcs)?,
                 codewords: d.zeroed(block * n).map_err(pcs)?,
                 out: d.zeroed((block * columns.len()).max(1)).map_err(pcs)?,
+                sums: None,
                 encoder,
             }))
         }
@@ -238,17 +233,23 @@ mod enabled {
         mask_coeffs: usize,
         block: usize,
         m: usize,
-        /// Page-locked blocks the rows upload through (secret-class, cleared on drop).
-        staging: Staging,
         columns: DeviceBuffer<u64>,
         rows: DeviceBuffer<u64>,
         masks: DeviceBuffer<u64>,
         codewords: DeviceBuffer<u64>,
         out: DeviceBuffer<u64>,
+        /// P4's combined-row sums on the device: `groups` rows of `k` `Fp2` word pairs
+        /// (secret-class, cleared when collected or dropped).
+        sums: Option<(usize, DeviceBuffer<u64>)>,
     }
 
     impl ColumnsSink<'_> {
-        fn run(&mut self, rows: &[Goldilocks], masks: &[Goldilocks]) -> Result<Vec<u64>, GpuError> {
+        fn run(
+            &mut self,
+            rows: &[Goldilocks],
+            masks: &[Goldilocks],
+            coefficients: Option<&[Vec<tessera_field::GoldilocksExt2>]>,
+        ) -> Result<SecretBuf<u64>, GpuError> {
             let d = self.device;
             let count = rows.len() / self.k;
             let mut short = None;
@@ -262,17 +263,42 @@ mod enabled {
                 ));
                 (&mut s.0, &mut s.1, &mut s.2)
             };
-            d.upload_field_staged(&mut self.staging, rows, r)?;
-            d.upload_field_into(masks, m)?;
-            d.encode_rows(&self.encoder, r, m, c)?;
-            d.gather_columns(c, self.n, count, &self.columns, &mut self.out)?;
-            let words = d.download(&self.out)?;
+            let mut result = (|| {
+                d.upload_field_into(rows, r)?;
+                if let Some(coefficients) = coefficients {
+                    // Before encode_rows, which uses the rows as scratch.
+                    let groups = coefficients.len();
+                    if self.sums.as_ref().is_some_and(|(g, _)| *g != groups) {
+                        return Err(GpuError::Unsupported("one group count per opening"));
+                    }
+                    if self.sums.is_none() {
+                        let len = groups
+                            .checked_mul(self.k)
+                            .and_then(|n| n.checked_mul(2))
+                            .ok_or(GpuError::Unsupported("combined rows fit their buffers"))?;
+                        self.sums = Some((groups, d.zeroed::<u64>(len.max(1))?));
+                    }
+                    if let Some((_, sums)) = &mut self.sums {
+                        d.combine_rows(r, count, self.k, coefficients, sums)?;
+                    }
+                }
+                d.upload_field_into(masks, m)?;
+                d.encode_rows(&self.encoder, r, m, c)?;
+                d.gather_columns(c, self.n, count, &self.columns, &mut self.out)?;
+                let mut words = SecretBuf::filled(0, self.out.len());
+                d.download_into(&self.out, &mut words)?;
+                words.truncate(count * self.m);
+                Ok(words)
+            })();
             if let Some((mut r, mut m, mut c)) = short {
+                // Attempt every clear, including after a failed kernel or copy (OBS-6).
                 for b in [&mut r, &mut m, &mut c] {
-                    d.clear(b)?;
+                    if let Err(error) = d.clear(b) {
+                        result = Err(error);
+                    }
                 }
             }
-            Ok(words[..count * self.m].to_vec())
+            result
         }
     }
 
@@ -288,18 +314,82 @@ mod enabled {
                     reason: "a block of whole rows",
                 });
             }
-            let words = self.run(rows, masks).map_err(device)?;
-            words
-                .into_iter()
-                .map(|w| {
-                    <Goldilocks as tessera_field::PrimeField>::from_canonical_u64(w).ok_or(
-                        PcsError::Device {
-                            reason: "a device symbol is canonical",
-                        },
-                    )
-                })
-                .collect()
+            let words = self.run(rows, masks, None).map_err(device)?;
+            canonical(words)
         }
+
+        fn combines(&self) -> bool {
+            true
+        }
+
+        fn select_combining(
+            &mut self,
+            rows: &[Goldilocks],
+            masks: &[Goldilocks],
+            coefficients: &[Vec<tessera_field::GoldilocksExt2>],
+        ) -> Result<Vec<Goldilocks>, PcsError> {
+            let count = rows.len() / self.k;
+            if count == 0 || count > self.block || rows.len() != count * self.k {
+                return Err(PcsError::Device {
+                    reason: "a block of whole rows",
+                });
+            }
+            let words = self.run(rows, masks, Some(coefficients)).map_err(device)?;
+            canonical(words)
+        }
+
+        fn combined(
+            &mut self,
+            out: &mut [SecretBuf<tessera_field::GoldilocksExt2>],
+        ) -> Result<(), PcsError> {
+            let Some((groups, sums)) = self.sums.as_mut() else {
+                return Ok(());
+            };
+            if out.len() != *groups || out.iter().any(|row| row.len() != self.k) {
+                return Err(PcsError::Device {
+                    reason: "one combined row per group",
+                });
+            }
+            // Secret-class sums: the host copy is cleared in place on every path (OBS-6).
+            let mut words = SecretBuf::filled(0, sums.len());
+            self.device
+                .download_into(sums, &mut words)
+                .map_err(device)?;
+            self.device.clear(sums).map_err(device)?;
+            self.sums = None;
+            for (row, pairs) in out.iter_mut().zip(words.chunks_exact(2 * self.k)) {
+                for (o, pair) in row.iter_mut().zip(pairs.chunks_exact(2)) {
+                    let [a, b] = [pair[0], pair[1]]
+                        .map(<Goldilocks as tessera_field::PrimeField>::from_canonical_u64);
+                    let (Some(a), Some(b)) = (a, b) else {
+                        return Err(PcsError::Device {
+                            reason: "a device sum is canonical",
+                        });
+                    };
+                    *o += <tessera_field::GoldilocksExt2 as tessera_field::QuadraticExtension<
+                        Goldilocks,
+                    >>::new(a, b);
+                }
+            }
+            Ok(())
+        }
+    }
+
+    fn canonical(words: SecretBuf<u64>) -> Result<Vec<Goldilocks>, PcsError> {
+        use tessera_field::PrimeField;
+        // Validate before allocating the returned symbols: no uncleared partial Vec on error.
+        if words
+            .iter()
+            .any(|&w| Goldilocks::from_canonical_u64(w).is_none())
+        {
+            return Err(PcsError::Device {
+                reason: "a device symbol is canonical",
+            });
+        }
+        Ok(words
+            .iter()
+            .map(|&w| Goldilocks::from_u64_reduced(w))
+            .collect())
     }
 
     impl Drop for ColumnsSink<'_> {
@@ -311,6 +401,9 @@ mod enabled {
                 &mut self.out,
             ] {
                 let _ = self.device.clear(b);
+            }
+            if let Some((_, sums)) = &mut self.sums {
+                let _ = self.device.clear(sums);
             }
             let _ = self.device.synchronize();
         }
@@ -488,8 +581,6 @@ mod enabled {
         rows: DeviceBuffer<u64>,
         masks: DeviceBuffer<u64>,
         codewords: DeviceBuffer<u64>,
-        /// Page-locked blocks the rows upload through (secret-class, cleared on drop).
-        staging: Staging,
     }
 
     impl AdviceSink<'_> {
@@ -512,7 +603,7 @@ mod enabled {
                 ));
                 (&mut s.0, &mut s.1, &mut s.2)
             };
-            d.upload_field_staged(&mut self.staging, rows, r)?;
+            d.upload_field_into(rows, r)?;
             d.upload_field_into(masks, m)?;
             d.encode_rows(&self.encoder, r, m, c)?;
             let chains = self

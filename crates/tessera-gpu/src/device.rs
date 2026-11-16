@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use cudarc::driver::{
     CudaContext, CudaFunction, CudaSlice, CudaStream, DeviceRepr, DriverError, LaunchConfig,
-    PinnedHostSlice, PushKernelArg, ValidAsZeroBits,
+    PushKernelArg, ValidAsZeroBits,
 };
 use cudarc::nvrtc::Ptx;
 use tessera_codec::metrics::{self, Direction};
@@ -92,27 +92,6 @@ fn field_words(host: &[tessera_field::Goldilocks]) -> &[u64] {
     // memory is `host.len()` initialized, aligned `u64`s, borrowed for the result's lifetime.
     unsafe {
         std::slice::from_raw_parts(host.as_ptr().cast::<u64>(), host.len())
-    }
-}
-
-/// Two page-locked host blocks that stage uploads ([`Device::upload_field_staged`]), so a copy
-/// overlaps the host's work on the next block. The blocks hold secret-class rows: dropping
-/// waits for their copies and clears them before release (05 §3 OBS-6).
-pub struct Staging {
-    slots: [PinnedHostSlice<u64>; 2],
-    next: usize,
-}
-
-impl Drop for Staging {
-    fn drop(&mut self) {
-        for slot in &mut self.slots {
-            // A failed wait leaves the copy in flight; the memory is then released uncleared,
-            // as for any driver failure.
-            if let Ok(words) = slot.as_mut_slice() {
-                words.fill(0);
-            }
-        }
-        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -202,54 +181,6 @@ impl Device {
         self.upload_into(field_words(host), buffer)
     }
 
-    /// Two zeroed page-locked host blocks of `len` words for [`Self::upload_field_staged`].
-    pub fn staging(&self, len: usize) -> Result<Staging, GpuError> {
-        let context = self.stream.context();
-        let slot = || -> Result<PinnedHostSlice<u64>, GpuError> {
-            #[allow(unsafe_code)]
-            // SAFETY: `alloc_pinned` returns `len` aligned, uninitialized `u64`s; `write_bytes`
-            // initializes all of them before any reference to the memory is formed.
-            unsafe {
-                let mut slot = context.alloc_pinned::<u64>(len)?;
-                std::ptr::write_bytes(slot.as_mut_ptr()?, 0, len);
-                Ok(slot)
-            }
-        };
-        Ok(Staging {
-            slots: [slot()?, slot()?],
-            next: 0,
-        })
-    }
-
-    /// As [`Self::upload_field_into`], through the next page-locked slot of `staging`: the copy
-    /// is queued on the stream and this returns without waiting for it or for earlier work, so
-    /// the host fills the other slot meanwhile. A slot is rewritten only after its previous
-    /// copy completes. A block of another length than the slots' goes through pageable memory.
-    pub fn upload_field_staged(
-        &self,
-        staging: &mut Staging,
-        host: &[tessera_field::Goldilocks],
-        buffer: &mut DeviceBuffer<u64>,
-    ) -> Result<(), GpuError> {
-        let slot = &mut staging.slots[staging.next];
-        if host.len() != slot.len() {
-            return self.upload_field_into(host, buffer);
-        }
-        if host.len() > buffer.len() {
-            return Err(GpuError::LengthMismatch {
-                left: host.len(),
-                right: buffer.len(),
-            });
-        }
-        staging.next ^= 1;
-        // Waits for this slot's previous copy, recorded on the stream by `memcpy_htod`.
-        slot.as_mut_slice()?.copy_from_slice(field_words(host));
-        let mut view = buffer.0.slice_mut(0..host.len());
-        self.stream.memcpy_htod(&*slot, &mut view)?;
-        transferred(Direction::HostToDevice, host);
-        Ok(())
-    }
-
     /// Overwrites every element of `buffer` with zero: device memory that held secret-class
     /// values is cleared before it is released or reused for public data (05 §3 OBS-6).
     pub fn clear<T: DeviceRepr + ValidAsZeroBits>(
@@ -295,6 +226,24 @@ impl Device {
         let host = self.stream.clone_dtoh(&buffer.0)?;
         transferred(Direction::DeviceToHost, &host);
         Ok(host)
+    }
+
+    /// Copies into an equally sized host slice, allowing secret downloads to stay in a
+    /// clearing buffer even if the device copy fails (OBS-6).
+    pub fn download_into<T: DeviceRepr>(
+        &self,
+        buffer: &DeviceBuffer<T>,
+        host: &mut [T],
+    ) -> Result<(), GpuError> {
+        if host.len() != buffer.len() {
+            return Err(GpuError::LengthMismatch {
+                left: host.len(),
+                right: buffer.len(),
+            });
+        }
+        self.stream.memcpy_dtoh(&buffer.0, host)?;
+        transferred(Direction::DeviceToHost, host);
+        Ok(())
     }
 
     /// `a[i] + b[i]` modulo `2^64`, element by element.
