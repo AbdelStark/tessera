@@ -41,6 +41,7 @@ fn worker(policy: bool, budget: usize) {
         limits: Default::default(),
         accept_bound: FixedBits(0),
         weights,
+        public_tokens: None,
     };
     if policy {
         cfg.limits.max_memory_bytes = budget as u64;

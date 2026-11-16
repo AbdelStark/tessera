@@ -93,3 +93,8 @@ paired measurement noise (#659).
 - **Coalesced global memory access**: threads in a 32-thread warp (`threadIdx.x % 32`) must read and write consecutive 8-byte `Goldilocks` elements (`u64`) or 16-byte `ulong2` pairs.
 - **Shared memory bank conflicts**: when staging NTT butterflies or matrix transposes in `__shared__` memory (32 banks of 4 bytes or 8 bytes), pad the inner dimension by `+1` element (`shared[TILE][TILE + 1]`) so column strides are coprime to 32.
 - **CPU fallback parity**: every `tessera-gpu` entry point must have an identical signature and bit-exact result to the CPU implementation so tests pass on machines without CUDA hardware.
+
+Changes to transfers or host-buffer reuse must run `scripts/gpu-equivalence.sh` on actual CUDA
+hardware before shipping (INV-FIELD-5). A type-check cannot validate asynchronous lifetimes:
+`75cb7aa`'s pinned uploads passed host checks but made tiny proofs fail P4's self-check on H100.
+Preserve command failures and full logs when filtering benchmark output.

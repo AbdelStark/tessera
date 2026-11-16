@@ -24,6 +24,8 @@ tessera-protocol = { path = "../tessera-protocol" }
 tessera-sumcheck = { path = "../tessera-sumcheck" }
 tessera-tables = { path = "../tessera-tables" }
 tessera-witness = { path = "../tessera-witness" }
+# The GPU-backed stages (RFC-0018), behind `gpu` (DEP-5).
+tessera-gpu = { path = "../tessera-gpu", optional = true }
 
 [dev-dependencies]
 allocation-counter = "0.8"
@@ -42,6 +44,8 @@ tv-hash = { path = "../../verifier/crates/tv-hash" }
 tv-tables = { path = "../../verifier/crates/tv-tables" }
 
 [features]
+# GPU-backed stages through tessera-gpu's CUDA kernels; every proof equals the CPU's byte for byte.
+gpu = ["dep:tessera-gpu", "tessera-gpu/gpu"]
 # Test-only: enable the independent verifier dev-dependency's non-certifying parameters.
 test-params = ["tv-core/test-params"]
 # Test-only: seeded masking randomness, so tests are reproducible. A release build with it fails to compile.

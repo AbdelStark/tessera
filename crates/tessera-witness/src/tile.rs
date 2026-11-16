@@ -143,6 +143,16 @@ impl TileWitness {
         self.multiplicities.as_ref()
     }
 
+    /// Densify the table tile's multiplicities ([`MultiplicityColumn::densify`]); no-op otherwise.
+    ///
+    /// # Errors
+    /// `MemoryTable` if the dense column cannot be allocated.
+    pub fn densify_multiplicities(&mut self) -> Result<(), WitnessError> {
+        self.multiplicities
+            .as_mut()
+            .map_or(Ok(()), MultiplicityColumn::densify)
+    }
+
     pub(crate) fn table(column: MultiplicityColumn) -> Self {
         Self {
             multiplicities: Some(column),

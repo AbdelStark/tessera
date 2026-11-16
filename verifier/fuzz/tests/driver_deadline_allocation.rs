@@ -66,6 +66,7 @@ fn worker(expire: bool, budget: Option<usize>) {
         limits: Default::default(),
         accept_bound: FixedBits(0),
         weights,
+        public_tokens: None,
     };
     if expire {
         cfg.limits.max_wall_time = Duration::from_secs(2);

@@ -1,0 +1,75 @@
+{
+  "adapter_phases": {},
+  "claim": {
+    "card_version": 1,
+    "configuration": "ni-100-public-output",
+    "system": "tessera"
+  },
+  "control": false,
+  "events": [
+    {
+      "event": "info.start",
+      "mono_ns": 969420250190756
+    },
+    {
+      "event": "info.end",
+      "mono_ns": 969420315909221
+    },
+    {
+      "event": "setup.start",
+      "mono_ns": 969420339322485
+    },
+    {
+      "event": "setup.end",
+      "mono_ns": 969420404762098
+    },
+    {
+      "event": "commit.start",
+      "mono_ns": 969420424261093
+    },
+    {
+      "event": "commit.end",
+      "mono_ns": 970169861212441
+    },
+    {
+      "event": "prove.start",
+      "mono_ns": 970184412166821
+    },
+    {
+      "event": "prove.end",
+      "mono_ns": 977570696630051
+    }
+  ],
+  "failure": {
+    "at": "2026-11-10T22:10:07Z",
+    "exit_code": 1,
+    "kind": "adapter",
+    "last_lines": [
+      "error: ERR-RES-MEMORY: ERR-RES-MEMORY",
+      "tessera: tessera exited 20"
+    ],
+    "message": "prove exited 1",
+    "step": "prove"
+  },
+  "metrics": {},
+  "profile": "prover-h200-hosted",
+  "proofs": [],
+  "raw": {},
+  "release": "v0.1",
+  "repetition": 1,
+  "replaces": null,
+  "run_id": "2026-11-10-tessera-l31-8b-c1024-prover-h200-hosted-2",
+  "schema": "run/1",
+  "status": "failed",
+  "system": "tessera",
+  "system_kind": "prover",
+  "warnings": [
+    "repetitions_below_minimum",
+    "conformance: PC-GPU-MODEL: bound GPU is 'NVIDIA H200 NVL', the profile needs 'NVIDIA H200'",
+    "conformance: PC-DRIVER: driver '595.91.07', the profile pins 'unpinned'"
+  ],
+  "workload": {
+    "id": "l31-8b-c1024",
+    "version": 1
+  }
+}

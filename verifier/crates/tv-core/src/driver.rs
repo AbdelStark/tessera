@@ -61,6 +61,80 @@ pub struct VerifierConfig {
     pub accept_bound: FixedBits,
     /// Epoch artifact whose hash must equal the trusted statement's weight root.
     pub weights: WeightCommitmentPublic,
+    /// Public-output verification (#741): the one request's tokens, prompt then continuation.
+    /// When present, the committed token tensor's opened claims must equal their multilinear
+    /// extension, or the proof is rejected (`REJ-TOKENS`); the tokens are then not hidden.
+    pub public_tokens: Option<Vec<u32>>,
+}
+
+/// Public-output verification (#741). The token tensor is committed advice; its only opened
+/// claim is RFC-0053's token binding, whose value the advice openings above have just bound to
+/// the commitment. A single request's token row `τ` holds `tokens[τ]` and the padded rows hold
+/// zero, so the claim must equal `Σ_τ tokens[τ]·eq(point, τ)` (LSB-first), computed here by
+/// folding the padded vector one coordinate at a time. A different sequence agrees at a point
+/// fixed after the commitment with probability at most `log2(rows)/|Fp2|` (Schwartz–Zippel).
+fn check_public_tokens(
+    graph: &crate::lowering::Graph,
+    views: &[advice::opening::Claim<'_>],
+    tokens: &[u32],
+    requests: &[protocol::RequestRef],
+) -> Check<()> {
+    let [request] = requests else {
+        return Err(fail(ErrorCode::Usage));
+    };
+    let expected = u64::from(request.prompt_len).checked_add(u64::from(request.output_len));
+    if u64::try_from(tokens.len()).ok() != expected {
+        return Err(fail(ErrorCode::Usage));
+    }
+    let id = graph
+        .inputs()
+        .iter()
+        .find(|i| i.role == crate::lowering::Role::Tokens)
+        .map(|i| i.tensor)
+        .ok_or_else(internal)?;
+    let mut checked = false;
+    for view in views {
+        let [piece] = view.pieces else { continue };
+        if piece.source != advice::Source::Tensor(id) {
+            continue;
+        }
+        if piece.coefficient != Fp2::ONE {
+            return Err(internal());
+        }
+        let rows = 1usize
+            .checked_shl(u32::try_from(view.point.len()).map_err(|_| internal())?)
+            .filter(|&rows| rows >= tokens.len())
+            .ok_or_else(internal)?;
+        let mut v = reserve(rows)?;
+        for &t in tokens {
+            v.push(Fp2::new(
+                tv_field::Fp::from_canonical(u64::from(t)).ok_or_else(internal)?,
+                tv_field::Fp::ZERO,
+            ));
+        }
+        v.resize(rows, Fp2::ZERO);
+        for &r in view.point {
+            let half: Vec<Fp2> = v
+                .chunks_exact(2)
+                .map(|pair| match pair {
+                    [lo, hi] => *lo + r * (*hi - *lo),
+                    _ => Fp2::ZERO,
+                })
+                .collect();
+            v = half;
+        }
+        let [value] = v.as_slice() else {
+            return Err(internal());
+        };
+        if *value != view.value {
+            return Err(reject(RejectReason::Tokens));
+        }
+        checked = true;
+    }
+    if !checked {
+        return Err(internal());
+    }
+    Ok(())
 }
 
 enum Failure {
@@ -1230,6 +1304,9 @@ fn verify_unit_tracked(
     let advice_evaluated = opening
         .check_evaluations(&proof.round2.advice_combined)
         .map_err(opening_error)?;
+    if let Some(tokens) = &cfg.public_tokens {
+        check_public_tokens(&graph, &views, tokens, requests)?;
+    }
     t.absorb_with_cancel(
         ascii("pcs/advice/combined")?,
         &protocol::encode_with_cancel(proof.round2.advice_combined.as_slice(), &mut cancel)

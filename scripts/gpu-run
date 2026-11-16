@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+"""Rent, run and tear down one vast.ai GPU instance for Tessera jobs (#740).
+
+    scripts/gpu-run up [--gpu H100] [--max-dph 3.0] [--max-hours 8] [--idle-hours 2]
+    scripts/gpu-run sync                 # rsync the tree; never .env, target/ or .venv
+    scripts/gpu-run exec -- CMD...       # run in the remote checkout, log under logs/gpu-run/
+    scripts/gpu-run tests                # tessera-gpu's bit-exact tests
+    scripts/gpu-run bench cc|l|pi        # one unit-cost benchmark
+    scripts/gpu-run fetch REMOTE [LOCAL] # copy a remote path back
+    scripts/gpu-run resume | status | down
+
+The API key comes from VAST_AI_API_KEY (the environment or ./.env); it is never sent to the
+instance. Cost guards: `up` refuses offers above --max-dph, and the instance carries a watchdog
+that stops its container after --max-hours of life or --idle-hours without a `gpu-run` command.
+`down` destroys the instance; run it when done.
+"""
+
+import argparse
+import json
+import os
+import shlex
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+API = "https://console.vast.ai/api/v0"
+ROOT = Path(__file__).resolve().parent.parent
+STATE = Path.home() / ".cache" / "tessera-gpu-run" / "instance.json"
+KEY = Path.home() / ".ssh" / "tessera_vast"
+IMAGE = "nvidia/cuda:12.8.1-devel-ubuntu22.04"
+REMOTE = "/root/tessera"
+GPU_NAMES = {"H100": ["H100 SXM", "H100 NVL", "H100 PCIE"], "H200": ["H200", "H200 NVL"]}
+# The watchdog's own command line names these words, so it counts itself: subtract one.
+EXCLUDES = [".env", ".env.*", "target/", "verifier/target/", "verifier/fuzz/target/",
+            "python/.venv/", "logs/", ".DS_Store"]
+
+
+def api_key() -> str:
+    key = os.environ.get("VAST_AI_API_KEY")
+    if not key and (ROOT / ".env").exists():
+        for line in (ROOT / ".env").read_text().splitlines():
+            if line.startswith("VAST_AI_API_KEY="):
+                key = line.split("=", 1)[1].strip().strip('"')
+    if not key:
+        sys.exit("gpu-run: VAST_AI_API_KEY is not set")
+    return key
+
+
+def call(method: str, path: str, body: dict | None = None) -> dict:
+    req = urllib.request.Request(
+        f"{API}{path}", method=method,
+        data=None if body is None else json.dumps(body).encode(),
+        headers={"Authorization": f"Bearer {api_key()}", "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        sys.exit(f"gpu-run: {method} {path}: HTTP {e.code}: {e.read()[:500]!r}")
+
+
+def state() -> dict:
+    if not STATE.exists():
+        sys.exit("gpu-run: no instance; run `gpu-run up` first")
+    return json.loads(STATE.read_text())
+
+
+def ssh_base(s: dict) -> list[str]:
+    return ["ssh", "-i", str(KEY), "-p", str(s["port"]), "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR",
+            "-o", "ServerAliveInterval=30", f"root@{s['host']}"]
+
+
+def remote(s: dict, command: str, check: bool = True) -> int:
+    # Each command is a heartbeat for the idle watchdog.
+    full = f"touch /root/.gpu-run-heartbeat; . $HOME/.cargo/env 2>/dev/null; {command}"
+    code = subprocess.call(ssh_base(s) + [full])
+    if check and code:
+        sys.exit(f"gpu-run: remote command exited {code}")
+    return code
+
+
+# The watchdog stops the container (PID 1), which stops GPU billing, after the life or idle
+# limit. It holds no credentials. `down` still has to destroy the instance and its disk.
+WATCHDOG = """
+touch /root/.gpu-run-heartbeat
+nohup sh -c 'start=$(date +%s); while sleep 60; do now=$(date +%s);
+  beat=$(stat -c %Y /root/.gpu-run-heartbeat); busy=$(($(pgrep -f "[c]argo|[t]essera|[p]ython" | wc -l)));
+  [ "$busy" -gt 0 ] && touch /root/.gpu-run-heartbeat && beat=$now;
+  if [ $((now-start)) -gt {life} ] || [ $((now-beat)) -gt {idle} ]; then kill -TERM 1; fi; done' \
+  >/dev/null 2>&1 &
+"""
+
+SETUP = """
+set -e
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq && apt-get install -y -qq rsync curl build-essential pkg-config git python3 \
+  python3-venv time >/dev/null
+[ -x $HOME/.cargo/bin/rustup ] || curl -sSf https://sh.rustup.rs | sh -s -- -y -q \
+  --profile minimal --default-toolchain none
+. $HOME/.cargo/env
+[ -x $HOME/.local/bin/uv ] || curl -LsSf https://astral.sh/uv/install.sh | sh -s -- -q
+nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
+nproc; free -g | head -2
+"""
+
+
+def up(a: argparse.Namespace) -> None:
+    if STATE.exists():
+        sys.exit(f"gpu-run: an instance is recorded in {STATE}; `gpu-run down` first")
+    q = {"gpu_name": {"in": GPU_NAMES[a.gpu]}, "num_gpus": {"eq": 1}, "rentable": {"eq": True},
+         "rented": {"eq": False}, "verified": {"eq": True}, "dph_total": {"lte": a.max_dph},
+         "disk_space": {"gte": a.disk}, "cuda_max_good": {"gte": 12.8},
+         "cpu_ram": {"gte": a.min_ram * 1024}, "cpu_cores_effective": {"gte": a.min_cores},
+         "type": "on-demand",
+         "order": [["dph_total", "asc"]], "limit": 10}
+    if a.offer:  # a named offer, whatever its GPU count: e.g. a whole machine for its RAM
+        # The bundles search does not filter on id: list verified and unverified, then pick it.
+        offers = []
+        for verified in (True, False):
+            q = {"rentable": {"eq": True}, "rented": {"eq": False}, "type": "on-demand",
+                 "verified": {"eq": verified}, "cpu_ram": {"gte": a.min_ram * 1024},
+                 "order": [["dph_total", "asc"]], "limit": 500}
+            offers += [o for o in call("POST", "/bundles/", q).get("offers", [])
+                       if o["id"] == a.offer]
+    else:
+        offers = call("POST", "/bundles/", q).get("offers", [])
+    if not offers:
+        sys.exit(f"gpu-run: no {a.gpu} offer at or below ${a.max_dph}/h")
+    o = offers[0]
+    print(f"renting {o['gpu_name']} offer {o['id']} at ${o['dph_total']:.3f}/h, "
+          f"{o['cpu_cores_effective']:.0f} cores, {o['cpu_ram'] / 1024:.0f} GB RAM, "
+          f"{o.get('geolocation')}")
+    life, idle = int(a.max_hours * 3600), int(a.idle_hours * 3600)
+    r = call("PUT", f"/asks/{o['id']}/", {
+        "client_id": "me", "image": IMAGE, "disk": a.disk, "runtype": "ssh",
+        "onstart": WATCHDOG.format(life=life, idle=idle), "label": "tessera-gpu-run",
+        # The container's own environment: what a hosted harness run hands the adapter.
+        "env": dict(kv.split("=", 1) for kv in a.env)})
+    if not r.get("success"):
+        sys.exit(f"gpu-run: rent failed: {r}")
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    s = {"id": r["new_contract"], "dph": o["dph_total"], "started": time.time()}
+    STATE.write_text(json.dumps(s))
+    resume(a)
+
+
+def resume(a: argparse.Namespace) -> None:
+    s = state()
+    i = call("GET", f"/instances/{s['id']}/").get("instances") or {}
+    if i.get("actual_status") != "running":
+        # A container the watchdog stopped keeps its disk; starting it again restarts the watchdog.
+        r = call("PUT", f"/instances/{s['id']}/", {"state": "running"})
+        if not r.get("success"):
+            # resources_unavailable: another renter holds the GPUs; the start stays queued.
+            sys.exit(f"gpu-run: start refused: {r.get('error')}: {r.get('msg')}")
+    for _ in range(90):
+        time.sleep(10)
+        i = call("GET", f"/instances/{s['id']}/").get("instances") or {}
+        if i.get("actual_status") == "running" and i.get("ssh_host"):
+            s.update(host=i["ssh_host"], port=i["ssh_port"])
+            STATE.write_text(json.dumps(s))
+            break
+        print(f"  {i.get('actual_status')} {(i.get('status_msg') or '')[:80]}")
+    else:
+        sys.exit("gpu-run: instance did not start in 15 min; `gpu-run down` to release it")
+    for _ in range(30):
+        if remote(s, "true", check=False) == 0:
+            break
+        time.sleep(10)
+    remote(s, SETUP)
+    sync(a)
+    remote(s, f"cd {REMOTE} && rustup show active-toolchain")
+    print(f"ready: instance {s['id']}")
+
+
+def sync(_: argparse.Namespace) -> None:
+    s = state()
+    ssh = " ".join(shlex.quote(x) for x in ssh_base(s)[:-1])
+    cmd = ["rsync", "-az", "--delete", "-e", ssh]
+    cmd += [f"--exclude={e}" for e in EXCLUDES]
+    cmd += [f"{ROOT}/", f"root@{s['host']}:{REMOTE}/"]
+    if subprocess.call(cmd):
+        sys.exit("gpu-run: rsync failed")
+
+
+def run(a: argparse.Namespace) -> None:
+    s = state()
+    log = ROOT / "logs" / "gpu-run" / time.strftime("%Y%m%d-%H%M%S.log")
+    log.parent.mkdir(parents=True, exist_ok=True)
+    # One argument is a shell string; several are quoted word by word.
+    command = a.command[0] if len(a.command) == 1 else shlex.join(a.command)
+    print(f"[gpu-run] {command}  (log: {log})")
+    with log.open("w") as f:
+        p = subprocess.Popen(
+            ssh_base(s) + [f"touch /root/.gpu-run-heartbeat; . $HOME/.cargo/env; "
+                           f"export PATH=$HOME/.local/bin:$PATH; cd {REMOTE} && {command}"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        assert p.stdout
+        for line in p.stdout:
+            sys.stdout.buffer.write(line)
+            sys.stdout.flush()
+            f.write(line.decode(errors="replace"))
+        sys.exit(p.wait())
+
+
+def fetch(a: argparse.Namespace) -> None:
+    s = state()
+    ssh = " ".join(shlex.quote(x) for x in ssh_base(s)[:-1])
+    src = a.remote if a.remote.startswith("/") else f"{REMOTE}/{a.remote}"
+    sys.exit(subprocess.call(["rsync", "-az", "-e", ssh, f"root@{s['host']}:{src}", a.local]))
+
+
+def status(_: argparse.Namespace) -> None:
+    s = state()
+    i = call("GET", f"/instances/{s['id']}/").get("instances") or {}
+    hours = (time.time() - s["started"]) / 3600
+    print(f"instance {s['id']}: {i.get('actual_status')}, {hours:.2f} h, "
+          f"~${hours * s['dph']:.2f} at ${s['dph']:.3f}/h, ssh -p {s.get('port')} "
+          f"root@{s.get('host')}")
+
+
+def down(_: argparse.Namespace) -> None:
+    s = state()
+    call("DELETE", f"/instances/{s['id']}/")
+    hours = (time.time() - s["started"]) / 3600
+    print(f"destroyed instance {s['id']} after {hours:.2f} h (~${hours * s['dph']:.2f})")
+    STATE.unlink()
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(prog="gpu-run", description=__doc__.split("\n")[0])
+    sub = p.add_subparsers(dest="cmd", required=True)
+    u = sub.add_parser("up")
+    u.add_argument("--gpu", choices=GPU_NAMES, default="H100")
+    u.add_argument("--max-dph", type=float, default=3.0, help="refuse offers above this $/h")
+    u.add_argument("--max-hours", type=float, default=8.0, help="watchdog: total life")
+    u.add_argument("--idle-hours", type=float, default=2.0, help="watchdog: no command for")
+    u.add_argument("--disk", type=int, default=250, help="GB")
+    u.add_argument("--min-ram", type=int, default=128, help="GB of host RAM")
+    u.add_argument("--min-cores", type=int, default=32, help="effective host CPU cores")
+    u.add_argument("--offer", type=int, help="rent this offer id instead of searching")
+    u.add_argument("--env", action="append", default=[], metavar="KEY=VALUE",
+                   help="set in the container's environment (never a secret)")
+    u.set_defaults(f=up)
+    sub.add_parser("resume", help="wait for and set up the recorded instance").set_defaults(
+        f=resume)
+    sub.add_parser("sync").set_defaults(f=sync)
+    e = sub.add_parser("exec")
+    e.add_argument("command", nargs=argparse.REMAINDER)
+    e.set_defaults(f=lambda a: run(argparse.Namespace(
+        command=a.command[1:] if a.command[:1] == ["--"] else a.command)))
+    sub.add_parser("tests").set_defaults(f=lambda a: run(argparse.Namespace(command=[
+        "cargo", "test", "--release", "--locked", "-p", "tessera-gpu", "--features", "gpu"])))
+    b = sub.add_parser("bench")
+    b.add_argument("unit", choices=["cc", "l", "pi"])
+    b.set_defaults(f=lambda a: run(argparse.Namespace(command=[
+        "cargo", "run", "--release", "--locked", "-p", "tessera-bench", "--features", "gpu",
+        "--example", "gpu_unit_costs", "--", a.unit])))
+    f = sub.add_parser("fetch")
+    f.add_argument("remote")
+    f.add_argument("local", nargs="?", default=".")
+    f.set_defaults(f=fetch)
+    sub.add_parser("status").set_defaults(f=status)
+    sub.add_parser("down").set_defaults(f=down)
+    a = p.parse_args()
+    a.f(a)
+
+
+if __name__ == "__main__":
+    main()

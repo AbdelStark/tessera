@@ -1,5 +1,7 @@
 # Implementation Tracker — 2026-10-15
 
+> **The order of work is now the [MVP plan](MVP.md)** (epic [#722](https://github.com/AbdelStark/tessera/issues/722), 2026-11-09). This document remains the inventory of the full specification's units of work.
+
 Generated from the spec corpus committed in [#1](https://github.com/AbdelStark/tessera/pull/1): the plan as filed on 2026-10-15, every implementable unit of work of the spec at the time. Each issue is independently shippable; cross-issue dependencies are noted inline in each issue body (Depends on / Blocks) and summarized at the end of this document.
 
 This document is the plan, not its progress. Whether an issue is open or closed, and the issues filed since, such as spec corrections and security findings, are on GitHub: each tracking issue's checklist is its subsystem's dashboard.

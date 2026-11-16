@@ -172,16 +172,16 @@ fn a_sum_of_tables_of_different_sizes_is_refused() {
 #[test]
 fn a_fraction_tree_too_tall_to_allocate_is_refused() {
     for height in [60, 63, 64, usize::MAX] {
-        let mut called = false;
+        let called = std::sync::atomic::AtomicBool::new(false);
         let tree = FractionTree::<Fp2>::new(height, LeafNumerators::Unit, |_| {
-            called = true;
+            called.store(true, std::sync::atomic::Ordering::Relaxed);
             Fp2::ONE
         });
         assert_eq!(
             tree.map(|tree| tree.height()),
             Err(SumcheckError::FractionHeight { height })
         );
-        assert!(!called, "refused before any leaf is asked for");
+        assert!(!called.into_inner(), "refused before any leaf is asked for");
     }
 }
 

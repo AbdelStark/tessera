@@ -1,0 +1,1065 @@
+{
+  "adapter_phases": {},
+  "claim": {
+    "card_version": 1,
+    "configuration": "ni-100-public-output",
+    "system": "tessera"
+  },
+  "control": false,
+  "events": [
+    {
+      "event": "info.start",
+      "mono_ns": 78108035076705
+    },
+    {
+      "event": "info.end",
+      "mono_ns": 78108101334494
+    },
+    {
+      "event": "setup.start",
+      "mono_ns": 78108132113040
+    },
+    {
+      "event": "setup.end",
+      "mono_ns": 78108197140623
+    },
+    {
+      "event": "commit.start",
+      "mono_ns": 78108223650403
+    },
+    {
+      "event": "commit.end",
+      "mono_ns": 78940944798579
+    },
+    {
+      "event": "prove.start",
+      "mono_ns": 78957328731414
+    },
+    {
+      "event": "prove.end",
+      "mono_ns": 111206624573340
+    },
+    {
+      "event": "proof.released",
+      "mono_ns": 111206609623381
+    }
+  ],
+  "failure": null,
+  "inputs": {
+    "active_parameters_per_token": {
+      "grade": "asserted",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "reference_file",
+        "ref": "workloads/l31-8b-c1024.yaml#/model/parameters/active_per_token"
+      },
+      "tier": "reported",
+      "unit": "count",
+      "value": 8030261248
+    },
+    "gpu_count": {
+      "grade": "asserted",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "reference_file",
+        "ref": "reference/v0.1.yaml#/profiles/prover-h200-hosted/gpu/count"
+      },
+      "tier": "reported",
+      "unit": "count",
+      "value": 1
+    },
+    "weight_bits": {
+      "grade": "asserted",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "reference_file",
+        "ref": "workloads/l31-8b-c1024.yaml#/precision/weight_bits"
+      },
+      "tier": "reported",
+      "unit": "bit/weight",
+      "value": 8
+    }
+  },
+  "metrics": {
+    "active_param_tokens_per_second_prove.session": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "prove.session",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/rate_prove.session",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/active_parameters_per_token"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-APT-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "param_token/s",
+      "value": 270918420.3856244
+    },
+    "active_param_tokens_per_second_prove.steady": {
+      "grade": "derived",
+      "null_reason": "not_externally_observable",
+      "scope": "prove.steady",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/rate_prove.steady",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/active_parameters_per_token"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-APT-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "param_token/s",
+      "value": null
+    },
+    "active_param_tokens_per_second_whole_wall": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "whole_wall",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/rate_whole_wall",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/active_parameters_per_token"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-APT-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "param_token/s",
+      "value": 263968286.7000509
+    },
+    "commit_cpu_seconds": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": "commit",
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/commit"
+      },
+      "tier": "reported",
+      "unit": "s",
+      "value": 3642.027844
+    },
+    "commit_gpu_energy": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/commit"
+      },
+      "tier": "reported",
+      "unit": "J",
+      "value": 50639.434
+    },
+    "commit_gpu_memory_peak": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/commit"
+      },
+      "tier": "reported",
+      "unit": "MiB",
+      "value": 18458.125
+    },
+    "commit_gpu_util_mean": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/commit"
+      },
+      "tier": "reported",
+      "unit": "%",
+      "value": 5.525103419806963
+    },
+    "commit_gpu_util_p95": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/commit"
+      },
+      "tier": "reported",
+      "unit": "%",
+      "value": 90.0
+    },
+    "commit_host_memory_peak_anon": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/commit"
+      },
+      "tier": "reported",
+      "unit": "B",
+      "value": 27540795392
+    },
+    "commit_host_memory_peak_kernel": {
+      "grade": "measured",
+      "null_reason": "not_measurable_on_profile",
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/commit"
+      },
+      "tier": "reported",
+      "unit": "B",
+      "value": null
+    },
+    "commit_seconds": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": "commit",
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/events"
+      },
+      "tier": "reported",
+      "unit": "s",
+      "value": 832.721148176
+    },
+    "commit_seconds_per_token_h1": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "commit",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/commit_seconds",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/tokens_covered_total",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/requests_count"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-COMMIT-AMORT-H1@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "s/token",
+      "value": 0.7653687023676471
+    },
+    "commit_seconds_per_token_h1000": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "commit",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/commit_seconds",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/tokens_covered_total",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/requests_count"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-COMMIT-AMORT-H1000@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "s/token",
+      "value": 0.0007653687023676471
+    },
+    "cost_per_1k_tokens_prove.session": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "prove.session",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/seconds_per_token_prove.session",
+          "reference/v0.1.yaml#/costs/h200/price_per_gpu_hour_usd",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/gpu_count"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-COST-1K-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "USD/1k_token",
+      "value": 44.00847793289512
+    },
+    "cost_per_1k_tokens_prove.steady": {
+      "grade": "derived",
+      "null_reason": "not_externally_observable",
+      "scope": "prove.steady",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/seconds_per_token_prove.steady",
+          "reference/v0.1.yaml#/costs/h200/price_per_gpu_hour_usd",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/gpu_count"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-COST-1K-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "USD/1k_token",
+      "value": null
+    },
+    "cost_per_1k_tokens_whole_wall": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "whole_wall",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/seconds_per_token_whole_wall",
+          "reference/v0.1.yaml#/costs/h200/price_per_gpu_hour_usd",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/gpu_count"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-COST-1K-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "USD/1k_token",
+      "value": 45.16719593177273
+    },
+    "gpu_seconds_per_token_prove.session": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "prove.session",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/seconds_per_token_prove.session",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/gpu_count"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-GSPT-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "gpu_s/token",
+      "value": 29.640883172763786
+    },
+    "gpu_seconds_per_token_prove.steady": {
+      "grade": "derived",
+      "null_reason": "not_externally_observable",
+      "scope": "prove.steady",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/seconds_per_token_prove.steady",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/gpu_count"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-GSPT-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "gpu_s/token",
+      "value": null
+    },
+    "gpu_seconds_per_token_whole_wall": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "whole_wall",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/seconds_per_token_whole_wall",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/gpu_count"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-GSPT-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "gpu_s/token",
+      "value": 30.42131063692831
+    },
+    "info_seconds": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": "setup",
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/events"
+      },
+      "tier": "reported",
+      "unit": "s",
+      "value": 0.066257789
+    },
+    "proof_bytes": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/proofs"
+      },
+      "stats": {
+        "max": 4370879850.0,
+        "mean": 4370879850.0,
+        "min": 4370879850.0,
+        "n": 1,
+        "n_failed": 0,
+        "stdev": null
+      },
+      "tier": "reported",
+      "unit": "B",
+      "value": 4370879850.0
+    },
+    "proof_bytes_per_active_weight_bit_token": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/proof_bytes_per_token",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/active_parameters_per_token",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/weight_bits"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-BPAB@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "B/bit_token",
+      "value": 6.253459070695516e-05
+    },
+    "proof_bytes_per_token": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/proof_bytes_total",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/tokens_covered_total"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-BPT@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "B/token",
+      "value": 4017352.8033088236
+    },
+    "proof_bytes_total": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/proofs"
+      },
+      "tier": "reported",
+      "unit": "B",
+      "value": 4370879850.0
+    },
+    "proofs_count": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/proofs"
+      },
+      "tier": "reported",
+      "unit": "count",
+      "value": 1
+    },
+    "prove_call_seconds": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": "prove.session",
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/events"
+      },
+      "tier": "reported",
+      "unit": "s",
+      "value": 32249.295841926
+    },
+    "prove_cpu_seconds": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": "prove.session",
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/prove"
+      },
+      "tier": "reported",
+      "unit": "s",
+      "value": 119060.286996
+    },
+    "prove_gpu_energy": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/prove"
+      },
+      "tier": "reported",
+      "unit": "J",
+      "value": 1989126.872
+    },
+    "prove_gpu_memory_peak": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/prove"
+      },
+      "tier": "reported",
+      "unit": "MiB",
+      "value": 62760.125
+    },
+    "prove_gpu_util_mean": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/prove"
+      },
+      "tier": "reported",
+      "unit": "%",
+      "value": 1.2177525260508415
+    },
+    "prove_gpu_util_p95": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/prove"
+      },
+      "tier": "reported",
+      "unit": "%",
+      "value": 7.0
+    },
+    "prove_host_memory_peak_anon": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/prove"
+      },
+      "tier": "reported",
+      "unit": "B",
+      "value": 1964659052544
+    },
+    "prove_host_memory_peak_kernel": {
+      "grade": "measured",
+      "null_reason": "not_measurable_on_profile",
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/prove"
+      },
+      "tier": "reported",
+      "unit": "B",
+      "value": null
+    },
+    "prove_session_seconds": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": "prove.session",
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/events"
+      },
+      "tier": "reported",
+      "unit": "s",
+      "value": 32249.280891967
+    },
+    "prove_steady_seconds": {
+      "grade": "measured",
+      "null_reason": "not_externally_observable",
+      "scope": "prove.steady",
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/events"
+      },
+      "tier": "reported",
+      "unit": "s",
+      "value": null
+    },
+    "prover_keep_bytes": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/proofs"
+      },
+      "tier": "reported",
+      "unit": "B",
+      "value": 8032325323
+    },
+    "rate_prove.session": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "prove.session",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/tokens_covered_total",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/prove_session_seconds"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-RATE-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "token/s",
+      "value": 0.03373718637772822
+    },
+    "rate_prove.steady": {
+      "grade": "derived",
+      "null_reason": "not_externally_observable",
+      "scope": "prove.steady",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/tokens_covered_steady",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/prove_steady_seconds"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-RATE-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "token/s",
+      "value": null
+    },
+    "rate_whole_wall": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "whole_wall",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/tokens_covered_total",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/whole_wall_seconds"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-RATE-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "token/s",
+      "value": 0.032871693528749676
+    },
+    "requests_count": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/proofs"
+      },
+      "tier": "reported",
+      "unit": "count",
+      "value": 1
+    },
+    "seconds_per_active_weight_bit_token_prove.session": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "prove.session",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/seconds_per_token_prove.session",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/active_parameters_per_token",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/weight_bits"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-SPAB-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "s/bit_token",
+      "value": 4.613935066581128e-10
+    },
+    "seconds_per_active_weight_bit_token_prove.steady": {
+      "grade": "derived",
+      "null_reason": "not_externally_observable",
+      "scope": "prove.steady",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/seconds_per_token_prove.steady",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/active_parameters_per_token",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/weight_bits"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-SPAB-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "s/bit_token",
+      "value": null
+    },
+    "seconds_per_active_weight_bit_token_whole_wall": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "whole_wall",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/seconds_per_token_whole_wall",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/active_parameters_per_token",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/weight_bits"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-SPAB-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "s/bit_token",
+      "value": 4.735417332235763e-10
+    },
+    "seconds_per_token_prove.session": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "prove.session",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/prove_session_seconds",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/tokens_covered_total"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-SPT-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "s/token",
+      "value": 29.640883172763786
+    },
+    "seconds_per_token_prove.steady": {
+      "grade": "derived",
+      "null_reason": "not_externally_observable",
+      "scope": "prove.steady",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/prove_steady_seconds",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/tokens_covered_steady"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-SPT-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "s/token",
+      "value": null
+    },
+    "seconds_per_token_whole_wall": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "whole_wall",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/whole_wall_seconds",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/tokens_covered_total"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-SPT-S@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "s/token",
+      "value": 30.42131063692831
+    },
+    "setup_seconds": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": "setup",
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/events"
+      },
+      "tier": "reported",
+      "unit": "s",
+      "value": 0.065027583
+    },
+    "tokens_covered_output": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/proofs"
+      },
+      "tier": "reported",
+      "unit": "token",
+      "value": 64
+    },
+    "tokens_covered_per_proof": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/tokens_covered_total",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/proofs_count"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-TPP@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "token",
+      "value": 1088.0
+    },
+    "tokens_covered_prompt": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/proofs"
+      },
+      "tier": "reported",
+      "unit": "token",
+      "value": 1024
+    },
+    "tokens_covered_steady": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/proofs"
+      },
+      "tier": "reported",
+      "unit": "token",
+      "value": 0
+    },
+    "tokens_covered_total": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/proofs"
+      },
+      "tier": "reported",
+      "unit": "token",
+      "value": 1088
+    },
+    "verdicts_accept_count": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/proofs"
+      },
+      "tier": "reported",
+      "unit": "count",
+      "value": 1
+    },
+    "verifier_download_bytes": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/proofs"
+      },
+      "tier": "reported",
+      "unit": "B",
+      "value": 11750
+    },
+    "verify_host_memory_peak_anon": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": null,
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/raw/verify"
+      },
+      "tier": "reported",
+      "unit": "B",
+      "value": 9252884480
+    },
+    "verify_seconds": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": "verify",
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/verifier"
+      },
+      "stats": {
+        "max": 176.532656727,
+        "mean": 176.532656727,
+        "min": 176.532656727,
+        "n": 1,
+        "n_failed": 0,
+        "stdev": null
+      },
+      "tier": "reported",
+      "unit": "s",
+      "value": 176.532656727
+    },
+    "verify_seconds_per_active_weight_bit_token": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "verify",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/verify_seconds_per_token",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/active_parameters_per_token",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/inputs/weight_bits"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-VSPAB@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "s/bit_token",
+      "value": 2.5256693877857018e-12
+    },
+    "verify_seconds_per_token": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "verify",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/verify_seconds_total",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/tokens_covered_total"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-VSPT@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "s/token",
+      "value": 0.16225428007996323
+    },
+    "verify_seconds_total": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": "verify",
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/verifier"
+      },
+      "tier": "reported",
+      "unit": "s",
+      "value": 176.532656727
+    },
+    "verify_single_thread_seconds": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": "verify.single_thread",
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/verifier"
+      },
+      "stats": {
+        "max": 176.652207579,
+        "mean": 176.652207579,
+        "min": 176.652207579,
+        "n": 1,
+        "n_failed": 0,
+        "stdev": null
+      },
+      "tier": "reported",
+      "unit": "s",
+      "value": 176.652207579
+    },
+    "verify_single_thread_seconds_per_token": {
+      "grade": "derived",
+      "null_reason": null,
+      "scope": "verify.single_thread",
+      "source": {
+        "inputs": [
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/metrics/verify_single_thread_seconds",
+          "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/proofs/0/tokens_covered"
+        ],
+        "kind": "derivation",
+        "ref": "derive:D-VSPT-1T@0.1.0.dev0"
+      },
+      "tier": "reported",
+      "unit": "s/token",
+      "value": 0.16236416137775733
+    },
+    "whole_wall_seconds": {
+      "grade": "measured",
+      "null_reason": null,
+      "scope": "whole_wall",
+      "source": {
+        "kind": "harness",
+        "ref": "/root/dev-results/v0.1/tessera/2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1/run.json#/events"
+      },
+      "tier": "reported",
+      "unit": "s",
+      "value": 33098.385972978
+    }
+  },
+  "profile": "prover-h200-hosted",
+  "proofs": [
+    {
+      "claimed_output": [
+        198,
+        1712,
+        568,
+        4024,
+        311,
+        1518,
+        11,
+        719,
+        433,
+        4024,
+        311,
+        279,
+        1023,
+        11,
+        719,
+        433,
+        4024,
+        2162,
+        198,
+        438,
+        568,
+        4024,
+        11,
+        719,
+        568,
+        4024,
+        311,
+        279,
+        1023,
+        11,
+        719,
+        433,
+        4024,
+        11,
+        719,
+        568,
+        4024,
+        2162,
+        198,
+        438,
+        568,
+        4024,
+        11,
+        719,
+        433,
+        4024,
+        11,
+        719,
+        433,
+        4024,
+        2162,
+        11,
+        719,
+        568,
+        1550,
+        11,
+        719,
+        433,
+        198,
+        42700,
+        11,
+        323,
+        433,
+        4024
+      ],
+      "proof_id": "req-0",
+      "release_mono_ns": 111206609623381,
+      "request_index": 0,
+      "tokens_covered": 1088,
+      "verdict": "accept"
+    }
+  ],
+  "raw": {},
+  "release": "v0.1",
+  "repetition": 1,
+  "replaces": null,
+  "run_id": "2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1",
+  "schema": "run/1",
+  "status": "completed",
+  "system": "tessera",
+  "system_kind": "prover",
+  "warnings": [
+    "repetitions_below_minimum",
+    "conformance: PC-GPU-MODEL: bound GPU is 'NVIDIA A100 80GB PCIe', the profile needs 'NVIDIA H200'",
+    "conformance: PC-GPU-MEM: 81920 MiB < 140000 MiB",
+    "conformance: PC-DRIVER: driver '595.91.07', the profile pins 'unpinned'"
+  ],
+  "workload": {
+    "id": "l31-8b-c1024",
+    "version": 1
+  }
+}

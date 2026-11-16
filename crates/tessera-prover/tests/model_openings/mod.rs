@@ -32,8 +32,8 @@ pub struct First {
 pub struct Committed<'a> {
     p: &'a Public,
     advice: &'a ModelAdviceLayout<'a>,
-    source: &'a dyn WitnessSource,
-    replay: &'a dyn WitnessSource,
+    source: &'a (dyn WitnessSource + Sync),
+    replay: &'a (dyn WitnessSource + Sync),
     claims: &'a tv_core::claims::ClaimList,
     advice_state: pcs::AdviceOpening<'a>,
     encoder: pcs::RowEncoder,
@@ -107,7 +107,7 @@ fn source(s: va::Source) -> AdviceSource {
 fn rows<Failure: Into<tessera_prover::advice::Error>>(
     p: &Public,
     layout: &ModelAdviceLayout<'_>,
-    source: &dyn WitnessSource,
+    source: &(dyn WitnessSource + Sync),
     segment: u32,
     mut sink: impl FnMut(u64, &[G]) -> Result<(), Failure>,
 ) {
@@ -128,8 +128,8 @@ impl<'a> Committed<'a> {
         p: &'a Public,
         model: &'a IntegerModel,
         advice: &'a ModelAdviceLayout<'a>,
-        source: &'a dyn WitnessSource,
-        replay: &'a dyn WitnessSource,
+        source: &'a (dyn WitnessSource + Sync),
+        replay: &'a (dyn WitnessSource + Sync),
         claims: &'a tv_core::claims::ClaimList,
         prompt: Option<u32>,
     ) -> Self {
@@ -289,6 +289,7 @@ impl<'a> Committed<'a> {
             limits: Default::default(),
             accept_bound: tv_core::protocol::FixedBits(0),
             weights,
+            public_tokens: None,
         })
     }
     pub fn start(
@@ -1588,7 +1589,7 @@ fn canonical_rows_omit_public_padding_and_preserve_source_and_sink_errors() {
             )
     );
     struct Swapped<'a> {
-        source: &'a dyn WitnessSource,
+        source: &'a (dyn WitnessSource + Sync),
         from: &'a tessera_compiler::SequenceTile,
         to: &'a tessera_compiler::SequenceTile,
     }

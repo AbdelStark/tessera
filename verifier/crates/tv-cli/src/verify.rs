@@ -34,7 +34,7 @@ USAGE:
     --weights-root HEX --statement-digest HEX --proof PROOF.tnp --bound BITS
     [--out VERDICT.json] [--json] [--max-artifact-bytes N]
     [--max-memory-bytes N] [--timeout-ms N] [--run-manifest PATH]
-    [--log-format human|json] [--log-level LEVEL]
+    [--log-format human|json] [--log-level LEVEL] [--tokens TOKENS]
 
 The statement digest is a trusted caller-owned H(statement,TCE(PublicStatement));
 obtain it independently of the proof. --bound is exact bits in increments of1/256.
@@ -43,6 +43,9 @@ core per-check timings remain null. Anchor, ledger and ZK are not verified.
 Test-small builds certify nothing. --manifest belongs to future anchor support.
 --run-manifest writes a public tessera.run-manifest/1 at PATH after the report; PATH must
 differ from the inputs and --out. --log-level debug logs one line per check.
+--tokens checks the proven tokens against the request's public tokens, prompt then
+continuation, as decimal ids separated by spaces, commas or newlines (#741): a proof of
+other tokens is rejected with REJ-TOKENS. The tokens are then public, not hidden.
 ";
 
 struct Config<'a> {
@@ -51,6 +54,7 @@ struct Config<'a> {
     proof: &'a str,
     out: Option<&'a str>,
     manifest: Option<&'a str>,
+    tokens: Option<&'a str>,
     root: [u8; 32],
     statement: [u8; 32],
     bound: FixedBits,
@@ -72,6 +76,7 @@ impl<'a> Config<'a> {
                 "--max-memory-bytes",
                 "--timeout-ms",
                 "--run-manifest",
+                "--tokens",
             ],
         )?;
         let defaults = ResourceLimits::default();
@@ -81,6 +86,7 @@ impl<'a> Config<'a> {
             proof: o.required("--proof")?,
             out: o.get("--out"),
             manifest: o.get("--run-manifest"),
+            tokens: o.get("--tokens"),
             root: options::digest(o.required("--weights-root")?)?,
             statement: options::digest(o.required("--statement-digest")?)?,
             bound: FixedBits(options::bound(o.required("--bound")?)?),
@@ -290,9 +296,15 @@ fn verify(
     let remaining = e
         .remaining(c.limits.max_wall_time)
         .map_err(|code| failed(trail, code))?;
+    let public_tokens = c
+        .tokens
+        .map(read_tokens)
+        .transpose()
+        .map_err(|code| failed(trail, code))?;
     let cfg = VerifierConfig {
         params,
         weights,
+        public_tokens,
         accept_bound: c.bound,
         limits: ResourceLimits {
             max_wall_time: remaining,
@@ -544,4 +556,29 @@ pub(crate) fn finish(
         stdout: text,
         stderr,
     }
+}
+
+/// The public tokens of `--tokens`: decimal ids separated by ASCII whitespace or commas, at
+/// most 2^24 of them; anything else is a usage error.
+fn read_tokens(path: &str) -> Result<Vec<u32>, ErrorCode> {
+    const MAX_BYTES: u64 = 256 << 20;
+    let file = std::fs::File::open(path).map_err(|_| ErrorCode::Io)?;
+    let size = file.metadata().map_err(|_| ErrorCode::Io)?.len();
+    if size > MAX_BYTES {
+        return Err(ErrorCode::Usage);
+    }
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut std::io::Read::take(file, MAX_BYTES), &mut text)
+        .map_err(|_| ErrorCode::Usage)?;
+    let mut tokens = Vec::new();
+    for word in text.split(|c: char| c == ',' || c.is_ascii_whitespace()) {
+        if word.is_empty() {
+            continue;
+        }
+        if tokens.len() >= 1 << 24 || !word.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(ErrorCode::Usage);
+        }
+        tokens.push(word.parse::<u32>().map_err(|_| ErrorCode::Usage)?);
+    }
+    Ok(tokens)
 }

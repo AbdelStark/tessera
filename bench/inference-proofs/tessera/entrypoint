@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+"""Tessera's adapter for the inference-proofs observatory (adapter/1, #741). Standard library only.
+
+Usage: entrypoint <info|setup|commit|prove|verify> /io/job.json /io/out.json
+
+| Subcommand | Upstream tools, in order |
+|---|---|
+| commit | `tessera-quant compile` (unless TESSERA_MODEL_D names a prebuilt D), `tessera compile --params ni-100`, `tessera commit-weights`, `statement_pin` for the weights root |
+| prove | per request: `tools/greedy_tokens.py` (D's exact-greedy continuation), `tessera prove --backend gpu` |
+| verify | `statement_pin`, `tessera-verify verify --tokens` (request then claimed output) |
+
+The commitment is the weights root of `tessera commit-weights`; `verify` passes the harness's
+recorded commitment_id to `tessera-verify --weights-root`, never anything `prove` wrote. The
+verifier files are the claim list and the public weight commitment. Each proof directory holds one
+`proof.tnp`: a non-interactive `tessera-protocol/1` proof at `ni-100/1` of one request, prompt then
+continuation, with no zero knowledge (the claim card says so).
+
+Environment (paths on the host when the harness runs this in process, IPROOFS_IO and
+IPROOFS_MODELS mapping /io and /models as for systems/fake):
+TESSERA_REPO (the checkout, default the directory three levels up), TESSERA_BIN, TESSERA_VERIFY,
+TESSERA_PIN (default the repository's release builds), TESSERA_MODEL_D (a prebuilt D),
+TESSERA_CALIBRATION (the calibration spec when D is built here, default calibration.json beside
+this file: C4, 128 windows of 2,048 tokens, 32 held out), TESSERA_ALPHA (migration strength,
+default 1/2), TESSERA_BACKEND (gpu or cpu), TESSERA_THREADS, TESSERA_MAX_LOG2_ROWS (default 32),
+TESSERA_MEMORY_GIB (the prover's --memory-budget; default 15/16 of the host's RAM or cgroup limit). In hosted mode the
+harness passes the image's environment only, so the defaults are what a hosted run uses.
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+REPO = Path(os.environ.get("TESSERA_REPO", Path(__file__).resolve().parents[3]))
+BIN = Path(os.environ.get("TESSERA_BIN", REPO / "target/release/tessera"))
+VERIFY = Path(os.environ.get("TESSERA_VERIFY", REPO / "verifier/target/release/tessera-verify"))
+PIN = Path(os.environ.get("TESSERA_PIN", REPO / "verifier/target/release/examples/statement_pin"))
+PYTHON = [os.environ.get("TESSERA_PYTHON", str(REPO / "python/.venv/bin/python"))]
+INPUTS = Path(os.environ.get("IPROOFS_INPUTS", "/opt/iproofs/inputs.json"))  # RFC-0014 B5
+FORBIDDEN_FLAGS = ["--test-", "--params=test-small", "test-small"]
+SESSION = "11" * 16
+MANIFEST = "13" * 32
+# tessera-verify's exit codes (02 §2.4): 0 accept, 10 reject, 64 usage.
+VERDICTS = {0: "accept", 10: "reject", 64: "invalid_call"}
+
+
+def host(container_path: str) -> Path:
+    for prefix, env in (("/io", "IPROOFS_IO"), ("/models", "IPROOFS_MODELS")):
+        if container_path == prefix or container_path.startswith(prefix + "/"):
+            return Path(os.environ.get(env, prefix) + container_path[len(prefix):])
+    raise SystemExit(f"tessera: path {container_path!r} outside /io and /models")
+
+
+def host_gib() -> int:
+    """The prover's default memory budget in GiB: the host's RAM, or the container's cgroup limit
+    when that is lower (a rented container may see 1 TB and be allowed 558 GiB)."""
+    total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    try:
+        limit = Path("/sys/fs/cgroup/memory.max").read_text().strip()
+        if limit.isdigit():
+            total = min(total, int(limit))
+    except OSError:
+        pass
+    return total * 15 // 16 >> 30  # leave the host a sixteenth
+
+
+def run(argv: list[str], *, cwd: Path | None = None, env: dict | None = None) -> subprocess.CompletedProcess:
+    """Runs one upstream process and appends it to /io/commands.jsonl (RFC-0005 §Command log)."""
+    started = time.monotonic_ns()
+    p = subprocess.run([str(a) for a in argv], cwd=cwd, env=env, capture_output=True, text=True)
+    line = {"argv": [str(a) for a in argv], "cwd": str(cwd or "/io"), "started_mono_ns": started,
+            "exit_code": p.returncode}
+    with host("/io/commands.jsonl").open("a") as f:
+        f.write(json.dumps(line, sort_keys=True) + "\n")
+    return p
+
+
+def checked(argv: list[str], **kw) -> str:
+    p = run(argv, **kw)
+    if p.returncode != 0:
+        sys.stderr.write(p.stderr[-4000:])
+        raise SystemExit(f"tessera: {Path(str(argv[0])).name} exited {p.returncode}")
+    return p.stdout
+
+
+def base(sub: str) -> dict:
+    return {"schema": "adapter-out/1", "contract": "adapter/1", "subcommand": sub,
+            "phases": [], "warnings": []}
+
+
+def upstream_commit() -> str:
+    try:
+        # The adapter user does not own the checkout; git refuses it without safe.directory.
+        return subprocess.run(["git", "-c", f"safe.directory={REPO}", "-C", str(REPO), "rev-parse",
+                               "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "0" * 40
+
+
+def info(job: dict) -> dict:
+    out = {**base("info"), "system": "tessera", "upstream_commit": upstream_commit(),
+           "image_inputs": json.loads(INPUTS.read_text())["inputs"] if INPUTS.is_file() else [],
+           "workloads": ["l31-8b-c1024"], "profile": "h100-1",
+           "contract_versions": ["adapter/1"]}
+    if "IPROOFS_ADAPTER_COMMIT" in os.environ:  # baked in by the image build (RFC-0014 B6)
+        out["adapter_commit"] = os.environ["IPROOFS_ADAPTER_COMMIT"]
+        out["adapter_dirty"] = os.environ.get("IPROOFS_ADAPTER_DIRTY", "true") != "false"
+    return out
+
+
+def setup(job: dict) -> dict:
+    missing = [str(p) for p in (BIN, VERIFY, PIN) if not p.is_file()]
+    if missing:
+        raise SystemExit(f"tessera: missing builds {missing}")
+    return {**base("setup"), "ready": True, "log_files": []}
+
+
+def commit(job: dict) -> dict:
+    state = host("/io/state")
+    state.mkdir(parents=True, exist_ok=True)
+    model = state / "model.d"
+    prebuilt = os.environ.get("TESSERA_MODEL_D")
+    if prebuilt:
+        shutil.copyfile(prebuilt, model)
+    else:
+        spec = os.environ.get("TESSERA_CALIBRATION", str(Path(__file__).with_name("calibration.json")))
+        checked([*PYTHON, "-m", "tessera_quant", "compile", "--json", "--checkpoint",
+                 host(job["model_dir"]), "--calibration", spec, "--profile", "servable",
+                 "--scales", "affine", "--out", model, "--device", "cuda",
+                 "--alpha", os.environ.get("TESSERA_ALPHA", "1/2")],
+                cwd=REPO / "python",
+                # The adapter user may have no home: the calibration download caches in /io/state.
+                env={"HF_HOME": str(state / "hf-home"), **os.environ})
+    compiled = state / "compiled"
+    checked([BIN, "--json", "compile", "--model", model, "--params", "ni-100", "--out-dir",
+             compiled, "--max-log2-rows", os.environ.get("TESSERA_MAX_LOG2_ROWS", "32")])
+    checked([BIN, "--json", "commit-weights", "--model", model, "--plan",
+             compiled / "plan.tep", "--out", state / "weights.twc"])
+    root = checked([PIN, compiled / "claims.tcl", state / "weights.twr", "1", "1"]).split()[1]
+    verifier = [compiled / "claims.tcl", state / "weights.twr"]
+    prover = [model, compiled / "plan.tep", state / "weights.twc"]
+    size = lambda files: sum(Path(f).stat().st_size for f in files)  # noqa: E731
+    return {**base("commit"), "commitment_id": root,
+            "verifier_files": [f"/io/state/{Path(f).relative_to(state)}" for f in verifier],
+            "prover_files": [f"/io/state/{Path(f).relative_to(state)}" for f in prover],
+            "sizes": {"verifier_bytes": size(verifier), "prover_bytes": size(prover)}}
+
+
+def prove(job: dict) -> dict:
+    flags = job.get("control_flags", [])
+    if any(f.startswith(p) for f in flags for p in FORBIDDEN_FLAGS) and not job["control"]:
+        raise SystemExit(f"tessera: refusing {flags} outside a control job")  # RFC-0005 rule 4
+    state = host("/io/state")
+    prompts = [json.loads(line) for line in host(job["prompts_file"]).read_text().splitlines()]
+    count = job["batch_size"] * job["batches"]
+    new = job["shape"]["output_tokens"]
+    proofs_dir = host("/io/proofs")
+    proofs_dir.mkdir(parents=True, exist_ok=True)
+    backend = os.environ.get("TESSERA_BACKEND", "gpu")
+    proofs = []
+    for i, request in enumerate(prompts[:count]):
+        proof_id = f"req-{i}"
+        tmp = proofs_dir / f".tmp-{proof_id}"
+        tmp.mkdir()
+        work = state / f"work-{i}"
+        work.mkdir(exist_ok=True)
+        tokens = work / "tokens.ttk"
+        out = checked([*PYTHON, "tools/greedy_tokens.py", state / "model.d", "-", tokens,
+                       "--prompt-ids", json.dumps(request), "--new", str(new)],
+                      cwd=REPO / "python",
+                      env={"TESSERA_REFERENCE_DEVICE": "cuda" if backend == "gpu" else "cpu",
+                           **os.environ, "PYTHONPATH": "."}).splitlines()
+        output = json.loads(out[1])
+        checked([BIN, "--json", "prove", "--backend", backend, "--model", state / "model.d",
+                 "--plan", state / "compiled/plan.tep", "--weights", state / "weights.twc",
+                 "--reference-tokens", tokens, "--prompt-len", str(len(request)),
+                 "--request-id", "1", "--request-session", SESSION, "--manifest-digest",
+                 MANIFEST, "--threads", os.environ.get("TESSERA_THREADS", str(os.cpu_count())),
+                 "--memory-budget", os.environ.get("TESSERA_MEMORY_GIB", str(host_gib())),
+                 *flags, "--out", tmp / "proof.tnp"])
+        os.rename(tmp, proofs_dir / proof_id)  # atomic release (RFC-0005 §Proof release protocol)
+        proofs.append({"proof_id": proof_id, "request_index": i, "parts": ["proof.tnp"],
+                       "claimed_output": output})
+    return {**base("prove"), "proofs": proofs}
+
+
+def verify(job: dict) -> dict:
+    started = time.monotonic_ns()
+    files = {Path(f).name: host(f) for f in job["verifier_files"]}
+    proof = host(job["proof_dir"]) / "proof.tnp"
+    if not proof.is_file() or "claims.tcl" not in files or "weights.twr" not in files:
+        return {**base("verify"), "verdict": "invalid_call", "raw_exit_code": 2,
+                "raw_last_line": "missing proof.tnp, claims.tcl or weights.twr", "seconds": 0.0}
+    pin = run([PIN, files["claims.tcl"], files["weights.twr"], str(len(job["request"])),
+               str(len(job["claimed_output"]))])
+    if pin.returncode != 0:
+        return {**base("verify"), "verdict": "invalid_call", "raw_exit_code": pin.returncode,
+                "raw_last_line": pin.stderr.strip()[-200:], "seconds": 0.0}
+    statement = pin.stdout.split()[0]
+    # Public-output verification: the proof must be of exactly these tokens (REJ-TOKENS).
+    tokens = Path(os.environ.get("TMPDIR", "/tmp")) / f"tessera-tokens-{os.getpid()}.txt"
+    tokens.write_text(" ".join(str(int(t)) for t in [*job["request"], *job["claimed_output"]]))
+    p = run([VERIFY, "verify", "--json", "--claims", files["claims.tcl"], "--weights",
+             files["weights.twr"], "--weights-root", job["commitment_id"], "--statement-digest",
+             statement, "--bound", "0", "--tokens", tokens, "--proof", proof])
+    tokens.unlink()
+    seconds = (time.monotonic_ns() - started) / 1e9
+    last = (p.stdout.strip().splitlines() or [""])[-1]
+    verdict = VERDICTS.get(p.returncode)
+    if verdict is None:
+        raise SystemExit(f"tessera: unmapped tessera-verify exit {p.returncode}")
+    return {**base("verify"), "verdict": verdict, "raw_exit_code": p.returncode,
+            "raw_last_line": last[-500:], "seconds": seconds}
+
+
+def main() -> int:
+    sub, job_path, out_path = sys.argv[1:4]
+    job = json.loads(host(job_path).read_text())
+    if job.get("subcommand") != sub:
+        raise SystemExit(f"tessera: job.json is for {job.get('subcommand')!r}, not {sub!r}")
+    out = {"info": info, "setup": setup, "commit": commit, "prove": prove, "verify": verify}[sub](job)
+    host(out_path).write_text(json.dumps(out, sort_keys=True, indent=2) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

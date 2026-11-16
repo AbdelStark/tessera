@@ -43,6 +43,14 @@ impl GeneratedCounts {
             cache_depth: None,
         })
     }
+    /// Densify weighted counts once (`MultiplicityColumn::densify`), so every leaf chunk read
+    /// is a copy rather than a scan of all updates. Read output is unchanged.
+    pub(crate) fn densified(mut self) -> Result<Self, LeafError> {
+        self.tile
+            .densify_multiplicities()
+            .map_err(|_| LeafError::Memory)?;
+        Ok(self)
+    }
     pub(crate) fn with_cache_depth(mut self, depth: Option<usize>) -> Self {
         self.cache_depth = depth;
         self
@@ -104,12 +112,20 @@ impl TableSource<G> for GeneratedCounts {
                 "a generated table chunk fits its padded count domain",
             ));
         }
-        let mut raw =
-            SecretBuf::try_with_capacity(keys.len()).map_err(|_| WindowError::Allocation)?;
-        raw.resize(keys.len(), 0u64);
-        column
-            .read_rows(first as u64, &mut raw)
-            .map_err(|_| WindowError::Source)?;
+        // Densified counts are lent in place; weighted ones need clearing scratch.
+        let mut scratch: SecretBuf<u64>;
+        let raw: &[u64] = match column.dense_rows() {
+            Some(dense) => &dense[first..first + keys.len()],
+            None => {
+                scratch = SecretBuf::try_with_capacity(keys.len())
+                    .map_err(|_| WindowError::Allocation)?;
+                scratch.resize(keys.len(), 0u64);
+                column
+                    .read_rows(first as u64, &mut scratch)
+                    .map_err(|_| WindowError::Source)?;
+                &scratch
+            }
+        };
         for j in 0..keys.len() {
             let (key, value) = self
                 .table
@@ -342,6 +358,44 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn densified_counts_read_identical_chunks() {
+        let (table, tile, _) = fixture(true);
+        let weighted = GeneratedCounts::new(table.clone(), tile).unwrap();
+        assert!(
+            weighted
+                .tile
+                .multiplicities()
+                .unwrap()
+                .dense_rows()
+                .is_none(),
+            "the fixture exercises weighted storage"
+        );
+        let rows = column_rows(&weighted);
+        let (_, tile, _) = fixture(true);
+        let dense = GeneratedCounts::new(table, tile)
+            .unwrap()
+            .densified()
+            .unwrap();
+        assert!(dense.tile.multiplicities().unwrap().dense_rows().is_some());
+        for chunk in [256, 4096, rows.min(65_536)] {
+            let read = |source: &GeneratedCounts, first: usize| {
+                let mut out: [SecretBuf<G>; 3] =
+                    core::array::from_fn(|_| SecretBuf::filled(G::ZERO, chunk));
+                let [k, v, m] = &mut out;
+                source.read(first, k, v, m).unwrap();
+                out
+            };
+            for first in (0..rows).step_by(chunk) {
+                let (a, b) = (read(&weighted, first), read(&dense, first));
+                assert!(
+                    (0..3).all(|i| a[i][..] == b[i][..]),
+                    "chunk {chunk} at {first}"
+                );
+            }
+        }
+    }
+
     fn column_rows(source: &GeneratedCounts) -> usize {
         source.tile.multiplicities().unwrap().rows() as usize
     }

@@ -108,6 +108,7 @@ impl ColumnChains {
     /// The checks and byte sequence are identical to [`Self::absorb_block`].
     pub fn absorb_block_no_alloc(&mut self, rows: &[Goldilocks]) -> Result<(), ColumnError> {
         let (columns, _) = self.check_block(rows)?;
+        // Hardware queries and thread spawning allocate outside the streaming PCS budget.
         for (j, chain) in self.chains.iter_mut().enumerate() {
             let mut input = Hasher::new(Domain::ColumnStep);
             input.update(chain);

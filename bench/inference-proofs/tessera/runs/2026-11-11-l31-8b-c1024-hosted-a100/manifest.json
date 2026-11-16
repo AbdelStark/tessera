@@ -1,0 +1,418 @@
+{
+  "claim": {
+    "card_version": 1,
+    "configuration": "ni-100-public-output",
+    "system": "tessera"
+  },
+  "commands": [
+    {
+      "argv": [
+        "hosted",
+        "taskset",
+        "-c",
+        "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14",
+        "setpriv",
+        "--reuid=10001",
+        "--regid=10001",
+        "--clear-groups",
+        "--inh-caps=-all",
+        "--bounding-set=-all",
+        "--no-new-privs",
+        "python3",
+        "/opt/tessera/bench/inference-proofs/tessera/entrypoint",
+        "info",
+        "/io/job.json",
+        "/io/out.json"
+      ],
+      "cpuset": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14",
+      "exit_code": 0,
+      "gpus": "device=0",
+      "mems": "0",
+      "network": "provider",
+      "started_at": "2026-11-11T08:07:56Z",
+      "step": "info"
+    },
+    {
+      "argv": [
+        "hosted",
+        "taskset",
+        "-c",
+        "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14",
+        "setpriv",
+        "--reuid=10001",
+        "--regid=10001",
+        "--clear-groups",
+        "--inh-caps=-all",
+        "--bounding-set=-all",
+        "--no-new-privs",
+        "python3",
+        "/opt/tessera/bench/inference-proofs/tessera/entrypoint",
+        "setup",
+        "/io/job.json",
+        "/io/out.json"
+      ],
+      "cpuset": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14",
+      "exit_code": 0,
+      "gpus": "device=0",
+      "mems": "0",
+      "network": "provider",
+      "started_at": "2026-11-11T08:07:56Z",
+      "step": "setup"
+    },
+    {
+      "argv": [
+        "hosted",
+        "taskset",
+        "-c",
+        "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14",
+        "setpriv",
+        "--reuid=10001",
+        "--regid=10001",
+        "--clear-groups",
+        "--inh-caps=-all",
+        "--bounding-set=-all",
+        "--no-new-privs",
+        "python3",
+        "/opt/tessera/bench/inference-proofs/tessera/entrypoint",
+        "commit",
+        "/io/job.json",
+        "/io/out.json"
+      ],
+      "cpuset": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14",
+      "exit_code": 0,
+      "gpus": "device=0",
+      "mems": "0",
+      "network": "provider",
+      "started_at": "2026-11-11T08:07:56Z",
+      "step": "commit"
+    },
+    {
+      "argv": [
+        "hosted",
+        "taskset",
+        "-c",
+        "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14",
+        "setpriv",
+        "--reuid=10001",
+        "--regid=10001",
+        "--clear-groups",
+        "--inh-caps=-all",
+        "--bounding-set=-all",
+        "--no-new-privs",
+        "python3",
+        "/opt/tessera/bench/inference-proofs/tessera/entrypoint",
+        "prove",
+        "/io/job.json",
+        "/io/out.json"
+      ],
+      "cpuset": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14",
+      "exit_code": 0,
+      "gpus": "device=0",
+      "mems": "0",
+      "network": "provider",
+      "started_at": "2026-11-11T08:22:05Z",
+      "step": "prove"
+    },
+    {
+      "argv": [
+        "hosted",
+        "taskset",
+        "-c",
+        "15,16,17,18,19,20,21,22",
+        "setpriv",
+        "--reuid=10001",
+        "--regid=10001",
+        "--clear-groups",
+        "--inh-caps=-all",
+        "--bounding-set=-all",
+        "--no-new-privs",
+        "python3",
+        "/opt/tessera/bench/inference-proofs/tessera/entrypoint",
+        "verify",
+        "/io/job.json",
+        "/io/out.json"
+      ],
+      "cpuset": "15,16,17,18,19,20,21,22",
+      "exit_code": 0,
+      "gpus": null,
+      "mems": "0",
+      "network": "provider",
+      "started_at": "2026-11-11T17:19:43Z",
+      "step": "verify"
+    },
+    {
+      "argv": [
+        "hosted",
+        "taskset",
+        "-c",
+        "15",
+        "setpriv",
+        "--reuid=10001",
+        "--regid=10001",
+        "--clear-groups",
+        "--inh-caps=-all",
+        "--bounding-set=-all",
+        "--no-new-privs",
+        "python3",
+        "/opt/tessera/bench/inference-proofs/tessera/entrypoint",
+        "verify",
+        "/io/job.json",
+        "/io/out.json"
+      ],
+      "cpuset": "15",
+      "exit_code": 0,
+      "gpus": null,
+      "mems": "0",
+      "network": "provider",
+      "started_at": "2026-11-11T17:22:44Z",
+      "step": "verify"
+    }
+  ],
+  "commitment": {
+    "commitment_id": "e979d3777f8d4f94b148caaaebe859d78a0785cf23ac3256f182218e8227e1b0",
+    "prover_files": [
+      {
+        "bytes": 8032307959,
+        "digest": "sha256:74a8b78e38064f5d4ec728ec271831b258d1d816066dab677c5d395b300a7835",
+        "name": "model.d"
+      },
+      {
+        "bytes": 16826,
+        "digest": "sha256:743178689221b49053a59ec6058599b3d1114bfcdfa44c14130aea5aa9aaf353",
+        "name": "plan.tep"
+      },
+      {
+        "bytes": 538,
+        "digest": "sha256:7f5d25cc476e7b439c7bbacd4ef10e4110b9ab21ff3978cb38725a952009b684",
+        "name": "weights.twc"
+      }
+    ],
+    "verifier_files": [
+      {
+        "bytes": 11364,
+        "digest": "sha256:7617f2f9891f16c810524109d53e9019af585171165cce8c3e98ecb5a769a15c",
+        "name": "claims.tcl"
+      },
+      {
+        "bytes": 386,
+        "digest": "sha256:6e6c7413c28d73e5c64da8954b108df03aa4deae837489fcc2154529439e7ca0",
+        "name": "weights.twr"
+      }
+    ]
+  },
+  "control": false,
+  "harness": {
+    "git_commit": "7d40d857a86b13e309e45b583649f947a371a277",
+    "git_dirty": false,
+    "lock_digest": "sha256:63bc0785c9fa8cde2eec342ef6dd2feaf4074c24e3b3f6d92bf2ccc95913c784",
+    "nonconforming": true,
+    "version": "0.1.0.dev0"
+  },
+  "machine": {
+    "container": {
+      "cgroup_version": "2",
+      "execution": "hosted",
+      "shm_bytes": 1074815565824
+    },
+    "cpu": {
+      "bound_prover": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "bound_verifier": [
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22
+      ],
+      "bound_verifier_single": [
+        15
+      ],
+      "cgroup_quota_cpus": 122.88,
+      "logical_cpus": 128,
+      "model": "AMD EPYC 7713 64-Core Processor",
+      "physical_cores": 128,
+      "smt_active": false,
+      "sockets": 2
+    },
+    "disk": {
+      "free_bytes_at_start": 830589071360
+    },
+    "gpu": {
+      "bound_index": 0,
+      "count_visible": 6,
+      "cuda_driver_api": "13.2",
+      "driver_version": "595.91.07",
+      "memory_total_mib": 81920,
+      "model": "NVIDIA A100 80GB PCIe",
+      "numa_node": 0,
+      "unbound_samples": [
+        {
+          "compute_processes_max": 0,
+          "index": 1,
+          "memory_used_mib_max": 767,
+          "samples": 1,
+          "util_percent_max": 0.0
+        },
+        {
+          "compute_processes_max": 0,
+          "index": 2,
+          "memory_used_mib_max": 767,
+          "samples": 1,
+          "util_percent_max": 0.0
+        },
+        {
+          "compute_processes_max": 0,
+          "index": 3,
+          "memory_used_mib_max": 767,
+          "samples": 1,
+          "util_percent_max": 0.0
+        },
+        {
+          "compute_processes_max": 0,
+          "index": 4,
+          "memory_used_mib_max": 767,
+          "samples": 1,
+          "util_percent_max": 0.0
+        },
+        {
+          "compute_processes_max": 0,
+          "index": 5,
+          "memory_used_mib_max": 767,
+          "samples": 1,
+          "util_percent_max": 0.0
+        }
+      ]
+    },
+    "kernel": {
+      "release": "6.8.0-149-generic"
+    },
+    "memory": {
+      "available_bytes_at_start": 2133316132864,
+      "cgroup_limit_bytes": 2065596153856,
+      "total_bytes": 2151664033792
+    },
+    "numa": {
+      "bound_mems": [
+        0
+      ],
+      "nodes": 2
+    },
+    "os": {},
+    "provider": "vast.ai",
+    "verifier_host": "same_as_prover"
+  },
+  "profile": {
+    "prover": "prover-h200-hosted",
+    "reference_digest": "sha256:5a6639f10a7db4536d7ef2d3eeca2cc6356302f0eb0ba02d2ea38ba450bed3f9",
+    "reference_file": "reference/v0.1.yaml",
+    "verifier": "verifier-cpu",
+    "verifier_host": "same_as_prover"
+  },
+  "prompts_from": null,
+  "proofs": [
+    {
+      "archive": null,
+      "digest": "sha256:7d2c59dd46ce282bb245122f0d1911c0bbca7b1866aa1902cf70d690cadcc82f",
+      "parts": [
+        {
+          "bytes": 4370879850,
+          "digest": "sha256:4cba579e978bb4b4fb6e22d249e357ef7ee388915194c8d2dafa92b1d0f0734a",
+          "name": "proof.tnp"
+        }
+      ],
+      "proof_id": "req-0"
+    }
+  ],
+  "provider": "vast.ai",
+  "release": "v0.1",
+  "run_id": "2026-11-11-tessera-l31-8b-c1024-prover-h200-hosted-1",
+  "runner": {
+    "affiliated_systems": [],
+    "handle": "undeclared",
+    "organisation": "undeclared"
+  },
+  "schema": "manifest/1",
+  "self_test": {
+    "checks": [
+      {
+        "name": "ST-CLOCK",
+        "passed": true
+      },
+      {
+        "name": "ST-SAMPLER",
+        "passed": true
+      },
+      {
+        "name": "ST-JITTER",
+        "passed": true
+      },
+      {
+        "name": "ST-CGROUP",
+        "passed": true
+      },
+      {
+        "name": "ST-WATCH",
+        "passed": true
+      },
+      {
+        "name": "ST-NVML",
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "system": {
+    "adapter_commit": "7d40d857a86b13e309e45b583649f947a371a277",
+    "adapter_dirty": true,
+    "claim_digest": "sha256:8c61741a37c7f5c0200d00e26792ee1baeb3ed7d807143ffd60797f1214563ed",
+    "image": {
+      "digest_kind": "config",
+      "ref": "local/docker.io/nvidia/cuda@sha256:a99a1860ba8e2916e5c3e73b72ec4c4301653a84586e05bfc9a2aa2d58027e97"
+    },
+    "image_inputs": [],
+    "name": "tessera",
+    "system_manifest_digest": "sha256:f15167a6b488c82a56ef628754dea89f4bad3d1992103a783cfb259882f7dcb5",
+    "upstream": {
+      "commit": "ba61755349f318bd587b9402dac9fa2c83cc8bf4",
+      "repo": "AbdelStark/tessera"
+    }
+  },
+  "warnings": [
+    "repetitions_below_minimum",
+    "conformance: PC-GPU-MODEL: bound GPU is 'NVIDIA A100 80GB PCIe', the profile needs 'NVIDIA H200'",
+    "conformance: PC-GPU-MEM: 81920 MiB < 140000 MiB",
+    "conformance: PC-DRIVER: driver '595.91.07', the profile pins 'unpinned'"
+  ],
+  "workload": {
+    "corpus_digest": "sha256:cedd5c414e7c70b99348140c4ddfde8754446c3d3085f77d5d29a4e7324f639a",
+    "file_digest": "sha256:97869457f63191ddfd865c32d91235fb78ad9589e701da9c77f97b75c6cfa7d6",
+    "id": "l31-8b-c1024",
+    "model": {
+      "digest": "sha256:368b6c2838f66f92d67f24276a2314c7c2014b059a33c33ea35d793740377ee7",
+      "revision": "4699cc75b550f9c6f3173fb80f4703b62d946aa5",
+      "source": "huggingface:unsloth/Llama-3.1-8B-Instruct"
+    },
+    "prompt_seed": "0x59430f560548ecc7",
+    "prompt_set_digest": "sha256:bff5a2aa07a7afed4a644243424fdf4da2fa9d58d976f80adf8f1adc77a387cd",
+    "steady_rule": "batch-membership",
+    "version": 1
+  }
+}

@@ -192,10 +192,85 @@ pub fn phase(phase: Phase, elapsed: Duration) {
 }
 
 /// `tessera_passes_total{pass}` and `tessera_pass_seconds{pass}`: one more pass, and its time
-/// (RFC-0018 'Pass structure': the run manifest records every pass and its time).
+/// (RFC-0018 'Pass structure': the run manifest records every pass and its time). The device
+/// traffic and memory peak since the previous pass ended are the pass's own:
+/// `tessera_pass_device_bytes{pass}` and `tessera_pass_device_memory_peak_bytes{pass}`.
 pub fn pass(pass: Pass, elapsed: Duration) {
     add("tessera_passes_total", vec![("pass", name(pass))], 1);
     observe("tessera_pass_seconds", vec![("pass", name(pass))], elapsed);
+    let (bytes, peak) = {
+        let mut window = WINDOW.lock().unwrap_or_else(|e| e.into_inner());
+        let taken = (window.bytes, window.peak);
+        window.bytes = 0;
+        window.peak = window.used;
+        taken
+    };
+    if bytes > 0 {
+        add(
+            "tessera_pass_device_bytes",
+            vec![("pass", name(pass))],
+            bytes,
+        );
+    }
+    if peak > 0 {
+        record(
+            "tessera_pass_device_memory_peak_bytes",
+            vec![("pass", name(pass))],
+            |slot| *slot = Some(Value::Gauge(gauge_max(slot, peak))),
+        );
+    }
+}
+
+/// A direction of a host–device copy (`tessera_device_bytes_total`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Direction {
+    /// Host to device.
+    HostToDevice,
+    /// Device to host.
+    DeviceToHost,
+}
+
+/// Device traffic and memory since the last pass ended, which `pass` charges to that pass.
+struct Window {
+    bytes: u64,
+    peak: u64,
+    used: u64,
+}
+
+static WINDOW: Mutex<Window> = Mutex::new(Window {
+    bytes: 0,
+    peak: 0,
+    used: 0,
+});
+
+fn gauge_max(slot: &Option<Value>, value: u64) -> f64 {
+    match slot {
+        Some(Value::Gauge(g)) => g.max(value as f64),
+        _ => value as f64,
+    }
+}
+
+/// `tessera_device_bytes_total{direction}`: one host–device copy of `bytes`.
+pub fn device_transfer(direction: Direction, bytes: u64) {
+    add(
+        "tessera_device_bytes_total",
+        vec![("direction", name(direction))],
+        bytes,
+    );
+    let mut window = WINDOW.lock().unwrap_or_else(|e| e.into_inner());
+    window.bytes = window.bytes.saturating_add(bytes);
+}
+
+/// `tessera_device_memory_peak_bytes{device}`: device `device` has `used` bytes allocated now.
+pub fn device_memory(device: usize, used: u64) {
+    record(
+        "tessera_device_memory_peak_bytes",
+        vec![("device", device.to_string())],
+        |slot| *slot = Some(Value::Gauge(gauge_max(slot, used))),
+    );
+    let mut window = WINDOW.lock().unwrap_or_else(|e| e.into_inner());
+    window.used = used;
+    window.peak = window.peak.max(used);
 }
 
 /// `tessera_stage_seconds{stage}`.
@@ -284,6 +359,8 @@ pub fn snapshot() -> Vec<Sample> {
 /// Forgets every sample: a run starts empty.
 pub fn reset() {
     REGISTRY.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    let mut window = WINDOW.lock().unwrap_or_else(|e| e.into_inner());
+    (window.bytes, window.peak, window.used) = (0, 0, 0);
 }
 
 #[cfg(test)]
@@ -368,6 +445,54 @@ mod tests {
             Some(Value::Counter(1))
         );
         assert_eq!(samples.len(), 11);
+
+        // Device traffic and memory go to the pass that ends next, and only to it.
+        reset();
+        device_memory(0, 100);
+        device_transfer(Direction::HostToDevice, 64);
+        device_memory(0, 300);
+        device_memory(0, 200);
+        device_transfer(Direction::DeviceToHost, 8);
+        pass(Pass::P2, Duration::ZERO);
+        device_transfer(Direction::HostToDevice, 16);
+        device_memory(0, 250);
+        pass(Pass::P3, Duration::ZERO);
+        pass(Pass::P3, Duration::ZERO);
+        pass(Pass::P4, Duration::ZERO);
+        let samples = snapshot();
+        let get = |n: &str, l: (&str, &str)| {
+            samples
+                .iter()
+                .find(|s| s.name == n && s.labels == [(l.0, l.1.to_owned())])
+                .map(|s| s.value.clone())
+        };
+        let p = |pass| ("pass", pass);
+        assert_eq!(
+            get("tessera_pass_device_bytes", p("p2")),
+            Some(Value::Counter(72))
+        );
+        assert_eq!(
+            get("tessera_pass_device_bytes", p("p3")),
+            Some(Value::Counter(16))
+        );
+        assert_eq!(get("tessera_pass_device_bytes", p("p4")), None);
+        let peak = "tessera_pass_device_memory_peak_bytes";
+        assert_eq!(get(peak, p("p2")), Some(Value::Gauge(300.0)));
+        // P3 starts with what P2 left allocated, 200 bytes, and grows to 250.
+        assert_eq!(get(peak, p("p3")), Some(Value::Gauge(250.0)));
+        // Memory still allocated through a pass counts toward its peak.
+        assert_eq!(get(peak, p("p4")), Some(Value::Gauge(250.0)));
+        assert_eq!(
+            get("tessera_device_memory_peak_bytes", ("device", "0")),
+            Some(Value::Gauge(300.0))
+        );
+        assert_eq!(
+            get(
+                "tessera_device_bytes_total",
+                ("direction", "host_to_device")
+            ),
+            Some(Value::Counter(80))
+        );
         reset();
         assert!(snapshot().is_empty());
     }

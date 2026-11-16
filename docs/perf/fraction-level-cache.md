@@ -19,9 +19,11 @@ lookup/forest trees, returned messages and window work remain separate charges
 
 The CPU physical route first selects the unchanged feasible cuts and bounded read
 chunks, then spends remaining allowance on caches. It tries public row caps from
-`2^20` down to `2`, with `d = min(h - 4, log2(cap))` when `h > 4`. Thus each node
-still represents at least sixteen original leaves, and each cache is at most
-32 MiB over Goldilocks/Fp2. All table caches must fit together beside the same
+`2^30` down to `2`, with `d = min(h - 4, log2(cap))` when `h > 4`. Thus each node
+still represents at least sixteen original leaves, and a cache holds at most two
+bytes per original leaf over Goldilocks/Fp2. The cap was `2^20` until #729: at
+`h = 28` that left levels 21 to 28 regenerated from the leaves on every read, and
+the depth-`h - 4` cache halves the table batch's time at the same transcript. All table caches must fit together beside the same
 window peak. Otherwise the route keeps the uncached plan. Physical-route
 selection first preserves its 65,536-row baseline and the caches that fit with it,
 then expands reads to at most 1,048,576 rows using remaining allowance

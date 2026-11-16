@@ -103,6 +103,44 @@ fn encoding_matches_the_cpu() {
 }
 
 #[test]
+fn rate4_weight_encoding_matches_the_cpu() {
+    let device = Device::new(0).expect("a CUDA device with this crate's kernels");
+    // RFC-0040 weight rows: rate 1/4, no masks; one tile, one strided pass each way, and k = 2^20.
+    for (log_k, count) in [(1, 3), (4, 2), (12, 2), (13, 2), (17, 2), (20, 2)] {
+        let k = 1usize << log_k;
+        let rows = inputs(count * k, 77 + u64::from(log_k));
+        let encoder = RowEncoder::new(k, 2, 0).expect("encoder");
+        let zero = Goldilocks::from_canonical_u64(0).expect("zero");
+        let mut cpu = vec![zero; 4 * rows.len()];
+        encoder
+            .encode_rows(&field(&rows), &mut || zero, &mut cpu)
+            .expect("encode");
+        let [even, odd] = device.rate4_encoders(log_k).expect("encoders");
+        let none = device.upload(&[0u64]).expect("upload");
+        let mut halves = Vec::new();
+        for e in [&even, &odd] {
+            let mut scratch = device.upload(&rows).expect("upload");
+            let mut half = device.zeroed::<u64>(2 * rows.len()).expect("alloc");
+            device
+                .encode_rows(e, &mut scratch, &none, &mut half)
+                .expect("encode");
+            halves.push(half);
+        }
+        let mut out = device.zeroed::<u64>(4 * rows.len()).expect("alloc");
+        device
+            .interleave(&halves[0], &halves[1], &mut out)
+            .expect("interleave");
+        assert_eq!(
+            device.download(&out).expect("download"),
+            cpu.iter()
+                .map(PrimeField::to_canonical_u64)
+                .collect::<Vec<_>>(),
+            "log_k = {log_k}, rows = {count}"
+        );
+    }
+}
+
+#[test]
 fn chains_match_the_cpu() {
     let device = Device::new(0).expect("a CUDA device with this crate's kernels");
     let id = [0xA5u8; 32];
@@ -227,4 +265,94 @@ fn malformed_shapes_are_refused() {
             ..
         })
     ));
+}
+
+/// P4's combined rows on the device (`Device::combine_rows`) against the plain sum
+/// `Σ_r c[g][r]·values[r][i]`, accumulated over two blocks, for group counts on both sides of the
+/// kernel's eight-register chunk and widths that are not a multiple of the launch grid.
+#[test]
+fn combined_rows_match_the_host_sum() {
+    use tessera_field::{Field, GoldilocksExt2, QuadraticExtension};
+    let device = Device::new(0).expect("a CUDA device with this crate's kernels");
+    let mut state = 0x2545_f491_4f6c_dd1du64;
+    let mut boundary = [0, 1, P - 1, (1 << 32) - 1, 1 << 32, P - (1 << 32)].into_iter();
+    let mut next = || {
+        if let Some(value) = boundary.next() {
+            return Goldilocks::from_u64_reduced(value);
+        }
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        Goldilocks::from_u64_reduced(state)
+    };
+    for (rows, k, groups) in [(1, 33, 8), (7, 1000, 3), (33, 4097, 9), (64, 2048, 17)] {
+        let mut expected = vec![vec![GoldilocksExt2::ZERO; k]; groups];
+        let mut acc = device.zeroed::<u64>(2 * groups * k).unwrap();
+        for _block in 0..2 {
+            let values: Vec<Goldilocks> = (0..rows * k).map(|_| next()).collect();
+            let coefficients: Vec<Vec<GoldilocksExt2>> = (0..groups)
+                .map(|_| {
+                    (0..rows)
+                        .map(|_| GoldilocksExt2::new(next(), next()))
+                        .collect()
+                })
+                .collect();
+            for (g, list) in coefficients.iter().enumerate() {
+                for (r, &c) in list.iter().enumerate() {
+                    for i in 0..k {
+                        expected[g][i] += c * GoldilocksExt2::from(values[r * k + i]);
+                    }
+                }
+            }
+            let words: Vec<u64> = values.iter().map(|v| v.to_canonical_u64()).collect();
+            let buffer = device.upload(&words).unwrap();
+            device
+                .combine_rows(&buffer, rows, k, &coefficients, &mut acc)
+                .unwrap();
+        }
+        let got = device.download(&acc).unwrap();
+        for g in 0..groups {
+            for i in 0..k {
+                let [a, b] = expected[g][i].coeffs();
+                assert_eq!(
+                    [got[2 * (g * k + i)], got[2 * (g * k + i) + 1]],
+                    [a.to_canonical_u64(), b.to_canonical_u64()],
+                    "rows {rows}, k {k}, groups {groups}: group {g} column {i}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn combined_rows_reject_bad_shapes_before_launch() {
+    use tessera_field::{Field, GoldilocksExt2};
+    let device = Device::new(0).expect("a CUDA device with this crate's kernels");
+    let values = device.upload(&[1u64; 6]).unwrap();
+    let coefficients = vec![vec![GoldilocksExt2::ONE; 2]];
+    let mut acc = device.zeroed::<u64>(6).unwrap();
+    for (rows, k, coeffs) in [
+        (3, 3, &coefficients),
+        (2, 4, &coefficients),
+        (1, 3, &coefficients),
+        (2, usize::MAX / 2 + 1, &coefficients),
+        (1, usize::MAX, &coefficients),
+    ] {
+        assert!(matches!(
+            device.combine_rows(&values, rows, k, coeffs, &mut acc),
+            Err(GpuError::Unsupported("combined rows fit their buffers"))
+        ));
+    }
+    let mut short = device.zeroed::<u64>(5).unwrap();
+    assert!(matches!(
+        device.combine_rows(&values, 2, 3, &coefficients, &mut short),
+        Err(GpuError::Unsupported("combined rows fit their buffers"))
+    ));
+    assert!(matches!(
+        device.download_into(&acc, &mut [0u64; 5]),
+        Err(GpuError::LengthMismatch { left: 5, right: 6 })
+    ));
+    let mut got = tessera_codec::SecretBuf::filled(1, 6);
+    device.download_into(&acc, &mut got).unwrap();
+    assert!(got.iter().all(|&x| x == 0));
 }

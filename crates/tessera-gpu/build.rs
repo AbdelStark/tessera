@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Compiles `kernels/*.cu` into fatbins for `sm_90` (H100, H200) and `sm_100` (B200) when the
+//! Compiles `kernels/*.cu` into fatbins for `sm_80` (A100), `sm_90` (H100, H200) and `sm_100` (B200) when the
 //! `gpu` feature is on (RFC-0001 'Language boundaries'). Without the feature this does nothing,
 //! so every machine builds the crate as a stub. With the feature, a missing or older CUDA
 //! toolkit is a build error that names the requirement.
@@ -20,7 +20,7 @@ use std::process::{Command, exit};
 /// The minimum CUDA toolkit version (RFC-0001, 09 §8): the first with `sm_100` support.
 const MIN_CUDA: (u32, u32) = (12, 8);
 /// Device architectures every fatbin contains.
-const ARCHITECTURES: [&str; 2] = ["90", "100"];
+const ARCHITECTURES: [&str; 3] = ["80", "90", "100"];
 
 fn main() {
     println!("cargo::rerun-if-changed=kernels");

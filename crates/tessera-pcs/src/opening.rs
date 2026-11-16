@@ -250,10 +250,56 @@ pub(crate) fn combine_into(
     coefficients: &[Vec<Fp2>],
     matrix: &[Fp],
     width: usize,
+    write: impl FnMut(usize, usize, Fp2),
+) {
+    combine_columns(coefficients, matrix, width, 0..width, write);
+}
+
+/// `out[g][i] += Σ_r coefficients[g][r]·matrix[r][i]`, the columns split over `threads`
+/// contiguous ranges: each column's sums are its own, so the result is the same at any count.
+pub(crate) fn combine_add(
+    coefficients: &[Vec<Fp2>],
+    matrix: &[Fp],
+    width: usize,
+    out: &mut [SecretBuf<Fp2>],
+    threads: usize,
+) {
+    let threads = threads.min(width / TILE).max(1);
+    if threads == 1 {
+        combine_into(coefficients, matrix, width, |g, i, x| out[g][i] += x);
+        return;
+    }
+    let per = width.div_ceil(threads).div_ceil(TILE) * TILE;
+    // Thread t owns columns [t·per, (t + 1)·per) of every group's row.
+    let mut parts: Vec<Vec<&mut [Fp2]>> = (0..width.div_ceil(per)).map(|_| Vec::new()).collect();
+    for row in out.iter_mut() {
+        for (t, chunk) in row[..width].chunks_mut(per).enumerate() {
+            parts[t].push(chunk);
+        }
+    }
+    std::thread::scope(|scope| {
+        for (t, mut mine) in parts.into_iter().enumerate() {
+            let start = t * per;
+            let end = width.min(start + per);
+            scope.spawn(move || {
+                combine_columns(coefficients, matrix, width, start..end, |g, i, x| {
+                    mine[g][i - start] += x;
+                });
+            });
+        }
+    });
+}
+
+/// [`combine_into`] over the columns `columns` only.
+fn combine_columns(
+    coefficients: &[Vec<Fp2>],
+    matrix: &[Fp],
+    width: usize,
+    columns: core::ops::Range<usize>,
     mut write: impl FnMut(usize, usize, Fp2),
 ) {
     let count = coefficients.len();
-    if count == 0 || width == 0 {
+    if count == 0 || width == 0 || columns.is_empty() {
         return;
     }
     let rows = matrix.len() / width;
@@ -268,9 +314,9 @@ pub(crate) fn combine_into(
     let mut acc = SecretBuf::filled(Wide::default(), count * TILE);
     // Four rows; a width too large for a usize leaves them all to the single rows.
     let quad = width.saturating_mul(4);
-    let mut start = 0;
-    while start < width {
-        let len = TILE.min(width - start);
+    let mut start = columns.start;
+    while start < columns.end {
+        let len = TILE.min(columns.end - start);
         acc.fill(Wide::default());
         let quads = matrix.chunks_exact(quad);
         let singles = quads.remainder();
@@ -324,6 +370,40 @@ mod tests {
         let p = u128::from(Fp::MODULUS);
         let wide = (u128::from(hi) % p) * (p - (1 << 32)) + lo % p;
         (wide % p) as u64
+    }
+
+    #[test]
+    fn threaded_combinations_equal_one_thread() {
+        use super::{Fp2, TILE, combine_add};
+        use tessera_codec::SecretBuf;
+        use tessera_field::{Field, QuadraticExtension};
+        let (rows, groups, width) = (7, 5, 3 * TILE + 7);
+        let matrix: Vec<Fp> = (0..rows * width)
+            .map(|i| Fp::from_u64_reduced((i as u64).wrapping_mul(0x9E37_79B9) ^ 0xF00D))
+            .collect();
+        let coefficients: Vec<Vec<Fp2>> = (0..groups)
+            .map(|g| {
+                (0..rows)
+                    .map(|r| {
+                        Fp2::new(
+                            Fp::from_u64_reduced((g * 31 + r) as u64),
+                            Fp::from_u64_reduced((g + 3 * r + 1) as u64),
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
+        let run = |threads| {
+            let mut out: Vec<SecretBuf<Fp2>> = (0..groups)
+                .map(|_| SecretBuf::filled(Fp2::ONE, width))
+                .collect();
+            combine_add(&coefficients, &matrix, width, &mut out, threads);
+            out.iter().map(|row| row.to_vec()).collect::<Vec<_>>()
+        };
+        let one = run(1);
+        for threads in [3, 7] {
+            assert_eq!(run(threads), one, "{threads} threads");
+        }
     }
 
     #[test]

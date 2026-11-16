@@ -15,7 +15,7 @@ use crate::{Checkpoints, Engine, WitnessError};
 /// A model's integer tensors, flat and row-major, in clearing or borrowed model storage.
 /// Values are secret-class (05 §3): consumers borrow them for computation, never logs or
 /// errors. Model weights may remain in the caller's INT8 allocation instead of being widened.
-pub trait TensorSource {
+pub trait TensorSource: Sync {
     /// Real values of `tensor`, or `None` when this source has no `i64` representation.
     fn values(&self, tensor: TensorId) -> Option<&[i64]>;
 

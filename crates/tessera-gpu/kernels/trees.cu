@@ -391,3 +391,64 @@ __device__ __forceinline__ void frac_first(const Src &src, fp2 *out) {
 }
 extern "C" __global__ void frac_first_stored(const fp2 *n, const fp2 *d, fp2 *out) { frac_first(StoredSrc{n, d}, out); }
 extern "C" __global__ void frac_first_leaves(LEAF_ARGS, fp2 *out) { frac_first(LeafSrc{LEAF_SPEC}, out); }
+
+// ---- Window-level rounds (#734): one level instance's tables offloaded by the host prover. ----
+//
+// Each table t holds 2 * pairs entries; pair p is (t[2p], t[2p + 1]). A round needs
+//   S(x) = sum_p w(p) P(line_x(p)),  x in {0, 2, 3},  line_x = t[2p] + x (t[2p + 1] - t[2p]),
+// with w(p) = eq_lo[p mod 2^lo_bits] eq_hi[p >> lo_bits]: the same field elements as the host's
+// window prover (tessera_sumcheck::prover::window), so the proof does not change.
+
+// line_x at x = 0, 2, 3: a, 2b - a, 3b - 2a.
+__device__ __forceinline__ void lines(fp2 a, fp2 b, fp2 out[3]) {
+    const fp2 d = f2_sub(b, a);
+    out[0] = a;
+    out[1] = f2_add(b, d);
+    out[2] = f2_add(out[1], d);
+}
+
+// N0 D1 + N1 D0 + lambda D0 D1 over [N0, N1, D0, D1].
+extern "C" __global__ void lvl_frac_sums(const fp2 *n0, const fp2 *n1, const fp2 *d0, const fp2 *d1,
+                                         uint64_t pairs, uint64_t l0, uint64_t l1, const fp2 *eq_lo,
+                                         uint32_t lo_bits, const fp2 *eq_hi, fp2 *partials) {
+    const fp2 lambda = {l0, l1};
+    fp2 acc[3] = {{0, 0}, {0, 0}, {0, 0}};
+    const uint64_t stride = static_cast<uint64_t>(gridDim.x) * blockDim.x;
+    for (uint64_t p = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x; p < pairs; p += stride) {
+        fp2 a[3], b[3], c[3], e[3];
+        lines(n0[2 * p], n0[2 * p + 1], a);
+        lines(n1[2 * p], n1[2 * p + 1], b);
+        lines(d0[2 * p], d0[2 * p + 1], c);
+        lines(d1[2 * p], d1[2 * p + 1], e);
+        const fp2 w = weight(p, eq_lo, lo_bits, eq_hi);
+        for (int z = 0; z < 3; ++z) {
+            const fp2 v = f2_add(f2_add(f2_mul(a[z], e[z]), f2_mul(b[z], c[z])), f2_mul(lambda, f2_mul(c[z], e[z])));
+            acc[z] = f2_add(acc[z], f2_mul(w, v));
+        }
+    }
+    block_sums(acc, partials);
+}
+
+// V0 V1 over [V0, V1].
+extern "C" __global__ void lvl_prod_sums(const fp2 *v0, const fp2 *v1, uint64_t pairs, const fp2 *eq_lo,
+                                         uint32_t lo_bits, const fp2 *eq_hi, fp2 *partials) {
+    fp2 acc[3] = {{0, 0}, {0, 0}, {0, 0}};
+    const uint64_t stride = static_cast<uint64_t>(gridDim.x) * blockDim.x;
+    for (uint64_t p = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x; p < pairs; p += stride) {
+        fp2 a[3], b[3];
+        lines(v0[2 * p], v0[2 * p + 1], a);
+        lines(v1[2 * p], v1[2 * p + 1], b);
+        const fp2 w = weight(p, eq_lo, lo_bits, eq_hi);
+        for (int z = 0; z < 3; ++z) acc[z] = f2_add(acc[z], f2_mul(w, f2_mul(a[z], b[z])));
+    }
+    block_sums(acc, partials);
+}
+
+// out[i] = t[2i] + c (t[2i + 1] - t[2i]) for i < half, canonical.
+extern "C" __global__ void lvl_bind(const fp2 *t, fp2 *out, uint64_t half, uint64_t c0, uint64_t c1) {
+    const fp2 c = {c0, c1};
+    const uint64_t stride = static_cast<uint64_t>(gridDim.x) * blockDim.x;
+    for (uint64_t i = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x; i < half; i += stride) {
+        out[i] = f2_canon(f2_line(t[2 * i], t[2 * i + 1], c));
+    }
+}

@@ -1,0 +1,313 @@
+{
+  "claim": {
+    "card_version": 1,
+    "configuration": "ni-100-public-output",
+    "system": "tessera"
+  },
+  "commands": [
+    {
+      "argv": [
+        "hosted",
+        "taskset",
+        "-c",
+        "96,97,98,99,100,101,102,103,104,105,106,107,108,109,110",
+        "setpriv",
+        "--reuid=10001",
+        "--regid=10001",
+        "--clear-groups",
+        "--inh-caps=-all",
+        "--bounding-set=-all",
+        "--no-new-privs",
+        "python3",
+        "/opt/tessera/bench/inference-proofs/tessera/entrypoint",
+        "info",
+        "/io/job.json",
+        "/io/out.json"
+      ],
+      "cpuset": "96,97,98,99,100,101,102,103,104,105,106,107,108,109,110",
+      "exit_code": 0,
+      "gpus": "device=0",
+      "mems": "3",
+      "network": "provider",
+      "started_at": "2026-11-10T19:54:16Z",
+      "step": "info"
+    },
+    {
+      "argv": [
+        "hosted",
+        "taskset",
+        "-c",
+        "96,97,98,99,100,101,102,103,104,105,106,107,108,109,110",
+        "setpriv",
+        "--reuid=10001",
+        "--regid=10001",
+        "--clear-groups",
+        "--inh-caps=-all",
+        "--bounding-set=-all",
+        "--no-new-privs",
+        "python3",
+        "/opt/tessera/bench/inference-proofs/tessera/entrypoint",
+        "setup",
+        "/io/job.json",
+        "/io/out.json"
+      ],
+      "cpuset": "96,97,98,99,100,101,102,103,104,105,106,107,108,109,110",
+      "exit_code": 0,
+      "gpus": "device=0",
+      "mems": "3",
+      "network": "provider",
+      "started_at": "2026-11-10T19:54:16Z",
+      "step": "setup"
+    },
+    {
+      "argv": [
+        "hosted",
+        "taskset",
+        "-c",
+        "96,97,98,99,100,101,102,103,104,105,106,107,108,109,110",
+        "setpriv",
+        "--reuid=10001",
+        "--regid=10001",
+        "--clear-groups",
+        "--inh-caps=-all",
+        "--bounding-set=-all",
+        "--no-new-privs",
+        "python3",
+        "/opt/tessera/bench/inference-proofs/tessera/entrypoint",
+        "commit",
+        "/io/job.json",
+        "/io/out.json"
+      ],
+      "cpuset": "96,97,98,99,100,101,102,103,104,105,106,107,108,109,110",
+      "exit_code": 0,
+      "gpus": "device=0",
+      "mems": "3",
+      "network": "provider",
+      "started_at": "2026-11-10T19:54:16Z",
+      "step": "commit"
+    },
+    {
+      "argv": [
+        "hosted",
+        "taskset",
+        "-c",
+        "96,97,98,99,100,101,102,103,104,105,106,107,108,109,110",
+        "setpriv",
+        "--reuid=10001",
+        "--regid=10001",
+        "--clear-groups",
+        "--inh-caps=-all",
+        "--bounding-set=-all",
+        "--no-new-privs",
+        "python3",
+        "/opt/tessera/bench/inference-proofs/tessera/entrypoint",
+        "prove",
+        "/io/job.json",
+        "/io/out.json"
+      ],
+      "cpuset": "96,97,98,99,100,101,102,103,104,105,106,107,108,109,110",
+      "exit_code": 1,
+      "gpus": "device=0",
+      "mems": "3",
+      "network": "provider",
+      "started_at": "2026-11-10T20:07:00Z",
+      "step": "prove"
+    }
+  ],
+  "commitment": {
+    "commitment_id": "dc66ed3aff9fc6a27e2a4cf30e5da6fe57bd666f8397a58407e5589477a85118",
+    "prover_files": [
+      {
+        "bytes": 8032307959,
+        "digest": "sha256:82b46381e65d9b33460a5c15bed53fd7ef086f428ee8001b57d888056c714fe8",
+        "name": "model.d"
+      },
+      {
+        "bytes": 16826,
+        "digest": "sha256:f366b23a98a3c7e498feede6f0e81a22864748f7afaa538067b54c8516d538e9",
+        "name": "plan.tep"
+      },
+      {
+        "bytes": 538,
+        "digest": "sha256:50bd3e76dd3089d0e26747bb0476f28702cd3d3e1cbf3cace511182ad2baf2c2",
+        "name": "weights.twc"
+      }
+    ],
+    "verifier_files": [
+      {
+        "bytes": 11364,
+        "digest": "sha256:b5813c7b5bcf2ca7a631b10bc5b258ecc7ab90f64396e7918cae7f0f4a2d5246",
+        "name": "claims.tcl"
+      },
+      {
+        "bytes": 386,
+        "digest": "sha256:3a10c45d461b27930083975dd2546d1e0a7aa498f53cca9169e3f05b8bebb5b9",
+        "name": "weights.twr"
+      }
+    ]
+  },
+  "control": false,
+  "harness": {
+    "git_commit": "7d40d857a86b13e309e45b583649f947a371a277",
+    "git_dirty": false,
+    "lock_digest": "sha256:63bc0785c9fa8cde2eec342ef6dd2feaf4074c24e3b3f6d92bf2ccc95913c784",
+    "nonconforming": true,
+    "version": "0.1.0.dev0"
+  },
+  "machine": {
+    "container": {
+      "cgroup_version": "2",
+      "execution": "hosted",
+      "shm_bytes": 179314884608
+    },
+    "cpu": {
+      "bound_prover": [
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110
+      ],
+      "bound_verifier": [
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118
+      ],
+      "bound_verifier_single": [
+        111
+      ],
+      "cgroup_quota_cpus": 81.92,
+      "logical_cpus": 256,
+      "model": "INTEL(R) XEON(R) PLATINUM 8592+",
+      "physical_cores": 128,
+      "smt_active": true,
+      "sockets": 2
+    },
+    "disk": {
+      "free_bytes_at_start": 7047928283136
+    },
+    "gpu": {
+      "bound_index": 0,
+      "count_visible": 1,
+      "cuda_driver_api": "13.2",
+      "driver_version": "595.91.07",
+      "memory_total_mib": 143771,
+      "model": "NVIDIA H200 NVL",
+      "numa_node": 3
+    },
+    "kernel": {
+      "release": "6.8.0-147-generic"
+    },
+    "memory": {
+      "available_bytes_at_start": 1048630333440,
+      "cgroup_limit_bytes": 599568416768,
+      "total_bytes": 1081754251264
+    },
+    "numa": {
+      "bound_mems": [
+        3
+      ],
+      "nodes": 4
+    },
+    "os": {},
+    "provider": "vast.ai",
+    "verifier_host": "same_as_prover"
+  },
+  "profile": {
+    "prover": "prover-h200-hosted",
+    "reference_digest": "sha256:5a6639f10a7db4536d7ef2d3eeca2cc6356302f0eb0ba02d2ea38ba450bed3f9",
+    "reference_file": "reference/v0.1.yaml",
+    "verifier": "verifier-cpu",
+    "verifier_host": "same_as_prover"
+  },
+  "prompts_from": null,
+  "proofs": [],
+  "provider": "vast.ai",
+  "release": "v0.1",
+  "run_id": "2026-11-10-tessera-l31-8b-c1024-prover-h200-hosted-2",
+  "runner": {
+    "affiliated_systems": [],
+    "handle": "undeclared",
+    "organisation": "undeclared"
+  },
+  "schema": "manifest/1",
+  "self_test": {
+    "checks": [
+      {
+        "name": "ST-CLOCK",
+        "passed": true
+      },
+      {
+        "name": "ST-SAMPLER",
+        "passed": true
+      },
+      {
+        "name": "ST-JITTER",
+        "passed": true
+      },
+      {
+        "name": "ST-CGROUP",
+        "passed": true
+      },
+      {
+        "name": "ST-WATCH",
+        "passed": true
+      },
+      {
+        "name": "ST-NVML",
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "system": {
+    "adapter_commit": "7d40d857a86b13e309e45b583649f947a371a277",
+    "adapter_dirty": true,
+    "claim_digest": "sha256:fc15e6ffe5e4ba4eab020da1c7383f2820706ffde494b1c3d0a914b72aaabc25",
+    "image": {
+      "digest_kind": "config",
+      "ref": "local/docker.io/nvidia/cuda@sha256:a99a1860ba8e2916e5c3e73b72ec4c4301653a84586e05bfc9a2aa2d58027e97"
+    },
+    "image_inputs": [],
+    "name": "tessera",
+    "system_manifest_digest": "sha256:ca0f6750eddee4384feaa198f89665e804f85772e55a7af43522d0315adf1b11",
+    "upstream": {
+      "commit": "36aae281f73c5d45b88a667eaae35d5c9fb88df6",
+      "repo": "AbdelStark/tessera"
+    }
+  },
+  "warnings": [
+    "repetitions_below_minimum",
+    "conformance: PC-GPU-MODEL: bound GPU is 'NVIDIA H200 NVL', the profile needs 'NVIDIA H200'",
+    "conformance: PC-DRIVER: driver '595.91.07', the profile pins 'unpinned'"
+  ],
+  "workload": {
+    "corpus_digest": "sha256:cedd5c414e7c70b99348140c4ddfde8754446c3d3085f77d5d29a4e7324f639a",
+    "file_digest": "sha256:97869457f63191ddfd865c32d91235fb78ad9589e701da9c77f97b75c6cfa7d6",
+    "id": "l31-8b-c1024",
+    "model": {
+      "digest": "sha256:368b6c2838f66f92d67f24276a2314c7c2014b059a33c33ea35d793740377ee7",
+      "revision": "4699cc75b550f9c6f3173fb80f4703b62d946aa5",
+      "source": "huggingface:unsloth/Llama-3.1-8B-Instruct"
+    },
+    "prompt_seed": "0x7445541645a927bb",
+    "prompt_set_digest": "sha256:5e2e49de93f63ecce769f5a0190e20888afe28a24bd4442e2ceb2bb80bf4bcc6",
+    "steady_rule": "batch-membership",
+    "version": 1
+  }
+}

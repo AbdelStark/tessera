@@ -201,6 +201,7 @@ impl Fixture {
                 limits: ResourceLimits::default(),
                 accept_bound: FixedBits(0),
                 weights,
+                public_tokens: None,
             },
             seed: base("live-seed.bin").try_into().unwrap(),
             queries: ColumnQueries::open(&base("live-queries.tce"), &limits).unwrap(),

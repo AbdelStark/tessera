@@ -98,8 +98,12 @@ pub(crate) fn commit_weights(args: &CommitWeightsArgs, json: bool) -> Result<(),
         epoch = epoch;
         "tessera commit-weights: committing {matrices} weight matrices at epoch {epoch}"
     );
-    let commitment = RegeneratedWeightCommitment::commit(&layout, row_block, epoch, &weights)
-        .map_err(|error| TesseraError::new(ErrorCode::Internal).with_source(error))?;
+    // The commitment does not depend on the thread count (RFC-0040): use every core.
+    let threads = std::thread::available_parallelism().unwrap_or(std::num::NonZeroUsize::MIN);
+    let commitment = RegeneratedWeightCommitment::commit_with_threads(
+        &layout, row_block, epoch, &weights, threads,
+    )
+    .map_err(|error| TesseraError::new(ErrorCode::Internal).with_source(error))?;
 
     let public = *commitment.public();
     let state = WeightCommitmentState::new(public).map_err(io_error(

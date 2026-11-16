@@ -116,3 +116,33 @@ pub use streaming::{
     BoundedLogUpError, StreamingInstance, TABLE_BATCH_CONSTRUCTION_BYTES_PER_TREE,
     TableBatchBudget, TableSource, prove_logup_bounded, prove_table_batch_bounded,
 };
+
+// Test sources are shared across regeneration threads (`FractionTreeSource: Sync`), so their
+// counters use this drop-in `Cell` stand-in over a mutex.
+#[cfg(test)]
+pub(crate) mod sync_cell {
+    use std::sync::Mutex;
+    #[derive(Debug, Default)]
+    pub(crate) struct Cell<T>(Mutex<T>);
+    impl<T: Copy> Cell<T> {
+        pub(crate) fn new(v: T) -> Self {
+            // Some platforms allocate a mutex on first lock: do it here, outside any measured
+            // allocation window of the test.
+            let m = Mutex::new(v);
+            drop(m.lock());
+            Self(m)
+        }
+        pub(crate) fn get(&self) -> T {
+            *self
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        }
+        pub(crate) fn set(&self, v: T) {
+            *self
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = v;
+        }
+    }
+}

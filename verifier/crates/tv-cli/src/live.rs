@@ -307,6 +307,7 @@ pub(crate) fn run(args: &[String], flags: Flags) -> CommandOutput {
         let cfg = VerifierConfig {
             params,
             weights,
+            public_tokens: None,
             accept_bound: c.bound,
             limits: ResourceLimits {
                 max_wall_time: remaining,

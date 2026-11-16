@@ -1,0 +1,58 @@
+{
+  "inputs": [
+    {
+      "digest": "sha256:8c4f41f7d548da6732646a8c8de9b3864fea1bc0bde3f142b036438f3d055395",
+      "name": "tessera",
+      "url": "https://github.com/AbdelStark/tessera.git#3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+    },
+    {
+      "digest": "sha256:2e0338f18ecbaa4a0f631b9e80e8b8e26bb6fe77dd5454fba8a70cf96c1e84a1",
+      "name": "rust-1.95.0",
+      "url": "https://static.rust-lang.org/dist/rust-1.95.0-x86_64-unknown-linux-gnu.tar.xz"
+    },
+    {
+      "digest": "sha256:1f25b6af12da84115301d4ee93ea5246c8fea5bb4a2008472794d95b917cc97f",
+      "name": "c4-validation-0",
+      "url": "https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00000-of-00008.json.gz"
+    },
+    {
+      "digest": "sha256:db4c23d7a336032de37dfe2f3ed39653c8afd94004d4e8d9c73c03222299292c",
+      "name": "c4-validation-1",
+      "url": "https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00001-of-00008.json.gz"
+    },
+    {
+      "digest": "sha256:4bf6b248b0f910dcde2cdf2118d6369d8208c8f9515ec29ab73e531f380b18e2",
+      "name": "c4-validation-2",
+      "url": "https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00002-of-00008.json.gz"
+    },
+    {
+      "digest": "sha256:082b72c1ec600502df2e4403df6884390c85627ffdf37a5b700397c9a1ac6b8e",
+      "name": "c4-validation-3",
+      "url": "https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00003-of-00008.json.gz"
+    },
+    {
+      "digest": "sha256:37c2ce46864db0b6f1fe89220ebf4ef811ea10485c8336f1712227bbbdb530e1",
+      "name": "c4-validation-4",
+      "url": "https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00004-of-00008.json.gz"
+    },
+    {
+      "digest": "sha256:00b164e59df49df5dc1df170db99bb0d9207a6329cb9272ed8b6ef7a55058359",
+      "name": "c4-validation-5",
+      "url": "https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00005-of-00008.json.gz"
+    },
+    {
+      "digest": "sha256:86896a9baffe0ab9df39a2901f0e515009989ca1fec9a42583d718ce16166b5a",
+      "name": "c4-validation-6",
+      "url": "https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00006-of-00008.json.gz"
+    },
+    {
+      "digest": "sha256:0bf87534c7050091c60466df50f174c3147d052ec7dc645da9574c902445beaf",
+      "name": "c4-validation-7",
+      "url": "https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00007-of-00008.json.gz"
+    }
+  ],
+  "toolchains": {
+    "python": "3.12.3",
+    "rust": "rustc 1.95.0"
+  }
+}

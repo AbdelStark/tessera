@@ -13,6 +13,51 @@ use crate::{Instance, Table, prove_batch};
 type F = GoldilocksExt2;
 
 #[test]
+fn grid_extension_matches_multilinear_evaluation_at_boundary_values() {
+    let p = 0xffff_ffff_0000_0001u64;
+    let boundary = [0, 1, p - 1, (1 << 32) - 1, 1 << 32, p - (1 << 32)];
+    for vars in 0..=3 {
+        let corners: Vec<F> = (0..1 << vars)
+            .map(|i| {
+                F::new(
+                    Goldilocks::from_u64_reduced(boundary[i % boundary.len()]),
+                    Goldilocks::from_u64_reduced(boundary[(i + 2) % boundary.len()]),
+                )
+            })
+            .collect();
+        for radix in 2usize..=8 {
+            let mut grid = vec![F::ZERO; radix.pow(vars as u32)];
+            for (vertex, &value) in corners.iter().enumerate() {
+                grid[radix_index(vertex, radix, vars)] = value;
+            }
+            extend(&mut grid, radix, vars);
+            for (index, &actual) in grid.iter().enumerate() {
+                let mut digits = index;
+                let point: Vec<F> = (0..vars)
+                    .map(|_| {
+                        let node = digits % radix;
+                        digits /= radix;
+                        integer::<F>(node)
+                    })
+                    .collect();
+                let expected = corners
+                    .iter()
+                    .enumerate()
+                    .fold(F::ZERO, |sum, (v, &value)| {
+                        sum + point.iter().enumerate().fold(value, |weight, (bit, &x)| {
+                            weight * if v >> bit & 1 == 0 { F::ONE - x } else { x }
+                        })
+                    });
+                assert_eq!(
+                    actual, expected,
+                    "vars={vars}, radix={radix}, index={index}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn one_round_windows_and_supplied_gamma_preserve_the_literal_transcript() {
     for width in [1, 2, MAX_WINDOW_VARS] {
         let (mut source, relations) = specs(&[(7, 2, true, 2), (3, 1, true, 1), (0, 1, false, 0)]);
@@ -65,6 +110,36 @@ fn one_round_windows_and_supplied_gamma_preserve_the_literal_transcript() {
 }
 
 #[test]
+fn a_shared_reader_loads_resident_tables_on_threads_without_changing_the_proof() {
+    // Resident (unwindowed) instances large enough to split over threads, beside a windowed one.
+    let (mut source, relations) = specs(&[(16, 2, false, 2), (15, 1, false, 1), (12, 2, true, 2)]);
+    let eqs = eq_tables(&relations);
+    let mut literal_transcript = Transcript::new(&context());
+    let expected = prove_batch(
+        &mut literal_transcript,
+        Protocol::One,
+        Prefix::Tree(5),
+        3,
+        &literal(&source, &relations, &eqs),
+    )
+    .unwrap();
+    source.shared = true;
+    let before = parallelism();
+    crate::set_parallelism(NonZeroUsize::new(8).unwrap());
+    let prepared =
+        PreparedWindow::with_window_vars(&mut source, Protocol::One, 3, relations, 4, 2).unwrap();
+    let mut actual_transcript = Transcript::new(&context());
+    let gamma = actual_transcript.challenge_fp2("tree/5/gamma");
+    let actual = prepared
+        .prove_with_gamma(&mut actual_transcript, Prefix::Tree(5), &mut source, gamma)
+        .unwrap();
+    crate::set_parallelism(NonZeroUsize::new(before).unwrap_or(NonZeroUsize::MIN));
+    assert_eq!(actual.proof().rounds, expected.proof().rounds);
+    assert_eq!(actual.proof().final_evals, expected.proof().final_evals);
+    assert_eq!(actual.point(), expected.point());
+}
+
+#[test]
 fn invalid_round_window_width_is_refused_before_a_source_pass() {
     for width in [0, MAX_WINDOW_VARS + 1, usize::MAX] {
         let (mut source, relations) = specs(&[(3, 2, true, 2)]);
@@ -113,6 +188,21 @@ fn context() -> SessionContext {
 struct Source {
     tables: Vec<Vec<F>>,
     passes: Vec<WindowPass>,
+    shared: bool,
+}
+
+struct Shared<'a>(&'a [Vec<F>]);
+
+impl SharedRead<F> for Shared<'_> {
+    fn read(&self, id: usize, start: usize, out: &mut [F]) -> Result<(), WindowError> {
+        let input = self
+            .0
+            .get(id)
+            .and_then(|t| t.get(start..start + out.len()))
+            .ok_or(WindowError::Source)?;
+        out.copy_from_slice(input);
+        Ok(())
+    }
 }
 
 impl WindowSource<F> for Source {
@@ -130,12 +220,18 @@ impl WindowSource<F> for Source {
         out.copy_from_slice(input);
         Ok(())
     }
+
+    fn shared(&self) -> Option<Box<dyn SharedRead<F> + '_>> {
+        self.shared
+            .then(|| Box::new(Shared(&self.tables)) as Box<dyn SharedRead<F> + '_>)
+    }
 }
 
 fn specs(shapes: &[(usize, usize, bool, usize)]) -> (Source, Vec<WindowInstance<F>>) {
     let mut source = Source {
         tables: Vec::new(),
         passes: Vec::new(),
+        shared: false,
     };
     let specs = shapes
         .iter()
@@ -892,6 +988,7 @@ fn every_graph_relation_kind_matches_literal_in_one_mixed_batch() {
     let mut source = Source {
         tables: Vec::new(),
         passes: Vec::new(),
+        shared: false,
     };
     let specs: Vec<_> = instances
         .iter()
@@ -982,12 +1079,14 @@ fn prefix_weights_do_not_overlap_a_consumed_grid_allocation() {
                 end: 32,
             }),
             folded: Vec::new(),
+            device: None,
             bound: 32,
             sum: SecretBuf::filled(F::ZERO, 1),
         };
         let source = Source {
             tables: Vec::new(),
             passes: Vec::new(),
+            shared: false,
         };
         assert_eq!(
             state.prepare(&source, &vec![fp(7); 32], 32, false),
@@ -1072,6 +1171,7 @@ fn window_metadata_covers_consumed_specs_messages_and_returned_storage() {
     let mut source = Source {
         tables: vec![vec![F::ZERO]; 512],
         passes: Vec::new(),
+        shared: false,
     };
     let specs = vec![WindowInstance {
         vars: 0,

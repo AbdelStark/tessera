@@ -171,6 +171,11 @@ impl RowEncoder {
         self
     }
 
+    /// The participants of [`Self::threads`].
+    pub fn thread_count(&self) -> NonZeroUsize {
+        self.threads
+    }
+
     /// Additional conservative thread stack/control storage during an encoding.
     ///
     /// `codeword_len` is the largest transform length. Returns `None` for an

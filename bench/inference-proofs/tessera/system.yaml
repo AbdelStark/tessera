@@ -1,0 +1,29 @@
+# Tessera (RFC-0005 adapter/1). The commit is
+# the Tessera commit the run used; `scripts/gpu-run` records it beside every result.
+schema: "system/1"
+name: "tessera"
+kind: "prover"
+contract: "adapter/1"
+upstream:
+  repo: "AbdelStark/tessera"
+  url: "https://github.com/AbdelStark/tessera"
+  commit: "3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+maintainers: [{handle: "AbdelStark", organisation: "Lucid Computing"}]
+# RFC-0014 B7: the images workflow builds systems/tessera/Dockerfile and writes its digest here.
+image:
+  repository: "ghcr.io/ai-verification-observatory/tessera"
+  digest: "sha256:b8330b6331c16935b0ceb7ca484ca6e3d9000520ae66d55eb4854cfb9f6963dc"
+workloads: ["l31-8b-c1024"]
+profile: "prover-h100"
+deterministic_proofs: false
+incremental_proofs: false
+proofs:
+  granularity: "request"
+  tokens_covered: "prompt_plus_output"
+  steady_boundary: "not_observable"
+  steady_approximate: false
+  verify_reads: "all"
+forbidden_flags: ["--test-", "--params=test-small"]
+# prove: D's greedy continuation (about 2 h on the CUDA reference) and a 6 h proof on 128 CPUs at
+# 1,024 + 64; the hosted profile binds 15.
+timeouts_s: {commit: 21600, prove: 86400, verify: 7200}

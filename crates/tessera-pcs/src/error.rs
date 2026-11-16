@@ -368,6 +368,11 @@ pub enum PcsError {
         /// The axis, counted from 0, outermost first.
         axis: usize,
     },
+    /// An external encoder (a [`crate::BlockSink`], such as a GPU) failed: the commitment ends.
+    Device {
+        /// What failed, a public description.
+        reason: &'static str,
+    },
 }
 
 impl fmt::Display for PcsError {
@@ -379,6 +384,7 @@ impl fmt::Display for PcsError {
                     "a transform or row length must be a power of two, not {len}"
                 )
             }
+            Self::Device { reason } => write!(f, "the commitment's device failed: {reason}"),
             Self::TooLong { log_len } => write!(
                 f,
                 "a transform of 2^{log_len} points needs a subgroup of order 2^{log_len}; the largest is 2^32"

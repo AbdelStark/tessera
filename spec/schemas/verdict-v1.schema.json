@@ -191,7 +191,8 @@
                 "REJ-ANCHOR",
                 "REJ-UHAT",
                 "REJ-BUDGET",
-                "REJ-PARAMS"
+                "REJ-PARAMS",
+                "REJ-TOKENS"
               ]
             },
             "artifact": {
@@ -274,6 +275,12 @@
             },
             "name": {
               "type": "string"
+            },
+            "tensor": {
+              "$comment": "REJ-TOKENS (#741): the committed tensor whose claim differs from the public tokens.",
+              "enum": [
+                "tokens"
+              ]
             }
           }
         },

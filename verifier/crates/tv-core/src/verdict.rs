@@ -389,6 +389,9 @@ pub enum RejectReason {
         /// Exact versioned parameter-set name.
         name: ParamSetId,
     },
+    /// `REJ-TOKENS`: the committed token tensor's opened claim differs from the multilinear
+    /// extension of the public tokens the caller supplied (public-output verification, #741).
+    Tokens,
 }
 impl RejectReason {
     /// Stable rejection identifier (04 section 2).
@@ -411,6 +414,7 @@ impl RejectReason {
             Self::UBoundExceeded { .. } => "REJ-UHAT",
             Self::Budget { .. } => "REJ-BUDGET",
             Self::Params { .. } => "REJ-PARAMS",
+            Self::Tokens => "REJ-TOKENS",
         }
     }
 }
@@ -553,6 +557,7 @@ impl RejectReason {
                 out.write_str("\"name\":")?;
                 out.quoted(name.as_str())
             }
+            Self::Tokens => out.write_str("\"tensor\":\"tokens\""),
         }
     }
 }

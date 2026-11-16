@@ -101,8 +101,10 @@ pub trait QuadraticExtension<B: PrimeField>: Field + From<B> {
     fn norm(&self) -> B;
 }
 
-/// `c0 + c1·X` with `X^2 = W`.
+/// `c0 + c1·X` with `X^2 = W`. `repr(C)`: `c0` then `c1`, so a GPU backend can copy a slice of
+/// elements as their coefficients (RFC-0018).
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[repr(C)]
 pub struct QuadraticExt<B> {
     c0: B,
     c1: B,

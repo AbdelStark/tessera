@@ -497,6 +497,44 @@ enum Degree {
     Ten,
 }
 
+/// `f` summed over `pairs`, split across the configured threads with one scratch each (RFC-0018
+/// 'CPU backend'). Field addition is exact, so the sums do not depend on the split.
+fn split_sums<F: PolyField>(
+    pairs: Range<usize>,
+    scratch: &mut Scratch<F>,
+    f: impl Fn(Range<usize>, &mut Scratch<F>) -> [F; NODES] + Sync,
+) -> [F; NODES] {
+    const MIN_PAIRS: usize = 1 << 12;
+    let len = pairs.len();
+    let threads = crate::parallelism().min(len / MIN_PAIRS).max(1);
+    if threads <= 1 {
+        return f(pairs, scratch);
+    }
+    let per = len.div_ceil(threads);
+    let template = &*scratch;
+    let parts: Vec<[F; NODES]> = std::thread::scope(|scope| {
+        let workers: Vec<_> = (pairs.start..pairs.end)
+            .step_by(per)
+            .map(|start| {
+                let f = &f;
+                let range = start..pairs.end.min(start + per);
+                scope.spawn(move || f(range, &mut Scratch::sized_like(template)))
+            })
+            .collect();
+        workers
+            .into_iter()
+            .map(|w| w.join().unwrap_or_else(|e| std::panic::resume_unwind(e)))
+            .collect()
+    });
+    let mut sums = [F::ZERO; NODES];
+    for part in parts {
+        for (sum, value) in sums.iter_mut().zip(part) {
+            *sum += value;
+        }
+    }
+    sums
+}
+
 impl Degree {
     fn new(degree: usize) -> Option<Self> {
         Some(match degree {
@@ -939,11 +977,15 @@ impl<'a, F: PolyField> State<'a, F> {
                     .fold(F::ONE, |product, table| product * table.single()),
                 (Some((plan, entries)), _) => {
                     let pairs = 0..1 << (vars - 1);
-                    first = degree.term_node_sums(entries.as_slice(), plan, pairs, scratch);
+                    first = split_sums(pairs, scratch, |r, s| {
+                        degree.term_node_sums(entries.as_slice(), plan, r, s)
+                    });
                     first[0] + first[1]
                 }
                 (None, _) => {
-                    first = degree.node_sums(&base, &ext, 0..1 << (vars - 1), scratch);
+                    first = split_sums(0..1 << (vars - 1), scratch, |r, s| {
+                        degree.node_sums(&base, &ext, r, s)
+                    });
                     first[0] + first[1]
                 }
             };
@@ -995,9 +1037,13 @@ impl<'a, F: PolyField> State<'a, F> {
             match &self.terms {
                 Some((plan, _)) => {
                     let entries: Vec<_> = bound.iter().map(|&v| Entries::Ext(v)).collect();
-                    degree.term_message_sums(entries.as_slice(), plan, pairs, scratch)
+                    split_sums(pairs, scratch, |r, s| {
+                        degree.term_message_sums(entries.as_slice(), plan, r, s)
+                    })
                 }
-                None => degree.message_sums(&[] as &[&[F::Base]], &bound, pairs, scratch),
+                None => split_sums(pairs, scratch, |r, s| {
+                    degree.message_sums(&[] as &[&[F::Base]], &bound, r, s)
+                }),
             }
         } else if self.pad > 0 {
             // The first own round, computed at every node by `new`: drop p(1).
@@ -1008,10 +1054,12 @@ impl<'a, F: PolyField> State<'a, F> {
         } else {
             let pairs = 0..1 << (self.vars - 1);
             match &self.terms {
-                Some((plan, entries)) => {
-                    degree.term_message_sums(entries.as_slice(), plan, pairs, scratch)
-                }
-                None => degree.message_sums(&self.base, &self.ext, pairs, scratch),
+                Some((plan, entries)) => split_sums(pairs, scratch, |r, s| {
+                    degree.term_message_sums(entries.as_slice(), plan, r, s)
+                }),
+                None => split_sums(pairs, scratch, |r, s| {
+                    degree.message_sums(&self.base, &self.ext, r, s)
+                }),
             }
         };
         for (entry, sum) in message.iter_mut().zip(sums) {

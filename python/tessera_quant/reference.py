@@ -24,6 +24,7 @@ and errors name tensors and sites, never a value.
 """
 
 import math
+import os
 from dataclasses import dataclass, field
 from fractions import Fraction
 from functools import lru_cache
@@ -58,6 +59,27 @@ INT8 = (-128, 127)
 """The range of `D`'s INT8 tensors."""
 
 _LIMIT = 1 << 63
+
+# `TESSERA_REFERENCE_DEVICE=cuda`: products whose every partial sum is an integer below 2^53
+# run in float64 on that device, where they are exact; any other product keeps its CPU integer
+# path. A tool switch for long greedy runs (#738): the prover re-derives every token from its own
+# engine, so a wrong product here cannot pass.
+_DEVICE = os.environ.get("TESSERA_REFERENCE_DEVICE")
+_EXACT = 1 << 53
+_DEVICE_WEIGHTS: dict[tuple[int, int], torch.Tensor] = {}
+
+
+def _exact_product(a: torch.Tensor, b: torch.Tensor, bound: int) -> torch.Tensor | None:
+    """`a @ b` on `_DEVICE` in float64, exact, or None.
+
+    `bound`, a public bound on every partial sum's magnitude, must be below 2^53.
+    """
+    if _DEVICE is None or bound >= _EXACT:
+        return None
+    out = torch.matmul(a.to(_DEVICE, torch.float64), b.to(_DEVICE, torch.float64))
+    return out.round_().to(torch.int64).cpu()
+
+
 """int64's bound: every value and product stays below it in magnitude."""
 
 
@@ -191,6 +213,20 @@ class _Forward:
 
     def matmul(self, x: torch.Tensor, ty: WeightType, layer: int) -> torch.Tensor:
         """`x W^T` for the weight `(ty, layer)`: refused if a sum could reach `2^63`."""
+        if _DEVICE is not None and not self.record:
+            weight = self.weights[ty, layer]
+            if weight.data.dtype == np.int8:
+                key = (id(self.model), id(weight))
+                held = _DEVICE_WEIGHTS.get(key)
+                if held is None:
+                    held = torch.as_tensor(weight.data.reshape(weight.rows, weight.cols)).to(
+                        _DEVICE
+                    )
+                    _DEVICE_WEIGHTS[key] = held
+                bound = _largest(x) * 128 * weight.cols
+                if bound < _EXACT:
+                    out = torch.matmul(x.to(_DEVICE, torch.float64), held.to(torch.float64).T)
+                    return out.round_().to(torch.int64).cpu()
         if not self.record and self.model.profile is Profile.Servable:
             weight = self.weights[ty, layer]
             result = try_matmul(x, weight.data.reshape(weight.rows, weight.cols))
@@ -286,7 +322,13 @@ class _Forward:
         kh = k.reshape(n, arch.n_kv_heads, dh).transpose(0, 1).repeat_interleave(group, dim=0)
         vh = v.reshape(n, arch.n_kv_heads, dh).transpose(0, 1).repeat_interleave(group, dim=0)
         _bounded(_largest(qh) * _largest(kh) * dh, "a score")
-        scores = None if self.record else try_bmm(qh, kh.transpose(1, 2))
+        scores = (
+            None
+            if self.record
+            else _exact_product(qh, kh.transpose(1, 2), _largest(qh) * _largest(kh) * dh)
+        )
+        if scores is None and not self.record:
+            scores = try_bmm(qh, kh.transpose(1, 2))
         if scores is None:
             scores = qh @ kh.transpose(1, 2)
         causal = torch.ones(n, n, dtype=torch.bool).tril()
@@ -299,7 +341,9 @@ class _Forward:
             raise TesseraQuantError(f"layer {layer}: a row's maximum keeps its exponential")
         r = (1 << (2 * sigma)) // total
         _bounded(_largest(e) * _largest(vh) * n, "an attention sum")
-        weighted = e @ vh
+        weighted = None if self.record else _exact_product(e, vh, _largest(e) * _largest(vh) * n)
+        if weighted is None:
+            weighted = e @ vh
         _bounded(_largest(weighted) * _largest(r), "the attention output")
         if self.record:
             self.maxima[layer] = top.squeeze(2)

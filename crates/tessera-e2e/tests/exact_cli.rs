@@ -847,6 +847,47 @@ fn e2e_exact_tiny_ni_and_live_ragged() {
     assert_eq!(fs::read(f.path("proof.tnp")).unwrap(), proof);
 }
 
+/// Public-output verification (#741): `--tokens` accepts the proven sequence and rejects a proof
+/// against any other with `REJ-TOKENS`, whichever position differs; a sequence of another length
+/// is a usage error (exit 64).
+#[test]
+fn e2e_public_tokens_bind_the_proven_sequence() {
+    let f = Fixture::new();
+    let (_, verdict) = f.proved(false);
+    f.accepted(&verdict);
+    let expected: Value = serde_json::from_slice(
+        &fs::read(root().join("spec/vectors/exact-cli/expected.json")).unwrap(),
+    )
+    .unwrap();
+    let ids: Vec<u64> = expected["token_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_u64().unwrap())
+        .collect();
+    let check = |name: &str, ids: &[u64], separator: &str, exit: i32| {
+        let text: Vec<String> = ids.iter().map(u64::to_string).collect();
+        fs::write(f.path(name), text.join(separator)).unwrap();
+        let mut args = f.verify(false);
+        args.extend(["--tokens".to_string(), f.path(name)]);
+        f.run(true, &args, exit)
+    };
+    f.accepted(&check("tokens.txt", &ids, " ", 0));
+    f.accepted(&check("tokens-commas.txt", &ids, ",\n", 0));
+    for position in [0, ids.len() - 1] {
+        let mut other = ids.clone();
+        other[position] ^= 1;
+        let v = report(&check("other.txt", &other, " ", 10), "verdict");
+        assert_eq!(v["verdict"]["status"], "reject");
+        assert_eq!(
+            v["verdict"]["reason"]["code"], "REJ-TOKENS",
+            "position {position}"
+        );
+    }
+    check("short.txt", &ids[1..], " ", 64);
+    check("junk.txt", &[1], " x ", 64);
+}
+
 #[test]
 fn e2e_exact_mismatch_and_input_boundaries() {
     let f = Fixture::new();

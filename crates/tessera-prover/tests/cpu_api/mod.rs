@@ -160,6 +160,7 @@ fn independent(
         tv_core::VerifierConfig {
             params,
             weights,
+            public_tokens: None,
             limits: Default::default(),
             accept_bound: tv_core::protocol::FixedBits(0),
         },
