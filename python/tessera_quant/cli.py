@@ -492,7 +492,7 @@ def parser() -> argparse.ArgumentParser:
         "--alpha",
         type=Fraction,
         metavar="N/D",
-        help="a fixed migration strength, one of RFC-0005's, instead of choosing on held-out data",
+        help="restrict migration to one of RFC-0005's strengths; still validate held-out data",
     )
 
     evaluate = command("eval", "measure D against its BF16 reference")

@@ -147,8 +147,8 @@ def quantize(
         return float(torch.cat(rows).mean())
 
     admissible = _admissible_alphas(quantized, alphas)
-    # One admissible strength is the choice whatever its divergence (a fixed `--alpha`).
-    alpha = admissible[0] if len(admissible) == 1 else select_alpha(divergence, admissible)
+    # RFC-0005: reference and scoring failures remain errors even with one candidate.
+    alpha = select_alpha(divergence, admissible)
     return assembled(quantized(alpha), alpha)
 
 

@@ -458,7 +458,7 @@ fn core_buffer(values: u64) -> Result<Vec<i64>, TableError> {
 fn generate_core(kind: &TableKind, rows: u64) -> Result<Vec<i64>, TableError> {
     let length = dense_core_len(kind, rows)?;
     let mut core = core_buffer(length)?;
-    // Each value is a function of its index alone, so filling in parallel changes nothing.
+    // The storage bound permits only this allocation, including while values are generated.
     core.resize(usize::try_from(length).map_err(|_| TableError::Memory)?, 0);
     match kind {
         TableKind::Exp { sigma, scale, .. } => {
@@ -495,30 +495,11 @@ fn generate_core(kind: &TableKind, rows: u64) -> Result<Vec<i64>, TableError> {
     Ok(core)
 }
 
-/// `out[i] = value(i)`, split over the machine's threads for large tables.
-fn fill(out: &mut [i64], value: impl Fn(usize) -> i64 + Sync) {
-    const MIN: usize = 1 << 16;
-    let threads = std::thread::available_parallelism()
-        .map_or(1, std::num::NonZeroUsize::get)
-        .min(out.len() / MIN)
-        .max(1);
-    if threads == 1 {
-        for (i, o) in out.iter_mut().enumerate() {
-            *o = value(i);
-        }
-        return;
+/// `out[i] = value(i)` without hardware-query or thread allocations.
+fn fill(out: &mut [i64], value: impl Fn(usize) -> i64) {
+    for (i, o) in out.iter_mut().enumerate() {
+        *o = value(i);
     }
-    let per = out.len().div_ceil(threads).max(1);
-    std::thread::scope(|scope| {
-        for (c, chunk) in out.chunks_mut(per).enumerate() {
-            let value = &value;
-            scope.spawn(move || {
-                for (j, o) in chunk.iter_mut().enumerate() {
-                    *o = value(c * per + j);
-                }
-            });
-        }
-    });
 }
 
 /// `clamp(round(silu(h · 2^{in_exp}) / 2^{out_exp}), −128, 127)` in the fixed point of RFC-0008:

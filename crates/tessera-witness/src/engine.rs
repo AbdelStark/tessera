@@ -1493,6 +1493,20 @@ mod table_memory_tests {
                 0,
             ),
             (
+                vec![spec(
+                    0,
+                    TableKind::Silu {
+                        b: 18,
+                        r_by_class: vec![1],
+                        in_exp: -10,
+                        out_exp: -4,
+                    },
+                )],
+                size_of::<Option<Loaded>>() + (1 << 17) * 8 + 1,
+                true,
+                0,
+            ),
+            (
                 vec![spec(0, TableKind::Pow2 { max_exp: 63 })],
                 size_of::<Option<Loaded>>(),
                 true,
