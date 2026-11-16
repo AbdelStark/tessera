@@ -93,6 +93,7 @@ fn fixture(which: usize) -> &'static Fixture {
                 config: VerifierConfig {
                     params: ParamSet::TestSmall,
                     weights,
+                    public_tokens: None,
                     accept_bound: FixedBits(0),
                     limits: ResourceLimits {
                         max_artifact_bytes: 2 << 20,

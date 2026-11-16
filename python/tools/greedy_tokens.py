@@ -39,7 +39,8 @@ TEXT = (
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    """Write the requested exact-greedy token sequence and print its continuation."""
+    p = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     p.add_argument("model", type=Path)
     p.add_argument("checkpoint", type=Path)
     p.add_argument("out", type=Path)
@@ -62,7 +63,7 @@ def main() -> int:
     prompt = len(ids)
     for _ in range(a.new):
         logits = run_reference(d, np.asarray(ids, dtype=np.uint32))
-        ids.append(int(np.argmax(logits[-1])))
+        ids.append(int(logits[-1].argmax()))
     seq = np.asarray(ids, dtype=np.uint32)
     write_artifact(a.out, TOKEN_FILE, TokenFile([seq]), limits=MESSAGE_LIMITS)
     print(prompt)

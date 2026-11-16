@@ -36,6 +36,7 @@ fn predecode_policy_decode_failures_and_report_serialization_respect_allocation_
         limits: Default::default(),
         accept_bound: FixedBits(0),
         weights,
+        public_tokens: None,
     };
     let memory = Verdict::Inconclusive(VerifierError {
         code: ErrorCode::Memory,
@@ -110,6 +111,7 @@ fn live_share_limits_precede_allocation_and_allocator_failures_are_fallible() {
             limits: Default::default(),
             accept_bound: FixedBits(0),
             weights,
+            public_tokens: None,
         };
         cfg.limits.max_memory_bytes = budget;
         let mut live = LiveVerifier::new(claims.clone(), proof.round1.statement.clone(), cfg);

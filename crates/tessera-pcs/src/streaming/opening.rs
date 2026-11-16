@@ -1054,6 +1054,7 @@ mod tests {
             (6, 2, 1),
             (6, 3, 10),
             (10, 5, 3),
+            (13, 1, 2),
         ] {
             let layout = AdviceLayout::new(
                 LayoutParams {
