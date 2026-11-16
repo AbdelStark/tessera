@@ -4,6 +4,7 @@ Evidence for the MVP plan ([MVP.md](../../roadmap/MVP.md), epic [#722](https://g
 
 | File | What |
 |---|---|
+| [`p3-window-arithmetic.md`](p3-window-arithmetic.md) | Controlled P3 window arithmetic benchmark and equivalence controls |
 | [`p4-device-combine.md`](p4-device-combine.md) | Lucid H100 upload regression fix and P4 device combination, including accepted 1B proof and source provenance |
 | [`benchmark.md`](benchmark.md) | Tessera's numbers in the observatory's units beside FlashProve and SASH, with caveats (#743) |
 | `verdict-8b-a100-c1024.json`, `verdict-8b-a100-c1024-wrong.json`, `verdict-8b-h200.json`, `verdict-8b-h200-v2.json`, `verdict-8b-h200-wrong-token.json`, `verdict-1b-h200.json`, `verdict-1b-h200-p4.json` | Verifier verdicts of the accepted real-model proofs, and the `REJ-TOKENS` control |

@@ -113,6 +113,37 @@ fn bench(c: &mut Criterion) {
         });
     }
     group.finish();
+
+    // P3 also uses the generic round loop, outside the tree product specialization.
+    let mut generic = spec;
+    generic.terms = vec![
+        Term::new(fp(7), vec![0, 0, 1]),
+        Term::new(fp(11), vec![1, 1]),
+    ];
+    let mut group = c.benchmark_group("65536-entry-sum-of-products");
+    group
+        .sample_size(10)
+        .warm_up_time(Duration::from_secs(1))
+        .measurement_time(Duration::from_secs(2));
+    for cut in [0, 4, 8] {
+        group.bench_with_input(BenchmarkId::new("grid", cut), &cut, |b, &cut| {
+            b.iter(|| {
+                let prepared =
+                    PreparedWindow::new(&mut source, Protocol::One, 4, vec![generic.clone()], cut)
+                        .unwrap();
+                black_box(
+                    prepared
+                        .prove(
+                            &mut Transcript::new(&context),
+                            Prefix::Stage(1),
+                            &mut source,
+                        )
+                        .unwrap(),
+                );
+            })
+        });
+    }
+    group.finish();
 }
 criterion_group!(benches, bench);
 criterion_main!(benches);

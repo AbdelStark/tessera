@@ -13,6 +13,51 @@ use crate::{Instance, Table, prove_batch};
 type F = GoldilocksExt2;
 
 #[test]
+fn grid_extension_matches_multilinear_evaluation_at_boundary_values() {
+    let p = 0xffff_ffff_0000_0001u64;
+    let boundary = [0, 1, p - 1, (1 << 32) - 1, 1 << 32, p - (1 << 32)];
+    for vars in 0..=3 {
+        let corners: Vec<F> = (0..1 << vars)
+            .map(|i| {
+                F::new(
+                    Goldilocks::from_u64_reduced(boundary[i % boundary.len()]),
+                    Goldilocks::from_u64_reduced(boundary[(i + 2) % boundary.len()]),
+                )
+            })
+            .collect();
+        for radix in 2usize..=8 {
+            let mut grid = vec![F::ZERO; radix.pow(vars as u32)];
+            for (vertex, &value) in corners.iter().enumerate() {
+                grid[radix_index(vertex, radix, vars)] = value;
+            }
+            extend(&mut grid, radix, vars);
+            for (index, &actual) in grid.iter().enumerate() {
+                let mut digits = index;
+                let point: Vec<F> = (0..vars)
+                    .map(|_| {
+                        let node = digits % radix;
+                        digits /= radix;
+                        integer::<F>(node)
+                    })
+                    .collect();
+                let expected = corners
+                    .iter()
+                    .enumerate()
+                    .fold(F::ZERO, |sum, (v, &value)| {
+                        sum + point.iter().enumerate().fold(value, |weight, (bit, &x)| {
+                            weight * if v >> bit & 1 == 0 { F::ONE - x } else { x }
+                        })
+                    });
+                assert_eq!(
+                    actual, expected,
+                    "vars={vars}, radix={radix}, index={index}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn one_round_windows_and_supplied_gamma_preserve_the_literal_transcript() {
     for width in [1, 2, MAX_WINDOW_VARS] {
         let (mut source, relations) = specs(&[(7, 2, true, 2), (3, 1, true, 1), (0, 1, false, 0)]);

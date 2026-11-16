@@ -444,8 +444,10 @@ fn extend<F: PolyField>(values: &mut [F], radix: usize, vars: usize) {
                 let at = base + low;
                 let a = values[at];
                 let delta = values[at + stride] - a;
+                let mut value = values[at + stride];
                 for node in 2..radix {
-                    values[at + node * stride] = a + integer::<F>(node) * delta;
+                    value += delta;
+                    values[at + node * stride] = value;
                 }
             }
         }
@@ -836,18 +838,23 @@ impl<F: PolyField> State<F> {
                     return shape.sums(&self.folded, &suffix_eq, pairs, degree);
                 }
                 let mut part = buffer::<F>(degree)?;
-                let mut base = buffer::<F>(columns)?;
                 let mut slope = buffer::<F>(columns)?;
                 let mut line = buffer::<F>(columns)?;
                 for pair in pairs {
                     let suffix = suffix_eq.at(pair);
                     for (k, table) in self.folded.iter().enumerate() {
-                        base[k] = table[2 * pair];
-                        slope[k] = table[2 * pair + 1] - base[k];
+                        line[k] = table[2 * pair];
+                        slope[k] = table[2 * pair + 1] - line[k];
                     }
-                    for (value, &x) in part.iter_mut().zip(&xs) {
-                        for k in 0..columns {
-                            line[k] = base[k] + x * slope[k];
+                    for (slot, value) in part.iter_mut().enumerate() {
+                        // The public nodes are 0, 2, 3, …; advance their lines by addition.
+                        if slot != 0 {
+                            for k in 0..columns {
+                                line[k] += slope[k];
+                                if slot == 1 {
+                                    line[k] += slope[k];
+                                }
+                            }
                         }
                         let polynomial = self.spec.terms.iter().fold(F::ZERO, |s, term| {
                             s + term
