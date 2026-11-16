@@ -24,7 +24,7 @@ from iproofs.schema import SchemaRegistry
 HERE = Path(__file__).resolve().parent
 SYSTEM = HERE.parent
 REGISTRY = SchemaRegistry.from_tree(SYSTEM.parents[1] / "schema")
-COMMIT = "3c75bdf78e4cc5c9ed2140900ff109d5933e3006"
+COMMIT = "326f1c3a46edbd528caba2c658be8b17660f3b25"
 ROOT = "ab" * 32
 STATEMENT = "cd" * 32
 
