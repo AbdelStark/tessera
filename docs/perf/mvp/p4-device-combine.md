@@ -32,7 +32,7 @@ runs changed two implementation choices and do not isolate the combine kernel's
 speedup. The baseline still contained the tiny-model staging regression.
 
 Final hardened-tree job 6444 proved in 1483.66 s, with P4 at 153.526 s and
-P3 at 220.977 s; peak host RSS was 237349892 KiB (226.35 GiB), and the proof
+P3 at 210.595 s (`tessera_pass_seconds`); peak host RSS was 237349892 KiB (226.35 GiB), and the proof
 was 4478799994 bytes. All seven commitment tests, both tiny-model CPU/GPU byte
 comparisons (848014 and 916638 bytes), and GPU clippy passed before this run.
 The first verification command passed the binary TokenFile to `--tokens`, which
