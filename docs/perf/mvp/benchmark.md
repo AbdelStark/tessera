@@ -1,6 +1,6 @@
 # MVP benchmark: Tessera beside FlashProve and SASH (#743)
 
-Status: updated 2026-11-17 with the accepted full 1B H100 workload. The full 8B H100 retry is in progress. These are development runs measured by Tessera's own scripts ([`scripts/prove-gpu.sh`](../../../scripts/prove-gpu.sh), `/usr/bin/time`) or the observatory's hosted harness, as each row states. Read the caveats before any figure.
+Status: updated 2026-11-17 with accepted full 1B and 8B native H100 workloads. The full 8B adapter run is in progress. These are development runs measured by Tessera's own scripts ([`scripts/prove-gpu.sh`](../../../scripts/prove-gpu.sh), `/usr/bin/time`) or the observatory's hosted harness, as each row states. Read the caveats before any figure.
 
 ## H100 full workload, merged implementation
 
@@ -11,17 +11,25 @@ proof. The pinned independent verifier accepts in 141.30 s and rejects one
 changed continuation token with `REJ-TOKENS`. Host RSS peaks at 700.81 GiB;
 the recorded device peak is 59.64 GiB.
 
+The same source completes the 8B workload in 20,873.67 s using 16 leaf groups,
+with a 4,441,211,250-byte proof. Independent verification takes 143.84 s and
+the changed-token check returns `REJ-TOKENS`. Host RSS peaks at 1,530.95 GiB;
+the recorded device peak is 59.61 GiB.
+
 | Model | Shape | Prove time per token per Gbit | Proof size per token per Gbit | Overhead vs serving | Evidence |
 |---|---|---:|---:|---:|---|
 | Llama 3.2 1B, integer D, W8, materialized head | 1,024 + 64 | 436.157 ms | 338,496 B | 31,441.9× | Native prove, generation excluded; one H100 SXM, 32 prover CPUs, n = 1; [report and numeric records](h100-full-workload.md) |
+| Llama 3.1 8B Instruct, integer D, W8 | 1,024 + 64 | 298.642 ms | 63,541 B | 47,773.0× | Native grouped prove, generation excluded; one H100 SXM, 24 prover CPUs, n = 1; [report and numeric records](h100-full-workload.md#completed-8b-native-workload) |
 
 The serving denominator is the same allocated GPU at the same shape, using
-vLLM 0.32.0 with the original BF16 checkpoint: median 0.180919 s across eight
-timed requests after two warm-ups. Proving D and BF16 serving are different
-computations. P2 accounts for 60.4% of native proof wall time. The report retains
+vLLM 0.32.0 with the original BF16 checkpoint: medians 0.180919 s (1B) and
+0.436934 s (8B), each across eight timed requests after two warm-ups.
+Proving D and BF16 serving are different computations. P2 accounts for 60.4%
+of 1B native proof wall time and 58.7% at 8B. The report retains
 the phase totals, preparation time, failed attempts and hardware limitations.
-The 8B H100 run has not yet produced an accepted proof. The different sources,
-models, CPU counts and machines below do not establish a controlled speedup.
+The full 8B adapter measurement, including greedy generation, remains in progress.
+The different sources, models, CPU counts and machines below do not establish
+a controlled speedup.
 The fresh 8B D also shows a substantial fidelity gap in the separate small
 diagnostic: 6.19× BF16 perplexity and 42.2% top-1 agreement. See the
 [sample sizes and confidence intervals](h100-full-workload.md#fidelity-diagnostic);

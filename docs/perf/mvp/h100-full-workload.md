@@ -1,6 +1,6 @@
 # H100 full-workload benchmark
 
-Status: the full 1B workload is independently accepted; a grouped 8B native attempt is in progress, 2026-11-17. Two resident 8B attempts ran out of memory and the physical planner refused a 1,700-GiB budget. The completed smaller diagnostic shows a substantial fidelity gap; the larger diagnostic timed out.
+Status: the full 1B and grouped 8B native workloads are independently accepted, 2026-11-17. The full 8B adapter run is in progress. Two resident 8B attempts ran out of memory and the physical planner refused a 1,700-GiB budget. The completed smaller diagnostic shows a substantial fidelity gap; the larger diagnostic timed out.
 
 The measured source is the merge commit
 [`326f1c3a46edbd528caba2c658be8b17660f3b25`](https://github.com/AbdelStark/tessera/commit/326f1c3a46edbd528caba2c658be8b17660f3b25).
@@ -55,6 +55,61 @@ remains the largest measured cost. Public [observations](h100-full-workload.csv)
 and [pass totals](h100-full-workload-phases.csv) retain the numeric values;
 private run manifests and model artifacts stay in the local archive.
 
+## Completed 8B native workload
+
+Job 6604 completed the 1,024 + 64 workload with 16 leaf groups on one H100 SXM,
+using 24 prover CPUs and eight verifier CPUs from a 64-CPU, 1,750-GiB allocation.
+The independent verifier [accepted](verdict-8b-h100-c1024.json) with the statement,
+weight root and public tokens pinned. Changing the last continuation token
+returned [`REJ-TOKENS`, exit 10](verdict-8b-h100-c1024-wrong-token.json).
+
+| Measurement | 8B, 1,024 + 64 |
+|---|---:|
+| Native prove wall time | 20,873.67 s (5 h 48 min) |
+| Independent verify wall time | 143.84 s |
+| Proof size | 4,441,211,250 bytes |
+| Peak prover host RSS | 1,605,320,196 KiB (1,530.95 GiB) |
+| Allocation cgroup peak | 1,647,780,134,912 bytes (1,534.61 GiB) |
+| Recorded device peak | 64,005,996,544 bytes (59.61 GiB) |
+| Peak verifier RSS | 8,676,864 KiB |
+| Prove time per covered token | 19.18536 s |
+| Prove time per covered token per Gbit | 298.642 ms |
+| Proof bytes per covered token per Gbit | 63,541 bytes |
+| vLLM median request time | 0.436934 s |
+| Native proof / serving time | 47,773.0× |
+
+The denominator is 1,088 covered positions and 8,030,261,248 active parameters
+at 8 bits, or 64.242089984 Gbit. The run reuses the third harness attempt's
+recorded tokens, compiled plan and weight commitment. Native proving excludes
+input generation and calibration. The
+[serving baseline](serving-8b-h100-c1024-native.json) ran in the same allocation,
+with the same GPU and 24 CPUs, after the proof checks. Its eight timed requests
+after two warm-ups range from 0.435714 to 0.437723 s. This is one native proof
+sample; it is distinct from the full adapter measurement below.
+
+| Prover pass | Seconds | Share of native wall time |
+|---|---:|---:|
+| P1 | 1,692.253 | 8.1% |
+| P2, including grouped merge | 12,262.917 | 58.7% |
+| P2b, grouped merge (subset of P2) | 2,582.638 | 12.4% |
+| P3, reduction stages | 2,129.328 | 10.2% |
+| P3b, reduction window fold | 619.652 | 3.0% |
+| P4, openings | 1,153.068 | 5.5% |
+| P5, column answers | 1,114.255 | 5.3% |
+
+P2 already includes P2b; P3 and P3b are disjoint timers. Excluding the duplicate
+P2b scope, pass times total 18,971.47 s, leaving 1,902.20 s outside those scopes.
+The [numeric observations](h100-full-workload.csv) and
+[pass totals](h100-full-workload-phases.csv) retain the unrounded values.
+The cgroup sampler recorded no OOM events. Completing this execution under
+the hard limit does not make the 9,000-GiB logical budget a physical memory bound.
+
+Full adapter job 6610 started after these checks passed. It uses the same pinned
+source, image, D and grouped budget, draws a new prompt through the unchanged
+harness, and includes greedy generation in its external `prove` timing.
+All six measurement self-tests passed in its own allocation. Completion,
+derived-metric validation and the official C1 control are pending.
+
 ## Measurement protocol
 
 - **Workload:** one 1,024-token prompt and 64 exact-greedy continuation tokens. The 8B run uses the observatory's pinned `l31-8b-c1024` checkpoint and harness-generated prompt. The 1B run uses Tessera's fixed public prompt and its existing committed integer model.
@@ -68,7 +123,7 @@ private run manifests and model artifacts stay in the local archive.
 - **Serving:** the pinned vLLM 0.32.0 engine through Tessera's existing Python-API baseline script, on the same GPU at batch 1 and the same 1,024 + 64 shape. Use deterministic synthetic prompts and report the request count, warm-ups, range and median. This is not the observatory's OpenAI-server serving protocol. BF16 serving and proving the integer D are different computations; the ratio measures deployment overhead, not identical-model runtime.
 - **Evidence:** one completed proof per model initially, with the sample count explicit. Derive per-token and per-Gbit quantities from raw observations. Keep every failed attempt with its exit code.
 
-The H100 SXM node reports driver 580.173.02. The observatory's `prover-h100-hosted` profile pins 610.57.04 and requires 500 GiB free disk; the initial node-local check found about 298 GiB free. These are development runs and cannot be represented as a conforming observatory release or Level 1 admission.
+The H100 SXM node reports driver 580.173.02. The observatory's `prover-h100-hosted` profile pins 610.57.04 and requires 500 GiB free disk. The initial node-local check found about 298 GiB free; the machine record for adapter job 6610 reports 1,171,992,289,280 bytes free, above the disk requirement. The driver mismatch remains. These are development runs and cannot be represented as a conforming observatory release or Level 1 admission.
 
 ## Completed input preparation
 
@@ -87,8 +142,8 @@ The failed run remains retained, and the retry uses a separate results directory
 
 The separate [BF16 serving baseline](serving-8b-h100-c1024-6517.json) in allocation 6517 completed successfully:
 median 0.436434 s per request, range 0.435963–0.438387 s across eight timed
-requests after two warm-ups, at batch 1 and 1,024 + 64. No proof-to-serving
-ratio is claimed before a full proof completes.
+requests after two warm-ups, at batch 1 and 1,024 + 64. The completed native
+proof uses its own subsequent allocation's baseline for the ratio above.
 
 ## 8B resource retry
 
@@ -120,12 +175,12 @@ command time was 2,510.64 s and peak RSS 15,692,544 KiB. Its allocation was
 1,750 GiB, and it recorded no OOM kill. The existing planner found no admissible
 plan at that budget.
 
-A subsequent native attempt tests the existing grouped route, selected with
+A subsequent native attempt completed the existing grouped route, selected with
 a 9,000-GiB logical budget below the ungrouped cell floor, under the unchanged
 1,750-GiB Slurm limit. The logical budget is not a physical memory guarantee.
 The planner admitted 9,654,484,332,398 logical bytes and reduced its live
-lookup-cell census from 18,480,365,568 to 1,213,210,624. Advice commitment
-completed; final proof acceptance and peak memory are still pending.
+lookup-cell census from 18,480,365,568 to 1,213,210,624. The completed leaf stage
+records 16 groups; proof acceptance and observed memory are reported above.
 It reuses the third attempt's recorded 1,024 + 64 tokens, compiled plan and
 weight commitment, with a separate copy of the secret weight state. Source,
 image and D stay frozen. This is a native proof measurement, excluding

@@ -1,0 +1,15 @@
+{
+  "schema": "tessera.serving-baseline/1",
+  "engine": "vllm",
+  "model": "/models",
+  "prompt_tokens": 1024,
+  "output_tokens": 64,
+  "batch_size": 1,
+  "requests": 8,
+  "gpu_memory_utilization": 0.9,
+  "seconds_per_request_median": 0.4369344508741051,
+  "seconds_per_request_min": 0.43571403296664357,
+  "seconds_per_request_max": 0.4377231430262327,
+  "gpu_seconds_per_token_covered": 0.0004015941644063466,
+  "decode_tokens_per_second": 146.47506021089754
+}
