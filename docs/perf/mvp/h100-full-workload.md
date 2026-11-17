@@ -1,6 +1,6 @@
 # H100 full-workload benchmark
 
-Status: the full 1B workload is independently accepted; the 8B run and its fidelity diagnostic remain in progress, 2026-11-16.
+Status: the full 1B workload is independently accepted; the 8B proof retry and larger fidelity diagnostic remain in progress, 2026-11-17. The completed smaller diagnostic shows a substantial fidelity gap.
 
 The measured source is the merge commit
 [`326f1c3a46edbd528caba2c658be8b17660f3b25`](https://github.com/AbdelStark/tessera/commit/326f1c3a46edbd528caba2c658be8b17660f3b25).
@@ -90,6 +90,56 @@ median 0.436434 s per request, range 0.435963–0.438387 s across eight timed
 requests after two warm-ups, at batch 1 and 1,024 + 64. No proof-to-serving
 ratio is claimed before a full proof completes.
 
+## 8B resource retry
+
+The second attempt resolved the verified inputs, compiled D and committed its
+weights, then was killed during proving in its 1,900-GiB allocation. No proof
+was accepted. Native compilation took 173.376 s and weight commitment 920.197 s;
+the failed harness process reported 1,892,095,732 KiB peak RSS. The original run,
+manifest, prepared tokens and compilation artifacts are retained privately.
+
+The next attempt tests whether allocator retention contributes to that peak.
+It keeps the same source, image, D, workload shape and 24 prover CPUs, with
+`MALLOC_ARENA_MAX=2`, `MALLOC_MMAP_THRESHOLD_=131072` and
+`MALLOC_TRIM_THRESHOLD_=131072`, and requests 1,910 GiB from Slurm. These
+[glibc settings](https://sourceware.org/glibc/manual/latest/html_node/Memory-Allocation-Tunables.html)
+limit arena count and keep allocation/release thresholds fixed. Their effective
+values were checked inside the pinned image. A separate 30-second cgroup sampler
+retains anonymous, file and kernel memory, including on failure. This is an
+experiment in resource use; it does not establish a memory fix or a speedup.
+
+## Fidelity diagnostic
+
+The original 32-document/32-prompt diagnostic remains running on CPU.
+Before observing any scores, a smaller diagnostic was specified: four C4
+documents of at most 128 tokens and four 32-token C4 prompts followed by
+32 BF16-greedy tokens, seed 20261116 and 1,000 bootstrap resamples. It completed
+in 5,596.43 s on eight CPUs with 96 GiB allocated, with 41,253,864 KiB peak RSS.
+The frozen evaluator redrew and verified the calibration selection and excluded
+its documents. No model setting was changed in response to these scores.
+
+| Metric | Estimate | 95% interval | Scored tokens |
+|---|---:|---:|---:|
+| Perplexity ratio, D / BF16 | 6.19351 | 4.79357–9.08874 | 508 |
+| Teacher-forced top-1 agreement | 42.1875% (54 / 128) | 33.9821–50.8482% | 128 |
+| Mean KL(ref ‖ D), nats per token | 2.18717 | 1.51523–3.09050 | 128 |
+
+BF16 perplexity is 15.9772 and D's is 98.9547. The intervals use document
+bootstrap for perplexity and KL, and Wilson for agreement. The
+[numeric observations](fidelity-8b-h100-small.csv) preserve the unrounded values.
+The source is `allenai/c4`, `en`, validation revision
+`1588ec454efa1a09f29cd18ddd04fe05fc8653a2`, using its eight validation files.
+The CPU evaluator used Python 3.12.3, PyTorch 2.14.1+cu130, Transformers 5.20.1,
+NumPy 2.5.4, safetensors 0.8.0 and blake3 1.0.11. The complete evaluation
+specification and report remain in the private archive.
+
+This small sample cannot qualify the model. It is also far outside
+[RFC-0005's targets](../../rfcs/RFC-0005-integer-model.md#fidelity-evaluation)
+of at most 1.05 perplexity ratio and at least 90% agreement at the lower
+confidence bound. Proof acceptance establishes execution of D; it does not
+establish BF16 fidelity. Full qualification and the tensor differential checks
+of #312 remain unmet.
+
 ## Preparation evidence
 
 The merged GPU prover and the independent verifier built from a clean checkout. The observatory harness checked the exact checkpoint file set, every SHA256 and the aggregate model digest. The refreshed adapter passed 1,553 harness/system tests locally; 16 tests requiring a GPU or real containers were skipped. Its upstream CI passed all six Python 3.12/3.13 shards, the fake end-to-end test, validation and type checks.
@@ -110,5 +160,6 @@ The 1B input generator completed in 2,347.70 s on 16 allocated CPUs (6510), usin
 | 1B token generation 6491 | Exit 1: H100 NVL driver 570.211.01 does not support the pinned CUDA 13.0 PyTorch runtime | Use the CPU integer reference for input generation; keep proof measurements on the H100 SXM |
 | 1B token generation 6494 | Slurm `TIMEOUT` after one hour; no token file produced | Retain the attempt and use the existing guarded exact-FP64 reference, with CUDA generation available in the H100 job |
 | 8B harness 6517 | Exit 4 before proving: the pinned prompt corpus returned HTTP 503 | Fetch from the Project Gutenberg mirror, require all eight original SHA256 hashes, and check prompt generation with the unchanged harness before retrying |
+| 8B harness 6532 | Slurm `OUT_OF_MEMORY` (`0:125`), harness exit 4: one OOM kill during `prove`, 4 h 34 min 52 s after resolution began | Retain the failed run and prepared inputs; retry the unchanged source/image with explicit allocator settings and 1,910 GiB of physical RAM |
 
 Accepted proof artifacts and raw Criterion samples are retained. Regenerable test-build intermediates were cleared to free shared-home storage. Five older proofs were archived locally and hash-verified. Four redundant cluster copies were removed after a second remote SHA256 check; adjacent archive manifests retain their locations and digests. This freed 17.9 GB from shared-home storage. The latest accepted P3/P4 proofs remain on the cluster.

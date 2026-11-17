@@ -1,8 +1,33 @@
 # MVP benchmark: Tessera beside FlashProve and SASH (#743)
 
-Status: first numbers, 2026-11-11. Development runs on rented hardware, measured by Tessera's own scripts ([`scripts/prove-gpu.sh`](../../../scripts/prove-gpu.sh), `/usr/bin/time`), including the observatory's own workload, and by the observatory's harness itself: a development run of the adapter on the same workload, accepted ([below](#the-adapter-through-the-observatorys-harness)). Read the caveats before any figure.
+Status: updated 2026-11-17 with the accepted full 1B H100 workload. The full 8B H100 retry is in progress. These are development runs measured by Tessera's own scripts ([`scripts/prove-gpu.sh`](../../../scripts/prove-gpu.sh), `/usr/bin/time`) or the observatory's hosted harness, as each row states. Read the caveats before any figure.
 
-## Headline
+## H100 full workload, merged implementation
+
+The merged P4 device combination and P3 window arithmetic at
+[`326f1c3`](https://github.com/AbdelStark/tessera/commit/326f1c3a46edbd528caba2c658be8b17660f3b25)
+complete the 1B 1,024 + 64 workload in 5,688.45 s, with a 4,414,731,722-byte
+proof. The pinned independent verifier accepts in 141.30 s and rejects one
+changed continuation token with `REJ-TOKENS`. Host RSS peaks at 700.81 GiB;
+the recorded device peak is 59.64 GiB.
+
+| Model | Shape | Prove time per token per Gbit | Proof size per token per Gbit | Overhead vs serving | Evidence |
+|---|---|---:|---:|---:|---|
+| Llama 3.2 1B, integer D, W8, materialized head | 1,024 + 64 | 436.157 ms | 338,496 B | 31,441.9× | Native prove, generation excluded; one H100 SXM, 32 prover CPUs, n = 1; [report and numeric records](h100-full-workload.md) |
+
+The serving denominator is the same allocated GPU at the same shape, using
+vLLM 0.32.0 with the original BF16 checkpoint: median 0.180919 s across eight
+timed requests after two warm-ups. Proving D and BF16 serving are different
+computations. P2 accounts for 60.4% of native proof wall time. The report retains
+the phase totals, preparation time, failed attempts and hardware limitations.
+The 8B H100 run has not yet produced an accepted proof. The different sources,
+models, CPU counts and machines below do not establish a controlled speedup.
+The fresh 8B D also shows a substantial fidelity gap in the separate small
+diagnostic: 6.19× BF16 perplexity and 42.2% top-1 agreement. See the
+[sample sizes and confidence intervals](h100-full-workload.md#fidelity-diagnostic);
+these performance results do not establish model qualification.
+
+## Historical comparison, 2026-11-11
 
 Tessera proves the observatory's own workload: Llama-3.1-8B, a 1,024-token prompt and its 64-token exact-greedy continuation, on one GPU, accepted by the independent verifier with the public tokens pinned (and `REJ-TOKENS` for one changed token). Per token per Gbit it takes 313 ms, about 4.2 times SASH's 75.4 ms and about 4,600 times FlashProve's 68.2 µs, and its proof is 62.5 kB, a tenth of SASH's 640 kB. Its overhead against vLLM on the same GPU at the same shape is 28,100× (SASH: 15,760× against serving on its H200). It needs a host with 2 TB of RAM: the proof peaked at 1.79 TiB. The observatory's own harness reproduces the result: on the same A100 with its profile's 15 prover CPUs it measured 8 h 57 min to prove (461 ms per token per Gbit, 41,500× vLLM), 177 s to verify, and the verdict `accept`.
 
@@ -20,7 +45,7 @@ Units as the observatory defines them ([README](README.md#units)): per token cov
 
 ## Caveats
 
-1. **Shapes.** Tessera's first row covers the workload's 1,088 positions, as SASH's does; its other rows cover 128 and 16. Tessera's cost is mostly fixed at these lengths: the table side (10.1 G table rows at 8B, [commitment report](commitment-report-8b.json)) does not depend on the request length, so its per-token figures fall as the request grows (8 times the positions cost 1.26 times the time: 2,902 s to 3,646 s). These rows are not a like-for-like comparison and must not be quoted as one; the per-token figures at 1,088 positions would be lower again, if it fit.
+1. **Shapes.** The historical full-workload rows cover 1,088 positions, as SASH's does; the smaller rows cover 128 and 16. Tessera's cost is mostly fixed at the smaller lengths: the table side (10.1 G table rows at 8B, [commitment report](commitment-report-8b.json)) does not depend on the request length, so its per-token figures fall as the request grows (8 times the positions cost 1.26 times the time: 2,902 s to 3,646 s). Different shapes are not a like-for-like comparison and must not be quoted as one.
 2. **Harness, but a development run.** The observatory times calls from outside the container, binds CPUs and samples NVML. Its row comes from that harness, but as a development install of the adapter into the provider's `nvidia/cuda` image, so the record is `local/`, `nonconforming` (an A100 80 GB, not the profile's H200) and never release-eligible; a release run needs the pinned adapter image (RFC-0014 B1–B7), which has since been built at the merged source pin (see the [H100 full-workload report](h100-full-workload.md)). That image does not change the provenance of this earlier run. The other Tessera rows are Tessera's own measurements.
 3. **Different hardware.** Tessera's full-workload proof ran on one A100 80 GB PCIe of a rented 6-GPU host (128 CPUs, a 2.07 TB container), and its other rows on one H200 NVL (82 CPUs, a 558 GiB container); each overhead divides by vLLM on the same GPU. SASH and FlashProve ran on the observatory's H200 (SXM), with its own serving rows. An A100 is slower than an H200, so the full-workload row's time is not flattered by the hardware.
 4. **What is proved.** Tessera proves its integer model D, quantized from the BF16 checkpoint by `tessera-quant` (servable profile, affine scales, migration strength 1/2), not the BF16 model; D's fidelity is measured separately. `tessera-protocol/1` at `ni-100/1`, no zero knowledge. The verifier pins the public prompt and continuation (`--tokens`).
@@ -161,7 +186,7 @@ A stack-sampling profile of the 1B proof (`gdb` launching the prover, since the 
 
 1. **P2 at the workload** (4 h 7 min of 6 h 5 min): the leaf stage's lookup and table trees over 18.5 G lookups. **The fixed table side** (#729, #745) sets the advice matrix's size and the floor of every phase. Restricting tables to the workload's ranges or a structured table evaluation (#691) shrinks every phase at once.
 2. **P2's single-threaded host work**: between short bursts on every core (level regeneration and round messages), one thread prepares the window grids and allocates, fills and clears multi-gigabyte `SecretBuf` tables.
-3. **P4 and P5's row pipeline** (13 min at 8B): one thread regenerates advice rows and copies them to the device from pageable memory; overlapping regeneration, pinned uploads and the GPU would bound them by the device.
+3. **P4 and P5's row pipeline** (13 min at 8B in this historical profile): the subsequent [P4 work](p4-device-combine.md) combines sampled rows on the device and retains the producer-thread pipeline. Its pinned/double-buffer upload experiment regressed and was removed. Use the new [full-workload pass measurements](h100-full-workload.md), rather than assuming that experiment improves end-to-end time.
 4. **P1's row generation** (3 min at 8B): `visit_rows` feeds the GPU encoder from one thread.
 5. **Memory at 1,088 positions** (#728, #739): the proof peaks at 1.79 TiB, and the planner's resident charge (10.9 TB) overstates it six times while its physical search admits nothing under 1,850 GiB. Token groups and windows (RFC-0054, RFC-0055), or a smaller physical floor, would bring the workload to an ordinary 1 TB GPU host.
 6. **A release harness run** (#741): run the [built, pinned adapter image](h100-full-workload.md) (RFC-0014 B1–B7) on conforming reference hardware; the development run above is accepted but `local/` and `nonconforming`.
