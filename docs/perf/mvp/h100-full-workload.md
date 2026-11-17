@@ -1,6 +1,6 @@
 # H100 full-workload benchmark
 
-Status: the full 1B workload is independently accepted; the 8B proof retry and larger fidelity diagnostic remain in progress, 2026-11-17. The completed smaller diagnostic shows a substantial fidelity gap.
+Status: the full 1B workload is independently accepted; a grouped 8B native attempt is in progress, 2026-11-17. Two resident 8B attempts ran out of memory and the physical planner refused a 1,700-GiB budget. The completed smaller diagnostic shows a substantial fidelity gap; the larger diagnostic timed out.
 
 The measured source is the merge commit
 [`326f1c3a46edbd528caba2c658be8b17660f3b25`](https://github.com/AbdelStark/tessera/commit/326f1c3a46edbd528caba2c658be8b17660f3b25).
@@ -98,19 +98,44 @@ was accepted. Native compilation took 173.376 s and weight commitment 920.197 s;
 the failed harness process reported 1,892,095,732 KiB peak RSS. The original run,
 manifest, prepared tokens and compilation artifacts are retained privately.
 
-The next attempt tests whether allocator retention contributes to that peak.
-It keeps the same source, image, D, workload shape and 24 prover CPUs, with
+The third attempt tested whether allocator retention contributed to that peak.
+It kept the same source, image, D, workload shape and 24 prover CPUs, with
 `MALLOC_ARENA_MAX=2`, `MALLOC_MMAP_THRESHOLD_=131072` and
-`MALLOC_TRIM_THRESHOLD_=131072`, and requests 1,910 GiB from Slurm. These
+`MALLOC_TRIM_THRESHOLD_=131072`, and requested 1,910 GiB from Slurm. These
 [glibc settings](https://sourceware.org/glibc/manual/latest/html_node/Memory-Allocation-Tunables.html)
 limit arena count and keep allocation/release thresholds fixed. Their effective
 values were checked inside the pinned image. A separate 30-second cgroup sampler
-retains anonymous, file and kernel memory, including on failure. This is an
-experiment in resource use; it does not establish a memory fix or a speedup.
+retained anonymous, file and kernel memory, including on failure. This attempt
+also ended in an OOM kill, at 04:13 UTC on November 17, before producing a proof.
+The failed harness wall time was 17,424.80 s and GNU peak RSS 1,883,052,952 KiB.
+The cgroup recorded a 1,932,651,438,080-byte peak, below its 1,910-GiB limit;
+file cache had been almost fully reclaimed. A subsequent resource check found
+about 191 GiB in the node's storage service, outside Slurm. Reserving more RAM
+does not recover that physical memory. The allocator experiment established
+neither a successful memory fix nor a speedup.
+
+The native attempt at a 1,700-GiB budget was refused with `ERR-RES-MEMORY`,
+exit 20, before P1. It spent 2,317.197 s searching for a physical plan; total
+command time was 2,510.64 s and peak RSS 15,692,544 KiB. Its allocation was
+1,750 GiB, and it recorded no OOM kill. The existing planner found no admissible
+plan at that budget.
+
+A subsequent native attempt tests the existing grouped route, selected with
+a 9,000-GiB logical budget below the ungrouped cell floor, under the unchanged
+1,750-GiB Slurm limit. The logical budget is not a physical memory guarantee.
+The planner admitted 9,654,484,332,398 logical bytes and reduced its live
+lookup-cell census from 18,480,365,568 to 1,213,210,624. Advice commitment
+completed; final proof acceptance and peak memory are still pending.
+It reuses the third attempt's recorded 1,024 + 64 tokens, compiled plan and
+weight commitment, with a separate copy of the secret weight state. Source,
+image and D stay frozen. This is a native proof measurement, excluding
+generation; it is not a completed harness retry. GNU time is mounted read-only
+from the host because the pinned image does not contain it.
 
 ## Fidelity diagnostic
 
-The original 32-document/32-prompt diagnostic remains running on CPU.
+The original 32-document/32-prompt diagnostic reached its 12-hour Slurm limit
+without producing a report. Its logs are retained and no score is inferred.
 Before observing any scores, a smaller diagnostic was specified: four C4
 documents of at most 128 tokens and four 32-token C4 prompts followed by
 32 BF16-greedy tokens, seed 20261116 and 1,000 bootstrap resamples. It completed
@@ -161,5 +186,9 @@ The 1B input generator completed in 2,347.70 s on 16 allocated CPUs (6510), usin
 | 1B token generation 6494 | Slurm `TIMEOUT` after one hour; no token file produced | Retain the attempt and use the existing guarded exact-FP64 reference, with CUDA generation available in the H100 job |
 | 8B harness 6517 | Exit 4 before proving: the pinned prompt corpus returned HTTP 503 | Fetch from the Project Gutenberg mirror, require all eight original SHA256 hashes, and check prompt generation with the unchanged harness before retrying |
 | 8B harness 6532 | Slurm `OUT_OF_MEMORY` (`0:125`), harness exit 4: one OOM kill during `prove`, 4 h 34 min 52 s after resolution began | Retain the failed run and prepared inputs; retry the unchanged source/image with explicit allocator settings and 1,910 GiB of physical RAM |
+| 8B harness 6547 | Slurm `OUT_OF_MEMORY` (`0:125`), harness exit 4: one OOM kill during `prove`, 4 h 50 min after resolution began | Retain memory samples and failed artifacts; use the existing bounded planner for a native run instead of the inflated resident budget |
+| Larger fidelity diagnostic 6521 | Slurm `TIMEOUT` after 12 h; no report produced | Retain the attempt and publish the separately predeclared smaller diagnostic, including its quality gap |
+| Native launch 6577 | Exit 127 before proving: GNU time absent from the pinned image | Mount the host timer read-only after checking its compatibility with the image |
+| Bounded native attempt 6579 | Exit 20, `ERR-RES-MEMORY`, before P1 at a 1,700-GiB budget | Retain the refused plan and test the existing grouped route under a hard Slurm memory limit |
 
 Accepted proof artifacts and raw Criterion samples are retained. Regenerable test-build intermediates were cleared to free shared-home storage. Five older proofs were archived locally and hash-verified. Four redundant cluster copies were removed after a second remote SHA256 check; adjacent archive manifests retain their locations and digests. This freed 17.9 GB from shared-home storage. The latest accepted P3/P4 proofs remain on the cluster.
