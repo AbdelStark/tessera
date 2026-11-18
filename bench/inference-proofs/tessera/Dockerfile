@@ -17,7 +17,7 @@ RUN rm -f /etc/apt/sources.list.d/cuda*.list \
     git=1:2.43.0-1ubuntu7.4 pkg-config=1.8.1-2build1 python3=3.12.3-0ubuntu2.1 \
  && rm -rf /var/lib/apt/lists/*
 COPY tessera/inputs.lock /fetch/
-ADD --keep-git-dir=true https://github.com/AbdelStark/tessera.git#3c75bdf78e4cc5c9ed2140900ff109d5933e3006 /opt/tessera
+ADD --keep-git-dir=true https://github.com/AbdelStark/tessera.git#326f1c3a46edbd528caba2c658be8b17660f3b25 /opt/tessera
 ADD --checksum=sha256:2e0338f18ecbaa4a0f631b9e80e8b8e26bb6fe77dd5454fba8a70cf96c1e84a1 https://static.rust-lang.org/dist/rust-1.95.0-x86_64-unknown-linux-gnu.tar.xz /fetch/
 # The Hub's cache layout for a commit revision: offline, hf_hub_download returns the snapshot file.
 ARG HF=/opt/hf/datasets--allenai--c4/snapshots/1588ec454efa1a09f29cd18ddd04fe05fc8653a2
@@ -31,7 +31,7 @@ ADD --checksum=sha256:86896a9baffe0ab9df39a2901f0e515009989ca1fec9a42583d718ce16
 ADD --checksum=sha256:0bf87534c7050091c60466df50f174c3147d052ec7dc645da9574c902445beaf https://huggingface.co/datasets/allenai/c4/resolve/1588ec454efa1a09f29cd18ddd04fe05fc8653a2/en/c4-validation.00007-of-00008.json.gz $HF/en/
 COPY --from=ghcr.io/astral-sh/uv@sha256:78bc42400d77b0678ba95765305c826652ed5431f399257271dda681d0318f03 /uv /usr/local/bin/uv
 ENV CARGO_HOME=/opt/cargo PATH=/opt/rust/bin:$PATH UV_PYTHON_DOWNLOADS=never UV_CACHE_DIR=/tmp/uv-cache
-RUN test "$(git -C /opt/tessera rev-parse HEAD)" = 3c75bdf78e4cc5c9ed2140900ff109d5933e3006 \
+RUN test "$(git -C /opt/tessera rev-parse HEAD)" = 326f1c3a46edbd528caba2c658be8b17660f3b25 \
  && test "sha256:$(git -C /opt/tessera archive --format=tar HEAD | sha256sum | cut -d' ' -f1)" \
          = "$(awk -F'\t' '$1 == "tessera" {print $3}' /fetch/inputs.lock)" \
  && tar -xJf /fetch/rust-1.95.0-x86_64-unknown-linux-gnu.tar.xz -C /tmp \
@@ -59,7 +59,7 @@ RUN --network=none useradd --uid 10001 --no-create-home adapter \
     torch="$(/opt/tessera/python/.venv/bin/python -c 'import torch; print(torch.__version__)')" \
     tessera="$(/opt/tessera/target/release/tessera --version)" \
  && chmod -R a+rX /opt
-ENV TESSERA_REPO=/opt/tessera HF_HUB_CACHE=/opt/hf HF_HUB_OFFLINE=1
+ENV TESSERA_REPO=/opt/tessera HF_HUB_CACHE=/opt/hf HF_HUB_OFFLINE=1 TESSERA_REFERENCE_DEVICE=cuda
 ARG IPROOFS_ADAPTER_COMMIT=unknown
 ARG IPROOFS_ADAPTER_DIRTY=true
 ENV IPROOFS_ADAPTER_COMMIT=${IPROOFS_ADAPTER_COMMIT} IPROOFS_ADAPTER_DIRTY=${IPROOFS_ADAPTER_DIRTY}

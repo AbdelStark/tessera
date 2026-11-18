@@ -1,0 +1,2 @@
+run_id,control,twin_verdict,trial_count,exact_REJ_TOKENS_exit_10_count,passed
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,C1,accept,1,1,True

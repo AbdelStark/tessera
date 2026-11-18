@@ -4,7 +4,7 @@
 # stage recomputes after checking `git rev-parse HEAD` (INV-ADAPTER-2). Its Rust crates come through
 # Cargo.lock and Cargo.lock under verifier/ (checksums) and its Python packages through
 # python/uv.lock (hashes), each fetched by the locked tool in the fetch stage.
-tessera	https://github.com/AbdelStark/tessera.git#3c75bdf78e4cc5c9ed2140900ff109d5933e3006	sha256:8c4f41f7d548da6732646a8c8de9b3864fea1bc0bde3f142b036438f3d055395
+tessera	https://github.com/AbdelStark/tessera.git#326f1c3a46edbd528caba2c658be8b17660f3b25	sha256:bc5c78926ab464832c85efdf9a4d270a72589c23b35feadecb6d134943ec3cff
 # rust-toolchain.toml's 1.95.0, the standalone installer.
 rust-1.95.0	https://static.rust-lang.org/dist/rust-1.95.0-x86_64-unknown-linux-gnu.tar.xz	sha256:2e0338f18ecbaa4a0f631b9e80e8b8e26bb6fe77dd5454fba8a70cf96c1e84a1
 # tessera-quant's calibration set (RFC-0005 of Tessera): C4's en validation split at its pinned

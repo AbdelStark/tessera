@@ -4,6 +4,8 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ## [Unreleased]
 
+- Refresh the inference-proofs adapter to the merged GPU implementation and retain held-out calibration in its CUDA image (#741, #743). Record the accepted H100 1B and grouped 8B native workloads at 1,024 + 64, their changed-token rejections, pass profiles and serving baselines (#737, #739). Complete the full 8B hosted adapter measurement, derived-metric validation and official C1 control. Retain the failed 8B attempts and report the separate small fidelity diagnostic's quality gap.
+
 - Record RFC-0020's v0.1 outcome, Stop and redesign (`ρ_c` 4.49, `ρ_ℓ` 7.42, `ρ_π` 7.05; `μ` 58.3 at 1K and 187.1 at 16K at the measured costs), and set the MVP plan: a real Llama model proven on one GPU and benchmarked against FlashProve ([decision](docs/perf/v0.1/decision.md), [MVP plan](docs/roadmap/MVP.md), [#722](https://github.com/AbdelStark/tessera/issues/722)).
 
 - Prove real Llama models on one GPU and accept them with the independent verifier (MVP, [#722](https://github.com/AbdelStark/tessera/issues/722)): Llama-3.2-1B and Llama-3.1-8B integer models at an 8 + 8 request on one H200, accepted by `tessera-verify verify --tokens`, which now pins the public prompt and continuation (`REJ-TOKENS`). The first numbers in the inference-proofs observatory's units beside FlashProve and SASH, with their caveats, are in [docs/perf/mvp/benchmark.md](docs/perf/mvp/benchmark.md) ([#743](https://github.com/AbdelStark/tessera/issues/743)).
