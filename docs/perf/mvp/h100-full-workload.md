@@ -1,6 +1,6 @@
 # H100 full-workload benchmark
 
-Status: the full 1B and grouped 8B native workloads are independently accepted, 2026-11-17. The full 8B adapter run is in progress. Two resident 8B attempts ran out of memory and the physical planner refused a 1,700-GiB budget. The completed smaller diagnostic shows a substantial fidelity gap; the larger diagnostic timed out.
+Status: the full 1B and grouped 8B native workloads are independently accepted, 2026-11-17. The full 8B adapter workload also completed with independent acceptance and the official C1 changed-token control. Two resident 8B attempts ran out of memory and the physical planner refused a 1,700-GiB budget. The completed smaller diagnostic shows a substantial fidelity gap; the larger diagnostic timed out.
 
 The measured source is the merge commit
 [`326f1c3a46edbd528caba2c658be8b17660f3b25`](https://github.com/AbdelStark/tessera/commit/326f1c3a46edbd528caba2c658be8b17660f3b25).
@@ -104,11 +104,55 @@ The [numeric observations](h100-full-workload.csv) and
 The cgroup sampler recorded no OOM events. Completing this execution under
 the hard limit does not make the 9,000-GiB logical budget a physical memory bound.
 
-Full adapter job 6610 started after these checks passed. It uses the same pinned
-source, image, D and grouped budget, draws a new prompt through the unchanged
-harness, and includes greedy generation in its external `prove` timing.
-All six measurement self-tests passed in its own allocation. Completion,
-derived-metric validation and the official C1 control are pending.
+## Completed 8B adapter workload
+
+Job 6610 completed through the unchanged hosted harness, including exact-greedy
+generation, independent verification and the official C1 control. It uses the
+same source, image, D and grouped budget as the native run, with a newly drawn
+prompt, 24 prover CPUs and eight verifier CPUs. All six measurement self-tests
+passed in its own 1,750-GiB allocation. The recorded harness and adapter trees
+are clean at `4b79d6fa3bb13058656585ef1ec0faf10062b040` and
+`a506c80f92904af3517261390c4236cb6581c884`, respectively.
+
+| Measurement | 8B adapter, 1,024 + 64 |
+|---|---:|
+| Commit call, with prebuilt D | 1,097.495 s |
+| Prove session, including greedy generation | 27,672.549 s (7 h 41 min) |
+| Independent verification, eight CPUs | 144.223 s |
+| Independent verification, one CPU | 145.080 s |
+| Proof size | 4,441,209,906 bytes |
+| Peak prove anonymous host memory | 1,644,371,681,280 bytes (1,531.44 GiB) |
+| Allocation cgroup peak | 1,673,460,604,928 bytes (1,558.53 GiB) |
+| Sampled GPU memory peak | 61,520.875 MiB (60.08 GiB) |
+| Sampled GPU utilization, mean / p95 | 0.837% / 6.0% |
+| Prove session per covered token per Gbit | 395.914 ms |
+| Proof bytes per covered token per Gbit | 63,541 bytes |
+| vLLM median request time | 0.436573 s |
+| Prove session / serving time | 63,385.8× |
+
+The [labelled numeric record](h100-full-workload-adapter.csv) retains each
+metric's unit, scope, grade, tier and null reason. Anonymous host memory is a
+cgroup measurement; it is not the native table's process RSS. Kernel memory is
+unmeasurable on this profile and remains null. The allocation sampler recorded
+no OOM events. The denominator is the same 1,088 positions and 64.242089984 Gbit
+as the native 8B row. Calibration ran beforehand and is excluded from the commit
+call. The adapter's prove call was 27,672.603 s; its prove-session
+scope ends at the recorded proof release.
+
+`iproofs derive --check` reported zero failures. The
+[official C1 result](h100-full-workload-controls.csv) contains one accepted
+honest twin and one changed-output trial rejected with `REJ-TOKENS`, raw exit 10,
+with the statement pinned. This is the legacy workload's C1 check, not the six
+checks or 512 + 512 workload required by the current Level 1 ladder.
+The [matched serving baseline](serving-8b-h100-c1024-adapter.json) used eight timed
+requests after two warm-ups, ranging from
+0.434564 to 0.437790 s.
+
+There is one adapter proof sample. The harness records
+`repetitions_below_minimum` and the driver mismatch below; the run is explicitly
+nonconforming. Its successful outcome does not qualify an observatory release.
+Raw manifests, token-bearing records, controls and logs remain private under
+OBS-6; the public extraction contains selected measurements and verdicts only.
 
 ## Measurement protocol
 
@@ -121,7 +165,7 @@ derived-metric validation and the official C1 control are pending.
 - **Timing:** retain the harness's external elapsed time, including exact-greedy generation in `prove`. Keep the prover's run manifest privately, and extract the public benchmark timings for witness, commitment, leaf, reduction, opening, and column answers. These are different timing scopes.
 - **Memory:** record the Slurm allocation and observed peak RSS separately from the logical planner budget. The historical 8B run used 11,000 GiB to admit a resident estimate that overcharges reusable storage; that budget is not physical RAM.
 - **Serving:** the pinned vLLM 0.32.0 engine through Tessera's existing Python-API baseline script, on the same GPU at batch 1 and the same 1,024 + 64 shape. Use deterministic synthetic prompts and report the request count, warm-ups, range and median. This is not the observatory's OpenAI-server serving protocol. BF16 serving and proving the integer D are different computations; the ratio measures deployment overhead, not identical-model runtime.
-- **Evidence:** one completed proof per model initially, with the sample count explicit. Derive per-token and per-Gbit quantities from raw observations. Keep every failed attempt with its exit code.
+- **Evidence:** one native proof per model and one separate 8B adapter proof, with the sample count explicit. Derive per-token and per-Gbit quantities from raw observations. Keep every failed attempt with its exit code.
 
 The H100 SXM node reports driver 580.173.02. The observatory's `prover-h100-hosted` profile pins 610.57.04 and requires 500 GiB free disk. The initial node-local check found about 298 GiB free; the machine record for adapter job 6610 reports 1,171,992,289,280 bytes free, above the disk requirement. The driver mismatch remains. These are development runs and cannot be represented as a conforming observatory release or Level 1 admission.
 
@@ -184,7 +228,7 @@ records 16 groups; proof acceptance and observed memory are reported above.
 It reuses the third attempt's recorded 1,024 + 64 tokens, compiled plan and
 weight commitment, with a separate copy of the secret weight state. Source,
 image and D stay frozen. This is a native proof measurement, excluding
-generation; it is not a completed harness retry. GNU time is mounted read-only
+generation; the separate completed harness retry is reported above. GNU time is mounted read-only
 from the host because the pinned image does not contain it.
 
 ## Fidelity diagnostic
@@ -226,7 +270,7 @@ The merged GPU prover and the independent verifier built from a clean checkout. 
 
 The pinned image passed its CPU preflight (6512): adapter metadata, source and adapter commits, setup and schemas. Its GPU preflight (6507) compiled, committed and proved the tiny conformance model with production `ni-100/1`; the independent verifier [accepted with the statement, weight root and public tokens pinned](verdict-h100-image-preflight.json). The vLLM image also imported successfully and allocated a CUDA tensor on the H100. These images contain PyTorch 2.14.1+cu130 (Tessera) and 2.13.0+cu130 (vLLM 0.32.0).
 
-A separate hosted calibration probe (6513) passed `ST-CGROUP` and `ST-WATCH` with the actual Slurm allocation's cgroup mounted read-only into the container. The complete GPU measurement self-test (6531) subsequently passed all six hosted checks: clock, sampler, jitter, cgroup, release watcher and NVML. Sampling was 20.2 Hz with no gaps over 150 ms and p99 lateness 0.229 ms; NVML reported no foreign process on the allocated GPU and supported energy measurement. The full benchmark repeats this check in its own allocation. The launch wrappers normalize PyTorch's UUID to NVML's `GPU-` form; lookup was checked on the allocated device before requeuing the full jobs.
+A separate hosted calibration probe (6513) passed `ST-CGROUP` and `ST-WATCH` with the actual Slurm allocation's cgroup mounted read-only into the container. The complete GPU measurement self-test (6531) subsequently passed all six hosted checks: clock, sampler, jitter, cgroup, release watcher and NVML. Sampling was 20.2 Hz with no gaps over 150 ms and p99 lateness 0.229 ms; NVML reported no foreign process on the allocated GPU and supported energy measurement. The full benchmark repeated all six checks successfully in its own allocation. The launch wrappers normalize PyTorch's UUID to NVML's `GPU-` form; lookup was checked on the allocated device before requeuing the full jobs.
 
 The 1B input generator completed in 2,347.70 s on 16 allocated CPUs (6510), using the existing guarded exact-FP64 CPU reference. Its TokenFile decodes to 1,024 prompt positions and 64 continuation positions, matching the generator's recorded output. This is input preparation, not a completed proof or a serving measurement.
 

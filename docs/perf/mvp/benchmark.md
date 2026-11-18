@@ -1,6 +1,6 @@
 # MVP benchmark: Tessera beside FlashProve and SASH (#743)
 
-Status: updated 2026-11-17 with accepted full 1B and 8B native H100 workloads. The full 8B adapter run is in progress. These are development runs measured by Tessera's own scripts ([`scripts/prove-gpu.sh`](../../../scripts/prove-gpu.sh), `/usr/bin/time`) or the observatory's hosted harness, as each row states. Read the caveats before any figure.
+Status: updated 2026-11-17 with accepted full 1B and 8B native H100 workloads. The full 8B adapter run also completed with independent acceptance and C1 rejection. These are development runs measured by Tessera's own scripts ([`scripts/prove-gpu.sh`](../../../scripts/prove-gpu.sh), `/usr/bin/time`) or the observatory's hosted harness, as each row states. Read the caveats before any figure.
 
 ## H100 full workload, merged implementation
 
@@ -20,14 +20,16 @@ the recorded device peak is 59.61 GiB.
 |---|---|---:|---:|---:|---|
 | Llama 3.2 1B, integer D, W8, materialized head | 1,024 + 64 | 436.157 ms | 338,496 B | 31,441.9× | Native prove, generation excluded; one H100 SXM, 32 prover CPUs, n = 1; [report and numeric records](h100-full-workload.md) |
 | Llama 3.1 8B Instruct, integer D, W8 | 1,024 + 64 | 298.642 ms | 63,541 B | 47,773.0× | Native grouped prove, generation excluded; one H100 SXM, 24 prover CPUs, n = 1; [report and numeric records](h100-full-workload.md#completed-8b-native-workload) |
+| Llama 3.1 8B Instruct, integer D, W8 | 1,024 + 64 | 395.914 ms | 63,541 B | 63,385.8× | Hosted adapter prove session, generation included; one H100 SXM, 24 prover CPUs, n = 1; [report and labelled records](h100-full-workload.md#completed-8b-adapter-workload) |
 
 The serving denominator is the same allocated GPU at the same shape, using
-vLLM 0.32.0 with the original BF16 checkpoint: medians 0.180919 s (1B) and
-0.436934 s (8B), each across eight timed requests after two warm-ups.
+vLLM 0.32.0 with the original BF16 checkpoint: medians 0.180919 s (1B),
+0.436934 s (native 8B), and 0.436573 s (adapter 8B), each across eight timed
+requests after two warm-ups.
 Proving D and BF16 serving are different computations. P2 accounts for 60.4%
 of 1B native proof wall time and 58.7% at 8B. The report retains
 the phase totals, preparation time, failed attempts and hardware limitations.
-The full 8B adapter measurement, including greedy generation, remains in progress.
+The full 8B adapter prove session, including greedy generation, takes 27,672.549 s; independent verification takes 144.223 s. Its C1 honest twin accepts and the changed-token trial rejects with `REJ-TOKENS`, exit 10. The single repetition and driver mismatch prevent release qualification.
 The different sources, models, CPU counts and machines below do not establish
 a controlled speedup.
 The fresh 8B D also shows a substantial fidelity gap in the separate small

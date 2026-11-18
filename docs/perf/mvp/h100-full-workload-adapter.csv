@@ -1,0 +1,21 @@
+run_id,metric,value,unit,scope,grade,tier,null_reason,source
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,commit_seconds,1097.494684635,s,commit,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/commit_seconds
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,prove_call_seconds,27672.602670747,s,prove.session,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/prove_call_seconds
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,prove_session_seconds,27672.548964557,s,prove.session,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/prove_session_seconds
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,verify_seconds,144.223485224,s,verify,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/verify_seconds
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,verify_single_thread_seconds,145.080212319,s,verify.single_thread,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/verify_single_thread_seconds
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,whole_wall_seconds,28789.884191135,s,whole_wall,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/whole_wall_seconds
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,proof_bytes_total,4441209906.0,B,,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/proof_bytes_total
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,prove_host_memory_peak_anon,1644371681280,B,,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/prove_host_memory_peak_anon
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,prove_host_memory_peak_kernel,,B,,measured,reported,not_measurable_on_profile,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/prove_host_memory_peak_kernel
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,verify_host_memory_peak_anon,9381560320,B,,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/verify_host_memory_peak_anon
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,prove_gpu_memory_peak,61520.875,MiB,,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/prove_gpu_memory_peak
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,prove_gpu_util_mean,0.8372858201126115,%,,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/prove_gpu_util_mean
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,prove_gpu_util_p95,6.0,%,,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/prove_gpu_util_p95
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,verifier_download_bytes,11750,B,,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/verifier_download_bytes
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,tokens_covered_total,1088,token,,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/tokens_covered_total
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,verdicts_accept_count,1,count,,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/verdicts_accept_count
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,proofs_count,1,count,,measured,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/proofs_count
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,seconds_per_active_weight_bit_token_prove.session,3.959137708433573e-10,s/bit_token,prove.session,derived,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/seconds_per_active_weight_bit_token_prove.session
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,proof_bytes_per_active_weight_bit_token,6.354080945862303e-05,B/bit_token,,derived,reported,,2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1/run.json#/metrics/proof_bytes_per_active_weight_bit_token
+2026-11-17-tessera-l31-8b-c1024-prover-h100-hosted-1,overhead_vs_matched_python_api_serving,63385.80944342312,ratio,prove.session,derived,reported,,prove_session_seconds / serving-8b-h100-c1024-adapter.json#/seconds_per_request_median

@@ -25,6 +25,6 @@ proofs:
   steady_approximate: false
   verify_reads: "all"
 forbidden_flags: ["--test-", "--params=test-small"]
-# prove: D's greedy continuation (about 2 h on the CUDA reference) and a 6 h proof on 128 CPUs at
-# 1,024 + 64; the hosted profile binds 15.
+# prove includes D's greedy continuation and the proof. The H100 grouped run uses
+# 24 prover CPUs at 1,024 + 64; timing and allocation are recorded in the run.
 timeouts_s: {commit: 21600, prove: 86400, verify: 7200}

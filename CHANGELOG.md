@@ -4,7 +4,7 @@ All notable changes to the prover release train are recorded here: the crates un
 
 ## [Unreleased]
 
-- Refresh the inference-proofs adapter to the merged GPU implementation and retain held-out calibration in its CUDA image (#741, #743). Record the accepted H100 1B and grouped 8B native workloads at 1,024 + 64, their changed-token rejections, pass profiles and serving baselines (#737, #739). Retain the failed 8B attempts and report the separate small fidelity diagnostic's quality gap.
+- Refresh the inference-proofs adapter to the merged GPU implementation and retain held-out calibration in its CUDA image (#741, #743). Record the accepted H100 1B and grouped 8B native workloads at 1,024 + 64, their changed-token rejections, pass profiles and serving baselines (#737, #739). Complete the full 8B hosted adapter measurement, derived-metric validation and official C1 control. Retain the failed 8B attempts and report the separate small fidelity diagnostic's quality gap.
 
 - Record RFC-0020's v0.1 outcome, Stop and redesign (`ρ_c` 4.49, `ρ_ℓ` 7.42, `ρ_π` 7.05; `μ` 58.3 at 1K and 187.1 at 16K at the measured costs), and set the MVP plan: a real Llama model proven on one GPU and benchmarked against FlashProve ([decision](docs/perf/v0.1/decision.md), [MVP plan](docs/roadmap/MVP.md), [#722](https://github.com/AbdelStark/tessera/issues/722)).
 
